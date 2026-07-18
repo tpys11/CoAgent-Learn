@@ -1,6 +1,9 @@
 """
 CoAgent-Learn 后端主入口
-FastAPI + 多智能体协同调度 + RAG向量检索
+FastAPI + NiceGUI前端 + LangGraph多智能体协同调度 + RAG向量检索
+
+统一Python全栈：NiceGUI运行在FastAPI之上，WebSocket双向通信，
+无需独立前端进程，后续可通过FastAPI API升级为Vue/React独立前端。
 """
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -17,7 +20,10 @@ async def lifespan(app: FastAPI):
     required = ["DEEPSEEK_API_KEY"]
     missing = [v for v in required if not os.getenv(v)]
     if missing:
-        raise RuntimeError(f"缺少必需的环境变量: {', '.join(missing)}。请复制 .env.template 为 .env 并填写。")
+        raise RuntimeError(
+            f"缺少必需的环境变量: {', '.join(missing)}。"
+            "请复制 .env.template 为 .env 并填写。"
+        )
     yield
     # 关闭时清理
 
