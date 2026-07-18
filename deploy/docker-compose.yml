@@ -1,19 +1,17 @@
-version: "3.9"
-
 services:
   backend:
     build:
-      context: ./backend
+      context: ../backend
       dockerfile: Dockerfile
     container_name: guashuai-backend
     ports:
       - "8000:8000"
     env_file:
-      - .env
+      - ../.env
     volumes:
-      - ./backend:/app
-      - ./data:/app/data
-      - ./chroma_db:/app/chroma_db
+      - ../backend:/app
+      - ../data:/app/data
+      - ../chroma_db:/app/chroma_db
     depends_on:
       redis:
         condition: service_started
@@ -24,7 +22,7 @@ services:
 
   frontend:
     build:
-      context: ./frontend
+      context: ../frontend
       dockerfile: Dockerfile
     container_name: guashuai-frontend
     ports:
