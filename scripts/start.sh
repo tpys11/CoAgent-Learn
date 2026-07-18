@@ -5,6 +5,8 @@ set -e
 echo "===== 检查环境变量 ====="
 if [ ! -f .env ]; then
     echo "错误: .env 文件不存在，请从 .env.template 复制并填写"
+    echo "  cp .env.template .env"
+    echo "  然后编辑 .env，填入你的 DEEPSEEK_API_KEY"
     exit 1
 fi
 
