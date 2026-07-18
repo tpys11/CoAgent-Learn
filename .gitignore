@@ -28,5 +28,8 @@ secrets/
 *.swp
 *.swo
 
+# 文档 — 本地记录，不提交
+docs/
+
 # Docker
 docker-compose.override.yml
