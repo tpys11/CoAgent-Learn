@@ -1,5 +1,6 @@
 """左侧项目栏 — 项目列表、新建、删除、右键菜单"""
 from nicegui import ui
+from backend.ui.theme import theme
 from typing import Callable
 
 
@@ -17,7 +18,7 @@ class ProjectSidebar:
         with self.container:
             ui.label("项目").classes("section-title")
 
-            ui.button("+ 新建项目", on_click=self._show_create_dialog).classes("w-full btn-primary mb-2").props("size=sm")
+            ui.button("+ 新建项目", on_click=self._show_create_dialog).props("size=sm").style(f"background-color: {theme.current['accent']} !important; color: white !important; border-radius: 8px;")
 
             ui.separator().classes("my-1")
 
@@ -70,7 +71,7 @@ class ProjectSidebar:
 
             with ui.row().classes("gap-2 justify-end w-full"):
                 ui.button("取消", on_click=d.close).props("flat")
-                ui.button("创建", on_click=confirm).classes("btn-primary")
+                ui.button("创建", on_click=confirm).style(f"background-color: {theme.current['accent']} !important; color: white !important;")
 
     def _confirm_delete(self, name: str):
         with ui.dialog(value=True) as d, ui.card().classes("w-80"):

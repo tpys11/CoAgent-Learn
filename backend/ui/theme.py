@@ -46,8 +46,22 @@ class Theme:
     def css_var(self) -> str:
         c = self.current
         return f"""
+        :root {{
+            --q-primary: {c['accent']};
+            --q-secondary: {c['text_secondary']};
+            --q-accent: {c['accent']};
+            --q-dark: {c['bg']};
+        }}
         body {{
-            background-color: {c['bg']};
+            background-color: {c['bg']} !important;
+        }}
+
+        .q-btn.bg-primary, .q-btn.text-primary {{
+            background-color: var(--q-primary) !important;
+        }}
+
+        .q-btn.bg-primary .q-btn__content {{
+            color: #ffffff !important;
         }}
         .sidebar {{
             background-color: {c['sidebar']};
@@ -76,6 +90,14 @@ class Theme:
             border-color: {c['accent']};
             box-shadow: 0 0 0 2px {c['accent']}20;
         }}
+        .q-btn.bg-primary, .q-btn.text-primary {{
+            background-color: {c['accent']} !important;
+        }}
+
+        .q-btn.bg-primary .q-btn__content {{
+            color: #ffffff !important;
+        }}
+
         .btn-primary {{
             background-color: {c['accent']} !important;
             color: white !important;

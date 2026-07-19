@@ -1,4 +1,5 @@
 """输入区域 — 文本输入框 + 检索/输出设定按钮"""
+from backend.ui.theme import theme
 from nicegui import ui
 
 
@@ -61,7 +62,7 @@ class ChatInput:
                     "发送",
                     icon="send",
                     on_click=self._handle_send,
-                ).classes("btn-primary self-end")
+                ).style(f"background-color: {theme.current['accent']} !important; color: white !important;")
 
     def _handle_send(self):
         if self.text_input is None:

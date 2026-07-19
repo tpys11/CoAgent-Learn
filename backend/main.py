@@ -183,7 +183,7 @@ def _on_project_created(name: str):
             with ui.row().classes("gap-2 justify-end w-full"):
                 ui.button("不再提示", on_click=lambda: _skip_forever(d)).props("flat").classes("text-xs")
                 ui.button("跳过", on_click=lambda: _skip_once(d)).props("flat").classes("text-xs")
-                ui.button("开始", on_click=lambda: _start(diagnosis_dialog, d)).classes("btn-primary").props("size=sm")
+                ui.button("开始", on_click=lambda: _start(diagnosis_dialog, d)).props("size=sm").style(f"background-color: {theme.current['accent']} !important; color: white !important;")
 
     def _skip_once(dialog):
         dialog.close()
@@ -256,4 +256,5 @@ ui.run_with(
     dark=None,
     language="zh-CN",
     storage_secret="coagent-learn-dev",
+    tailwind=False,
 )
