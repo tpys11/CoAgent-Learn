@@ -53,6 +53,8 @@ from backend.ui.chat_input import ChatInput
 from backend.ui.diagnosis import DiagnosisDialog
 from backend.ui.settings import SettingsPanel
 
+from db.user_profile import update_knowledge_map, log_interaction
+
 # 全局状态
 messages = []
 current_project = None
@@ -206,6 +208,11 @@ def _on_project_created(name: str):
 def _on_diagnosis_complete(result: dict | None):
     if result is None:
         return
+    # 写入SQLite
+    try:
+        update_knowledge_map(current_project, result.get("raw_answers", {}))
+    except Exception:
+        pass
     add_msg = ui_ctx.get("add_message")
     if add_msg:
         add_msg("user", "完成知识诊断")
@@ -226,6 +233,11 @@ def _handle_message(text: str):
 
     if add_msg:
         add_msg("user", text)
+        # 记录交互日志
+        try:
+            log_interaction(current_project, "user", text[:200], "", 0)
+        except Exception:
+            pass
     if show_progress:
         show_progress(["分析问题", "检索知识库", "生成回答"])
     if add_msg:

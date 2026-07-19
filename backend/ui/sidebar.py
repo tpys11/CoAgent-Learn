@@ -1,6 +1,7 @@
 """左侧项目栏 — 项目列表、新建、删除、右键菜单"""
 from nicegui import ui
 from backend.ui.theme import theme
+from db.user_profile import create_profile
 from typing import Callable
 
 
@@ -62,6 +63,11 @@ class ProjectSidebar:
                     ui.notify(f"项目「{name}」已存在", type="warning")
                     return
                 self.projects[name] = {"created_at": "now"}
+                # 写入SQLite
+                try:
+                    create_profile(session_id=name, project_name=name)
+                except Exception:
+                    pass  # 界面不因数据库错误崩溃
                 d.close()
                 self._select(name)
                 self._refresh_list()
