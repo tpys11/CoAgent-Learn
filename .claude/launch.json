@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "CoAgent-Learn Dev",
+      "runtimeExecutable": ".venv/Scripts/python",
+      "runtimeArgs": ["-m", "backend.main"],
+      "port": 8000
+    }
+  ]
+}

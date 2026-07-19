@@ -77,8 +77,8 @@ class Theme:
             box-shadow: 0 0 0 2px {c['accent']}20;
         }}
         .btn-primary {{
-            background-color: {c['accent']};
-            color: white;
+            background-color: {c['accent']} !important;
+            color: white !important;
             border: none;
             border-radius: 8px;
             padding: 8px 16px;
@@ -87,7 +87,7 @@ class Theme:
             transition: background-color 0.2s;
         }}
         .btn-primary:hover {{
-            background-color: {c['accent_hover']};
+            background-color: {c['accent_hover']} !important;
         }}
         .btn-secondary {{
             background-color: transparent;
