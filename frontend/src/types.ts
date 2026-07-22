@@ -107,15 +107,15 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
   },
   {
     id: 'output',
-    name: '输出信息处理 Agent',
+    name: '信息整理与生成 Agent',
     icon: '📤',
     mode: '标准',
     modes: [
       { label: '标准', promptOverride: '' },
       { label: '详细', promptOverride: '输出更详细的解释，包含背景知识和延伸阅读。' },
     ],
-    systemPrompt: '你是输出信息处理 Agent。将多智能体协同生成的结果格式化为用户友好的最终输出，确保内容结构清晰、语言流畅。',
-    defaultPrompt: '你是输出信息处理 Agent。将多智能体协同生成的结果格式化为用户友好的最终输出，确保内容结构清晰、语言流畅。',
+    systemPrompt: '你是信息整理与生成 Agent。将多智能体协同生成的结果格式化为用户友好的最终输出，确保内容结构清晰、语言流畅。',
+    defaultPrompt: '你是信息整理与生成 Agent。将多智能体协同生成的结果格式化为用户友好的最终输出，确保内容结构清晰、语言流畅。',
     skill: '输出格式化：Markdown渲染、结构化呈现、内容难度自适应、任务驱动引导、开放性问题生成。',
     defaultSkill: '输出格式化：Markdown渲染、结构化呈现、内容难度自适应、任务驱动引导、开放性问题生成。',
     skillEditable: true,

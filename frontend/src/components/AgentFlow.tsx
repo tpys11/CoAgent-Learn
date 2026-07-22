@@ -43,7 +43,7 @@ const agentNodes: Node[] = [
   {
     id: 'output', type: 'default',
     position: { x: 510, y: 100 },
-    data: { label: '📤 输出处理 Agent' },
+    data: { label: '📤 信息整理与生成 Agent' },
     style: { background: '#fef3eb', border: '2px solid #c75f1a', borderRadius: 10, padding: 10, fontSize: 12, fontWeight: 600, width: 160 },
   },
 ]
