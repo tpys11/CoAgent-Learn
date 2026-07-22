@@ -66,7 +66,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
   return (
     <main className="flex-1 h-full min-w-0 flex flex-col">
       {/* Stats bar */}
-      <div className={`transition-all overflow-hidden ${statsCollapsed ? 'h-0' : ''}`}>
+      <div className={`transition-all ${statsCollapsed ? 'overflow-hidden h-0' : ''}`}>
         <div className="mx-1 mt-0 mb-1 px-3 py-2 bg-white border border-[#333] rounded-lg flex items-center gap-3 flex-shrink-0">
           {/* 时间范围 */}
           <div className="relative" ref={timeRangeRef}>
@@ -75,7 +75,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
               时间范围：<span className="text-[#c75f1a] font-semibold">{timeRange}</span> ▾
             </button>
             {showTimeRange && (
-              <div className="absolute top-full left-0 mt-1 bg-white border border-[#dad4cd] rounded-lg shadow-lg p-1 z-10 w-20">
+              <div className="absolute top-full left-0 mt-1 bg-white border border-[#dad4cd] rounded-lg shadow-lg p-1 z-50 w-20">
                 {timeLabels.map(label => (
                   <button key={label} onClick={() => { setTimeRange(label); setShowTimeRange(false) }}
                     className={`text-[11px] px-2 py-1 rounded w-full text-left ${label === timeRange ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>
