@@ -33,13 +33,18 @@ function App() {
   const [statsCollapsed, setStatsCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
   const dragging = useRef<'left' | 'right' | null>(null)
+  const appRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
       if (dragging.current === 'left') setSidebarWidth(Math.max(180, Math.min(400, e.clientX - 8)))
       if (dragging.current === 'right') setRightPanelWidth(Math.max(180, Math.min(400, window.innerWidth - e.clientX - 8)))
     }
-    const onMouseUp = () => { dragging.current = null }
+    const onMouseUp = () => {
+      dragging.current = null
+      if (appRef.current) appRef.current.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
     window.addEventListener('mousemove', onMouseMove)
     window.addEventListener('mouseup', onMouseUp)
     return () => { window.removeEventListener('mousemove', onMouseMove); window.removeEventListener('mouseup', onMouseUp) }
@@ -98,7 +103,7 @@ function App() {
   }, [])
 
   return (
-    <div className="flex h-screen w-screen bg-[#faf8f5] text-[#1a1a1a] p-2 gap-0">
+    <div ref={appRef} className="flex h-screen w-screen bg-[#faf8f5] text-[#1a1a1a] p-2 gap-0">
       {/* 左侧栏折叠后展开按钮 */}
       {sidebarCollapsed && (
         <button onClick={() => setSidebarCollapsed(false)}
@@ -125,7 +130,7 @@ function App() {
       )}
       {/* 左侧拖拽手柄 */}
       {!sidebarCollapsed && (
-        <div onMouseDown={() => { dragging.current = 'left' }}
+        <div onMouseDown={() => { dragging.current = 'left'; document.body.style.userSelect = 'none' }}
           className="w-1.5 h-full cursor-col-resize hover:bg-[#c75f1a]/30 flex-shrink-0 transition-colors" />
       )}
       {/* 中间 */}
@@ -136,7 +141,7 @@ function App() {
       />
       {/* 右侧拖拽手柄 */}
       {!rightCollapsed && (
-        <div onMouseDown={() => { dragging.current = 'right' }}
+        <div onMouseDown={() => { dragging.current = 'right'; document.body.style.userSelect = 'none' }}
           className="w-1.5 h-full cursor-col-resize hover:bg-[#c75f1a]/30 flex-shrink-0 transition-colors" />
       )}
       {/* 右侧栏 */}
