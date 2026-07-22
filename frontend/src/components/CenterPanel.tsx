@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { Send, Bot, Clock, Zap } from 'lucide-react'
+import { Send, Bot, Clock, Zap, Brain, Database } from 'lucide-react'
 import type { Message, Project } from '../types'
+import { MemoryModal, KnowledgeModal } from './InfoModals'
 
 interface CenterPanelProps {
   messages: Message[]
@@ -22,6 +23,8 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
   const [thinking, setThinking] = useState(false)
   const [outputVolume, setOutputVolume] = useState(1)
   const [depth, setDepth] = useState(1)
+  const [showMemory, setShowMemory] = useState(false)
+  const [showKnowledge, setShowKnowledge] = useState(false)
 
   const searchLabels = ['默认', '增强', '私有']
   const searchDescs = ['大模型自己决定', '倾向优质信息', '仅检索上传资料']
@@ -113,6 +116,17 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
       <div className="flex-shrink-0 px-1 pb-2 pt-1">
         {/* Control bar — 自定义按钮 */}
         <div className="flex gap-2 px-3 py-1.5 mb-1 border border-[#d0d0d0] rounded-lg bg-white items-center">
+          {/* 记忆系统 */}
+          <button onClick={() => setShowMemory(true)}
+            className="text-[11px] px-2 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-1">
+            <Brain size={12} className="text-purple-500" /> 记忆
+          </button>
+          {/* 知识库 */}
+          <button onClick={() => setShowKnowledge(true)}
+            className="text-[11px] px-2 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-1">
+            <Database size={12} className="text-green-500" /> 知识库
+          </button>
+          <span className="w-px h-4 bg-[#d0d0d0]" />
           {/* 检索模式 */}
           <button
             onClick={() => setSearchMode((searchMode + 1) % 3)}
@@ -197,6 +211,9 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
           </button>
         </div>
       </div>
+
+      {showMemory && <MemoryModal onClose={() => setShowMemory(false)} />}
+      {showKnowledge && <KnowledgeModal onClose={() => setShowKnowledge(false)} />}
     </main>
   )
 }
