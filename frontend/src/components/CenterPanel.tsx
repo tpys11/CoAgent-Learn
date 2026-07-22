@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Send, Bot, Clock, Zap } from 'lucide-react'
-import type { Message, Project } from '../App'
+import type { Message, Project } from '../types'
 
 interface CenterPanelProps {
   messages: Message[]
