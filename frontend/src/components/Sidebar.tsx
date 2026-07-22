@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
   Plus, Folder, FolderOpen, Trash2, Bot, MessageSquare,
-  Archive, ChevronDown, ChevronRight, Edit3, Check,
+  Archive, ChevronDown, ChevronRight, Edit3, Check, Settings,
 } from 'lucide-react'
 import type { Project, Dialogue, AgentConfig } from '../types'
 
@@ -19,13 +19,14 @@ interface SidebarProps {
   onArchiveDialogue: (id: string) => void
   onRenameDialogue: (id: string, name: string) => void
   onSelectAgent: (agent: AgentConfig) => void
+  onSettings: () => void
 }
 
 export default function Sidebar({
   projects, dialogues, currentProjectId, currentDialogueId, agents,
   onCreateProject, onDeleteProject, onSelectProject,
   onCreateDialogue, onSelectDialogue, onArchiveDialogue, onRenameDialogue,
-  onSelectAgent,
+  onSelectAgent, onSettings,
 }: SidebarProps) {
   const [showCreate, setShowCreate] = useState(false)
   const [newName, setNewName] = useState('')
@@ -180,6 +181,15 @@ export default function Sidebar({
           <span className="truncate">{agent.name}</span>
         </div>
       ))}
+      <div className="px-3 py-1.5 border-t border-[#dad4cd] flex justify-end">
+        <button
+          onClick={onSettings}
+          className="p-1.5 rounded-lg hover:bg-[#e8e2d9] text-[#888] hover:text-[#c75f1a] transition-colors"
+          title="设置"
+        >
+          <Settings size={16} />
+        </button>
+      </div>
     </div>
   )
 

@@ -4,6 +4,7 @@ import CenterPanel from './components/CenterPanel'
 import RightPanel from './components/RightPanel'
 import DiagnosisModal from './components/DiagnosisModal'
 import AgentModal from './components/AgentModal'
+import SettingsModal, { ApiKeyPrompt } from './components/SettingsModal'
 import type { Project, Dialogue, AgentConfig, Message } from './types'
 import { DEFAULT_AGENTS } from './types'
 
@@ -25,6 +26,10 @@ function App() {
   const [showDiagnosis, setShowDiagnosis] = useState(false)
   const [selectedAgent, setSelectedAgent] = useState<AgentConfig | null>(null)
   const [agents, setAgents] = useState<AgentConfig[]>(DEFAULT_AGENTS)
+  const [showSettings, setShowSettings] = useState(false)
+  const [showApiKeyPrompt, setShowApiKeyPrompt] = useState(
+    () => !localStorage.getItem('coagent-apikey') && !localStorage.getItem('coagent-apikey-skipped')
+  )
 
   const currentProject = projects.find(p => p.id === currentProjectId) ?? null
 
@@ -118,6 +123,7 @@ function App() {
         onArchiveDialogue={handleArchiveDialogue}
         onRenameDialogue={handleRenameDialogue}
         onSelectAgent={setSelectedAgent}
+        onSettings={() => setShowSettings(true)}
       />
       <CenterPanel
         messages={messages}
@@ -130,6 +136,13 @@ function App() {
       {showDiagnosis && <DiagnosisModal onClose={() => setShowDiagnosis(false)} />}
       {selectedAgent && (
         <AgentModal agent={selectedAgent} onSave={handleSaveAgent} onClose={() => setSelectedAgent(null)} />
+      )}
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {showApiKeyPrompt && (
+        <ApiKeyPrompt onClose={() => {
+          setShowApiKeyPrompt(false)
+          localStorage.setItem('coagent-apikey-skipped', '1')
+        }} />
       )}
     </div>
   )
