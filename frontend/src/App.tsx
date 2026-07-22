@@ -124,7 +124,7 @@ function App() {
           />
           {/* 折叠按钮：右上角 */}
           <button onClick={() => setSidebarCollapsed(true)}
-            className="absolute top-2 right-2 w-5 h-5 flex items-center justify-center rounded hover:bg-[#e8e2d9] text-gray-400 text-xs z-10"
+            className="absolute top-10 right-1 w-5 h-5 flex items-center justify-center rounded bg-white/80 hover:bg-white border border-[#dad4cd] text-gray-400 hover:text-[#c75f1a] text-xs z-10 shadow-sm"
             title="收起侧栏">◀</button>
         </div>
       )}
@@ -150,7 +150,7 @@ function App() {
           <RightPanel />
           {/* 折叠按钮：左上角 */}
           <button onClick={() => setRightCollapsed(true)}
-            className="absolute top-2 left-2 w-5 h-5 flex items-center justify-center rounded hover:bg-[#e8e2d9] text-gray-400 text-xs z-10"
+            className="absolute top-10 left-1 w-5 h-5 flex items-center justify-center rounded bg-white/80 hover:bg-white border border-[#dad4cd] text-gray-400 hover:text-[#c75f1a] text-xs z-10 shadow-sm"
             title="收起右侧栏">▶</button>
         </div>
       )}
