@@ -203,15 +203,27 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
               onClick={() => { setShowSearch(!showSearch); setShowFormat(false); setShowContent(false) }}
               className="text-[11px] px-2 py-1 rounded hover:bg-gray-100 transition-colors"
             >
-              检索模式：<span className="text-[#c75f1a] font-semibold">{searchLabels[searchMode]}</span> ▾
+              检索与搜索：<span className="text-[#c75f1a] font-semibold">{searchLabels[searchMode]}</span> ▾
             </button>
             {showSearch && (
-              <div className="absolute bottom-full left-0 mb-1 bg-white border border-[#dad4cd] rounded-lg shadow-lg p-2 w-56 z-10">
+              <div className="absolute bottom-full left-0 mb-1 bg-white border border-[#dad4cd] rounded-lg shadow-lg p-2 z-10" style={{ width: 240 }}>
+                <div className="text-[10px] text-gray-400 mb-1">知识库检索：</div>
                 {searchLabels.map((label, i) => (
                   <button key={label} onClick={() => { setSearchMode(i); setShowSearch(false) }}
                     className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === searchMode ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>
                     <span className="font-medium">{label}</span>
                     <span className="text-[10px] text-gray-400 ml-1">— {searchDescs[i]}</span>
+                  </button>
+                ))}
+                <div className="text-[10px] text-gray-400 mb-1 mt-2">联网搜索：</div>
+                {[
+                  ['默认', 'AI自己决定是否搜索', 0],
+                  ['增强', '寻找优质信息源', 1],
+                ].map(([label, desc]) => (
+                  <button key={label}
+                    className="text-[11px] px-2 py-1 rounded w-full text-left hover:bg-gray-50">
+                    <span className="font-medium">{label}</span>
+                    <span className="text-[10px] text-gray-400 ml-1.5">— {desc}</span>
                   </button>
                 ))}
               </div>
