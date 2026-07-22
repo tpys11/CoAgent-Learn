@@ -14,9 +14,6 @@ export default function AgentModal({ agent, onSave, onClose }: Props) {
   const [skill, setSkill] = useState(agent.skill)
 
   const currentMode = agent.modes.find(m => m.label === mode)
-  const effectivePrompt = currentMode?.promptOverride
-    ? agent.defaultPrompt + '\n\n' + currentMode.promptOverride
-    : prompt
 
   const handleModeChange = (label: string) => {
     setMode(label)

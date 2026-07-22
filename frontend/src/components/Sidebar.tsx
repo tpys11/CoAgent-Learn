@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
   Plus, Folder, FolderOpen, Trash2, Bot, MessageSquare,
-  Archive, ChevronDown, ChevronRight, Edit3, Check, Settings,
+  Archive, ChevronDown, ChevronRight, Edit3, Settings,
 } from 'lucide-react'
 import type { Project, Dialogue, AgentConfig } from '../types'
 
