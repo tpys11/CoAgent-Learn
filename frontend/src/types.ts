@@ -101,8 +101,8 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
     ],
     systemPrompt: '你是输入信息处理 Agent。尽可能将输入转化为文本格式（含OCR识别），若文本不足以承载全部内容，识别并标注非文本形式的处理方式。',
     defaultPrompt: '你是输入信息处理 Agent。尽可能将输入转化为文本格式（含OCR识别），若文本不足以承载全部内容，识别并标注非文本形式的处理方式。',
-    skill: '文本化处理：格式转换（Markdown/PDF/图片OCR）、初步清洗（去重/去空白/去无效冗余）。参考 Datawhale PDF 处理方案。',
-    defaultSkill: '文本化处理：格式转换（Markdown/PDF/图片OCR）、初步清洗（去重/去空白/去无效冗余）。参考 Datawhale PDF 处理方案。',
+    skill: '格式处理：先识别输入形式 → PDF用opendataloader-project解析 → 非PDF用markitdown转换 → 统一为Markdown文本。',
+    defaultSkill: '格式处理：先识别输入形式 → PDF用opendataloader-project解析 → 非PDF用markitdown转换 → 统一为Markdown文本。',
     skillEditable: true,
   },
   {
