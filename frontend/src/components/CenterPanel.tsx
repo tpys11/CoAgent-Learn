@@ -35,6 +35,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
   const [inputOptMode, setInputOptMode] = useState(0) // 0=默认,1=详尽,2=不询问
   const inputOptLabels = ['默认模式', '详尽模式', '不询问模式']
   const inputOptDescs = ['问1-3个问题', 'AI判断足够了才停止', '直接生成不询问']
+  const [webSearchMode, setWebSearchMode] = useState(0) // 0=默认,1=增强
   const [timeRange, setTimeRange] = useState('今天')
   const [showTimeRange, setShowTimeRange] = useState(false)
   const timeRangeRef = useRef<HTMLDivElement>(null)
@@ -187,7 +188,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
             {showInputOpt && (
               <div className="absolute bottom-full left-0 mb-1 bg-white border border-[#dad4cd] rounded-lg shadow-lg p-1.5 z-10" style={{ width: 220 }}>
                 {inputOptLabels.map((label, i) => (
-                  <button key={label} onClick={() => { setInputOptMode(i); setShowInputOpt(false) }}
+                  <button key={label} onClick={() => { setInputOptMode(i) }}
                     className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === inputOptMode ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>
                     <span className="font-medium">{label}</span>
                     <span className="text-[10px] text-gray-400 ml-1.5">— {inputOptDescs[i]}</span>
@@ -217,11 +218,11 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
                 ))}
                 <div className="text-[10px] text-gray-400 mb-1 mt-2">联网搜索：</div>
                 {[
-                  ['默认', 'AI自己决定是否搜索', 0],
-                  ['增强', '寻找优质信息源', 1],
-                ].map(([label, desc]) => (
-                  <button key={label}
-                    className="text-[11px] px-2 py-1 rounded w-full text-left hover:bg-gray-50">
+                  ['默认', 'AI自己决定是否搜索'],
+                  ['增强', '寻找优质信息源'],
+                ].map(([label, desc], i) => (
+                  <button key={label} onClick={() => setWebSearchMode(i)}
+                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === webSearchMode ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>
                     <span className="font-medium">{label}</span>
                     <span className="text-[10px] text-gray-400 ml-1.5">— {desc}</span>
                   </button>
