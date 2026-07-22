@@ -169,7 +169,7 @@ export default function Sidebar({
 
   /** Agent 列表 */
   const renderAgents = () => (
-    <div className="border-t border-[#dad4cd] max-h-[40%] overflow-y-auto">
+    <div className="border-t border-[#dad4cd] max-h-[50%] overflow-y-auto flex-shrink-0">
       <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-[#888]">Agent</div>
       {agents.map((agent) => (
         <div
