@@ -137,11 +137,13 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
         <div className="flex gap-2 px-3 py-1.5 mb-1 border border-[#d0d0d0] rounded-lg bg-white items-center">
           {/* 记忆系统 */}
           <button onClick={() => setShowMemory(true)}
+            title="管理全局性和项目级记忆"
             className="text-[11px] px-2 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-1">
             <Brain size={12} className="text-purple-500" /> 记忆
           </button>
           {/* 知识库 */}
           <button onClick={() => setShowKnowledge(true)}
+            title="查看RAG知识库状态和检索流程"
             className="text-[11px] px-2 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-1">
             <Database size={12} className="text-green-500" /> 知识库
           </button>
@@ -150,6 +152,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
           <div className="relative" ref={searchRef}>
             <button
               onClick={() => { setShowSearch(!showSearch); setShowFormat(false); setShowContent(false) }}
+              title="选择信息来源范围"
               className="text-[11px] px-2 py-1 rounded hover:bg-gray-100 transition-colors"
             >
               检索模式：<span className="text-[#c75f1a] font-semibold">{searchLabels[searchMode]}</span> ▾
@@ -171,6 +174,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
           <div className="relative" ref={formatRef}>
             <button
               onClick={() => { setShowFormat(!showFormat); setShowContent(false) }}
+              title="设置输出结构和格式"
               className="text-[11px] px-2 py-1 rounded hover:bg-gray-100 transition-colors"
             >
               输出形式 ▾
@@ -197,6 +201,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
           <div className="relative" ref={contentRef}>
             <button
               onClick={() => { setShowContent(!showContent); setShowFormat(false) }}
+              title="设置思考链展示、输出量和学习深度"
               className="text-[11px] px-2 py-1 rounded hover:bg-gray-100 transition-colors"
             >
               输出内容 ▾

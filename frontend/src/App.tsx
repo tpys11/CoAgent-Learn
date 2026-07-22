@@ -28,19 +28,16 @@ function App() {
     () => !localStorage.getItem('coagent-apikey') && !localStorage.getItem('coagent-apikey-skipped')
   )
   const [sidebarWidth, setSidebarWidth] = useState(240)
+  const [rightPanelWidth, setRightPanelWidth] = useState(260)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [statsCollapsed, setStatsCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
-  const rightPanelW = useRef(260)
   const dragging = useRef<'left' | 'right' | null>(null)
 
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
       if (dragging.current === 'left') setSidebarWidth(Math.max(180, Math.min(400, e.clientX - 8)))
-      if (dragging.current === 'right') {
-        rightPanelW.current = Math.max(180, Math.min(400, window.innerWidth - e.clientX - 8))
-        setSidebarWidth(s => s) // force re-render
-      }
+      if (dragging.current === 'right') setRightPanelWidth(Math.max(180, Math.min(400, window.innerWidth - e.clientX - 8)))
     }
     const onMouseUp = () => { dragging.current = null }
     window.addEventListener('mousemove', onMouseMove)
@@ -144,7 +141,7 @@ function App() {
       )}
       {/* 右侧栏 */}
       {!rightCollapsed && (
-        <div style={{ width: rightPanelW.current, minWidth: 180 }} className="h-full flex-shrink-0 relative">
+        <div style={{ width: rightPanelWidth, minWidth: 180 }} className="h-full flex-shrink-0 relative">
           <RightPanel />
           {/* 折叠按钮：左上角 */}
           <button onClick={() => setRightCollapsed(true)}
