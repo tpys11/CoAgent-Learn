@@ -30,6 +30,10 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
   const [showKnowledge, setShowKnowledge] = useState(false)
   const [showSearch, setShowSearch] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
+  const [timeRange, setTimeRange] = useState('今天')
+  const [showTimeRange, setShowTimeRange] = useState(false)
+  const timeRangeRef = useRef<HTMLDivElement>(null)
+  const timeLabels = ['本次', '今天', '本周', '本月', '今年', '总']
 
   const searchLabels = ['默认', '增强', '私有']
   const searchDescs = ['大模型自己决定', '大部分来源于知识库，少部分来源于外部', '完全从知识库中检索']
@@ -46,6 +50,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
       if (formatRef.current && !formatRef.current.contains(e.target as Node)) setShowFormat(false)
       if (contentRef.current && !contentRef.current.contains(e.target as Node)) setShowContent(false)
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) setShowSearch(false)
+      if (timeRangeRef.current && !timeRangeRef.current.contains(e.target as Node)) setShowTimeRange(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -63,6 +68,24 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
       {/* Stats bar */}
       <div className={`transition-all overflow-hidden ${statsCollapsed ? 'h-0' : ''}`}>
         <div className="mx-1 mt-0 mb-1 px-3 py-2 bg-white border border-[#333] rounded-lg flex items-center gap-3 flex-shrink-0">
+          {/* 时间范围 */}
+          <div className="relative" ref={timeRangeRef}>
+            <button onClick={() => setShowTimeRange(!showTimeRange)}
+              className="text-[11px] px-2 py-0.5 rounded hover:bg-gray-100 transition-colors">
+              时间范围：<span className="text-[#c75f1a] font-semibold">{timeRange}</span> ▾
+            </button>
+            {showTimeRange && (
+              <div className="absolute top-full left-0 mt-1 bg-white border border-[#dad4cd] rounded-lg shadow-lg p-1 z-10 w-20">
+                {timeLabels.map(label => (
+                  <button key={label} onClick={() => { setTimeRange(label); setShowTimeRange(false) }}
+                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${label === timeRange ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <span className="text-gray-300">|</span>
           <Clock size={14} className="text-gray-400" />
           <span className="text-xs font-semibold text-gray-500">12h 36min</span>
           <span className="text-xs text-gray-400">专注时长</span>
