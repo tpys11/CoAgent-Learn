@@ -41,7 +41,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
   const timeLabels = ['本次', '今天', '本周', '本月', '今年', '总']
 
   const searchLabels = ['默认', '增强', '私有']
-  const searchDescs = ['大模型自己决定', '大部分来源于知识库，少部分来源于外部', '完全从知识库中检索']
+  const searchDescs = ['大模型自己决定', '优质信息·多轮搜索·自我检测', '纯粹检索上传的信息']
 
   useEffect(() => {
     const timer = setInterval(() => {

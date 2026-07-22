@@ -131,8 +131,8 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
     ],
     systemPrompt: '你是搜索 Agent。基于 SearXNG 元搜索引擎，聚合多源信息，优先返回权威来源的具体数据和可验证信息。',
     defaultPrompt: '你是搜索 Agent。基于 SearXNG 元搜索引擎，聚合多源信息，优先返回权威来源的具体数据和可验证信息。',
-    skill: '搜索能力：SearXNG 元搜索（聚合70+搜索源）→ Perplexica 架构 → 优质信息四条件过滤（广泛→权威→具体→归纳）。',
-    defaultSkill: '搜索能力：SearXNG 元搜索（聚合70+搜索源）→ Perplexica 架构 → 优质信息四条件过滤（广泛→权威→具体→归纳）。',
+    skill: '知识库检索：默认(大模型决定)/增强(优质信息+多轮+自检)/私有(仅上传资料)；联网搜索：默认(ai决定)/增强(优质信息)。底层SearXNG聚合70+搜索源。',
+    defaultSkill: '知识库检索：默认(大模型决定)/增强(优质信息+多轮+自检)/私有(仅上传资料)；联网搜索：默认(ai决定)/增强(优质信息)。底层SearXNG聚合70+搜索源。',
     skillEditable: true,
   },
 ]
