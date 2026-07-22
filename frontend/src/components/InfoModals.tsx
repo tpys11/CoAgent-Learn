@@ -168,11 +168,38 @@ export function KnowledgeModal({ onClose }: Props) {
             {/* 总体概述 */}
             <div className="mb-4">
               <h4 className="text-xs font-semibold text-gray-500 mb-2">总体概述</h4>
-              <p className="text-xs text-gray-600 leading-relaxed bg-[#faf8f5] border border-[#dad4cd] rounded-lg p-3">
-                本知识库聚焦「多智能体系统开发」领域，涵盖 Agent 基础概念、LangGraph 工作流编排、RAG 检索增强生成、
-                Function Calling 工具调用、向量数据库选型与 Prompt Engineering 等核心主题。
-                共收录 7 篇结构化 Markdown 文档，已完成切片和向量化存储，支持语义检索与上下文增强生成。
-              </p>
+              <div className="bg-[#faf8f5] border border-[#dad4cd] rounded-lg p-3 space-y-2 text-xs">
+                <div>
+                  <span className="font-semibold text-gray-600">聚焦领域：</span>
+                  <span className="text-gray-600">多智能体系统开发（Agent协同、LangGraph编排、RAG检索、向量数据库）</span>
+                </div>
+                <div>
+                  <span className="font-semibold text-gray-600">具体内容：</span>
+                  <span className="text-gray-600">7篇结构化文档，覆盖 Agent 基础概念、Prompt工程、RAG技术原理、向量数据库与Embedding、Agent基础、Agent记忆系统、多Agent协同</span>
+                </div>
+                <div>
+                  <span className="font-semibold text-gray-600">存储形式：</span>
+                  <span className="text-gray-600">Markdown → 按标题切片（500-800字/chunk）→ Embedding向量化 → Chroma向量库</span>
+                </div>
+                <div className="border-t border-[#dad4cd] pt-2 mt-2 space-y-1">
+                  <div className="flex gap-4">
+                    <span className="font-semibold text-gray-600">内容量：</span>
+                    <span className="text-gray-600">适中 — 7篇覆盖核心主题，可逐步扩展</span>
+                  </div>
+                  <div className="flex gap-4">
+                    <span className="font-semibold text-gray-600">内容质量：</span>
+                    <span className="text-green-600">较高 — 来源于优质社区教程和官方文档</span>
+                  </div>
+                  <div className="flex gap-4">
+                    <span className="font-semibold text-gray-600">预期效果：</span>
+                    <span className="text-gray-600">学完后可独立搭建多Agent系统，理解LangGraph编排和RAG全链路</span>
+                  </div>
+                  <div className="flex gap-4">
+                    <span className="font-semibold text-gray-600">内容难度：</span>
+                    <span className="text-orange-600">中等 — 需要Python基础和LLM基本概念</span>
+                  </div>
+                </div>
+              </div>
             </div>
             {/* 知识图谱 */}
             <div>
