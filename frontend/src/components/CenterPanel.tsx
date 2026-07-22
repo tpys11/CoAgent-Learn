@@ -180,12 +180,14 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
                 <div className="text-[10px] text-gray-400 mb-1">结构化程度：</div>
                 {['低结构化', '高结构化'].map((s, i) => (
                   <button key={s} onClick={() => setOutputFormat(i)}
-                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === outputFormat ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>{s}</button>
+                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === outputFormat ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}
+                    title={['减少列表和表格，以段落为主', '增加有序/无序列表和表格'][i]}>{s}</button>
                 ))}
                 <div className="text-[10px] text-gray-400 mb-1 mt-2">输出格式：</div>
                 {['MD文档', '对话形式'].map((s, i) => (
                   <button key={s} onClick={() => setOutputStyle(i)}
-                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === outputStyle ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>{s}</button>
+                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === outputStyle ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}
+                    title={['包裹为完整Markdown文档输出', '以对话消息形式直接输出'][i]}>{s}</button>
                 ))}
               </div>
             )}
@@ -201,10 +203,11 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
             </button>
             {showContent && (
               <div className="absolute bottom-full left-0 mb-1 bg-white border border-[#dad4cd] rounded-lg shadow-lg p-2 w-44 z-10">
-                <div className="text-[10px] text-gray-400 mb-1">思考模式（括号注明思考链）：</div>
+                <div className="text-[10px] text-gray-400 mb-1">思考链展示：</div>
                 {['关', '开'].map((s, i) => (
                   <button key={s} onClick={() => setThinking(i === 1)}
-                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${(i === 1) === thinking ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>{s}</button>
+                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${(i === 1) === thinking ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}
+                    title={['不展示思考链', '括号注明大模型思考链'][i]}>{s}</button>
                 ))}
                 <div className="text-[10px] text-gray-400 mb-1 mt-2">输出量：</div>
                 {['精简', '适中', '拓展'].map((s, i) => (
@@ -215,7 +218,8 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
                 <div className="text-[10px] text-gray-400 mb-1 mt-2">学习深度：</div>
                 {['浅', '中', '深'].map((s, i) => (
                   <button key={s} onClick={() => setDepth(i)}
-                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === depth ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>{s}</button>
+                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === depth ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}
+                    title={['基础概念层面', '概念+原理层面', '原理+推导+前沿'][i]}>{s}</button>
                 ))}
               </div>
             )}
