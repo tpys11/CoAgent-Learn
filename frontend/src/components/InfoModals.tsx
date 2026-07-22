@@ -105,21 +105,91 @@ export function MemoryModal({ onClose }: Props) {
 }
 
 export function KnowledgeModal({ onClose }: Props) {
+  const [kbInput, setKbInput] = useState('')
+  const [showGuide, setShowGuide] = useState(false)
+
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg mx-4" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#dad4cd]">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl h-[85vh] flex flex-col mx-4"
+           onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-3 border-b border-[#dad4cd] flex-shrink-0">
           <h2 className="text-base font-bold flex items-center gap-2"><Database size={18} className="text-green-500" /> 知识库</h2>
           <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
         </div>
-        <div className="p-5 space-y-4">
-          <div className="bg-[#faf8f5] border border-[#dad4cd] rounded-lg p-4">
-            <h3 className="text-sm font-semibold mb-2">RAG 检索增强生成</h3>
-            <p className="text-xs text-gray-500 leading-relaxed">文档切片 → 向量嵌入 → Chroma 存储 → 语义检索 → LLM 生成。7篇AI多智能体领域知识文档已入库。</p>
+
+        <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-5">
+          {/* 一、输入内容 */}
+          <div className="border border-[#dad4cd] rounded-xl p-4">
+            <h3 className="text-sm font-bold mb-3">输入内容</h3>
+            <textarea
+              value={kbInput} onChange={(e) => setKbInput(e.target.value)}
+              placeholder="输入你想要创建的知识库内容..."
+              rows={3}
+              className="w-full px-3 py-2 border border-[#c4beb6] rounded-lg text-sm outline-none resize-none focus:border-[#c75f1a] bg-[#faf8f5]"
+            />
+            <div className="flex items-center justify-between mt-2">
+              <p className="text-[11px] text-gray-400 cursor-pointer hover:text-[#c75f1a]" onClick={() => setShowGuide(!showGuide)}>
+                💡 我需要引导
+              </p>
+              <button className="text-[11px] px-3 py-1.5 bg-[#c75f1a] text-white font-semibold rounded-lg hover:bg-[#a84a10] transition-colors">
+                进入知识库建立模式
+              </button>
+            </div>
+            {showGuide && (
+              <div className="mt-3 p-3 bg-[#faf8f5] border border-[#dad4cd] rounded-lg text-xs text-gray-600 leading-relaxed">
+                知识库建立引导：<br />
+                1. 确定知识领域范围（如：多智能体系统开发）<br />
+                2. 上传或输入相关文档资料<br />
+                3. 系统自动切片→向量化→存入Chroma<br />
+                4. 后续对话自动检索知识库内容
+              </div>
+            )}
           </div>
-          <div className="bg-[#faf8f5] border border-[#dad4cd] rounded-lg p-4">
-            <h3 className="text-sm font-semibold mb-2">知识库状态</h3>
-            <p className="text-xs text-gray-400">知识库就绪，Agent 编排接入后自动检索。</p>
+
+          {/* 二、内容展示 */}
+          <div className="border border-[#dad4cd] rounded-xl p-4">
+            <h3 className="text-sm font-bold mb-3">内容展示</h3>
+            {/* 总体概述 */}
+            <div className="mb-4">
+              <h4 className="text-xs font-semibold text-gray-500 mb-2">总体概述</h4>
+              <p className="text-xs text-gray-600 leading-relaxed bg-[#faf8f5] border border-[#dad4cd] rounded-lg p-3">
+                本知识库聚焦「多智能体系统开发」领域，涵盖 Agent 基础概念、LangGraph 工作流编排、RAG 检索增强生成、
+                Function Calling 工具调用、向量数据库选型与 Prompt Engineering 等核心主题。
+                共收录 7 篇结构化 Markdown 文档，已完成切片和向量化存储，支持语义检索与上下文增强生成。
+              </p>
+            </div>
+            {/* 知识图谱 */}
+            <div>
+              <h4 className="text-xs font-semibold text-gray-500 mb-2">知识图谱</h4>
+              <div className="h-40 w-full border border-dashed border-[#c75f1a]/50 bg-white rounded-lg flex items-center justify-center">
+                <span className="text-xs text-gray-400">知识关系图谱 — 接入后端后自动生成</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 三、知识库状态栏 */}
+          <div className="border border-[#dad4cd] rounded-xl p-4">
+            <h3 className="text-sm font-bold mb-3">知识库状态</h3>
+            <div className="flex gap-6">
+              <div>
+                <span className="text-[10px] text-gray-400">上次更新</span>
+                <p className="text-xs font-semibold">2026年7月22日 15:30</p>
+              </div>
+              <div>
+                <span className="text-[10px] text-gray-400">文档数量</span>
+                <p className="text-xs font-semibold">7 篇</p>
+              </div>
+              <div>
+                <span className="text-[10px] text-gray-400">学习进度</span>
+                <p className="text-xs font-semibold">
+                  已覆盖 <span className="text-[#c75f1a]">3/7</span> 主题
+                </p>
+              </div>
+            </div>
+            <div className="mt-2 w-full bg-gray-200 rounded-full h-1.5">
+              <div className="bg-[#c75f1a] h-1.5 rounded-full" style={{ width: '43%' }} />
+            </div>
           </div>
         </div>
       </div>
