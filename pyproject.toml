@@ -1,6 +1,6 @@
 [project]
 name = "coagent-learn"
-version = "0.2.0"
+version = "0.3.0"
 description = "领域知识个性化生成与多智能体协同决策系统 — React + FastAPI 全栈"
 requires-python = ">=3.12"
 dependencies = [
@@ -22,7 +22,7 @@ dependencies = [
 dev = ["pytest>=8", "pytest-asyncio>=0.24"]
 
 [project.scripts]
-coagent-serve = "backend.main:app"
+coagent-serve = "uvicorn backend.main:app --host 0.0.0.0 --port 8000"
 
 [build-system]
 requires = ["setuptools>=75.0"]
