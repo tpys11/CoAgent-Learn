@@ -119,16 +119,31 @@ export function KnowledgeModal({ onClose }: Props) {
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-5">
-          {/* 一、输入内容 */}
+          {/* 一、输入内容 — 两栏 */}
           <div className="border border-[#dad4cd] rounded-xl p-4">
             <h3 className="text-sm font-bold mb-3">输入内容</h3>
-            <textarea
-              value={kbInput} onChange={(e) => setKbInput(e.target.value)}
-              placeholder="输入你想要创建的知识库内容..."
-              rows={3}
-              className="w-full px-3 py-2 border border-[#c4beb6] rounded-lg text-sm outline-none resize-none focus:border-[#c75f1a] bg-[#faf8f5]"
-            />
-            <div className="flex items-center justify-between mt-2">
+            <div className="flex gap-4">
+              {/* 左栏：输入框 */}
+              <div className="flex-1 flex flex-col">
+                <label className="text-xs font-semibold text-gray-500 mb-1.5">文本输入</label>
+                <textarea
+                  value={kbInput} onChange={(e) => setKbInput(e.target.value)}
+                  placeholder="输入你想要创建的知识库内容..."
+                  rows={5}
+                  className="flex-1 px-3 py-2 border border-[#c4beb6] rounded-lg text-sm outline-none resize-none focus:border-[#c75f1a] bg-[#faf8f5]"
+                />
+              </div>
+              {/* 右栏：文件上传 */}
+              <div className="flex-1 flex flex-col">
+                <label className="text-xs font-semibold text-gray-500 mb-1.5">文件上传</label>
+                <div className="flex-1 border-2 border-dashed border-[#c4beb6] rounded-lg flex flex-col items-center justify-center gap-2 bg-[#faf8f5] hover:border-[#c75f1a]/50 transition-colors cursor-pointer">
+                  <Upload size={24} className="text-gray-400" />
+                  <span className="text-xs text-gray-400">点击或拖拽上传文件</span>
+                  <span className="text-[10px] text-gray-300">支持 MD、PDF、TXT</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-between mt-3">
               <p className="text-[11px] text-gray-400 cursor-pointer hover:text-[#c75f1a]" onClick={() => setShowGuide(!showGuide)}>
                 💡 我需要引导
               </p>
