@@ -152,7 +152,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
           <div className="relative" ref={searchRef}>
             <button
               onClick={() => { setShowSearch(!showSearch); setShowFormat(false); setShowContent(false) }}
-              title="选择信息来源范围"
               className="text-[11px] px-2 py-1 rounded hover:bg-gray-100 transition-colors"
             >
               检索模式：<span className="text-[#c75f1a] font-semibold">{searchLabels[searchMode]}</span> ▾
@@ -174,24 +173,33 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
           <div className="relative" ref={formatRef}>
             <button
               onClick={() => { setShowFormat(!showFormat); setShowContent(false) }}
-              title="设置输出结构和格式"
               className="text-[11px] px-2 py-1 rounded hover:bg-gray-100 transition-colors"
             >
               输出形式 ▾
             </button>
             {showFormat && (
-              <div className="absolute bottom-full left-0 mb-1 bg-white border border-[#dad4cd] rounded-lg shadow-lg p-2 w-44 z-10">
+              <div className="absolute bottom-full left-0 mb-1 bg-white border border-[#dad4cd] rounded-lg shadow-lg p-2 z-10" style={{ width: 260 }}>
                 <div className="text-[10px] text-gray-400 mb-1">结构化程度：</div>
-                {['低结构化', '高结构化'].map((s, i) => (
+                {([
+                  ['低结构化', '减少列表和表格，以段落为主'],
+                  ['高结构化', '增加有序/无序列表和表格'],
+                ] as const).map(([s, desc], i) => (
                   <button key={s} onClick={() => setOutputFormat(i)}
-                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === outputFormat ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}
-                    title={['减少列表和表格，以段落为主', '增加有序/无序列表和表格'][i]}>{s}</button>
+                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === outputFormat ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>
+                    <span className="font-medium">{s}</span>
+                    <span className="text-[10px] text-gray-400 ml-1.5">— {desc}</span>
+                  </button>
                 ))}
                 <div className="text-[10px] text-gray-400 mb-1 mt-2">输出格式：</div>
-                {['MD文档', '对话形式'].map((s, i) => (
+                {([
+                  ['MD文档', '包裹为完整Markdown文档输出'],
+                  ['对话形式', '以对话消息形式直接输出'],
+                ] as const).map(([s, desc], i) => (
                   <button key={s} onClick={() => setOutputStyle(i)}
-                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === outputStyle ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}
-                    title={['包裹为完整Markdown文档输出', '以对话消息形式直接输出'][i]}>{s}</button>
+                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === outputStyle ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>
+                    <span className="font-medium">{s}</span>
+                    <span className="text-[10px] text-gray-400 ml-1.5">— {desc}</span>
+                  </button>
                 ))}
               </div>
             )}
@@ -201,30 +209,46 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
           <div className="relative" ref={contentRef}>
             <button
               onClick={() => { setShowContent(!showContent); setShowFormat(false) }}
-              title="设置思考链展示、输出量和学习深度"
               className="text-[11px] px-2 py-1 rounded hover:bg-gray-100 transition-colors"
             >
               输出内容 ▾
             </button>
             {showContent && (
-              <div className="absolute bottom-full left-0 mb-1 bg-white border border-[#dad4cd] rounded-lg shadow-lg p-2 w-44 z-10">
+              <div className="absolute bottom-full left-0 mb-1 bg-white border border-[#dad4cd] rounded-lg shadow-lg p-2 z-10" style={{ width: 260 }}>
                 <div className="text-[10px] text-gray-400 mb-1">思考链展示：</div>
-                {['关', '开'].map((s, i) => (
+                {([
+                  ['关', '不展示思考链'],
+                  ['开', '括号注明大模型思考链'],
+                ] as const).map(([s, desc], i) => (
                   <button key={s} onClick={() => setThinking(i === 1)}
-                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${(i === 1) === thinking ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}
-                    title={['不展示思考链', '括号注明大模型思考链'][i]}>{s}</button>
+                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${(i === 1) === thinking ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>
+                    <span className="font-medium">{s}</span>
+                    <span className="text-[10px] text-gray-400 ml-1.5">— {desc}</span>
+                  </button>
                 ))}
                 <div className="text-[10px] text-gray-400 mb-1 mt-2">输出量：</div>
-                {['精简', '适中', '拓展'].map((s, i) => (
+                {([
+                  ['精简', '只输出核心观点'],
+                  ['适中', '观点加论证过程'],
+                  ['拓展', '补充拓展性相关内容'],
+                ] as const).map(([s, desc], i) => (
                   <button key={s} onClick={() => setOutputVolume(i)}
-                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === outputVolume ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}
-                    title={['只输出核心观点', '观点加论证过程', '补充拓展性相关内容'][i]}>{s}</button>
+                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === outputVolume ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>
+                    <span className="font-medium">{s}</span>
+                    <span className="text-[10px] text-gray-400 ml-1.5">— {desc}</span>
+                  </button>
                 ))}
                 <div className="text-[10px] text-gray-400 mb-1 mt-2">学习深度：</div>
-                {['浅', '中', '深'].map((s, i) => (
+                {([
+                  ['浅', '基础概念层面'],
+                  ['中', '概念+原理层面'],
+                  ['深', '原理+推导+前沿'],
+                ] as const).map(([s, desc], i) => (
                   <button key={s} onClick={() => setDepth(i)}
-                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === depth ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}
-                    title={['基础概念层面', '概念+原理层面', '原理+推导+前沿'][i]}>{s}</button>
+                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === depth ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>
+                    <span className="font-medium">{s}</span>
+                    <span className="text-[10px] text-gray-400 ml-1.5">— {desc}</span>
+                  </button>
                 ))}
               </div>
             )}
