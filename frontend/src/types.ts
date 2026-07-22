@@ -37,6 +37,30 @@ export interface Message {
 /** 预设 Agent 配置 */
 export const DEFAULT_AGENTS: AgentConfig[] = [
   {
+    id: 'dispatch',
+    name: '调度 Agent',
+    icon: '🎯',
+    mode: '标准',
+    modes: [{ label: '标准', promptOverride: '' }],
+    systemPrompt: '你是调度 Agent。负责多智能体工作流编排：读取记忆→分配任务→协调执行→汇总结果。',
+    defaultPrompt: '你是调度 Agent。负责多智能体工作流编排：读取记忆→分配任务→协调执行→汇总结果。',
+    skill: '工作流编排：接收输入→调用学情诊断/搜索/记忆管理→协调生成→提交审核→整理输出。',
+    defaultSkill: '工作流编排：接收输入→调用学情诊断/搜索/记忆管理→协调生成→提交审核→整理输出。',
+    skillEditable: false,
+  },
+  {
+    id: 'memory',
+    name: '记忆管理 Agent',
+    icon: '🧠',
+    mode: '标准',
+    modes: [{ label: '标准', promptOverride: '' }],
+    systemPrompt: '你是记忆管理 Agent。负责用户记忆的读写：每次交互后自动更新记忆，支持分层存储（短期/长期/项目级）。',
+    defaultPrompt: '你是记忆管理 Agent。负责用户记忆的读写：每次交互后自动更新记忆，支持分层存储（短期/长期/项目级）。',
+    skill: '记忆分层：L1事件追踪→L2精选事实→L3综合画像。参考DeepTutor三层体系，支持文件化持久存储。',
+    defaultSkill: '记忆分层：L1事件追踪→L2精选事实→L3综合画像。参考DeepTutor三层体系，支持文件化持久存储。',
+    skillEditable: true,
+  },
+  {
     id: 'diagnose',
     name: '学情诊断 Agent',
     icon: '🔍',
@@ -51,21 +75,6 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
     skill: '调用知识诊断题库，自适应出题（10→5→5），统计熟悉/了解/未知分类。',
     defaultSkill: '调用知识诊断题库，自适应出题（10→5→5），统计熟悉/了解/未知分类。',
     skillEditable: false,
-  },
-  {
-    id: 'generate',
-    name: '知识生成 Agent',
-    icon: '📝',
-    mode: '标准',
-    modes: [
-      { label: '标准', promptOverride: '' },
-      { label: '深入', promptOverride: '请生成更深入的内容，包含原理推导和实践案例。' },
-    ],
-    systemPrompt: '你是一个领域知识生成 Agent。基于知识库检索结果，生成高质量、零幻觉的学习内容。',
-    defaultPrompt: '你是一个领域知识生成 Agent。基于知识库检索结果，生成高质量、零幻觉的学习内容。',
-    skill: 'RAG检索增强生成：从Chroma向量库检索相关文档片段，拼接上下文后交由LLM生成。',
-    defaultSkill: 'RAG检索增强生成：从Chroma向量库检索相关文档片段，拼接上下文后交由LLM生成。',
-    skillEditable: true,
   },
   {
     id: 'review',
