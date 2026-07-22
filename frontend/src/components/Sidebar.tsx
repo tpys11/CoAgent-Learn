@@ -194,7 +194,7 @@ export default function Sidebar({
   )
 
   return (
-    <aside className="w-[240px] min-w-[240px] h-full bg-[#f0ebe4] border-r border-[#dad4cd] flex flex-col rounded-lg overflow-hidden">
+    <aside className="w-full h-full bg-[#f0ebe4] border-r border-[#dad4cd] flex flex-col rounded-lg overflow-hidden">
       {renderHeader()}
       {renderProjects()}
       {renderAgents()}

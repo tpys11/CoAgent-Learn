@@ -218,7 +218,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
                 <div className="text-[10px] text-gray-400 mb-1">思考链展示：</div>
                 {([
                   ['关', '不展示思考链'],
-                  ['开', '括号注明大模型思考链'],
+                  ['开', '大模型思考时展示'],
                 ] as const).map(([s, desc], i) => (
                   <button key={s} onClick={() => setThinking(i === 1)}
                     className={`text-[11px] px-2 py-1 rounded w-full text-left ${(i === 1) === thinking ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>
