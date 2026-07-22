@@ -143,7 +143,7 @@ export function KnowledgeModal({ onClose }: Props) {
                 </div>
               </div>
             </div>
-            <div className="flex items-center justify-between mt-3">
+            <div className="flex items-center gap-3 mt-3">
               <p className="text-[11px] text-gray-400 cursor-pointer hover:text-[#c75f1a]" onClick={() => setShowGuide(!showGuide)}>
                 💡 我需要引导
               </p>
