@@ -13,6 +13,8 @@ export function MemoryModal({ onClose }: Props) {
   const [globalNote, setGlobalNote] = useState('')
   const [userProfile, setUserProfile] = useState('')
   const [customNote, setCustomNote] = useState('')
+  const [globalAbstract, setGlobalAbstract] = useState('')
+  const [autoAbstract, setAutoAbstract] = useState(true)
 
   const ToggleBtn = ({ on, setOn }: { on: boolean; setOn: (v: boolean) => void }) => (
     <button onClick={() => setOn(!on)}
@@ -71,9 +73,12 @@ export function MemoryModal({ onClose }: Props) {
           <div className="border border-[#dad4cd] rounded-xl p-4">
             <h3 className="text-sm font-bold mb-3 flex items-center gap-1.5"><BookOpen size={15} className="text-gray-400" /> 项目记忆</h3>
             <div className="mb-3">
-              <label className="text-xs font-semibold text-gray-500 mb-1.5 block">全局抽象表述</label>
-              <textarea value="" readOnly placeholder="从全局性记忆中自动提取..." rows={2}
-                className="w-full px-3 py-2 border border-[#dad4cd] rounded-lg text-xs outline-none resize-none bg-gray-50 text-gray-400" />
+              <div className="flex items-center gap-2 mb-1.5">
+                <label className="text-xs font-semibold text-gray-500 flex-1">全局抽象表述</label>
+                <ToggleBtn on={autoAbstract} setOn={setAutoAbstract} />
+              </div>
+              <textarea value={globalAbstract} onChange={(e) => setGlobalAbstract(e.target.value)} placeholder="从全局性记忆中自动提取或手动编辑..." rows={2}
+                className="w-full px-3 py-2 border border-[#c4beb6] rounded-lg text-xs outline-none resize-none focus:border-[#c75f1a] bg-[#faf8f5]" />
             </div>
             <div className="mb-3">
               <div className="flex items-center gap-2 mb-1.5">
