@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import Sidebar from './components/Sidebar'
 import CenterPanel from './components/CenterPanel'
 import RightPanel from './components/RightPanel'
@@ -30,6 +30,21 @@ function App() {
   const [showApiKeyPrompt, setShowApiKeyPrompt] = useState(
     () => !localStorage.getItem('coagent-apikey') && !localStorage.getItem('coagent-apikey-skipped')
   )
+  const [sidebarWidth, setSidebarWidth] = useState(240)
+  const [rightWidth, setRightWidth] = useState(260)
+  const [rightCollapsed, setRightCollapsed] = useState(false)
+  const dragging = useRef<'left' | 'right' | null>(null)
+
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (dragging.current === 'left') setSidebarWidth(Math.max(180, Math.min(400, e.clientX - 8)))
+      if (dragging.current === 'right') setRightWidth(Math.max(180, Math.min(400, window.innerWidth - e.clientX - 8)))
+    }
+    const onMouseUp = () => { dragging.current = null }
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
+    return () => { window.removeEventListener('mousemove', onMouseMove); window.removeEventListener('mouseup', onMouseUp) }
+  }, [])
 
   const currentProject = projects.find(p => p.id === currentProjectId) ?? null
 
@@ -108,8 +123,9 @@ function App() {
   }, [])
 
   return (
-    <div className="flex h-screen w-screen bg-[#faf8f5] text-[#1a1a1a] p-2 gap-2">
-      <Sidebar
+    <div className="flex h-screen w-screen bg-[#faf8f5] text-[#1a1a1a] p-2 gap-0">
+      <div style={{ width: sidebarWidth, minWidth: sidebarWidth }} className="h-full flex-shrink-0">
+        <Sidebar
         projects={projects}
         dialogues={dialogues}
         currentProjectId={currentProjectId}
@@ -125,13 +141,34 @@ function App() {
         onSelectAgent={setSelectedAgent}
         onSettings={() => setShowSettings(true)}
       />
+      </div>
+      {/* 拖拽手柄 */}
+      <div
+        onMouseDown={() => { dragging.current = 'left' }}
+        className="w-1.5 h-full cursor-col-resize hover:bg-[#c75f1a]/30 flex-shrink-0 transition-colors"
+      />
       <CenterPanel
         messages={messages}
         isLoading={isLoading}
         currentProject={currentProject}
         onSendMessage={handleSendMessage}
       />
-      <RightPanel />
+      {!rightCollapsed && <RightPanel />}
+      {/* 右侧拖拽手柄 */}
+      {!rightCollapsed && (
+        <div
+          onMouseDown={() => { dragging.current = 'right' }}
+          className="w-1.5 h-full cursor-col-resize hover:bg-[#c75f1a]/30 flex-shrink-0 transition-colors"
+        />
+      )}
+      {/* 右侧收起按钮 */}
+      <button
+        onClick={() => setRightCollapsed(!rightCollapsed)}
+        className="flex-shrink-0 w-5 h-full flex items-center justify-center hover:bg-[#e8e2d9] rounded transition-colors text-gray-400"
+        title={rightCollapsed ? '展开右侧栏' : '收起右侧栏'}
+      >
+        {rightCollapsed ? '◀' : '▶'}
+      </button>
 
       {showDiagnosis && <DiagnosisModal onClose={() => setShowDiagnosis(false)} />}
       {selectedAgent && (
