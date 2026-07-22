@@ -31,14 +31,15 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [statsCollapsed, setStatsCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
+  const rightPanelW = useRef(260)
   const dragging = useRef<'left' | 'right' | null>(null)
 
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
       if (dragging.current === 'left') setSidebarWidth(Math.max(180, Math.min(400, e.clientX - 8)))
       if (dragging.current === 'right') {
-        // 右侧：窗口宽度 - 8px padding - 鼠标位置
-        setSidebarWidth(Math.max(180, Math.min(400, window.innerWidth - e.clientX - 8)))
+        rightPanelW.current = Math.max(180, Math.min(400, window.innerWidth - e.clientX - 8))
+        setSidebarWidth(s => s) // force re-render
       }
     }
     const onMouseUp = () => { dragging.current = null }
@@ -143,7 +144,7 @@ function App() {
       )}
       {/* 右侧栏 */}
       {!rightCollapsed && (
-        <div style={{ width: sidebarWidth, minWidth: 180 }} className="h-full flex-shrink-0 relative">
+        <div style={{ width: rightPanelW.current, minWidth: 180 }} className="h-full flex-shrink-0 relative">
           <RightPanel />
           {/* 折叠按钮：左上角 */}
           <button onClick={() => setRightCollapsed(true)}
