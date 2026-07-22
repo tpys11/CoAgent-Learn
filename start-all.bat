@@ -1,14 +1,19 @@
 @echo off
+chcp 65001 >nul
 echo ========================================
-echo   CoAgent-Learn 一键启动
+echo   CoAgent-Learn
+echo   http://localhost:5173
 echo ========================================
 echo.
-echo [1/2] 启动后端 (Docker)...
+echo Starting Docker services...
 docker compose -f "D:\desktop\coAgent-Learn\deploy\docker-compose.yml" up -d
 echo.
-echo [2/2] 等待服务就绪... 打开浏览器...
-timeout /t 4 /nobreak >nul
-start http://localhost:5173
+echo Waiting for services...
+timeout /t 5 /nobreak >nul
 echo.
-echo 服务已启动！浏览器已打开。
+echo Opening browser...
+start "" http://localhost:5173
+echo.
+echo Done! Browser opened.
+echo To stop: docker compose -f "D:\desktop\coAgent-Learn\deploy\docker-compose.yml" down
 pause
