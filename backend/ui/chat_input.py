@@ -1,68 +1,80 @@
-"""输入区域 — 文本输入框 + 检索/输出设定按钮"""
-from backend.ui.theme import theme
+"""输入区域 — 文本输入框 + 检索/输出设定下拉框"""
 from nicegui import ui
 
 
 class ChatInput:
     def __init__(self, on_send=None):
         self.on_send = on_send
-        self.container = None
         self.text_input = None
 
-        # 检索设定
-        self.search_mode = "auto"  # auto / enhanced / private
-        self.search_options = [
-            {"label": "默认", "value": "auto", "desc": "大模型自己决定是否检索"},
-            {"label": "增强", "value": "enhanced", "desc": "倾向优质信息·多轮"},
-            {"label": "私有", "value": "private", "desc": "仅检索上传的资料"},
-        ]
+        self.search_mode = "auto"
+        self.search_mode_labels = {"auto": "默认检索", "enhanced": "增强检索", "private": "私有检索"}
 
-        # 输出设定
-        self.output_structured = False
-        self.output_detail = "balanced"  # brief / balanced / deep
-        self.show_thinking = False
+        self.output_structured = "free"    # free / structured
+        self.output_structured_labels = {"free": "自由格式", "structured": "结构化"}
+
+        self.output_detail = "balanced"
+        self.output_detail_labels = {"brief": "简洁", "balanced": "适中", "deep": "深入"}
+
+        self.show_thinking = "off"
+        self.thinking_labels = {"off": "思考:关", "on": "思考:开"}
 
     def render(self):
-        self.container = ui.column().classes("input-area w-full px-6 pb-4 pt-2 gap-2")
+        self.container = ui.column().classes("input-area w-full pb-3 pt-2 gap-2").style("padding-left: 4px; padding-right: 4px;")
 
         with self.container:
-            # 检索 & 输出设定按钮行
-            with ui.row().classes("w-full gap-2 justify-start"):
-                # 检索模式
-                current_mode = next((o["label"] for o in self.search_options if o["value"] == self.search_mode), "默认")
-                with ui.button(f"🔍 {current_mode}", on_click=self._toggle_search_mode).props("flat dense size=sm").classes("text-xs"):
-                    pass  # 占位实际切换逻辑
+            # 第一行：设定下拉框（黑边框包裹）
+            with ui.row().style(
+                "width: 100%; gap: 8px; align-items: center;"
+                "border: 1px solid #d0d0d0; border-radius: 8px;"
+                "padding: 6px 10px; background: #fff;"
+            ):
+                ui.select(
+                    label=None,
+                    options=list(self.search_mode_labels.values()),
+                    value=self.search_mode_labels[self.search_mode],
+                    on_change=lambda e: self._on_search_change(e.value),
+                ).props("dense outlined").classes("w-24").style("font-size: 11px; background: #fff;")
 
-                # 结构化输出
-                struct_label = "📋 结构化" if self.output_structured else "📋 自由格式"
-                with ui.button(struct_label, on_click=self._toggle_structured).props("flat dense size=sm").classes("text-xs"):
-                    pass
+                ui.select(
+                    label=None,
+                    options=list(self.output_structured_labels.values()),
+                    value=self.output_structured_labels[self.output_structured],
+                    on_change=lambda e: self._on_structured_change(e.value),
+                ).props("dense outlined").classes("w-24").style("font-size: 11px; background: #fff;")
 
-                # 深度
-                with ui.button(f"📝 {self.output_detail}", on_click=self._toggle_detail).props("flat dense size=sm").classes("text-xs"):
-                    pass
+                ui.select(
+                    label=None,
+                    options=list(self.output_detail_labels.values()),
+                    value=self.output_detail_labels[self.output_detail],
+                    on_change=lambda e: self._on_detail_change(e.value),
+                ).props("dense outlined").classes("w-20").style("font-size: 11px; background: #fff;")
 
-                # 思考过程
-                think_label = "💭 思考:开" if self.show_thinking else "💭 思考:关"
-                with ui.button(think_label, on_click=self._toggle_thinking).props("flat dense size=sm").classes("text-xs"):
-                    pass
+                ui.select(
+                    label=None,
+                    options=list(self.thinking_labels.values()),
+                    value=self.thinking_labels[self.show_thinking],
+                    on_change=lambda e: self._on_thinking_change(e.value),
+                ).props("dense outlined").classes("w-22").style("font-size: 11px; background: #fff;")
 
-            # 输入框
-            with ui.row().classes("w-full items-end gap-2"):
+            # 第二行：输入框（左右延伸，发送按钮在右侧）
+            with ui.row().style("width: 100%; align-items: flex-end; gap: 8px;"):
                 self.text_input = (
                     ui.textarea(
                         placeholder="输入你的问题...（Shift+Enter 换行）",
                     )
                     .classes("input-box flex-1")
                     .props("outlined dense auto-grow rows=2")
-                    .style("max-height: 200px")
+                    .style("max-height: 160px; font-size: 14px;")
                 )
 
                 ui.button(
                     "发送",
                     icon="send",
                     on_click=self._handle_send,
-                ).style(f"background-color: {theme.current['accent']} !important; color: white !important;")
+                ).props("size=sm").style(
+                    "background-color: #c75f1a !important; color: white !important; font-weight: 600; border-radius: 8px;"
+                )
 
     def _handle_send(self):
         if self.text_input is None:
@@ -74,16 +86,26 @@ class ChatInput:
         if self.on_send:
             self.on_send(text)
 
-    def _toggle_search_mode(self):
-        modes = [o["value"] for o in self.search_options]
-        idx = modes.index(self.search_mode)
-        self.search_mode = modes[(idx + 1) % len(modes)]
+    def _on_search_change(self, label: str):
+        for k, v in self.search_mode_labels.items():
+            if v == label:
+                self.search_mode = k
+                break
 
-    def _toggle_structured(self):
-        self.output_structured = not self.output_structured
+    def _on_structured_change(self, label: str):
+        for k, v in self.output_structured_labels.items():
+            if v == label:
+                self.output_structured = k
+                break
 
-    def _toggle_detail(self):
-        self.output_detail = {"brief": "balanced", "balanced": "deep", "deep": "brief"}[self.output_detail]
+    def _on_detail_change(self, label: str):
+        for k, v in self.output_detail_labels.items():
+            if v == label:
+                self.output_detail = k
+                break
 
-    def _toggle_thinking(self):
-        self.show_thinking = not self.show_thinking
+    def _on_thinking_change(self, label: str):
+        for k, v in self.thinking_labels.items():
+            if v == label:
+                self.show_thinking = k
+                break

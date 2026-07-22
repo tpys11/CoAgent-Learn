@@ -282,6 +282,88 @@ class DiagnosisDialog:
             "total_answered": total_qs,
             "familiar_count": familiar_qs,
             "summary": "\n".join(summary_lines),
+            "known": known,
+            "unknowns": unknowns,
         }
         self.on_complete(result)
+        self._show_result_dialog(result)
         ui.notify("知识诊断完成", type="positive")
+
+    def _show_result_dialog(self, result: dict):
+        """显示知识诊断结果卡片"""
+        with ui.dialog(value=True) as d, ui.card().classes("w-full max-w-lg").style(
+            "border-radius: 16px;"
+        ):
+            d.props("persistent")
+            with ui.column().classes("w-full gap-4 p-2"):
+                # 头部
+                with ui.row().classes("w-full items-center gap-3"):
+                    ui.icon("assessment", size="32px").classes("text-orange-500")
+                    ui.label("📋 知识诊断报告").classes("text-lg font-semibold")
+
+                # 总体得分
+                total = result["total_answered"]
+                familiar = result["familiar_count"]
+                score_pct = int(familiar / max(total, 1) * 100)
+                with ui.card().classes("w-full").style(
+                    "background: linear-gradient(135deg, #c75f1a15, #e8843d10);"
+                    "border: 1px solid #c75f1a30;"
+                    "border-radius: 12px;"
+                ):
+                    with ui.row().classes("w-full items-center justify-between px-4 py-3"):
+                        with ui.column().classes("items-center"):
+                            ui.label(f"{familiar}/{total}").classes("text-2xl font-bold text-orange-600")
+                            ui.label("熟悉程度").classes("text-xs text-secondary")
+                        with ui.column().classes("items-center"):
+                            ui.label(f"{score_pct}%").classes("text-2xl font-bold text-orange-600")
+                            ui.label("知识覆盖率").classes("text-xs text-secondary")
+                        with ui.column().classes("items-center"):
+                            ui.label(f"{result.get('current_level', 0) + 1}轮").classes("text-2xl font-bold text-orange-600")
+                            ui.label("测试深度").classes("text-xs text-secondary")
+
+                ui.separator()
+
+                # 分类详情
+                ui.label("📊 分类掌握情况").classes("text-sm font-semibold")
+                for cat, stats in result["by_category"].items():
+                    pct = int(stats["familiar"] / max(stats["total"], 1) * 100)
+                    bar_color = "green" if pct >= 60 else ("orange" if pct >= 30 else "red")
+                    with ui.row().classes("w-full items-center gap-2"):
+                        ui.label(cat).classes("text-xs w-24 text-secondary")
+                        ui.linear_progress(value=pct / 100, size="6px").classes(
+                            "flex-1"
+                        ).props(f"color={bar_color}")
+                        ui.label(f"{pct}%").classes("text-xs text-secondary w-10")
+
+                ui.separator()
+
+                # 熟悉领域
+                if result.get("known"):
+                    ui.label("✅ 比较熟悉的领域").classes("text-sm font-semibold text-green-700")
+                    with ui.row().classes("gap-1 flex-wrap"):
+                        for name in result["known"]:
+                            ui.badge(name, color="green").props("outline")
+
+                # 盲区
+                if result.get("unknowns"):
+                    ui.label("⚠️ 建议学习的盲区").classes("text-sm font-semibold text-red-600 mt-2")
+                    with ui.row().classes("gap-1 flex-wrap"):
+                        for name in result["unknowns"]:
+                            ui.badge(name, color="red").props("outline")
+
+                ui.separator()
+
+                # 总结
+                with ui.card().classes("w-full p-3").style(
+                    "background: var(--q-dark); border-radius: 8px;"
+                ):
+                    ui.markdown(result["summary"]).classes("text-xs leading-relaxed")
+
+                # 关闭按钮
+                with ui.row().classes("w-full justify-end mt-2"):
+                    ui.button(
+                        "开始学习",
+                        on_click=d.close,
+                    ).style(
+                        "background-color: #c75f1a !important; color: white !important; border-radius: 8px;"
+                    )

@@ -1,9 +1,32 @@
 [project]
-name = "guashuai"
-version = "0.1.0"
-description = "领域知识个性化生成与多智能体协同决策系统"
+name = "coagent-learn"
+version = "0.2.0"
+description = "领域知识个性化生成与多智能体协同决策系统 — React + FastAPI 全栈"
 requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "langgraph>=1.2",
+    "langchain>=0.3",
+    "langchain-deepseek>=0.1",
+    "chromadb>=0.5",
+    "sqlalchemy>=2.0",
+    "python-dotenv>=1.0",
+    "pydantic>=2.10",
+    "httpx>=0.28",
+    "sentence-transformers>=3.3",
+    "mcp>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.24"]
+
+[project.scripts]
+coagent-serve = "backend.main:app"
 
 [build-system]
 requires = ["setuptools>=75.0"]
 build-backend = "setuptools.backends._legacy:_Backend"
+
+[tool.setuptools.packages.find]
+include = ["backend*", "db*", "rag*", "agents*"]
