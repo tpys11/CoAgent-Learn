@@ -28,9 +28,11 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
   const [depth, setDepth] = useState(1)
   const [showMemory, setShowMemory] = useState(false)
   const [showKnowledge, setShowKnowledge] = useState(false)
+  const [showSearch, setShowSearch] = useState(false)
+  const searchRef = useRef<HTMLDivElement>(null)
 
   const searchLabels = ['默认', '增强', '私有']
-  const searchDescs = ['大模型自己决定', '倾向优质信息', '仅检索上传资料']
+  const searchDescs = ['大模型自己决定', '大部分来源于知识库，少部分来源于外部', '完全从知识库中检索']
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -43,6 +45,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
     const handler = (e: MouseEvent) => {
       if (formatRef.current && !formatRef.current.contains(e.target as Node)) setShowFormat(false)
       if (contentRef.current && !contentRef.current.contains(e.target as Node)) setShowContent(false)
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) setShowSearch(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -143,14 +146,26 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
             <Database size={12} className="text-green-500" /> 知识库
           </button>
           <span className="w-px h-4 bg-[#d0d0d0]" />
-          {/* 检索模式 */}
-          <button
-            onClick={() => setSearchMode((searchMode + 1) % 3)}
-            title={searchDescs[searchMode]}
-            className="text-[11px] px-2 py-1 rounded hover:bg-gray-100 transition-colors"
-          >
-            检索模式：<span className="text-[#c75f1a] font-semibold">{searchLabels[searchMode]}</span>
-          </button>
+          {/* 检索模式 — 上拉框 */}
+          <div className="relative" ref={searchRef}>
+            <button
+              onClick={() => { setShowSearch(!showSearch); setShowFormat(false); setShowContent(false) }}
+              className="text-[11px] px-2 py-1 rounded hover:bg-gray-100 transition-colors"
+            >
+              检索模式：<span className="text-[#c75f1a] font-semibold">{searchLabels[searchMode]}</span> ▾
+            </button>
+            {showSearch && (
+              <div className="absolute bottom-full left-0 mb-1 bg-white border border-[#dad4cd] rounded-lg shadow-lg p-2 w-56 z-10">
+                {searchLabels.map((label, i) => (
+                  <button key={label} onClick={() => { setSearchMode(i); setShowSearch(false) }}
+                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === searchMode ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>
+                    <span className="font-medium">{label}</span>
+                    <span className="text-[10px] text-gray-400 ml-1">— {searchDescs[i]}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* 输出形式 */}
           <div className="relative" ref={formatRef}>
@@ -162,13 +177,13 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
             </button>
             {showFormat && (
               <div className="absolute bottom-full left-0 mb-1 bg-white border border-[#dad4cd] rounded-lg shadow-lg p-2 w-44 z-10">
-                <div className="text-[10px] text-gray-400 mb-1">语言组织：</div>
-                {['自由', '结构化'].map((s, i) => (
+                <div className="text-[10px] text-gray-400 mb-1">结构化程度：</div>
+                {['低结构化', '高结构化'].map((s, i) => (
                   <button key={s} onClick={() => setOutputFormat(i)}
                     className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === outputFormat ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>{s}</button>
                 ))}
                 <div className="text-[10px] text-gray-400 mb-1 mt-2">输出格式：</div>
-                {['MD', '纯文本'].map((s, i) => (
+                {['MD文档', '对话形式'].map((s, i) => (
                   <button key={s} onClick={() => setOutputStyle(i)}
                     className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === outputStyle ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>{s}</button>
                 ))}
@@ -186,7 +201,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
             </button>
             {showContent && (
               <div className="absolute bottom-full left-0 mb-1 bg-white border border-[#dad4cd] rounded-lg shadow-lg p-2 w-44 z-10">
-                <div className="text-[10px] text-gray-400 mb-1">思考展示：</div>
+                <div className="text-[10px] text-gray-400 mb-1">思考模式（括号注明思考链）：</div>
                 {['关', '开'].map((s, i) => (
                   <button key={s} onClick={() => setThinking(i === 1)}
                     className={`text-[11px] px-2 py-1 rounded w-full text-left ${(i === 1) === thinking ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>{s}</button>
@@ -194,7 +209,8 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
                 <div className="text-[10px] text-gray-400 mb-1 mt-2">输出量：</div>
                 {['精简', '适中', '拓展'].map((s, i) => (
                   <button key={s} onClick={() => setOutputVolume(i)}
-                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === outputVolume ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>{s}</button>
+                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === outputVolume ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}
+                    title={['只输出核心观点', '观点加论证过程', '补充拓展性相关内容'][i]}>{s}</button>
                 ))}
                 <div className="text-[10px] text-gray-400 mb-1 mt-2">学习深度：</div>
                 {['浅', '中', '深'].map((s, i) => (
