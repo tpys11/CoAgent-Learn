@@ -30,6 +30,11 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
   const [showKnowledge, setShowKnowledge] = useState(false)
   const [showSearch, setShowSearch] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
+  const [showInputOpt, setShowInputOpt] = useState(false)
+  const inputOptRef = useRef<HTMLDivElement>(null)
+  const [inputOptMode, setInputOptMode] = useState(0) // 0=默认,1=详尽,2=不询问
+  const inputOptLabels = ['默认模式', '详尽模式', '不询问模式']
+  const inputOptDescs = ['问1-3个问题', 'AI判断足够了才停止', '直接生成不询问']
   const [timeRange, setTimeRange] = useState('今天')
   const [showTimeRange, setShowTimeRange] = useState(false)
   const timeRangeRef = useRef<HTMLDivElement>(null)
@@ -51,6 +56,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
       if (contentRef.current && !contentRef.current.contains(e.target as Node)) setShowContent(false)
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) setShowSearch(false)
       if (timeRangeRef.current && !timeRangeRef.current.contains(e.target as Node)) setShowTimeRange(false)
+      if (inputOptRef.current && !inputOptRef.current.contains(e.target as Node)) setShowInputOpt(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -170,6 +176,26 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
             className="text-[11px] px-2 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-1">
             <Database size={12} className="text-green-500" /> 知识库
           </button>
+          {/* 输入信息优化 */}
+          <div className="relative" ref={inputOptRef}>
+            <button
+              onClick={() => { setShowInputOpt(!showInputOpt); setShowSearch(false); setShowFormat(false); setShowContent(false) }}
+              className="text-[11px] px-2 py-1 rounded hover:bg-gray-100 transition-colors"
+            >
+              📥 输入优化 ▾
+            </button>
+            {showInputOpt && (
+              <div className="absolute bottom-full left-0 mb-1 bg-white border border-[#dad4cd] rounded-lg shadow-lg p-1.5 z-10" style={{ width: 220 }}>
+                {inputOptLabels.map((label, i) => (
+                  <button key={label} onClick={() => { setInputOptMode(i); setShowInputOpt(false) }}
+                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === inputOptMode ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>
+                    <span className="font-medium">{label}</span>
+                    <span className="text-[10px] text-gray-400 ml-1.5">— {inputOptDescs[i]}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <span className="w-px h-4 bg-[#d0d0d0]" />
           {/* 检索模式 — 上拉框 */}
           <div className="relative" ref={searchRef}>
