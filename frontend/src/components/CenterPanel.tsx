@@ -9,9 +9,11 @@ interface CenterPanelProps {
   isLoading: boolean
   currentProject: Project | null
   onSendMessage: (text: string) => void
+  statsCollapsed: boolean
+  onToggleStats: () => void
 }
 
-export default function CenterPanel({ messages, isLoading, currentProject, onSendMessage }: CenterPanelProps) {
+export default function CenterPanel({ messages, isLoading, currentProject, onSendMessage, statsCollapsed, onToggleStats }: CenterPanelProps) {
   const [input, setInput] = useState('')
   const [time, setTime] = useState(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }))
   const [searchMode, setSearchMode] = useState(0)
@@ -56,16 +58,26 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
   return (
     <main className="flex-1 h-full min-w-0 flex flex-col">
       {/* Stats bar */}
-      <div className="mx-1 mt-0 mb-1 px-3 py-2 bg-white border border-[#333] rounded-lg flex items-center gap-3 flex-shrink-0">
-        <Clock size={14} className="text-gray-400" />
-        <span className="text-xs font-semibold text-gray-500">12h 36min</span>
-        <span className="text-xs text-gray-400">专注时长</span>
-        <span className="text-gray-300">|</span>
-        <Zap size={14} className="text-gray-400" />
-        <span className="text-xs font-semibold text-gray-500">48,230</span>
-        <span className="text-xs text-gray-400">Tokens</span>
-        <span className="flex-1" />
-        <span className="text-xs text-gray-400">{time}</span>
+      <div className={`transition-all overflow-hidden ${statsCollapsed ? 'h-0' : ''}`}>
+        <div className="mx-1 mt-0 mb-1 px-3 py-2 bg-white border border-[#333] rounded-lg flex items-center gap-3 flex-shrink-0">
+          <Clock size={14} className="text-gray-400" />
+          <span className="text-xs font-semibold text-gray-500">12h 36min</span>
+          <span className="text-xs text-gray-400">专注时长</span>
+          <span className="text-gray-300">|</span>
+          <Zap size={14} className="text-gray-400" />
+          <span className="text-xs font-semibold text-gray-500">48,230</span>
+          <span className="text-xs text-gray-400">Tokens</span>
+          <span className="flex-1" />
+          <span className="text-xs text-gray-400">{time}</span>
+        </div>
+      </div>
+      {/* 折叠按钮：下方正中间 */}
+      <div className="flex justify-center -mt-0.5 mb-1">
+        <button onClick={onToggleStats}
+          className="w-5 h-3 flex items-center justify-center rounded-b hover:bg-[#e8e2d9] text-gray-400 text-[10px] leading-none transition-colors"
+          title={statsCollapsed ? '展开' : '收起'}>
+          {statsCollapsed ? '▼' : '▲'}
+        </button>
       </div>
 
       {/* Agent 协作流画布 */}
