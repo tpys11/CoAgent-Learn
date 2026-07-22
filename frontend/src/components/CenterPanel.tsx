@@ -56,7 +56,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
   return (
     <main className="flex-1 h-full min-w-0 flex flex-col">
       {/* Stats bar */}
-      <div className="mx-1 mt-0 mb-1 px-3 py-2 bg-white border border-[#333] rounded-lg flex items-center gap-3 text-sm flex-shrink-0">
+      <div className="mx-1 mt-0 mb-1 px-3 py-2 bg-white border border-[#333] rounded-lg flex items-center gap-3 flex-shrink-0">
         <Clock size={14} className="text-gray-400" />
         <span className="text-xs font-semibold text-gray-500">12h 36min</span>
         <span className="text-xs text-gray-400">专注时长</span>
@@ -117,7 +117,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
       </div>
 
       {/* Input area */}
-      <div className="flex-shrink-0 px-1 pb-2 pt-1">
+      <div className="flex-shrink-0 px-3 pb-3 pt-2">
         {/* Control bar — 自定义按钮 */}
         <div className="flex gap-2 px-3 py-1.5 mb-1 border border-[#d0d0d0] rounded-lg bg-white items-center">
           {/* 记忆系统 */}
