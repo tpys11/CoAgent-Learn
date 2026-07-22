@@ -111,7 +111,12 @@ function App() {
       )}
       {/* 左侧栏 */}
       {!sidebarCollapsed && (
-        <div style={{ width: sidebarWidth, minWidth: 180 }} className="h-full flex-shrink-0 relative">
+        <>
+          {/* 折叠按钮：外部左上 */}
+          <button onClick={() => setSidebarCollapsed(true)}
+            className="w-5 h-5 flex items-center justify-center rounded bg-white border border-[#dad4cd] text-gray-400 hover:text-[#c75f1a] text-xs shadow-sm flex-shrink-0 self-start mt-2"
+            title="收起侧栏">◀</button>
+          <div style={{ width: sidebarWidth, minWidth: 180 }} className="h-full flex-shrink-0 relative">
           <Sidebar
             projects={projects} dialogues={dialogues}
             currentProjectId={currentProjectId} currentDialogueId={currentDialogueId}
@@ -122,16 +127,11 @@ function App() {
             onRenameDialogue={handleRenameDialogue}
             onSelectAgent={setSelectedAgent} onSettings={() => setShowSettings(true)}
           />
-          {/* 折叠按钮：右上角 */}
-          <button onClick={() => setSidebarCollapsed(true)}
-            className="absolute top-10 right-1 w-5 h-5 flex items-center justify-center rounded bg-white/80 hover:bg-white border border-[#dad4cd] text-gray-400 hover:text-[#c75f1a] text-xs z-10 shadow-sm"
-            title="收起侧栏">◀</button>
         </div>
-      )}
-      {/* 左侧拖拽手柄 */}
-      {!sidebarCollapsed && (
+        {/* 左侧拖拽手柄 */}
         <div onMouseDown={() => { dragging.current = 'left'; document.body.style.userSelect = 'none' }}
           className="w-1.5 h-full cursor-col-resize hover:bg-[#c75f1a]/30 flex-shrink-0 transition-colors" />
+        </>
       )}
       {/* 中间 */}
       <CenterPanel
@@ -146,13 +146,15 @@ function App() {
       )}
       {/* 右侧栏 */}
       {!rightCollapsed && (
-        <div style={{ width: rightPanelWidth, minWidth: 180 }} className="h-full flex-shrink-0 relative">
-          <RightPanel />
-          {/* 折叠按钮：左上角 */}
+        <>
+          <div style={{ width: rightPanelWidth, minWidth: 180 }} className="h-full flex-shrink-0 relative">
+            <RightPanel />
+          </div>
+          {/* 折叠按钮：外部右上 */}
           <button onClick={() => setRightCollapsed(true)}
-            className="absolute top-10 left-1 w-5 h-5 flex items-center justify-center rounded bg-white/80 hover:bg-white border border-[#dad4cd] text-gray-400 hover:text-[#c75f1a] text-xs z-10 shadow-sm"
+            className="w-5 h-5 flex items-center justify-center rounded bg-white border border-[#dad4cd] text-gray-400 hover:text-[#c75f1a] text-xs shadow-sm flex-shrink-0 self-start mt-2"
             title="收起右侧栏">▶</button>
-        </div>
+        </>
       )}
       {/* 右侧折叠后展开按钮 */}
       {rightCollapsed && (
