@@ -163,4 +163,16 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
 增强模式：寻找优质信息`,
     skillEditable: true,
   },
+  {
+    id: 'kb',
+    name: '知识库管理 Agent',
+    icon: '📚',
+    mode: '标准',
+    modes: [{ label: '标准', promptOverride: '' }],
+    systemPrompt: '你是知识库管理 Agent。负责知识库的创建、维护和检索调度。引导用户建立知识库，管理文档切片和向量存储，处理检索请求。',
+    defaultPrompt: '你是知识库管理 Agent。负责知识库的创建、维护和检索调度。引导用户建立知识库，管理文档切片和向量存储，处理检索请求。',
+    skill: '知识库管理：引导建立知识库→文档切片(200-800字/chunk)→向量化→Chroma存储→语义检索(Small-to-Big/两阶段重排)→强制引用来源。',
+    defaultSkill: '知识库管理：引导建立知识库→文档切片(200-800字/chunk)→向量化→Chroma存储→语义检索(Small-to-Big/两阶段重排)→强制引用来源。',
+    skillEditable: true,
+  },
 ]
