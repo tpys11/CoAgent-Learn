@@ -1,10 +1,12 @@
 import { useState } from 'react'
-import { X, Brain, Database, Upload, ToggleLeft, ToggleRight, FileText, BookOpen, User, Edit3 } from 'lucide-react'
+import { X, Brain, Database, Upload, FileText, BookOpen, User, Edit3 } from 'lucide-react'
 
 interface Props { onClose: () => void }
 
 export function MemoryModal({ onClose }: Props) {
   const [autoMemory, setAutoMemory] = useState(true)
+  const [autoGlobal, setAutoGlobal] = useState(true)
+  const [autoProject, setAutoProject] = useState(true)
   const [globalDoc, setGlobalDoc] = useState('')
   const [globalNote, setGlobalNote] = useState('')
   const [userProfile, setUserProfile] = useState('')
@@ -19,17 +21,32 @@ export function MemoryModal({ onClose }: Props) {
           <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
         </div>
 
-        <div className="px-5 py-2 bg-[#faf8f5] border-b border-[#dad4cd] flex items-center justify-between flex-shrink-0">
-          <p className="text-xs text-gray-500">系统会根据您的行为自动更新记忆，您也可以手动管理。</p>
-          <button onClick={() => setAutoMemory(!autoMemory)} className="flex items-center gap-1 text-xs font-medium">
-            {autoMemory ? <><ToggleRight size={16} className="text-green-500" /> 自动管理：开</> : <><ToggleLeft size={16} className="text-gray-400" /> 自动管理：关</>}
+        <div className="px-5 py-3 bg-[#faf8f5] border-b border-[#dad4cd] flex-shrink-0">
+          <p className="text-xs text-gray-500 mb-2">系统会根据您的行为自动更新记忆，您也可以手动管理。如果需要关闭系统自动管理，则关闭此按钮。</p>
+          <button
+            onClick={() => setAutoMemory(!autoMemory)}
+            className={`w-full py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2 ${
+              autoMemory ? 'bg-green-50 border border-green-300 text-green-700' : 'bg-gray-100 border border-gray-300 text-gray-500'
+            }`}
+          >
+            <span className={`w-3 h-3 rounded-full ${autoMemory ? 'bg-green-500' : 'bg-gray-400'}`} />
+            {autoMemory ? '自动管理：已开启' : '自动管理：已关闭'}
           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-5">
           {/* 全局性记忆 */}
           <div className="border border-[#dad4cd] rounded-xl p-4">
-            <h3 className="text-sm font-bold mb-3 flex items-center gap-1.5"><FileText size={15} className="text-gray-400" /> 全局性记忆</h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold flex items-center gap-1.5"><FileText size={15} className="text-gray-400" /> 全局性记忆</h3>
+              <button onClick={() => setAutoGlobal(!autoGlobal)}
+                className={`flex items-center gap-1.5 text-[10px] px-2 py-1 rounded font-medium transition-colors ${
+                  autoGlobal ? 'bg-green-50 text-green-600 border border-green-200' : 'bg-gray-100 text-gray-400 border border-gray-200'
+                }`}>
+                <span className={`w-2 h-2 rounded-full ${autoGlobal ? 'bg-green-500' : 'bg-gray-400'}`} />
+                {autoGlobal ? '自动' : '手动'}
+              </button>
+            </div>
             <div className="mb-3">
               <label className="text-xs font-semibold text-gray-500 mb-1.5 block flex items-center gap-1"><Upload size={12} /> 上传 MD 文档</label>
               <p className="text-[10px] text-gray-400 mb-1.5">输入后不做处理，用户从输入框输入内容时系统一并读取。</p>
@@ -45,7 +62,16 @@ export function MemoryModal({ onClose }: Props) {
 
           {/* 项目记忆 */}
           <div className="border border-[#dad4cd] rounded-xl p-4">
-            <h3 className="text-sm font-bold mb-3 flex items-center gap-1.5"><BookOpen size={15} className="text-gray-400" /> 项目记忆</h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold flex items-center gap-1.5"><BookOpen size={15} className="text-gray-400" /> 项目记忆</h3>
+              <button onClick={() => setAutoProject(!autoProject)}
+                className={`flex items-center gap-1.5 text-[10px] px-2 py-1 rounded font-medium transition-colors ${
+                  autoProject ? 'bg-green-50 text-green-600 border border-green-200' : 'bg-gray-100 text-gray-400 border border-gray-200'
+                }`}>
+                <span className={`w-2 h-2 rounded-full ${autoProject ? 'bg-green-500' : 'bg-gray-400'}`} />
+                {autoProject ? '自动' : '手动'}
+              </button>
+            </div>
             <div className="mb-3">
               <label className="text-xs font-semibold text-gray-500 mb-1.5 block">全局抽象表述</label>
               <textarea value="" readOnly placeholder="从全局性记忆中自动提取..." rows={2}
