@@ -38,14 +38,14 @@ const N = (id: string, x: number, y: number, label: string, icon: string, phase:
   ({ id, type: 'agentNode', position: { x, y }, data: { label, icon, phase, active: false, detail, edgesAll: edgesAll !== false } })
 
 const allNodes = [
-  N('input', 30, 160, '信息输入处理', '📥', 1, '识别格式→统一文本', false),
-  N('dispatch', 220, 160, '调度 Agent', '🎯', 1, '判断→分配子Agent'),
-  N('memory', 420, 30, '记忆管理', '🧠', 2, 'L1/L2/L3三层记忆'),
-  N('diagnose', 420, 120, '学情诊断', '🔍', 2, '分析知识水平'),
-  N('kb', 420, 210, '知识库管理', '📚', 2, '检索+切片+向量'),
-  N('search', 420, 300, '搜索', '🔎', 2, 'SearXNG联网'),
-  N('generate', 610, 130, '信息整理与生成', '📤', 3, '整理多源信息→生成', false),
-  N('review', 800, 130, '审核裁判', '⚖️', 3, '校验→重试/通过', false),
+  N('input', 20, 180, '信息输入处理', '📥', 1, '识别格式→统一文本', false),
+  N('dispatch', 200, 180, '调度 Agent', '🎯', 1, '判断→分配子Agent'),
+  N('memory', 400, 20, '记忆管理', '🧠', 2, 'L1/L2/L3三层记忆'),
+  N('diagnose', 400, 100, '学情诊断', '🔍', 2, '分析知识水平'),
+  N('kb', 400, 180, '知识库管理', '📚', 2, '检索+切片+向量'),
+  N('search', 400, 260, '搜索', '🔎', 2, 'SearXNG联网'),
+  N('generate', 600, 140, '信息整理与生成', '📤', 3, '整理多源信息→生成', false),
+  N('review', 790, 140, '审核裁判', '⚖️', 3, '校验→重试/通过', false),
 ]
 
 const allEdges: Edge[] = [
@@ -57,9 +57,10 @@ const allEdges: Edge[] = [
   { id: 'e6', source: 'diagnose', target: 'generate' },
   { id: 'e7', source: 'kb', target: 'generate' },
   { id: 'e8', source: 'search', target: 'generate' },
-  { id: 'e9', source: 'generate', target: 'review' },
-  { id: 'e10', source: 'review', target: 'generate', style: { strokeDasharray: '5,3' } },
-  { id: 'e11', source: 'review', target: 'memory', style: { strokeDasharray: '5,3' } },
+  { id: 'e9', source: 'dispatch', target: 'generate', style: { strokeDasharray: '8,3' } },
+  { id: 'e10', source: 'generate', target: 'review' },
+  { id: 'e11', source: 'review', target: 'generate', style: { strokeDasharray: '5,3' } },
+  { id: 'e12', source: 'review', target: 'memory', style: { strokeDasharray: '5,3' } },
 ]
 
 export default function AgentFlow({ visible }: Props) {
