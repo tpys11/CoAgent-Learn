@@ -92,7 +92,7 @@ function App() {
     try {
       const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text.trim() }) })
       const data = await res.json()
-      setMessages(prev => [...prev, { role: 'assistant', content: data.reply || '抱歉，回复为空。' }])
+      setMessages(prev => [...prev, { role: 'assistant', content: data.reply || '抱歉，回复为空。', steps: data.steps || [] }])
     } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: '抱歉，请求失败。' }])
     } finally { setIsLoading(false) }

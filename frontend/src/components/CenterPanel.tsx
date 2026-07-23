@@ -146,7 +146,19 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
                   <span className="text-xs ml-1">思考中…</span>
                 </div>
               ) : (
-                <div dangerouslySetInnerHTML={{ __html: msg.content.replace(/\n/g, '<br/>') }} />
+                <>
+                  <div dangerouslySetInnerHTML={{ __html: msg.content.replace(/\n/g, '<br/>') }} />
+                  {msg.steps && msg.steps.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-[#dad4cd] flex flex-wrap gap-1">
+                      {msg.steps.map((s, i) => (
+                        <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-200"
+                          title={s.detail || s.agent}>
+                          ✓ {s.agent}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           ))

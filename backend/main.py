@@ -1,7 +1,6 @@
 """
 CoAgent-Learn 纯 API 后端
 FastAPI + LangGraph 多智能体协同 + RAG 向量检索
-前端由独立的 React 应用提供服务
 """
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -25,7 +24,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="CoAgent-Learn API",
     description="领域知识个性化生成与多智能体协同决策系统",
-    version="0.2.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
@@ -40,7 +39,7 @@ app.add_middleware(
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "version": "0.2.0"}
+    return {"status": "ok", "version": "0.3.0"}
 
 
 # ---------- API 接口 ----------
@@ -49,12 +48,25 @@ class ChatRequest(BaseModel):
     message: str
     project_id: str | None = None
 
+class ChatStep(BaseModel):
+    agent: str
+    status: str
+    detail: str | None = None
+
 class ChatResponse(BaseModel):
     reply: str
+    steps: list[ChatStep] = []
+
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest) -> ChatResponse:
-    """对话接口 — Agent 功能接入后由 LangGraph 编排处理"""
-    return ChatResponse(
-        reply=f"收到你的问题：「{req.message}」\n\nAgent 功能即将接入。"
-    )
+    try:
+        from agents.graph import workflow
+        result = workflow.invoke({"user_input": req.message, "steps": []})
+        steps = [ChatStep(**s) for s in result.get("steps", []) if s.get("status") == "done"]
+        return ChatResponse(reply=result.get("final_reply", "处理完成"), steps=steps)
+    except Exception as e:
+        return ChatResponse(
+            reply=f"抱歉，系统处理时出现错误：{str(e)}。请检查 DEEPSEEK_API_KEY 是否已配置。",
+            steps=[ChatStep(agent="系统", status="error", detail=str(e))]
+        )

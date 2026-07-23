@@ -32,6 +32,13 @@ export interface AgentConfig {
 export interface Message {
   role: 'user' | 'assistant'
   content: string
+  steps?: ChatStep[]
+}
+
+export interface ChatStep {
+  agent: string
+  status: string
+  detail?: string
 }
 
 /** 预设 Agent 配置 */
