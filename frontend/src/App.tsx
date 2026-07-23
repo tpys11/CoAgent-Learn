@@ -35,7 +35,8 @@ function App() {
   const [rightCollapsed, setRightCollapsed] = useState(false)
   const [flowVisible, setFlowVisible] = useState(false)
   const [flowMinimized, setFlowMinimized] = useState(false)
-  const dragging = useRef<'left' | 'right' | null>(null)
+  const [flowPos, setFlowPos] = useState({ x: 0, y: 0 })
+  const dragging = useRef<'left' | 'right' | 'flow' | null>(null)
   const appRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -171,26 +172,36 @@ function App() {
 
       {/* 浮动协作流画布 */}
       {flowVisible && !flowMinimized && (
-        <div className="fixed inset-0 z-40 pointer-events-none">
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 pointer-events-auto bg-white rounded-2xl shadow-2xl border border-[#dad4cd] overflow-hidden"
-               style={{ width: '70vw', height: '38vh', minWidth: 500, minHeight: 180, resize: 'both' }}>
-            <div className="flex items-center justify-between px-3 py-1.5 bg-[#faf8f5] border-b border-[#dad4cd] cursor-move">
+        <div className="fixed z-40" style={{ left: '50%', top: '4px', transform: `translateX(-50%) translate(${flowPos.x}px, ${flowPos.y}px)` }}>
+          <div className="bg-white rounded-2xl shadow-2xl border border-[#dad4cd] overflow-hidden"
+               style={{ width: '68vw', height: '32vh', minWidth: 500, minHeight: 160, resize: 'both' }}>
+            <div
+              className="flex items-center justify-between px-3 py-1.5 bg-[#faf8f5] border-b border-[#dad4cd] cursor-move select-none"
+              onMouseDown={(e) => {
+                dragging.current = 'flow'
+                document.body.style.userSelect = 'none'
+                const startX = e.clientX - flowPos.x
+                const startY = e.clientY - flowPos.y
+                const onMove = (ev: MouseEvent) => setFlowPos({ x: ev.clientX - startX, y: ev.clientY - startY })
+                const onUp = () => { dragging.current = null; document.body.style.userSelect = ''; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+                window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
+              }}>
               <span className="text-[11px] font-semibold text-gray-500">多智能体协作流</span>
               <button onClick={() => setFlowMinimized(true)}
                 className="w-5 h-5 flex items-center justify-center rounded hover:bg-[#e8e2d9] text-gray-400 text-xs">─</button>
             </div>
-            <div className="h-[calc(100%-32px)]">
+            <div style={{ height: 'calc(100% - 32px)' }}>
               <AgentFlow visible={true} />
             </div>
           </div>
         </div>
       )}
 
-      {/* 最小化按钮：右侧栏折叠按钮下方 */}
+      {/* 最小化按钮：右侧折叠按钮下方 */}
       {flowVisible && flowMinimized && (
         <button onClick={() => setFlowMinimized(false)}
-          className="fixed top-10 z-40 bg-white border border-[#dad4cd] rounded-full shadow-lg px-3 py-1.5 text-xs font-semibold text-gray-500 hover:text-[#c75f1a] hover:border-[#c75f1a] transition-colors"
-          style={{ right: '8px' }}>
+          className="fixed z-40 bg-white border border-[#dad4cd] rounded-full shadow-lg px-3 py-1.5 text-xs font-semibold text-gray-500 hover:text-[#c75f1a] hover:border-[#c75f1a] transition-colors"
+          style={{ right: '8px', top: '36px' }}>
           🔄 工作流程
         </button>
       )}
