@@ -5,7 +5,6 @@ import RightPanel from './components/RightPanel'
 import DiagnosisModal from './components/DiagnosisModal'
 import AgentModal from './components/AgentModal'
 import SettingsModal, { ApiKeyPrompt } from './components/SettingsModal'
-import AgentFlow from './components/AgentFlow'
 import type { Project, Dialogue, AgentConfig, Message } from './types'
 import { DEFAULT_AGENTS } from './types'
 
@@ -39,14 +38,10 @@ function App() {
   const [statsCollapsed, setStatsCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
   const [flowVisible, setFlowVisible] = useState(false)
-  const [flowMinimized, setFlowMinimized] = useState(false)
   const [flowAgents, setFlowAgents] = useState<string[]>([])
   const [flowActiveAgent, setFlowActiveAgent] = useState<string | null>(null)
   const [flowThoughts, setFlowThoughts] = useState<Record<string, string>>({})
   const [flowMindchain, setFlowMindchain] = useState<Array<{agent: string; content: string}>>([])
-  const flowRef = useRef<HTMLDivElement>(null)
-  const btnRef = useRef<HTMLButtonElement>(null)
-  const btnDragged = useRef(false)
   const dragging = useRef<'left' | 'right' | 'flow' | null>(null)
   const appRef = useRef<HTMLDivElement>(null)
 
@@ -104,7 +99,7 @@ function App() {
     if (!currentDialogueId) return
     setMessages(prev => [...prev, { role: 'user', content: text }])
     setIsLoading(true)
-    setFlowVisible(true); setFlowMinimized(false); setFlowAgents([]); setFlowActiveAgent(null); setFlowThoughts({}); setFlowMindchain([])
+    setFlowVisible(true); setFlowAgents([]); setFlowActiveAgent(null); setFlowThoughts({}); setFlowMindchain([])
     try {
       const res = await fetch('/api/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -177,6 +172,9 @@ function App() {
         messages={messages} isLoading={isLoading} currentProject={currentProject}
         onSendMessage={handleSendMessage}
         statsCollapsed={statsCollapsed} onToggleStats={() => setStatsCollapsed(!statsCollapsed)}
+        showAgentFlow={flowVisible}
+        flowAgents={flowAgents} flowActiveAgent={flowActiveAgent}
+        flowThoughts={flowThoughts} flowMindchain={flowMindchain}
       />
       {/* 右侧栏 */}
       {!rightCollapsed && (
@@ -203,103 +201,6 @@ function App() {
       {selectedAgent && <AgentModal agent={selectedAgent} onSave={handleSaveAgent} onClose={() => setSelectedAgent(null)} />}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {showApiKeyPrompt && <ApiKeyPrompt onClose={() => { setShowApiKeyPrompt(false); localStorage.setItem('coagent-apikey-skipped', '1') }} />}
-
-      {/* 浮动协作流画布 */}
-      {flowVisible && !flowMinimized && (
-        <div ref={flowRef} className="fixed z-40 bg-white rounded-2xl shadow-2xl border border-[#dad4cd] overflow-hidden"
-             style={{ left: '50%', top: '4px', transform: 'translateX(-50%)', width: '68vw', height: '32vh', minWidth: 500, minHeight: 160 }}>
-          <div
-            className="flex items-center justify-between px-3 py-1.5 bg-[#faf8f5] border-b border-[#dad4cd] cursor-move select-none"
-            onMouseDown={(e) => {
-              e.preventDefault()
-              const el = flowRef.current!; const rect = el.getBoundingClientRect()
-              el.style.transition = 'none'
-              const sx = e.clientX - rect.left; const sy = e.clientY - rect.top
-              const onMove = (ev: MouseEvent) => { el.style.left = (ev.clientX - sx) + 'px'; el.style.top = (ev.clientY - sy) + 'px'; el.style.transform = 'none' }
-              const onUp = () => { el.style.transition = ''; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
-              window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
-            }}>
-            <span className="text-[11px] font-semibold text-gray-500">多智能体协作流</span>
-            <div className="flex items-center gap-1">
-              <button onClick={() => { setFlowAgents([]); setFlowActiveAgent(null) }}
-                className="w-6 h-6 flex items-center justify-center rounded hover:bg-[#e8e2d9] text-gray-500 hover:text-[#b8952e] text-sm"
-                title="刷新">↻</button>
-              <button onClick={() => setFlowMinimized(true)}
-                className="w-6 h-6 flex items-center justify-center rounded hover:bg-[#e8e2d9] text-gray-500 hover:text-[#b8952e] font-bold">─</button>
-            </div>
-          </div>
-          <div style={{ height: 'calc(100% - 32px)' }} className="flex flex-col">
-            <div className="flex-1 min-h-0">
-              <AgentFlow visible={true} agents={flowAgents} activeAgent={flowActiveAgent} thoughts={flowThoughts} />
-            </div>
-            <div className="h-[35%] border-t border-[#dad4cd] overflow-y-auto px-3 py-2 bg-[#faf8f5] flex-shrink-0">
-              {flowMindchain.length === 0 ? (
-                <p className="text-[11px] text-gray-400 text-center py-2">等待Agent执行...</p>
-              ) : (
-                flowMindchain.map((item, i) => (
-                  <div key={i} className="mb-1.5 text-[11px] leading-relaxed" style={{ animation: 'fadeIn 0.3s ease' }}>
-                    <span className="font-semibold text-[#b8952e]">{item.agent}：</span>
-                    <span className="text-gray-600">{item.content}</span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-          {/* 八向 resize 手柄 */}
-          {['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'].map(dir => {
-            const cursors: Record<string, string> = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize', ne: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize', sw: 'nesw-resize' }
-            const pos: Record<string, React.CSSProperties> = {
-              n:  { top: 0, left: 0, width: '100%', height: 5, cursor: 'ns-resize' },
-              s:  { bottom: 0, left: 0, width: '100%', height: 5, cursor: 'ns-resize' },
-              e:  { right: 0, top: 0, width: 5, height: '100%', cursor: 'ew-resize' },
-              w:  { left: 0, top: 0, width: 5, height: '100%', cursor: 'ew-resize' },
-              ne: { top: -1, right: -1, width: 8, height: 8, cursor: 'nesw-resize' },
-              nw: { top: -1, left: -1, width: 8, height: 8, cursor: 'nwse-resize' },
-              se: { bottom: -1, right: -1, width: 8, height: 8, cursor: 'nwse-resize' },
-              sw: { bottom: -1, left: -1, width: 8, height: 8, cursor: 'nesw-resize' },
-            }
-            return (
-              <div key={dir} className="absolute" style={pos[dir]}
-                onMouseDown={(e) => {
-                  e.preventDefault(); e.stopPropagation()
-                  const el = flowRef.current!
-                  const r = el.getBoundingClientRect()
-                  const sx = e.clientX; const sy = e.clientY
-                  const sw = r.width; const sh = r.height
-                  const sl = r.left; const st = r.top
-                  const onMove = (ev: MouseEvent) => {
-                    const dx = ev.clientX - sx; const dy = ev.clientY - sy
-                    if (dir.includes('e')) el.style.width = (sw + dx) + 'px'
-                    if (dir.includes('w')) { el.style.width = (sw - dx) + 'px'; el.style.left = (sl + dx) + 'px'; el.style.transform = 'none' }
-                    if (dir.includes('s')) el.style.height = (sh + dy) + 'px'
-                    if (dir.includes('n')) { el.style.height = (sh - dy) + 'px'; el.style.top = (st + dy) + 'px'; el.style.transform = 'none' }
-                  }
-                  const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
-                  window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
-                }}
-              />
-            )
-          })}
-        </div>
-      )}
-
-      {/* 最小化按钮：右侧可拖动 */}
-      {flowVisible && flowMinimized && (
-        <button ref={btnRef} onClick={() => { if (!btnDragged.current) setFlowMinimized(false) }}
-          onMouseDown={(e) => {
-            e.preventDefault(); btnDragged.current = false
-            const el = btnRef.current!; const rect = el.getBoundingClientRect()
-            el.style.transition = 'none'
-            const sx = e.clientX - rect.left; const sy = e.clientY - rect.top
-            const onMove = (ev: MouseEvent) => { btnDragged.current = true; el.style.left = (ev.clientX - sx) + 'px'; el.style.top = (ev.clientY - sy) + 'px'; el.style.right = 'auto' }
-            const onUp = () => { el.style.transition = ''; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
-            window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
-          }}
-          className="fixed z-40 bg-[#fdf8ed] border border-[#c9a84c]/40 rounded-2xl shadow-md px-4 py-2 text-sm font-semibold text-[#8b6914] hover:border-[#b8952e] hover:shadow-lg cursor-grab active:cursor-grabbing select-none"
-          style={{ right: '8px', top: '36px' }}>
-          🔄 工作流程
-        </button>
-      )}
     </div>
   )
 }
