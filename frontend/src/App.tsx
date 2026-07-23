@@ -42,6 +42,7 @@ function App() {
   const [flowMinimized, setFlowMinimized] = useState(false)
   const flowRef = useRef<HTMLDivElement>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
+  const btnDragged = useRef(false)
   const dragging = useRef<'left' | 'right' | 'flow' | null>(null)
   const appRef = useRef<HTMLDivElement>(null)
 
@@ -200,19 +201,19 @@ function App() {
           </div>
           {/* 八向 resize 手柄 */}
           {['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'].map(dir => {
-            const cursors: Record<string, string> = { n: 'n-resize', s: 's-resize', e: 'e-resize', w: 'w-resize', ne: 'ne-resize', nw: 'nw-resize', se: 'se-resize', sw: 'sw-resize' }
+            const cursors: Record<string, string> = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize', ne: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize', sw: 'nesw-resize' }
             const pos: Record<string, React.CSSProperties> = {
-              n:  { top: 0, left: '50%', width: '60%', height: 5, transform: 'translateX(-50%)' },
-              s:  { bottom: 0, left: '50%', width: '60%', height: 5, transform: 'translateX(-50%)' },
-              e:  { right: 0, top: '50%', width: 5, height: '60%', transform: 'translateY(-50%)' },
-              w:  { left: 0, top: '50%', width: 5, height: '60%', transform: 'translateY(-50%)' },
-              ne: { top: -2, right: -2, width: 10, height: 10 },
-              nw: { top: -2, left: -2, width: 10, height: 10 },
-              se: { bottom: -2, right: -2, width: 10, height: 10 },
-              sw: { bottom: -2, left: -2, width: 10, height: 10 },
+              n:  { top: 0, left: '50%', width: '60%', height: 5, transform: 'translateX(-50%)', cursor: 'ns-resize' },
+              s:  { bottom: 0, left: '50%', width: '60%', height: 5, transform: 'translateX(-50%)', cursor: 'ns-resize' },
+              e:  { right: 0, top: '50%', width: 5, height: '60%', transform: 'translateY(-50%)', cursor: 'ew-resize' },
+              w:  { left: 0, top: '50%', width: 5, height: '60%', transform: 'translateY(-50%)', cursor: 'ew-resize' },
+              ne: { top: -2, right: -2, width: 10, height: 10, cursor: 'nesw-resize' },
+              nw: { top: -2, left: -2, width: 10, height: 10, cursor: 'nwse-resize' },
+              se: { bottom: -2, right: -2, width: 10, height: 10, cursor: 'nwse-resize' },
+              sw: { bottom: -2, left: -2, width: 10, height: 10, cursor: 'nesw-resize' },
             }
             return (
-              <div key={dir} className={`absolute ${cursors[dir]}`} style={pos[dir]}
+              <div key={dir} className="absolute" style={pos[dir]}
                 onMouseDown={(e) => {
                   e.preventDefault(); e.stopPropagation()
                   const el = flowRef.current!
@@ -238,13 +239,13 @@ function App() {
 
       {/* 最小化按钮：右侧可拖动 */}
       {flowVisible && flowMinimized && (
-        <button ref={btnRef} onClick={() => setFlowMinimized(false)}
+        <button ref={btnRef} onClick={() => { if (!btnDragged.current) setFlowMinimized(false) }}
           onMouseDown={(e) => {
-            e.preventDefault()
+            e.preventDefault(); btnDragged.current = false
             const el = btnRef.current!; const rect = el.getBoundingClientRect()
             el.style.transition = 'none'
             const sx = e.clientX - rect.left; const sy = e.clientY - rect.top
-            const onMove = (ev: MouseEvent) => { el.style.left = (ev.clientX - sx) + 'px'; el.style.top = (ev.clientY - sy) + 'px'; el.style.right = 'auto' }
+            const onMove = (ev: MouseEvent) => { btnDragged.current = true; el.style.left = (ev.clientX - sx) + 'px'; el.style.top = (ev.clientY - sy) + 'px'; el.style.right = 'auto' }
             const onUp = () => { el.style.transition = ''; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
             window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
           }}
