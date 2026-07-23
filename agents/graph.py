@@ -68,7 +68,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None):
             state["processed_input"] = result.get("processed", state["user_input"])
         except Exception:
             state["processed_input"] = state["user_input"]
-        state["mindchain"].append({"agent": "输入信息处理", "content": state["processed_input"][:200]})
+        state["mindchain"].append({"agent": "输入信息处理", "content": "处理后文本：" + state["processed_input"][:300]})
         state.setdefault("steps", []).append({"agent": "输入信息处理", "status": "done"})
         state["dispatch_count"] = 0
         return state
@@ -90,7 +90,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None):
         except Exception:
             result = {"action": "enough", "summary": "调度异常，使用已有信息"}
         state.setdefault("steps", []).append({"agent": "调度", "status": "done", "detail": result.get("action", "unknown")})
-        state["mindchain"].append({"agent": "调度", "content": f"决定: {result.get('action', 'unknown')}" + (f" → {result.get('agent', '')}" if result.get('agent') else "")})
+        state["mindchain"].append({"agent": "调度", "content": json.dumps(result, ensure_ascii=False)[:400]})
         state["_dispatch_result"] = result
         return state
 
@@ -104,7 +104,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None):
             state["profile"] = result
         except Exception:
             state["profile"] = {"level": "unknown"}
-        state["mindchain"].append({"agent": "学情诊断", "content": json.dumps(state.get("profile", {}), ensure_ascii=False)[:200]})
+        state["mindchain"].append({"agent": "学情诊断", "content": json.dumps(state.get("profile", {}), ensure_ascii=False)[:500]})
         state.setdefault("steps", []).append({"agent": "学情诊断", "status": "done"})
         return state
 
@@ -118,7 +118,8 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None):
             state["knowledge"] = result.get("results", [])
         except Exception:
             state["knowledge"] = []
-        state["mindchain"].append({"agent": "知识库管理", "content": f"检索到{len(state.get('knowledge', []))}条知识片段"})
+        k = state.get("knowledge", [])
+        state["mindchain"].append({"agent": "知识库管理", "content": f"检索到{len(k)}条：{json.dumps(k[:3], ensure_ascii=False)[:500]}"})
         state.setdefault("steps", []).append({"agent": "知识库管理", "status": "done"})
         return state
 
@@ -149,7 +150,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None):
             state["generated"] = result.get("content", "")
         except Exception as e:
             state["generated"] = f"抱歉，生成内容时出现错误：{str(e)[:200]}"
-        state["mindchain"].append({"agent": "信息整理与生成", "content": state["generated"][:200]})
+        state["mindchain"].append({"agent": "信息整理与生成", "content": state["generated"][:600]})
         state.setdefault("steps", []).append({"agent": "信息整理与生成", "status": "done"})
         return state
 
@@ -165,7 +166,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None):
         except Exception:
             state["reviewed"] = {"passed": True, "score": 80}
         state.setdefault("steps", []).append({"agent": "审核裁判", "status": "done", "detail": f"score={state['reviewed'].get('score', 0)}"})
-        state["mindchain"].append({"agent": "审核裁判", "content": f"审核{'通过' if state['reviewed'].get('passed') else '不通过'}，评分{state['reviewed'].get('score', 0)}"})
+        state["mindchain"].append({"agent": "审核裁判", "content": json.dumps(state.get("reviewed", {}), ensure_ascii=False)[:400]})
         return state
 
     def output_node(state: AgentState) -> AgentState:
