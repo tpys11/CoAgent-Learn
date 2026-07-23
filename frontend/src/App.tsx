@@ -5,6 +5,7 @@ import RightPanel from './components/RightPanel'
 import DiagnosisModal from './components/DiagnosisModal'
 import AgentModal from './components/AgentModal'
 import SettingsModal, { ApiKeyPrompt } from './components/SettingsModal'
+import AgentFlow from './components/AgentFlow'
 import type { Project, Dialogue, AgentConfig, Message } from './types'
 import { DEFAULT_AGENTS } from './types'
 
@@ -32,6 +33,8 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [statsCollapsed, setStatsCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
+  const [flowVisible, setFlowVisible] = useState(false)
+  const [flowMinimized, setFlowMinimized] = useState(false)
   const dragging = useRef<'left' | 'right' | null>(null)
   const appRef = useRef<HTMLDivElement>(null)
 
@@ -89,6 +92,7 @@ function App() {
     if (!currentDialogueId) return
     setMessages(prev => [...prev, { role: 'user', content: text }])
     setIsLoading(true)
+    setFlowVisible(true); setFlowMinimized(false)
     try {
       const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text.trim() }) })
       const data = await res.json()
@@ -166,6 +170,31 @@ function App() {
       {selectedAgent && <AgentModal agent={selectedAgent} onSave={handleSaveAgent} onClose={() => setSelectedAgent(null)} />}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {showApiKeyPrompt && <ApiKeyPrompt onClose={() => { setShowApiKeyPrompt(false); localStorage.setItem('coagent-apikey-skipped', '1') }} />}
+
+      {/* 浮动协作流画布 */}
+      {flowVisible && !flowMinimized && (
+        <div className="fixed inset-0 z-40 pointer-events-none">
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-auto bg-white rounded-2xl shadow-2xl border border-[#dad4cd] overflow-hidden"
+               style={{ width: '70vw', height: '40vh', minWidth: 500, minHeight: 200, resize: 'both' }}>
+            <div className="flex items-center justify-between px-3 py-1.5 bg-[#faf8f5] border-b border-[#dad4cd] cursor-move">
+              <span className="text-[11px] font-semibold text-gray-500">多智能体协作流</span>
+              <button onClick={() => setFlowMinimized(true)}
+                className="w-5 h-5 flex items-center justify-center rounded hover:bg-[#e8e2d9] text-gray-400 text-xs">─</button>
+            </div>
+            <div className="h-[calc(100%-32px)]">
+              <AgentFlow visible={true} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 最小化按钮 */}
+      {flowVisible && flowMinimized && (
+        <button onClick={() => setFlowMinimized(false)}
+          className="fixed top-4 left-[270px] z-40 bg-white border border-[#dad4cd] rounded-full shadow-lg px-3 py-1.5 text-[11px] font-semibold text-gray-500 hover:text-[#c75f1a] hover:border-[#c75f1a] transition-colors">
+          🔄 协作流
+        </button>
+      )}
     </div>
   )
 }

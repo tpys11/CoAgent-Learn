@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react'
 import { Send, Bot, Clock, Zap, Brain, Database } from 'lucide-react'
 import type { Message, Project } from '../types'
 import { MemoryModal, KnowledgeModal } from './InfoModals'
-import AgentFlow from './AgentFlow'
 
 interface CenterPanelProps {
   messages: Message[]
@@ -113,11 +112,9 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
         </button>
       </div>
 
-      {/* Agent 协作流画布 */}
-      <AgentFlow visible={messages.length > 0} />
 
       {/* Messages */}
-      <div className={`overflow-y-auto px-4 py-3 flex flex-col gap-3 ${messages.length > 0 ? 'flex-1' : 'flex-1'}`}>
+      <div className={`overflow-y-auto px-4 py-3 flex flex-col gap-3 flex-1`}>
         {messages.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center gap-3 text-center">
             <Bot size={48} className="text-gray-300" />
