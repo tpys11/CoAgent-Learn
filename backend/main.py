@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
-import json, asyncio
+import json
 
 load_dotenv()
 
@@ -68,16 +68,11 @@ async def chat(req: ChatRequest):
             from agents.graph import create_workflow
             wf = create_workflow(req.api_key)
             yield f"data: {json.dumps({'type': 'start'})}\n\n"
-            async for chunk in wf.astream({"user_input": req.message, "steps": []}, stream_mode="updates"):
-                node_name = list(chunk.keys())[0]
-                node_data = chunk[node_name]
-                steps = node_data.get("steps", [])
-                current = steps[-1] if steps else {"agent": node_name, "status": "running"}
-                yield f"data: {json.dumps({'type': 'step', 'agent': current.get('agent', node_name), 'status': current.get('status', 'running'), 'detail': current.get('detail', '')})}\n\n"
-                await asyncio.sleep(0)
-            # Get final result
-            final = wf.invoke({"user_input": req.message, "steps": []})
-            yield f"data: {json.dumps({'type': 'done', 'reply': final.get('final_reply', '处理完成'), 'steps': [s for s in final.get('steps', []) if s.get('status') == 'done']})}\n\n"
+            # 同步 invoke，分步 yield
+            result = wf.invoke({"user_input": req.message, "steps": []})
+            for s in result.get("steps", []):
+                yield f"data: {json.dumps({'type': 'step', 'agent': s.get('agent', ''), 'status': s.get('status', ''), 'detail': s.get('detail', '')})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'reply': result.get('final_reply', '处理完成'), 'steps': [s for s in result.get('steps', []) if s.get('status') == 'done']})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
     return StreamingResponse(stream(), media_type="text/event-stream")
