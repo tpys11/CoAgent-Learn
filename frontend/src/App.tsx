@@ -36,7 +36,7 @@ function App() {
   const [flowVisible, setFlowVisible] = useState(false)
   const [flowMinimized, setFlowMinimized] = useState(false)
   const [flowPos, setFlowPos] = useState({ x: 0, y: 0 })
-  const [btnPos, setBtnPos] = useState({ x: 0, y: 0 })
+  const btnRef = useRef<HTMLButtonElement>(null)
   const dragging = useRef<'left' | 'right' | 'flow' | null>(null)
   const appRef = useRef<HTMLDivElement>(null)
 
@@ -200,15 +200,15 @@ function App() {
 
       {/* 最小化按钮：右侧可拖动 */}
       {flowVisible && flowMinimized && (
-        <button onClick={() => { if (!dragging.current) setFlowMinimized(false) }}
+        <button ref={btnRef} onClick={() => setFlowMinimized(false)}
           onMouseDown={(e) => {
-            const sx = e.clientX - btnPos.x; const sy = e.clientY - btnPos.y
-            const onMove = (ev: MouseEvent) => { dragging.current = 'flow'; setBtnPos({ x: ev.clientX - sx, y: ev.clientY - sy }) }
-            const onUp = () => { setTimeout(() => { dragging.current = null }, 0); window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+            const el = btnRef.current!; const sx = e.clientX - el.offsetLeft; const sy = e.clientY - el.offsetTop
+            const onMove = (ev: MouseEvent) => { el.style.left = (ev.clientX - sx) + 'px'; el.style.top = (ev.clientY - sy) + 'px'; el.style.right = 'auto' }
+            const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
             window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
           }}
           className="fixed z-40 bg-[#fdf8ed] border border-[#c9a84c]/40 rounded-2xl shadow-md px-4 py-2 text-sm font-semibold text-[#8b6914] hover:border-[#b8952e] hover:shadow-lg transition-all cursor-grab active:cursor-grabbing select-none"
-          style={{ right: `8px`, top: '36px', transform: `translate(${btnPos.x}px, ${btnPos.y}px)` }}>
+          style={{ right: '8px', top: '36px' }}>
           🔄 工作流程
         </button>
       )}

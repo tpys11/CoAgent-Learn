@@ -5,9 +5,7 @@ import '@xyflow/react/dist/style.css'
 interface Props { visible: boolean }
 
 function AgentNode({ data }: any) {
-  const a = data.active; const size = a ? 1.08 : 1; const all = data.edgesAll !== false
-  const rightOnly = data.rightOnly === true
-  const leftRight = data.leftRight === true
+  const a = data.active; const size = a ? 1.08 : 1
   return (
     <div className="transition-all duration-500 ease-out" style={{ transform: `scale(${size})`, opacity: 0.92 }}>
       <div className="px-3 py-2.5 rounded-xl border text-center" style={{
@@ -19,24 +17,14 @@ function AgentNode({ data }: any) {
           <span>{data.icon}</span><span>{data.label}</span>
         </div>
         {a && data.detail && <div className="text-[10px] text-gray-500 leading-relaxed mt-1 max-w-[160px]">{data.detail}</div>}
-        {leftRight && (<>
-          <Handle type="target" position={Position.Left} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
-          <Handle type="source" position={Position.Left} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
-        </>)}
-        {!rightOnly && !leftRight && (<>
-          <Handle type="target" position={Position.Left} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
-          <Handle type="source" position={Position.Left} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
-        </>)}
-        {!leftRight && (<>
-          <Handle type="target" position={Position.Right} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
-          <Handle type="source" position={Position.Right} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
-        </>)}
-        {all && (<>
-          <Handle type="target" position={Position.Top} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
-          <Handle type="source" position={Position.Top} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
-          <Handle type="target" position={Position.Bottom} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
-          <Handle type="source" position={Position.Bottom} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
-        </>)}
+        <Handle type="target" position={Position.Top} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
+        <Handle type="source" position={Position.Top} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
+        <Handle type="target" position={Position.Bottom} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
+        <Handle type="source" position={Position.Bottom} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
+        <Handle type="target" position={Position.Left} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
+        <Handle type="source" position={Position.Left} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
+        <Handle type="target" position={Position.Right} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
+        <Handle type="source" position={Position.Right} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
       </div>
     </div>
   )
@@ -44,18 +32,18 @@ function AgentNode({ data }: any) {
 
 const nodeTypes = { agentNode: AgentNode }
 
-const N = (id: string, x: number, y: number, label: string, icon: string, phase: number, detail: string, edgesAll?: boolean, rightOnly?: boolean, leftRight?: boolean) =>
-  ({ id, type: 'agentNode', position: { x, y }, data: { label, icon, phase, active: false, detail, edgesAll: edgesAll !== false, rightOnly, leftRight } })
+const N = (id: string, x: number, y: number, label: string, icon: string, phase: number, detail: string) =>
+  ({ id, type: 'agentNode', position: { x, y }, data: { label, icon, phase, active: false, detail } })
 
 const allNodes = [
-  N('input', 20, 180, '信息输入处理', '📥', 1, '识别格式→统一文本', false, false, true),
-  N('dispatch', 200, 180, '调度 Agent', '🎯', 1, '判断→分配子Agent', true, false, false),
+  N('input', 20, 180, '信息输入处理', '📥', 1, '识别格式→统一文本'),
+  N('dispatch', 200, 180, '调度 Agent', '🎯', 1, '判断→分配子Agent'),
   N('memory', 400, 20, '记忆管理', '🧠', 2, 'L1/L2/L3三层记忆'),
   N('diagnose', 400, 100, '学情诊断', '🔍', 2, '分析知识水平'),
   N('kb', 400, 180, '知识库管理', '📚', 2, '检索+切片+向量'),
   N('search', 400, 260, '搜索', '🔎', 2, 'SearXNG联网'),
-  N('generate', 600, 140, '信息整理与生成', '📤', 3, '整理多源信息→生成', false),
-  N('review', 790, 140, '审核裁判', '⚖️', 3, '校验→重试/通过', false),
+  N('generate', 600, 140, '信息整理与生成', '📤', 3, '整理多源信息→生成'),
+  N('review', 790, 140, '审核裁判', '⚖️', 3, '校验→重试/通过'),
 ]
 
 const allEdges: Edge[] = [
