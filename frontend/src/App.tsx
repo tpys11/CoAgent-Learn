@@ -40,7 +40,8 @@ function App() {
   const [rightCollapsed, setRightCollapsed] = useState(false)
   const [flowVisible, setFlowVisible] = useState(false)
   const [flowMinimized, setFlowMinimized] = useState(false)
-  const [activeStep, setActiveStep] = useState<{agent: string; status: string} | null>(null)
+  const [flowAgents, setFlowAgents] = useState<string[]>([])
+  const [flowActiveAgent, setFlowActiveAgent] = useState<string | null>(null)
   const flowRef = useRef<HTMLDivElement>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
   const btnDragged = useRef(false)
@@ -101,7 +102,7 @@ function App() {
     if (!currentDialogueId) return
     setMessages(prev => [...prev, { role: 'user', content: text }])
     setIsLoading(true)
-    setFlowVisible(true); setFlowMinimized(false); setActiveStep(null)
+    setFlowVisible(true); setFlowMinimized(false); setFlowAgents([]); setFlowActiveAgent(null)
     try {
       const res = await fetch('/api/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -115,7 +116,10 @@ function App() {
         for (const line of text.split('\n')) {
           if (!line.startsWith('data: ')) continue
           const data = JSON.parse(line.slice(6))
-          if (data.type === 'step') setActiveStep({ agent: data.agent, status: data.status })
+          if (data.type === 'step') {
+            setFlowAgents(prev => prev.includes(data.agent) ? prev : [...prev, data.agent])
+            setFlowActiveAgent(data.agent)
+          }
           if (data.type === 'done') { finalReply = data.reply; steps.push(...(data.steps || [])) }
         }
       }
@@ -212,7 +216,7 @@ function App() {
               className="w-6 h-6 flex items-center justify-center rounded hover:bg-[#e8e2d9] text-gray-500 hover:text-[#b8952e] font-bold">─</button>
           </div>
           <div style={{ height: 'calc(100% - 32px)' }}>
-            <AgentFlow visible={true} activeStep={activeStep} />
+            <AgentFlow visible={true} agents={flowAgents} activeAgent={flowActiveAgent} />
           </div>
           {/* 八向 resize 手柄 */}
           {['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'].map(dir => {
