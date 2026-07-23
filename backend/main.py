@@ -2,6 +2,8 @@
 CoAgent-Learn 纯 API 后端
 FastAPI + LangGraph 多智能体协同 + RAG 向量检索
 """
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware

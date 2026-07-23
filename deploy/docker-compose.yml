@@ -24,6 +24,7 @@ services:
       - ../.env
     volumes:
       - ../backend:/app
+      - ../agents:/app/agents
       - ../data:/app/data
       - ../chroma_db:/app/chroma_db
     depends_on:
