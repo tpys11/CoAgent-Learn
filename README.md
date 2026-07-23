@@ -2,38 +2,62 @@
 
 领域知识个性化生成与多智能体协同决策系统。
 
-通过 8 个 AI Agent 协同工作（调度→诊断→知识库→搜索→记忆→生成→审核），为用户提供个性化学习内容。
+## 从零开始（全新电脑环境）
 
-## 快速开始
+### 1. 安装 Git
 
-### 前提条件
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) 已安装并运行
+[下载 Git](https://git-scm.com/downloads/win)，一路默认安装。
 
-### 1. 克隆项目
+验证：
 ```bash
-git clone git@github.com:tpys11/CoAgent-Learn.git
+git --version
+```
+
+### 2. 安装 Docker Desktop
+
+[下载 Docker Desktop](https://www.docker.com/products/docker-desktop/)，安装后启动，等待右下角鲸鱼图标变绿。
+
+验证：
+```bash
+docker --version
+```
+
+### 3. 获取项目
+
+```bash
+git clone https://github.com/tpys11/CoAgent-Learn.git
 cd CoAgent-Learn
 ```
 
-### 2. 启动
+> 如果 clone 很慢，可以用 SSH：
+> ```bash
+> git clone git@github.com:tpys11/CoAgent-Learn.git
+> ```
+
+### 4. 启动
+
 ```bash
 docker compose -f deploy/docker-compose.yml up -d
 ```
-浏览器打开 `http://localhost:5173`
 
-### 3. 配置 API Key
-页面首次打开会弹出 API Key 配置弹窗，输入 DeepSeek API Key 保存即可。
-也可以点击左下角齿轮图标随时修改。
+首次启动会自动拉取镜像并构建（5-10 分钟）。之后启动只需几秒。
 
-> 如果不想每次浏览器输入，也可以 `cp .env.example .env` 编辑填入 Key（两种方式都支持）。
+浏览器打开 **http://localhost:5173**。
 
-### 4. 首次使用
-- 页面弹出 API Key 配置弹窗，输入 Key 保存
-- 左侧新建项目 → 开始知识诊断（可选跳过）
-- 在输入框输入问题，发送
-- 观察画布上的 Agent 协作流程和"思考中"气泡
+### 5. 配置 API Key
+
+页面首次打开会弹出配置弹窗，输入 DeepSeek API Key（[注册获取](https://platform.deepseek.com/)），保存即可使用。
+
+也可以点击左下角齿轮随时修改 API Key。
+
+### 6. 开始使用
+
+- 左侧新建项目，可选知识诊断
+- 输入框输入问题，发送
+- 观察画布上 Agent 协作流程和思考过程
 
 ### 停止
+
 ```bash
 docker compose -f deploy/docker-compose.yml down
 ```
@@ -54,26 +78,10 @@ docker compose -f deploy/docker-compose.yml down
 |------|------|
 | 前端 | React 19 + TypeScript + Vite 6 + Tailwind CSS |
 | 后端 | FastAPI + LangGraph |
-| 多智能体 | 8 Agent A2A 协同（调度·诊断·知识库·搜索·记忆·生成·审核·输入处理） |
+| 多智能体 | 8 Agent A2A 协同 |
 | LLM | DeepSeek（OpenAI 兼容协议） |
 | 向量数据库 | Chroma |
-| 缓存 | Redis |
 | 部署 | Docker Compose（4 服务） |
-
-## 项目结构
-
-```
-CoAgent-Learn/
-├── frontend/          # React 19 前端
-│   └── src/components/  # 三栏布局、AgentFlow画布、消息区、设置面板
-├── backend/           # FastAPI 纯 API
-│   └── core/            # BaseLLM封装、config配置
-├── agents/            # LangGraph工作流 + Agent提示词
-├── deploy/            # Docker Compose 配置
-├── docs/              # 开发文档
-├── .env.example       # 环境变量模板
-└── start-coagent.bat  # Windows 一键启动脚本
-```
 
 ## 文档
 
