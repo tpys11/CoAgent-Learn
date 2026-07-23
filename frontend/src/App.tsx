@@ -198,19 +198,41 @@ function App() {
           <div style={{ height: 'calc(100% - 32px)' }}>
             <AgentFlow visible={true} />
           </div>
-          {/* 右下角拖拽缩放 */}
-          <div
-            onMouseDown={(e) => {
-              e.preventDefault(); e.stopPropagation()
-              const el = flowRef.current!; const startW = el.offsetWidth; const startH = el.offsetHeight
-              const startX = e.clientX; const startY = e.clientY
-              const onMove = (ev: MouseEvent) => { el.style.width = (startW + ev.clientX - startX) + 'px'; el.style.height = (startH + ev.clientY - startY) + 'px' }
-              const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
-              window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
-            }}
-            className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
-            style={{ background: 'linear-gradient(135deg, transparent 50%, #dad4cd 50%)' }}
-          />
+          {/* 八向 resize 手柄 */}
+          {['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'].map(dir => {
+            const cursors: Record<string, string> = { n: 'n-resize', s: 's-resize', e: 'e-resize', w: 'w-resize', ne: 'ne-resize', nw: 'nw-resize', se: 'se-resize', sw: 'sw-resize' }
+            const pos: Record<string, React.CSSProperties> = {
+              n:  { top: 0, left: '50%', width: '60%', height: 5, transform: 'translateX(-50%)' },
+              s:  { bottom: 0, left: '50%', width: '60%', height: 5, transform: 'translateX(-50%)' },
+              e:  { right: 0, top: '50%', width: 5, height: '60%', transform: 'translateY(-50%)' },
+              w:  { left: 0, top: '50%', width: 5, height: '60%', transform: 'translateY(-50%)' },
+              ne: { top: -2, right: -2, width: 10, height: 10 },
+              nw: { top: -2, left: -2, width: 10, height: 10 },
+              se: { bottom: -2, right: -2, width: 10, height: 10 },
+              sw: { bottom: -2, left: -2, width: 10, height: 10 },
+            }
+            return (
+              <div key={dir} className={`absolute ${cursors[dir]}`} style={pos[dir]}
+                onMouseDown={(e) => {
+                  e.preventDefault(); e.stopPropagation()
+                  const el = flowRef.current!
+                  const r = el.getBoundingClientRect()
+                  const sx = e.clientX; const sy = e.clientY
+                  const sw = r.width; const sh = r.height
+                  const sl = r.left; const st = r.top
+                  const onMove = (ev: MouseEvent) => {
+                    const dx = ev.clientX - sx; const dy = ev.clientY - sy
+                    if (dir.includes('e')) el.style.width = (sw + dx) + 'px'
+                    if (dir.includes('w')) { el.style.width = (sw - dx) + 'px'; el.style.left = (sl + dx) + 'px'; el.style.transform = 'none' }
+                    if (dir.includes('s')) el.style.height = (sh + dy) + 'px'
+                    if (dir.includes('n')) { el.style.height = (sh - dy) + 'px'; el.style.top = (st + dy) + 'px'; el.style.transform = 'none' }
+                  }
+                  const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+                  window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
+                }}
+              />
+            )
+          })}
         </div>
       )}
 
