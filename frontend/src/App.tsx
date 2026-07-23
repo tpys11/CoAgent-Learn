@@ -209,7 +209,7 @@ function App() {
             }}>
             <span className="text-[11px] font-semibold text-gray-500">多智能体协作流</span>
             <button onClick={() => setFlowMinimized(true)}
-              className="w-5 h-5 flex items-center justify-center rounded hover:bg-[#e8e2d9] text-gray-400 text-xs">─</button>
+              className="w-6 h-6 flex items-center justify-center rounded hover:bg-[#e8e2d9] text-gray-500 hover:text-[#b8952e] font-bold">─</button>
           </div>
           <div style={{ height: 'calc(100% - 32px)' }}>
             <AgentFlow visible={true} activeStep={activeStep} />
@@ -218,14 +218,14 @@ function App() {
           {['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'].map(dir => {
             const cursors: Record<string, string> = { n: 'ns-resize', s: 'ns-resize', e: 'ew-resize', w: 'ew-resize', ne: 'nesw-resize', nw: 'nwse-resize', se: 'nwse-resize', sw: 'nesw-resize' }
             const pos: Record<string, React.CSSProperties> = {
-              n:  { top: 0, left: '50%', width: '60%', height: 5, transform: 'translateX(-50%)', cursor: 'ns-resize' },
-              s:  { bottom: 0, left: '50%', width: '60%', height: 5, transform: 'translateX(-50%)', cursor: 'ns-resize' },
-              e:  { right: 0, top: '50%', width: 5, height: '60%', transform: 'translateY(-50%)', cursor: 'ew-resize' },
-              w:  { left: 0, top: '50%', width: 5, height: '60%', transform: 'translateY(-50%)', cursor: 'ew-resize' },
-              ne: { top: -2, right: -2, width: 10, height: 10, cursor: 'nesw-resize' },
-              nw: { top: -2, left: -2, width: 10, height: 10, cursor: 'nwse-resize' },
-              se: { bottom: -2, right: -2, width: 10, height: 10, cursor: 'nwse-resize' },
-              sw: { bottom: -2, left: -2, width: 10, height: 10, cursor: 'nesw-resize' },
+              n:  { top: 0, left: 0, width: '100%', height: 5, cursor: 'ns-resize' },
+              s:  { bottom: 0, left: 0, width: '100%', height: 5, cursor: 'ns-resize' },
+              e:  { right: 0, top: 0, width: 5, height: '100%', cursor: 'ew-resize' },
+              w:  { left: 0, top: 0, width: 5, height: '100%', cursor: 'ew-resize' },
+              ne: { top: -1, right: -1, width: 8, height: 8, cursor: 'nesw-resize' },
+              nw: { top: -1, left: -1, width: 8, height: 8, cursor: 'nwse-resize' },
+              se: { bottom: -1, right: -1, width: 8, height: 8, cursor: 'nwse-resize' },
+              sw: { bottom: -1, left: -1, width: 8, height: 8, cursor: 'nesw-resize' },
             }
             return (
               <div key={dir} className="absolute" style={pos[dir]}
