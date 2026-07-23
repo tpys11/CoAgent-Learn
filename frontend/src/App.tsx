@@ -25,6 +25,11 @@ function App() {
   const [selectedAgent, setSelectedAgent] = useState<AgentConfig | null>(null)
   const [agents, setAgents] = useState<AgentConfig[]>(DEFAULT_AGENTS)
   const [showSettings, setShowSettings] = useState(false)
+  // 启动时应用保存的字体大小
+  useEffect(() => {
+    const saved = localStorage.getItem('coagent-fontSize')
+    if (saved) document.documentElement.style.fontSize = saved + 'px'
+  }, [])
   const [showApiKeyPrompt, setShowApiKeyPrompt] = useState(
     () => !localStorage.getItem('coagent-apikey') && !localStorage.getItem('coagent-apikey-skipped')
   )
