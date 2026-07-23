@@ -43,6 +43,7 @@ function App() {
   const [flowAgents, setFlowAgents] = useState<string[]>([])
   const [flowActiveAgent, setFlowActiveAgent] = useState<string | null>(null)
   const [flowThoughts, setFlowThoughts] = useState<Record<string, string>>({})
+  const [flowMindchain, setFlowMindchain] = useState<Array<{agent: string; content: string}>>([])
   const flowRef = useRef<HTMLDivElement>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
   const btnDragged = useRef(false)
@@ -103,7 +104,7 @@ function App() {
     if (!currentDialogueId) return
     setMessages(prev => [...prev, { role: 'user', content: text }])
     setIsLoading(true)
-    setFlowVisible(true); setFlowMinimized(false); setFlowAgents([]); setFlowActiveAgent(null); setFlowThoughts({})
+    setFlowVisible(true); setFlowMinimized(false); setFlowAgents([]); setFlowActiveAgent(null); setFlowThoughts({}); setFlowMindchain([])
     try {
       const res = await fetch('/api/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -125,6 +126,7 @@ function App() {
             setFlowAgents(prev => prev.includes(data.agent) ? prev : [...prev, data.agent])
             setFlowActiveAgent(data.agent)
             setFlowThoughts(prev => ({ ...prev, [data.agent]: data.content }))
+            setFlowMindchain(prev => [...prev, { agent: data.agent, content: data.content }])
           }
           if (data.type === 'done') { finalReply = data.reply; steps.push(...(data.steps || [])) }
         }
@@ -226,8 +228,22 @@ function App() {
                 className="w-6 h-6 flex items-center justify-center rounded hover:bg-[#e8e2d9] text-gray-500 hover:text-[#b8952e] font-bold">─</button>
             </div>
           </div>
-          <div style={{ height: 'calc(100% - 32px)' }}>
-            <AgentFlow visible={true} agents={flowAgents} activeAgent={flowActiveAgent} thoughts={flowThoughts} />
+          <div style={{ height: 'calc(100% - 32px)' }} className="flex flex-col">
+            <div className="flex-1 min-h-0">
+              <AgentFlow visible={true} agents={flowAgents} activeAgent={flowActiveAgent} thoughts={flowThoughts} />
+            </div>
+            <div className="h-[35%] border-t border-[#dad4cd] overflow-y-auto px-3 py-2 bg-[#faf8f5] flex-shrink-0">
+              {flowMindchain.length === 0 ? (
+                <p className="text-[11px] text-gray-400 text-center py-2">等待Agent执行...</p>
+              ) : (
+                flowMindchain.map((item, i) => (
+                  <div key={i} className="mb-1.5 text-[11px] leading-relaxed" style={{ animation: 'fadeIn 0.3s ease' }}>
+                    <span className="font-semibold text-[#b8952e]">{item.agent}：</span>
+                    <span className="text-gray-600">{item.content}</span>
+                  </div>
+                ))
+              )}
+            </div>
           </div>
           {/* 八向 resize 手柄 */}
           {['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'].map(dir => {
