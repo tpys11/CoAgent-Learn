@@ -89,6 +89,7 @@ export default function SettingsModal({ onClose }: Props) {
                 type="password"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
+                onMouseDown={(e) => e.stopPropagation()}
                 placeholder="输入 DEEPSEEK_API_KEY"
                 className="flex-1 px-3 py-2 border border-[#c4beb6] rounded-lg text-sm outline-none focus:border-[#c75f1a] bg-[#faf8f5]"
               />
