@@ -8,7 +8,6 @@
 
 ### 前提条件
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) 已安装并运行
-- DeepSeek API Key（[获取地址](https://platform.deepseek.com/)）
 
 ### 1. 克隆项目
 ```bash
@@ -16,20 +15,17 @@ git clone git@github.com:tpys11/CoAgent-Learn.git
 cd CoAgent-Learn
 ```
 
-### 2. 配置 API Key
-```bash
-cp .env.example .env
-```
-编辑 `.env`，填入你的 DeepSeek API Key：
-```
-DEEPSEEK_API_KEY=sk-你的真实key
-```
-
-### 3. 启动
+### 2. 启动
 ```bash
 docker compose -f deploy/docker-compose.yml up -d
 ```
 浏览器打开 `http://localhost:5173`
+
+### 3. 配置 API Key
+页面首次打开会弹出 API Key 配置弹窗，输入 DeepSeek API Key 保存即可。
+也可以点击左下角齿轮图标随时修改。
+
+> 如果不想每次浏览器输入，也可以 `cp .env.example .env` 编辑填入 Key（两种方式都支持）。
 
 ### 4. 首次使用
 - 页面弹出 API Key 配置弹窗，输入 Key 保存
