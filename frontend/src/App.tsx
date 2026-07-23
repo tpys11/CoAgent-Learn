@@ -121,11 +121,13 @@ function App() {
             setFlowAgents(prev => prev.includes(data.agent) ? prev : [...prev, data.agent])
             setFlowActiveAgent(data.agent)
             setFlowMindchain(prev => {
+              const cleanChunk = data.chunk.replace(/```json[\s\S]*?```/g, '').replace(/```[\s\S]*?```/g, '').replace(/[{}\[\]"']/g, '')
+              if (!cleanChunk.trim()) return prev
               const last = prev[prev.length - 1]
               if (last && last.agent === data.agent) {
-                return [...prev.slice(0, -1), { agent: data.agent, content: last.content + data.chunk }]
+                return [...prev.slice(0, -1), { agent: data.agent, content: last.content + cleanChunk }]
               }
-              return [...prev, { agent: data.agent, content: data.chunk }]
+              return [...prev, { agent: data.agent, content: cleanChunk }]
             })
           }
           if (data.type === 'done') { finalReply = data.reply; steps.push(...(data.steps || [])) }

@@ -190,18 +190,25 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
             </div>
           ))
         )}
-        {isLoading && (
-          <div className="self-start bg-[#faf8f5] border border-[#dad4cd] rounded-2xl rounded-bl-sm px-4 py-2.5 max-w-[80%] text-sm">
-            <div className="text-xs font-medium text-gray-400 mb-2 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" /> 思考中…
-            </div>
-            <div className="flex flex-col gap-1.5 max-h-60 overflow-y-auto">
-              {flowMindchain.map((item, i) => (
-                <div key={i} className="text-xs leading-relaxed text-gray-600 animate-[fadeIn_0.2s_ease]">
-                  {item.content}
-                </div>
-              ))}
-            </div>
+        {flowMindchain.length > 0 && (
+          <div className="self-start bg-[#faf8f5] border border-[#dad4cd] rounded-2xl rounded-bl-sm max-w-[80%] overflow-hidden">
+            <button onClick={() => setThinkingCollapsed(!thinkingCollapsed)}
+              className="w-full flex items-center justify-between px-4 py-2 text-xs hover:bg-[#f0ebe4] transition-colors">
+              <span className="flex items-center gap-1.5 text-gray-500">
+                {isLoading && <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse" />}
+                {isLoading ? '思考中…' : '✓ 思考过程'}
+              </span>
+              <span className="text-gray-400">{thinkingCollapsed || isLoading ? '▸ 展开' : '▾ 收起'}</span>
+            </button>
+            {!thinkingCollapsed && (
+              <div className="px-4 pb-3 flex flex-col gap-1.5 border-t border-[#dad4cd] pt-2 max-h-60 overflow-y-auto">
+                {flowMindchain.map((item, i) => (
+                  <div key={i} className="text-[11px] leading-relaxed text-gray-500 whitespace-pre-wrap">
+                    {item.content}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
