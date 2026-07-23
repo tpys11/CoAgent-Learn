@@ -69,7 +69,7 @@ async def chat(req: ChatRequest):
     async def stream():
         try:
             from agents.graph import create_workflow
-            wf = create_workflow(req.api_key)
+            wf = create_workflow(req.api_key, req.settings)
             yield f"data: {json.dumps({'type': 'start'})}\n\n"
             # 同步 invoke，分步 yield
             result = wf.invoke({"user_input": req.message, "steps": []})

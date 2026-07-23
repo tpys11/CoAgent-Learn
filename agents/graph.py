@@ -25,15 +25,41 @@ class AgentState(TypedDict):
     _dispatch_result: dict
 
 
-def create_workflow(api_key: str | None = None):
+def create_workflow(api_key: str | None = None, settings: dict | None = None):
+    settings = settings or {}
     llm = DeepSeekLLM(api_key=api_key)
-    api_key_val = api_key or os.getenv("DEEPSEEK_API_KEY", "")
+
+    # 根据设置构建 Agent 专属约束
+    search_mode = settings.get('searchMode', '默认')
+    output_format = settings.get('outputFormat', '高结构化')
+    output_style = settings.get('outputStyle', 'MD文档')
+    thinking_on = settings.get('thinking', '关') == '开'
+    volume = settings.get('outputVolume', '适中')
+    depth = settings.get('depth', '中')
+    input_mode = settings.get('inputOptMode', '默认模式')
+
+    # 拼接设置到 Prompt
+    KB_PROMPT_WITH_SETTINGS = KB_PROMPT + f"\n当前检索模式: {search_mode}。"
+    SEARCH_PROMPT_WITH_SETTINGS = SEARCH_PROMPT + f"\n当前检索模式: {search_mode}。"
+    GENERATE_PROMPT_WITH_SETTINGS = GENERATE_PROMPT + (
+        f"\n输出要求: 结构化程度={output_format}，格式={output_style}，"
+        f"思考链={'展示' if thinking_on else '不展示'}，输出量={volume}，学习深度={depth}。"
+    )
+    INPUT_PROMPT_WITH_SETTINGS = INPUT_AGENT_PROMPT + (
+        f"\n用户设定了'输入优化-{input_mode}'模式，请据此决定询问策略。"
+    )
+
+    # 更新节点中使用这些带设置的 prompt
+    _GENERATE_PROMPT = GENERATE_PROMPT_WITH_SETTINGS
+    _KB_PROMPT = KB_PROMPT_WITH_SETTINGS
+    _SEARCH_PROMPT = SEARCH_PROMPT_WITH_SETTINGS
+    _INPUT_PROMPT = INPUT_PROMPT_WITH_SETTINGS
 
     def input_node(state: AgentState) -> AgentState:
         state.setdefault("steps", []).append({"agent": "输入信息处理", "status": "running"})
         try:
             result = llm.chat_with_json(
-                [{"role": "system", "content": INPUT_AGENT_PROMPT},
+                [{"role": "system", "content": _INPUT_PROMPT},
                  {"role": "user", "content": state["user_input"]}],
                 {"type": "object", "properties": {"processed": {"type": "string"}, "format": {"type": "string"}}}
             )
@@ -81,7 +107,7 @@ def create_workflow(api_key: str | None = None):
         state.setdefault("steps", []).append({"agent": "知识库管理", "status": "running"})
         try:
             result = llm.chat_with_json(
-                [{"role": "system", "content": KB_PROMPT}, {"role": "user", "content": state["user_input"]}],
+                [{"role": "system", "content": _KB_PROMPT}, {"role": "user", "content": state["user_input"]}],
                 {"type": "object", "properties": {"results": {"type": "array"}, "summary": {"type": "string"}}}
             )
             state["knowledge"] = result.get("results", [])
@@ -109,7 +135,7 @@ def create_workflow(api_key: str | None = None):
         if state.get("knowledge"): context += f"知识库: {json.dumps(state['knowledge'], ensure_ascii=False)}\n"
         try:
             result = llm.chat_with_json(
-                [{"role": "system", "content": GENERATE_PROMPT}, {"role": "user", "content": context}],
+                [{"role": "system", "content": _GENERATE_PROMPT}, {"role": "user", "content": context}],
                 {"type": "object", "properties": {"content": {"type": "string"}, "sources": {"type": "array"}}}
             )
             state["generated"] = result.get("content", "")
