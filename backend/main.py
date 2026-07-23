@@ -47,6 +47,7 @@ async def health_check():
 class ChatRequest(BaseModel):
     message: str
     project_id: str | None = None
+    api_key: str | None = None
 
 class ChatStep(BaseModel):
     agent: str
@@ -61,8 +62,9 @@ class ChatResponse(BaseModel):
 @app.post("/api/chat")
 async def chat(req: ChatRequest) -> ChatResponse:
     try:
-        from agents.graph import workflow
-        result = workflow.invoke({"user_input": req.message, "steps": []})
+        from agents.graph import create_workflow
+        wf = create_workflow(req.api_key)
+        result = wf.invoke({"user_input": req.message, "steps": []})
         steps = [ChatStep(**s) for s in result.get("steps", []) if s.get("status") == "done"]
         return ChatResponse(reply=result.get("final_reply", "处理完成"), steps=steps)
     except Exception as e:

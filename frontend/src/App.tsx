@@ -96,7 +96,7 @@ function App() {
     setIsLoading(true)
     setFlowVisible(true); setFlowMinimized(false)
     try {
-      const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text.trim() }) })
+      const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text.trim(), api_key: localStorage.getItem('coagent-apikey') || undefined }) })
       const data = await res.json()
       setMessages(prev => [...prev, { role: 'assistant', content: data.reply || '抱歉，回复为空。', steps: data.steps || [] }])
     } catch {

@@ -122,12 +122,13 @@ class BaseLLM:
 class DeepSeekLLM(BaseLLM):
     """DeepSeek 实现"""
 
-    def __init__(self):
+    def __init__(self, api_key: str | None = None):
         self.model_name = "deepseek-chat"
+        self._api_key = api_key
         super().__init__()
 
     def _create_client(self) -> OpenAI:
         return OpenAI(
-            api_key=config.DEEPSEEK_API_KEY,
+            api_key=self._api_key or config.DEEPSEEK_API_KEY,
             base_url=config.DEEPSEEK_BASE_URL,
         )
