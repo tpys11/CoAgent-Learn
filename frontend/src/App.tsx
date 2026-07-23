@@ -40,8 +40,8 @@ function App() {
   const [flowVisible, setFlowVisible] = useState(false)
   const [flowAgents, setFlowAgents] = useState<string[]>([])
   const [flowActiveAgent, setFlowActiveAgent] = useState<string | null>(null)
-  const [flowThoughts, setFlowThoughts] = useState<Record<string, string>>({})
   const [flowMindchain, setFlowMindchain] = useState<Array<{agent: string; content: string}>>([])
+  const mindchainRef = useRef<Array<{agent: string; content: string}>>([])
   const dragging = useRef<'left' | 'right' | 'flow' | null>(null)
   const appRef = useRef<HTMLDivElement>(null)
 
@@ -99,7 +99,7 @@ function App() {
     if (!currentDialogueId) return
     setMessages(prev => [...prev, { role: 'user', content: text }])
     setIsLoading(true)
-    setFlowVisible(true); setFlowAgents([]); setFlowActiveAgent(null); setFlowThoughts({}); setFlowMindchain([])
+    setFlowVisible(true); setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = []
     try {
       const res = await fetch('/api/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -124,16 +124,20 @@ function App() {
               const cleanChunk = data.chunk.replace(/```json[\s\S]*?```/g, '').replace(/```[\s\S]*?```/g, '').replace(/[{}\[\]"']/g, '')
               if (!cleanChunk.trim()) return prev
               const last = prev[prev.length - 1]
+              let next
               if (last && last.agent === data.agent) {
-                return [...prev.slice(0, -1), { agent: data.agent, content: last.content + cleanChunk }]
+                next = [...prev.slice(0, -1), { agent: data.agent, content: last.content + cleanChunk }]
+              } else {
+                next = [...prev, { agent: data.agent, content: cleanChunk }]
               }
-              return [...prev, { agent: data.agent, content: cleanChunk }]
+              mindchainRef.current = next
+              return next
             })
           }
           if (data.type === 'done') { finalReply = data.reply; steps.push(...(data.steps || [])) }
         }
       }
-      setMessages(prev => [...prev, { role: 'assistant', content: finalReply || '处理完成', steps, think: flowMindchain.map(m => m.content) }])
+      setMessages(prev => [...prev, { role: 'assistant', content: finalReply || '处理完成', steps, think: mindchainRef.current.map(m => m.content) }])
     } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: '抱歉，请求失败。' }])
     } finally { setIsLoading(false) }
@@ -181,7 +185,7 @@ function App() {
         statsCollapsed={statsCollapsed} onToggleStats={() => setStatsCollapsed(!statsCollapsed)}
         showAgentFlow={flowVisible}
         flowAgents={flowAgents} flowActiveAgent={flowActiveAgent}
-        flowThoughts={flowThoughts} flowMindchain={flowMindchain}
+        flowMindchain={flowMindchain}
       />
       {/* 右侧栏 */}
       {!rightCollapsed && (

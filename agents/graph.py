@@ -1,5 +1,5 @@
 """LangGraph 多智能体协同工作流"""
-import json, os
+import json
 from typing import TypedDict
 from langgraph.graph import StateGraph, END
 from core.base_llm import DeepSeekLLM
@@ -31,8 +31,6 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
     llm_raw = DeepSeekLLM(api_key=api_key)
 
     import re
-    from threading import Thread
-    from queue import Queue
 
     def think_then_json(system_prompt: str, user_prompt: str, agent_name: str) -> tuple[str, dict]:
         """流式思考：用chat_stream逐token推送，收集完整文本后提取JSON"""

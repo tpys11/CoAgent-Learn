@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ReactFlow, Background, Controls, Handle, Position, type Edge } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
-interface Props { visible: boolean; agents?: string[]; activeAgent?: string | null; thoughts?: Record<string, string> }
+interface Props { visible: boolean; agents?: string[]; activeAgent?: string | null }
 
 function AgentNode({ data }: any) {
   const a = data.active; const size = a ? 1.08 : 1
@@ -60,7 +60,7 @@ const allEdges: Edge[] = [
   { id: 'e12', source: 'review', target: 'memory', sourceHandle: 'top', targetHandle: 'bottom', style: { strokeDasharray: '5,3' } },
 ]
 
-export default function AgentFlow({ visible, agents, activeAgent, thoughts }: Props) {
+export default function AgentFlow({ visible, agents, activeAgent }: Props) {
   const [phase, setPhase] = useState(0)
   const agentNameToId: Record<string, string> = {
     '输入信息处理': 'input', '调度': 'dispatch', '记忆管理': 'memory',

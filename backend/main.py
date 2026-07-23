@@ -96,9 +96,7 @@ async def chat(req: ChatRequest):
                     yield f"data: {json.dumps({'type': 'thought_token', 'agent': agent, 'chunk': chunk})}\n\n"
                 elif msg[0] == "done":
                     result = msg[1]
-                    for s in result.get("steps", []):
-                        yield f"data: {json.dumps({'type': 'step', 'agent': s.get('agent', ''), 'status': s.get('status', ''), 'detail': s.get('detail', '')})}\n\n"
-                    yield f"data: {json.dumps({'type': 'done', 'reply': result.get('final_reply', '处理完成'), 'steps': [s for s in result.get('steps', []) if s.get('status') == 'done'], 'mindchain': result.get('mindchain', [])})}\n\n"
+                    yield f"data: {json.dumps({'type': 'done', 'reply': result.get('final_reply', '处理完成')})}\n\n"
                     break
                 elif msg[0] == "error":
                     yield f"data: {json.dumps({'type': 'error', 'message': msg[1]})}\n\n"

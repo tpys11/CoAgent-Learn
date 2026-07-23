@@ -16,11 +16,10 @@ interface CenterPanelProps {
   showAgentFlow: boolean
   flowAgents: string[]
   flowActiveAgent: string | null
-  flowThoughts: Record<string, string>
   flowMindchain: Array<{agent: string; content: string}>
 }
 
-export default function CenterPanel({ messages, isLoading, currentProject, onSendMessage, statsCollapsed, onToggleStats, showAgentFlow, flowAgents, flowActiveAgent, flowThoughts, flowMindchain }: CenterPanelProps) {
+export default function CenterPanel({ messages, isLoading, currentProject, onSendMessage, statsCollapsed, onToggleStats, showAgentFlow, flowAgents, flowActiveAgent, flowMindchain }: CenterPanelProps) {
   const [input, setInput] = useState('')
   const [time, setTime] = useState(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }))
   const [searchMode, setSearchMode] = useState(0)
@@ -137,7 +136,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
         {/* Agent 思考过程 */}
         {showAgentFlow && (
           <div className="mb-2 bg-white border border-[#dad4cd] rounded-xl overflow-hidden flex-shrink-0" style={{ height: '28vh', minHeight: 150 }}>
-            <AgentFlow visible={true} agents={flowAgents} activeAgent={flowActiveAgent} thoughts={flowThoughts} />
+            <AgentFlow visible={true} agents={flowAgents} activeAgent={flowActiveAgent} />
           </div>
         )}
         {messages.length === 0 ? (

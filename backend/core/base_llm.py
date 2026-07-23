@@ -18,6 +18,7 @@ class BaseLLM:
     def __init__(self):
         self.client = self._create_client()
         self.max_retries = 3
+        self.retry_delays = [2, 4, 8]
         self.total_tokens = 0  # 累计token消耗
 
     def _create_client(self) -> OpenAI:
