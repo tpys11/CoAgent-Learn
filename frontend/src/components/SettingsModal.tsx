@@ -29,8 +29,8 @@ export default function SettingsModal({ onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4" onMouseDown={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#dad4cd]">
           <h2 className="text-base font-bold">设置</h2>
           <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
