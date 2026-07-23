@@ -84,16 +84,9 @@ export default function AgentFlow({ visible }: Props) {
   const vNodes = allNodes.filter(n => (n.data as any).phase <= phase)
   const vEdges = allEdges.filter(e => vNodes.some(n => n.id === e.source) && vNodes.some(n => n.id === e.target))
 
-  const labels = ['输入环节', '核心逻辑', '输出环节']
-
   return (
-    <div className={`transition-all duration-300 overflow-hidden ${visible ? 'h-[42%] min-h-[160px]' : 'h-0'}`}>
-      <div className="h-full w-full border-b border-[#dad4cd] relative" style={{ background: 'rgba(250,248,245,0.6)' }}>
-        <div className="absolute top-1.5 left-[60px] z-10 flex gap-3">
-          {labels.map((l, i) => (
-            <span key={l} className={`text-[10px] font-semibold px-2 py-0.5 rounded-full transition-all duration-500 ${phase > i ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-400'}`}>{l}</span>
-          ))}
-        </div>
+    <div className={`transition-all duration-300 overflow-hidden ${visible ? 'h-full' : 'h-0'}`}>
+      <div className="h-full w-full relative" style={{ background: 'rgba(250,248,245,0.6)' }}>
         <ReactFlow
           nodes={vNodes.map(n => ({ ...n, data: { ...n.data, active: activeNode === n.id } }))}
           edges={vEdges.map(e => ({ ...e, style: { ...(e.style || {}), stroke: '#1a1a1a' }, markerEnd: { type: 'arrowclosed', color: '#1a1a1a', width: 12, height: 12 } }))}
