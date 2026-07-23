@@ -104,6 +104,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None):
             state["profile"] = result
         except Exception:
             state["profile"] = {"level": "unknown"}
+        state["mindchain"].append({"agent": "学情诊断", "content": json.dumps(state.get("profile", {}), ensure_ascii=False)[:200]})
         state.setdefault("steps", []).append({"agent": "学情诊断", "status": "done"})
         return state
 
@@ -117,18 +118,21 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None):
             state["knowledge"] = result.get("results", [])
         except Exception:
             state["knowledge"] = []
+        state["mindchain"].append({"agent": "知识库管理", "content": f"检索到{len(state.get('knowledge', []))}条知识片段"})
         state.setdefault("steps", []).append({"agent": "知识库管理", "status": "done"})
         return state
 
     def search_node(state: AgentState) -> AgentState:
         state.setdefault("steps", []).append({"agent": "搜索", "status": "running"})
         state["search_results"] = [{"content": "搜索功能即将接入 SearXNG+Perplexica", "source": "local"}]
+        state["mindchain"].append({"agent": "搜索", "content": "搜索完成（当前为占位结果）"})
         state.setdefault("steps", []).append({"agent": "搜索", "status": "done"})
         return state
 
     def memory_node(state: AgentState) -> AgentState:
         state.setdefault("steps", []).append({"agent": "记忆管理", "status": "running"})
         state["memory"] = state.get("memory", {})
+        state["mindchain"].append({"agent": "记忆管理", "content": "记忆已读取/更新"})
         state.setdefault("steps", []).append({"agent": "记忆管理", "status": "done"})
         return state
 
@@ -161,6 +165,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None):
         except Exception:
             state["reviewed"] = {"passed": True, "score": 80}
         state.setdefault("steps", []).append({"agent": "审核裁判", "status": "done", "detail": f"score={state['reviewed'].get('score', 0)}"})
+        state["mindchain"].append({"agent": "审核裁判", "content": f"审核{'通过' if state['reviewed'].get('passed') else '不通过'}，评分{state['reviewed'].get('score', 0)}"})
         return state
 
     def output_node(state: AgentState) -> AgentState:
