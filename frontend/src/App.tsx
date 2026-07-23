@@ -172,8 +172,8 @@ function App() {
       {/* 浮动协作流画布 */}
       {flowVisible && !flowMinimized && (
         <div className="fixed inset-0 z-40 pointer-events-none">
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 pointer-events-auto bg-white rounded-2xl shadow-2xl border border-[#dad4cd] overflow-hidden"
-               style={{ width: '70vw', height: '40vh', minWidth: 500, minHeight: 200, resize: 'both' }}>
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 pointer-events-auto bg-white rounded-2xl shadow-2xl border border-[#dad4cd] overflow-hidden"
+               style={{ width: '70vw', height: '38vh', minWidth: 500, minHeight: 180, resize: 'both' }}>
             <div className="flex items-center justify-between px-3 py-1.5 bg-[#faf8f5] border-b border-[#dad4cd] cursor-move">
               <span className="text-[11px] font-semibold text-gray-500">多智能体协作流</span>
               <button onClick={() => setFlowMinimized(true)}
@@ -186,11 +186,12 @@ function App() {
         </div>
       )}
 
-      {/* 最小化按钮 */}
+      {/* 最小化按钮：右侧栏折叠按钮下方 */}
       {flowVisible && flowMinimized && (
         <button onClick={() => setFlowMinimized(false)}
-          className="fixed top-4 left-[270px] z-40 bg-white border border-[#dad4cd] rounded-full shadow-lg px-3 py-1.5 text-[11px] font-semibold text-gray-500 hover:text-[#c75f1a] hover:border-[#c75f1a] transition-colors">
-          🔄 协作流
+          className="fixed top-10 z-40 bg-white border border-[#dad4cd] rounded-full shadow-lg px-3 py-1.5 text-xs font-semibold text-gray-500 hover:text-[#c75f1a] hover:border-[#c75f1a] transition-colors"
+          style={{ right: '8px' }}>
+          🔄 工作流程
         </button>
       )}
     </div>
