@@ -202,13 +202,15 @@ function App() {
       {flowVisible && flowMinimized && (
         <button ref={btnRef} onClick={() => setFlowMinimized(false)}
           onMouseDown={(e) => {
+            e.preventDefault()
             const el = btnRef.current!; const rect = el.getBoundingClientRect()
+            el.style.transition = 'none'
             const sx = e.clientX - rect.left; const sy = e.clientY - rect.top
             const onMove = (ev: MouseEvent) => { el.style.left = (ev.clientX - sx) + 'px'; el.style.top = (ev.clientY - sy) + 'px'; el.style.right = 'auto' }
-            const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+            const onUp = () => { el.style.transition = ''; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
             window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
           }}
-          className="fixed z-40 bg-[#fdf8ed] border border-[#c9a84c]/40 rounded-2xl shadow-md px-4 py-2 text-sm font-semibold text-[#8b6914] hover:border-[#b8952e] hover:shadow-lg transition-all cursor-grab active:cursor-grabbing select-none"
+          className="fixed z-40 bg-[#fdf8ed] border border-[#c9a84c]/40 rounded-2xl shadow-md px-4 py-2 text-sm font-semibold text-[#8b6914] hover:border-[#b8952e] hover:shadow-lg cursor-grab active:cursor-grabbing select-none"
           style={{ right: '8px', top: '36px' }}>
           🔄 工作流程
         </button>
