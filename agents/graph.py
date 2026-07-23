@@ -26,17 +26,28 @@ class AgentState(TypedDict):
     mindchain: list  # [{agent, content}]
 
 
-def create_workflow(api_key: str | None = None, settings: dict | None = None):
+def create_workflow(api_key: str | None = None, settings: dict | None = None, on_token=None):
     settings = settings or {}
     llm_raw = DeepSeekLLM(api_key=api_key)
 
     import re
+    from threading import Thread
+    from queue import Queue
 
-    def think_then_json(system_prompt: str, user_prompt: str) -> tuple[str, dict]:
-        """一次API调用：让模型先自然语言思考，再输出JSON"""
+    def think_then_json(system_prompt: str, user_prompt: str, agent_name: str) -> tuple[str, dict]:
+        """流式思考：用chat_stream逐token推送，收集完整文本后提取JSON"""
+        collected = []
+        def collect(chunk):
+            collected.append(chunk)
+            if on_token:
+                on_token(agent_name, chunk)
         try:
-            raw = llm_raw.chat([{"role": "system", "content": system_prompt + "\n先自然语言思考，再用```json```输出结果。"},
-                                {"role": "user", "content": user_prompt}])
+            llm_raw.chat_stream(
+                [{"role": "system", "content": system_prompt + "\n先自然语言思考，再用```json```输出结果。"},
+                 {"role": "user", "content": user_prompt}],
+                collect
+            )
+            raw = "".join(collected)
             m = re.search(r'```json\s*([\s\S]*?)\s*```', raw)
             thinking = raw[:m.start()].strip() if m else raw[:500]
             result = json.loads(m.group(1)) if m else {}
@@ -74,7 +85,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None):
         state.setdefault("steps", []).append({"agent": "输入信息处理", "status": "running"})
         state.setdefault("mindchain", [])
         try:
-            thinking, result = think_then_json(_INPUT_PROMPT, state["user_input"])
+            thinking, result = think_then_json(_INPUT_PROMPT, state["user_input"], "输入信息处理")
             state["processed_input"] = result.get("processed", state["user_input"])
         except Exception:
             thinking = "处理失败"
@@ -93,7 +104,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None):
         if state.get("search_results"): context += f"搜索结果数: {len(state['search_results'])}\n"
         context += f"已调度次数: {state['dispatch_count']}"
         try:
-            thinking, result = think_then_json(DISPATCH_AGENT_PROMPT, context)
+            thinking, result = think_then_json(DISPATCH_AGENT_PROMPT, context, "调度")
         except Exception:
             result = {"action": "enough", "summary": "调度异常，使用已有信息"}
         state.setdefault("steps", []).append({"agent": "调度", "status": "done", "detail": result.get("action", "unknown")})
@@ -104,7 +115,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None):
     def diagnose_node(state: AgentState) -> AgentState:
         state.setdefault("steps", []).append({"agent": "学情诊断", "status": "running"})
         try:
-            thinking, result = think_then_json(DIAGNOSE_PROMPT, state["user_input"])
+            thinking, result = think_then_json(DIAGNOSE_PROMPT, state["user_input"], "学情诊断")
             state["profile"] = result
         except Exception:
             state["profile"] = {"level": "unknown"}
@@ -115,7 +126,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None):
     def kb_node(state: AgentState) -> AgentState:
         state.setdefault("steps", []).append({"agent": "知识库管理", "status": "running"})
         try:
-            thinking, result = think_then_json(_KB_PROMPT, state["user_input"])
+            thinking, result = think_then_json(_KB_PROMPT, state["user_input"], "知识库管理")
             state["knowledge"] = result.get("results", [])
         except Exception:
             state["knowledge"] = []
@@ -143,7 +154,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None):
         if state.get("profile"): context += f"学情: {json.dumps(state['profile'], ensure_ascii=False)}\n"
         if state.get("knowledge"): context += f"知识库: {json.dumps(state['knowledge'], ensure_ascii=False)}\n"
         try:
-            thinking, result = think_then_json(_GENERATE_PROMPT, context)
+            thinking, result = think_then_json(_GENERATE_PROMPT, context, "信息整理与生成")
             state["generated"] = result.get("content", "")
         except Exception as e:
             state["generated"] = f"抱歉，生成内容时出现错误：{str(e)[:200]}"
@@ -155,7 +166,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None):
         state.setdefault("steps", []).append({"agent": "审核裁判", "status": "running"})
         state["retry_count"] = state.get("retry_count", 0) + 1
         try:
-            thinking, result = think_then_json(REVIEW_PROMPT, state.get("generated", ""))
+            thinking, result = think_then_json(REVIEW_PROMPT, state.get("generated", ""), "审核裁判")
             state["reviewed"] = result
         except Exception:
             state["reviewed"] = {"passed": True, "score": 80}

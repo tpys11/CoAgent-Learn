@@ -117,11 +117,16 @@ function App() {
             setFlowAgents(prev => prev.includes(data.agent) ? prev : [...prev, data.agent])
             setFlowActiveAgent(data.agent)
           }
-          if (data.type === 'thought') {
+          if (data.type === 'thought_token') {
             setFlowAgents(prev => prev.includes(data.agent) ? prev : [...prev, data.agent])
             setFlowActiveAgent(data.agent)
-            setFlowThoughts(prev => ({ ...prev, [data.agent]: data.content }))
-            setFlowMindchain(prev => [...prev, { agent: data.agent, content: data.content }])
+            setFlowMindchain(prev => {
+              const last = prev[prev.length - 1]
+              if (last && last.agent === data.agent) {
+                return [...prev.slice(0, -1), { agent: data.agent, content: last.content + data.chunk }]
+              }
+              return [...prev, { agent: data.agent, content: data.chunk }]
+            })
           }
           if (data.type === 'done') { finalReply = data.reply; steps.push(...(data.steps || [])) }
         }

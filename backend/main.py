@@ -69,20 +69,40 @@ async def chat(req: ChatRequest):
     async def stream():
         try:
             from agents.graph import create_workflow
-            import asyncio
-            wf = create_workflow(req.api_key, req.settings)
+            import queue, threading, asyncio
+            token_queue = queue.Queue()
+
+            def on_token(agent_name: str, chunk: str):
+                token_queue.put(("token", agent_name, chunk))
+
+            def run_workflow():
+                try:
+                    wf = create_workflow(req.api_key, req.settings, on_token)
+                    result = wf.invoke({"user_input": req.message, "steps": [], "mindchain": []})
+                    token_queue.put(("done", result))
+                except Exception as e:
+                    token_queue.put(("error", str(e)))
+
+            threading.Thread(target=run_workflow, daemon=True).start()
             yield f"data: {json.dumps({'type': 'start'})}\n\n"
-            async for chunk in wf.astream({"user_input": req.message, "steps": [], "mindchain": []}, stream_mode="updates"):
-                for node_data in chunk.values():
-                    mc = node_data.get("mindchain", [])
-                    if mc:
-                        latest = mc[-1]
-                        yield f"data: {json.dumps({'type': 'thought', 'agent': latest['agent'], 'content': latest['content']})}\n\n"
-                    for s in node_data.get("steps", []):
+            while True:
+                try:
+                    msg = token_queue.get(timeout=0.05)
+                except queue.Empty:
+                    await asyncio.sleep(0.05)
+                    continue
+                if msg[0] == "token":
+                    _, agent, chunk = msg
+                    yield f"data: {json.dumps({'type': 'thought_token', 'agent': agent, 'chunk': chunk})}\n\n"
+                elif msg[0] == "done":
+                    result = msg[1]
+                    for s in result.get("steps", []):
                         yield f"data: {json.dumps({'type': 'step', 'agent': s.get('agent', ''), 'status': s.get('status', ''), 'detail': s.get('detail', '')})}\n\n"
-                await asyncio.sleep(0)
-            result = wf.invoke({"user_input": req.message, "steps": [], "mindchain": []})
-            yield f"data: {json.dumps({'type': 'done', 'reply': result.get('final_reply', '处理完成'), 'steps': [s for s in result.get('steps', []) if s.get('status') == 'done'], 'mindchain': result.get('mindchain', [])})}\n\n"
+                    yield f"data: {json.dumps({'type': 'done', 'reply': result.get('final_reply', '处理完成'), 'steps': [s for s in result.get('steps', []) if s.get('status') == 'done'], 'mindchain': result.get('mindchain', [])})}\n\n"
+                    break
+                elif msg[0] == "error":
+                    yield f"data: {json.dumps({'type': 'error', 'message': msg[1]})}\n\n"
+                    break
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
     return StreamingResponse(stream(), media_type="text/event-stream")

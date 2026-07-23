@@ -119,6 +119,23 @@ class BaseLLM:
             )
 
 
+    def chat_stream(self, messages: list[dict], on_token, temperature: float = 0.7):
+        """流式对话，每收到一个token调用on_token(chunk_text)"""
+        for attempt in range(self.max_retries):
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model_name, messages=messages, temperature=temperature, stream=True
+                )
+                for chunk in response:
+                    if chunk.choices[0].delta.content:
+                        on_token(chunk.choices[0].delta.content)
+                return
+            except Exception as e:
+                logger.warning(f"chat_stream 第{attempt+1}次失败: {e}")
+                if attempt < self.max_retries - 1:
+                    time.sleep(self.retry_delays[attempt])
+        raise RuntimeError(f"chat_stream 全部{self.max_retries}次重试均失败")
+
 class DeepSeekLLM(BaseLLM):
     """DeepSeek 实现"""
 
