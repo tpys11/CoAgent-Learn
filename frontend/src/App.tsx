@@ -35,7 +35,7 @@ function App() {
   const [rightCollapsed, setRightCollapsed] = useState(false)
   const [flowVisible, setFlowVisible] = useState(false)
   const [flowMinimized, setFlowMinimized] = useState(false)
-  const [flowPos, setFlowPos] = useState({ x: 0, y: 0 })
+  const flowRef = useRef<HTMLDivElement>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
   const dragging = useRef<'left' | 'right' | 'flow' | null>(null)
   const appRef = useRef<HTMLDivElement>(null)
@@ -173,28 +173,39 @@ function App() {
 
       {/* 浮动协作流画布 */}
       {flowVisible && !flowMinimized && (
-        <div className="fixed z-40" style={{ left: '50%', top: '4px', transform: `translateX(-50%) translate(${flowPos.x}px, ${flowPos.y}px)` }}>
-          <div className="bg-white rounded-2xl shadow-2xl border border-[#dad4cd] overflow-hidden"
-               style={{ width: '68vw', height: '32vh', minWidth: 500, minHeight: 160, resize: 'both' }}>
-            <div
-              className="flex items-center justify-between px-3 py-1.5 bg-[#faf8f5] border-b border-[#dad4cd] cursor-move select-none"
-              onMouseDown={(e) => {
-                dragging.current = 'flow'
-                document.body.style.userSelect = 'none'
-                const startX = e.clientX - flowPos.x
-                const startY = e.clientY - flowPos.y
-                const onMove = (ev: MouseEvent) => setFlowPos({ x: ev.clientX - startX, y: ev.clientY - startY })
-                const onUp = () => { dragging.current = null; document.body.style.userSelect = ''; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
-                window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
-              }}>
-              <span className="text-[11px] font-semibold text-gray-500">多智能体协作流</span>
-              <button onClick={() => setFlowMinimized(true)}
-                className="w-5 h-5 flex items-center justify-center rounded hover:bg-[#e8e2d9] text-gray-400 text-xs">─</button>
-            </div>
-            <div style={{ height: 'calc(100% - 32px)' }}>
-              <AgentFlow visible={true} />
-            </div>
+        <div ref={flowRef} className="fixed z-40 bg-white rounded-2xl shadow-2xl border border-[#dad4cd] overflow-hidden"
+             style={{ left: '50%', top: '4px', transform: 'translateX(-50%)', width: '68vw', height: '32vh', minWidth: 500, minHeight: 160 }}>
+          <div
+            className="flex items-center justify-between px-3 py-1.5 bg-[#faf8f5] border-b border-[#dad4cd] cursor-move select-none"
+            onMouseDown={(e) => {
+              e.preventDefault()
+              const el = flowRef.current!; const rect = el.getBoundingClientRect()
+              el.style.transition = 'none'
+              const sx = e.clientX - rect.left; const sy = e.clientY - rect.top
+              const onMove = (ev: MouseEvent) => { el.style.left = (ev.clientX - sx) + 'px'; el.style.top = (ev.clientY - sy) + 'px'; el.style.transform = 'none' }
+              const onUp = () => { el.style.transition = ''; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+              window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
+            }}>
+            <span className="text-[11px] font-semibold text-gray-500">多智能体协作流</span>
+            <button onClick={() => setFlowMinimized(true)}
+              className="w-5 h-5 flex items-center justify-center rounded hover:bg-[#e8e2d9] text-gray-400 text-xs">─</button>
           </div>
+          <div style={{ height: 'calc(100% - 32px)' }}>
+            <AgentFlow visible={true} />
+          </div>
+          {/* 右下角拖拽缩放 */}
+          <div
+            onMouseDown={(e) => {
+              e.preventDefault(); e.stopPropagation()
+              const el = flowRef.current!; const startW = el.offsetWidth; const startH = el.offsetHeight
+              const startX = e.clientX; const startY = e.clientY
+              const onMove = (ev: MouseEvent) => { el.style.width = (startW + ev.clientX - startX) + 'px'; el.style.height = (startH + ev.clientY - startY) + 'px' }
+              const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+              window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
+            }}
+            className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
+            style={{ background: 'linear-gradient(135deg, transparent 50%, #dad4cd 50%)' }}
+          />
         </div>
       )}
 
