@@ -29,6 +29,26 @@ class AgentState(TypedDict):
 def create_workflow(api_key: str | None = None, settings: dict | None = None):
     settings = settings or {}
     llm = DeepSeekLLM(api_key=api_key)
+    llm_raw = DeepSeekLLM(api_key=api_key)  # 用于自然语言思考输出
+
+    def think_then_json(system_prompt: str, user_prompt: str, json_props: dict) -> tuple[str, dict]:
+        """让模型先自然语言思考，再输出JSON。返回(思考文本, JSON结果)"""
+        full_prompt = f"{system_prompt}\n\n请先输出你的思考过程（自然语言），然后用 ```json ... ``` 代码块输出JSON结果。"
+        try:
+            raw = llm_raw.chat([{"role": "system", "content": full_prompt}, {"role": "user", "content": user_prompt}])
+            # 提取思考部分和JSON部分
+            import re
+            json_match = re.search(r'```json\s*([\s\S]*?)\s*```', raw)
+            if json_match:
+                json_str = json_match.group(1).strip()
+                thinking = raw[:json_match.start()].strip()
+                result = json.loads(json_str)
+            else:
+                thinking = raw[:500]
+                result = llm.chat_with_json([{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}], json_props)
+            return thinking, result
+        except Exception:
+            return "思考过程获取失败", {}
 
     # 根据设置构建 Agent 专属约束
     search_mode = settings.get('searchMode', '默认')
@@ -60,15 +80,15 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None):
         state.setdefault("steps", []).append({"agent": "输入信息处理", "status": "running"})
         state.setdefault("mindchain", [])
         try:
-            result = llm.chat_with_json(
-                [{"role": "system", "content": _INPUT_PROMPT},
-                 {"role": "user", "content": state["user_input"]}],
+            thinking, result = think_then_json(
+                _INPUT_PROMPT, state["user_input"],
                 {"type": "object", "properties": {"processed": {"type": "string"}, "format": {"type": "string"}}}
             )
             state["processed_input"] = result.get("processed", state["user_input"])
         except Exception:
+            thinking = "处理失败"
             state["processed_input"] = state["user_input"]
-        state["mindchain"].append({"agent": "输入信息处理", "content": json.dumps(result, ensure_ascii=False, indent=1)})
+        state["mindchain"].append({"agent": "输入信息处理", "content": thinking[:600]})
         state.setdefault("steps", []).append({"agent": "输入信息处理", "status": "done"})
         state["dispatch_count"] = 0
         return state
@@ -82,43 +102,42 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None):
         if state.get("search_results"): context += f"搜索结果数: {len(state['search_results'])}\n"
         context += f"已调度次数: {state['dispatch_count']}"
         try:
-            result = llm.chat_with_json(
-                [{"role": "system", "content": DISPATCH_AGENT_PROMPT},
-                 {"role": "user", "content": context}],
+            thinking, result = think_then_json(
+                DISPATCH_AGENT_PROMPT, context,
                 {"type": "object", "properties": {"action": {"type": "string"}, "agent": {"type": "string"}, "query": {"type": "string"}, "summary": {"type": "string"}}}
             )
         except Exception:
             result = {"action": "enough", "summary": "调度异常，使用已有信息"}
         state.setdefault("steps", []).append({"agent": "调度", "status": "done", "detail": result.get("action", "unknown")})
-        state["mindchain"].append({"agent": "调度", "content": json.dumps(result, ensure_ascii=False, indent=1)})
+        state["mindchain"].append({"agent": "调度", "content": thinking[:800]})
         state["_dispatch_result"] = result
         return state
 
     def diagnose_node(state: AgentState) -> AgentState:
         state.setdefault("steps", []).append({"agent": "学情诊断", "status": "running"})
         try:
-            result = llm.chat_with_json(
-                [{"role": "system", "content": DIAGNOSE_PROMPT}, {"role": "user", "content": state["user_input"]}],
+            thinking, result = think_then_json(
+                DIAGNOSE_PROMPT, state["user_input"],
                 {"type": "object", "properties": {"level": {"type": "string"}, "strengths": {"type": "array"}, "gaps": {"type": "array"}, "suggestion": {"type": "string"}}}
             )
             state["profile"] = result
         except Exception:
             state["profile"] = {"level": "unknown"}
-        state["mindchain"].append({"agent": "学情诊断", "content": json.dumps(state.get("profile", {}), ensure_ascii=False, indent=1)[:800]})
+        state["mindchain"].append({"agent": "学情诊断", "content": thinking[:600]})
         state.setdefault("steps", []).append({"agent": "学情诊断", "status": "done"})
         return state
 
     def kb_node(state: AgentState) -> AgentState:
         state.setdefault("steps", []).append({"agent": "知识库管理", "status": "running"})
         try:
-            result = llm.chat_with_json(
-                [{"role": "system", "content": _KB_PROMPT}, {"role": "user", "content": state["user_input"]}],
+            thinking, result = think_then_json(
+                _KB_PROMPT, state["user_input"],
                 {"type": "object", "properties": {"results": {"type": "array"}, "summary": {"type": "string"}}}
             )
             state["knowledge"] = result.get("results", [])
         except Exception:
             state["knowledge"] = []
-        state["mindchain"].append({"agent": "知识库管理", "content": result.get("summary", "检索完成")})
+        state["mindchain"].append({"agent": "知识库管理", "content": thinking[:600]})
         state.setdefault("steps", []).append({"agent": "知识库管理", "status": "done"})
         return state
 
@@ -142,14 +161,14 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None):
         if state.get("profile"): context += f"学情: {json.dumps(state['profile'], ensure_ascii=False)}\n"
         if state.get("knowledge"): context += f"知识库: {json.dumps(state['knowledge'], ensure_ascii=False)}\n"
         try:
-            result = llm.chat_with_json(
-                [{"role": "system", "content": _GENERATE_PROMPT}, {"role": "user", "content": context}],
+            thinking, result = think_then_json(
+                _GENERATE_PROMPT, context,
                 {"type": "object", "properties": {"content": {"type": "string"}, "sources": {"type": "array"}}}
             )
             state["generated"] = result.get("content", "")
         except Exception as e:
             state["generated"] = f"抱歉，生成内容时出现错误：{str(e)[:200]}"
-        state["mindchain"].append({"agent": "信息整理与生成", "content": state["generated"][:800]})
+        state["mindchain"].append({"agent": "信息整理与生成", "content": thinking[:800]})
         state.setdefault("steps", []).append({"agent": "信息整理与生成", "status": "done"})
         return state
 
@@ -157,15 +176,15 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None):
         state.setdefault("steps", []).append({"agent": "审核裁判", "status": "running"})
         state["retry_count"] = state.get("retry_count", 0) + 1
         try:
-            result = llm.chat_with_json(
-                [{"role": "system", "content": REVIEW_PROMPT}, {"role": "user", "content": state.get("generated", "")}],
+            thinking, result = think_then_json(
+                REVIEW_PROMPT, state.get("generated", ""),
                 {"type": "object", "properties": {"passed": {"type": "boolean"}, "score": {"type": "number"}, "issues": {"type": "array"}, "suggestion": {"type": "string"}}}
             )
             state["reviewed"] = result
         except Exception:
             state["reviewed"] = {"passed": True, "score": 80}
         state.setdefault("steps", []).append({"agent": "审核裁判", "status": "done", "detail": f"score={state['reviewed'].get('score', 0)}"})
-        state["mindchain"].append({"agent": "审核裁判", "content": json.dumps(state.get("reviewed", {}), ensure_ascii=False, indent=1)[:500]})
+        state["mindchain"].append({"agent": "审核裁判", "content": thinking[:600]})
         return state
 
     def output_node(state: AgentState) -> AgentState:
