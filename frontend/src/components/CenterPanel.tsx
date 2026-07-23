@@ -7,7 +7,7 @@ interface CenterPanelProps {
   messages: Message[]
   isLoading: boolean
   currentProject: Project | null
-  onSendMessage: (text: string) => void
+  onSendMessage: (text: string, settings?: Record<string, any>) => void
   statsCollapsed: boolean
   onToggleStats: () => void
 }
@@ -65,7 +65,16 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
   const handleSend = () => {
     const text = input.trim()
     if (!text) return
-    onSendMessage(text)
+    onSendMessage(text, {
+      searchMode: searchLabels[searchMode],
+      outputFormat: outputFormat === 0 ? '低结构化' : '高结构化',
+      outputStyle: outputStyle === 0 ? 'MD文档' : '对话形式',
+      thinking: thinking ? '开' : '关',
+      outputVolume: ['精简', '适中', '拓展'][outputVolume],
+      depth: ['浅', '中', '深'][depth],
+      inputOptMode: inputOptLabels[inputOptMode],
+      webSearchMode: webSearchMode === 0 ? '默认' : '增强',
+    })
     setInput('')
   }
 

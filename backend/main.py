@@ -52,6 +52,7 @@ class ChatRequest(BaseModel):
     message: str
     project_id: str | None = None
     api_key: str | None = None
+    settings: dict | None = None
 
 class ChatStep(BaseModel):
     agent: str

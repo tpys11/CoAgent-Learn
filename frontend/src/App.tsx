@@ -97,7 +97,7 @@ function App() {
   const handleRenameDialogue = useCallback((id: string, name: string) => {
     if (name.trim()) setDialogues(prev => prev.map(d => d.id === id ? { ...d, name: name.trim() } : d))
   }, [])
-  const handleSendMessage = useCallback(async (text: string) => {
+  const handleSendMessage = useCallback(async (text: string, settings?: Record<string, any>) => {
     if (!currentDialogueId) return
     setMessages(prev => [...prev, { role: 'user', content: text }])
     setIsLoading(true)
@@ -105,7 +105,7 @@ function App() {
     try {
       const res = await fetch('/api/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text.trim(), api_key: localStorage.getItem('coagent-apikey') || undefined }),
+        body: JSON.stringify({ message: text.trim(), api_key: localStorage.getItem('coagent-apikey') || undefined, settings: settings || {} }),
       })
       const reader = res.body!.getReader(); const decoder = new TextDecoder()
       let finalReply = ''; const steps: any[] = []
