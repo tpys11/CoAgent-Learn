@@ -113,8 +113,8 @@ def create_workflow(api_key: str | None = None):
                 {"type": "object", "properties": {"content": {"type": "string"}, "sources": {"type": "array"}}}
             )
             state["generated"] = result.get("content", "")
-        except Exception:
-            state["generated"] = "抱歉，生成内容时出现错误。"
+        except Exception as e:
+            state["generated"] = f"抱歉，生成内容时出现错误：{str(e)[:200]}"
         state.setdefault("steps", []).append({"agent": "信息整理与生成", "status": "done"})
         return state
 
@@ -133,12 +133,13 @@ def create_workflow(api_key: str | None = None):
         return state
 
     def output_node(state: AgentState) -> AgentState:
+        generated = state.get("generated") or "（系统未生成内容）"
         reviewed = state.get("reviewed", {})
         passed = reviewed.get("passed", True)
         if passed:
-            state["final_reply"] = state.get("generated", "")
+            state["final_reply"] = generated
         else:
-            state["final_reply"] = (state.get("generated", "") + f"\n\n> ⚠️ 审核未完全通过 (重试{state.get('retry_count', 0)}次)")
+            state["final_reply"] = generated + f"\n\n> ⚠️ 审核未完全通过 (重试{state.get('retry_count', 0)}次)"
         state.setdefault("steps", []).append({"agent": "输出", "status": "done"})
         return state
 
