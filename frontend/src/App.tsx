@@ -212,8 +212,13 @@ function App() {
               window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
             }}>
             <span className="text-[11px] font-semibold text-gray-500">多智能体协作流</span>
-            <button onClick={() => setFlowMinimized(true)}
-              className="w-6 h-6 flex items-center justify-center rounded hover:bg-[#e8e2d9] text-gray-500 hover:text-[#b8952e] font-bold">─</button>
+            <div className="flex items-center gap-1">
+              <button onClick={() => { setFlowAgents([]); setFlowActiveAgent(null) }}
+                className="w-6 h-6 flex items-center justify-center rounded hover:bg-[#e8e2d9] text-gray-500 hover:text-[#b8952e] text-sm"
+                title="刷新">↻</button>
+              <button onClick={() => setFlowMinimized(true)}
+                className="w-6 h-6 flex items-center justify-center rounded hover:bg-[#e8e2d9] text-gray-500 hover:text-[#b8952e] font-bold">─</button>
+            </div>
           </div>
           <div style={{ height: 'calc(100% - 32px)' }}>
             <AgentFlow visible={true} agents={flowAgents} activeAgent={flowActiveAgent} />
