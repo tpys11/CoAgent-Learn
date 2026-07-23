@@ -2,7 +2,7 @@
 import json, os
 from typing import TypedDict
 from langgraph.graph import StateGraph, END
-from backend.core.base_llm import DeepSeekLLM
+from core.base_llm import DeepSeekLLM
 from agents.prompts import (
     INPUT_AGENT_PROMPT, DISPATCH_AGENT_PROMPT, DIAGNOSE_PROMPT,
     KB_PROMPT, SEARCH_PROMPT, MEMORY_PROMPT, GENERATE_PROMPT, REVIEW_PROMPT,
