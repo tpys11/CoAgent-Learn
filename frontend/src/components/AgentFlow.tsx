@@ -1,8 +1,8 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ReactFlow, Background, Controls, Handle, Position, type Edge } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
-interface Props { visible: boolean }
+interface Props { visible: boolean; activeStep?: { agent: string; status: string } | null }
 
 function AgentNode({ data }: any) {
   const a = data.active; const size = a ? 1.08 : 1
@@ -61,34 +61,45 @@ const allEdges: Edge[] = [
   { id: 'e12', source: 'review', target: 'memory', sourceHandle: 'top', targetHandle: 'bottom', style: { strokeDasharray: '5,3' } },
 ]
 
-export default function AgentFlow({ visible }: Props) {
+export default function AgentFlow({ visible, activeStep }: Props) {
   const [phase, setPhase] = useState(0)
-  const [activeNode, setActiveNode] = useState<string | null>(null)
+  const [shownAgents, setShownAgents] = useState<Set<string>>(new Set())
   const defaultEdgeOptions = useMemo(() => ({
     type: 'smoothstep', style: { stroke: '#1a1a1a', strokeWidth: 1.5 },
     markerEnd: { type: 'arrowclosed' as const, color: '#1a1a1a', width: 12, height: 12 },
   }), [])
 
   useEffect(() => {
-    if (!visible) { setPhase(0); setActiveNode(null); return }
-    setPhase(1)
-    const seq = [
-      [300, 1, 'input'], [800, 1, 'dispatch'], [1600, 2, 'memory'], [1900, 2, 'diagnose'],
-      [2100, 2, 'kb'], [2300, 2, 'search'], [2900, 3, 'generate'], [3300, 3, 'review'],
-    ]
-    const timers = seq.map(([t, p, n]) => setTimeout(() => { setPhase(p as number); setActiveNode(n as string) }, t as number))
-    const f = setTimeout(() => setActiveNode(null), 4500)
-    return () => { timers.forEach(clearTimeout); clearTimeout(f) }
-  }, [visible])
+    if (!visible) { setPhase(0); setShownAgents(new Set()); return }
+    if (activeStep) {
+      // Agent name -> node id mapping
+      const map: Record<string, string> = {
+        '输入信息处理': 'input', '调度': 'dispatch', '记忆管理': 'memory',
+        '学情诊断': 'diagnose', '知识库管理': 'kb', '搜索': 'search',
+        '信息整理与生成': 'generate', '审核裁判': 'review',
+      }
+      const nodeId = map[activeStep.agent]
+      if (nodeId) {
+        const node = allNodes.find(n => n.id === nodeId)
+        const p = (node?.data as any)?.phase || 1
+        setPhase(p)
+        setShownAgents(prev => new Set([...prev, nodeId]))
+      }
+    }
+  }, [visible, activeStep])
 
-  const vNodes = allNodes.filter(n => (n.data as any).phase <= phase)
+  const vNodes = allNodes.filter(n => shownAgents.has(n.id) || (n.data as any).phase <= phase)
+  const activeNodeId = activeStep ? (() => {
+    const map: Record<string, string> = { '输入信息处理': 'input', '调度': 'dispatch', '记忆管理': 'memory', '学情诊断': 'diagnose', '知识库管理': 'kb', '搜索': 'search', '信息整理与生成': 'generate', '审核裁判': 'review' }
+    return map[activeStep.agent] || null
+  })() : null
   const vEdges = allEdges.filter(e => vNodes.some(n => n.id === e.source) && vNodes.some(n => n.id === e.target))
 
   return (
     <div className={`transition-all duration-300 overflow-hidden ${visible ? 'h-full' : 'h-0'}`}>
       <div className="h-full w-full relative" style={{ background: 'rgba(250,248,245,0.6)' }}>
         <ReactFlow
-          nodes={vNodes.map(n => ({ ...n, data: { ...n.data, active: activeNode === n.id } }))}
+          nodes={vNodes.map(n => ({ ...n, data: { ...n.data, active: activeNodeId === n.id } }))}
           edges={vEdges.map(e => ({ ...e, style: { ...(e.style || {}), stroke: '#1a1a1a' }, markerEnd: { type: 'arrowclosed', color: '#1a1a1a', width: 12, height: 12 } }))}
           nodeTypes={nodeTypes}
           defaultEdgeOptions={defaultEdgeOptions}

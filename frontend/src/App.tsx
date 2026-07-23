@@ -40,6 +40,7 @@ function App() {
   const [rightCollapsed, setRightCollapsed] = useState(false)
   const [flowVisible, setFlowVisible] = useState(false)
   const [flowMinimized, setFlowMinimized] = useState(false)
+  const [activeStep, setActiveStep] = useState<{agent: string; status: string} | null>(null)
   const flowRef = useRef<HTMLDivElement>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
   const btnDragged = useRef(false)
@@ -100,11 +101,25 @@ function App() {
     if (!currentDialogueId) return
     setMessages(prev => [...prev, { role: 'user', content: text }])
     setIsLoading(true)
-    setFlowVisible(true); setFlowMinimized(false)
+    setFlowVisible(true); setFlowMinimized(false); setActiveStep(null)
     try {
-      const res = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: text.trim(), api_key: localStorage.getItem('coagent-apikey') || undefined }) })
-      const data = await res.json()
-      setMessages(prev => [...prev, { role: 'assistant', content: data.reply || '抱歉，回复为空。', steps: data.steps || [] }])
+      const res = await fetch('/api/chat', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text.trim(), api_key: localStorage.getItem('coagent-apikey') || undefined }),
+      })
+      const reader = res.body!.getReader(); const decoder = new TextDecoder()
+      let finalReply = ''; const steps: any[] = []
+      while (true) {
+        const { done, value } = await reader.read(); if (done) break
+        const text = decoder.decode(value, { stream: true })
+        for (const line of text.split('\n')) {
+          if (!line.startsWith('data: ')) continue
+          const data = JSON.parse(line.slice(6))
+          if (data.type === 'step') setActiveStep({ agent: data.agent, status: data.status })
+          if (data.type === 'done') { finalReply = data.reply; steps.push(...(data.steps || [])) }
+        }
+      }
+      setMessages(prev => [...prev, { role: 'assistant', content: finalReply || '处理完成', steps }])
     } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: '抱歉，请求失败。' }])
     } finally { setIsLoading(false) }
@@ -197,7 +212,7 @@ function App() {
               className="w-5 h-5 flex items-center justify-center rounded hover:bg-[#e8e2d9] text-gray-400 text-xs">─</button>
           </div>
           <div style={{ height: 'calc(100% - 32px)' }}>
-            <AgentFlow visible={true} />
+            <AgentFlow visible={true} activeStep={activeStep} />
           </div>
           {/* 八向 resize 手柄 */}
           {['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'].map(dir => {
