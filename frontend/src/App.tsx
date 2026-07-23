@@ -131,7 +131,7 @@ function App() {
           if (data.type === 'done') { finalReply = data.reply; steps.push(...(data.steps || [])) }
         }
       }
-      setMessages(prev => [...prev, { role: 'assistant', content: finalReply || '处理完成', steps }])
+      setMessages(prev => [...prev, { role: 'assistant', content: finalReply || '处理完成', steps, think: flowMindchain.map(m => m.content) }])
     } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: '抱歉，请求失败。' }])
     } finally { setIsLoading(false) }

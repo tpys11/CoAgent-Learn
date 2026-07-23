@@ -33,6 +33,7 @@ export interface Message {
   role: 'user' | 'assistant' | 'thinking'
   content: string
   steps?: ChatStep[]
+  think?: string[]
 }
 
 export interface ChatStep {

@@ -182,48 +182,20 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
                       ))}
                     </div>
                   )}
+                  {msg.think && msg.think.length > 0 && (
+                    <CollapsibleThink think={msg.think} />
+                  )}
                 </>
               )}
             </div>
           ))
         )}
         {isLoading && (
-          <div className="self-start bg-[#faf8f5] border border-[#dad4cd] rounded-2xl rounded-bl-sm px-4 py-2.5 max-w-[80%] text-sm">
-            {flowMindchain.length === 0 ? (
-              <div className="flex items-center gap-2 text-gray-400">
-                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" />
-                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }} />
-                <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }} />
-                <span className="text-xs">思考中…</span>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-1.5">
-                {flowMindchain.map((item, i) => (
-                  <div key={i} className="text-xs leading-relaxed text-gray-600">
-                    {cleanThinking(item.content)}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-        {/* 思考完成后的折叠卡片 */}
-        {!isLoading && flowMindchain.length > 0 && (
-          <div className="self-start bg-[#faf8f5] border border-[#dad4cd] rounded-2xl rounded-bl-sm max-w-[80%] overflow-hidden">
-            <button onClick={() => setThinkingCollapsed(!thinkingCollapsed)}
-              className="w-full flex items-center justify-between px-4 py-2 text-xs text-gray-500 hover:bg-[#f0ebe4] transition-colors">
-              <span>✓ 已完成思考</span>
-              <span className="text-gray-400">{thinkingCollapsed ? '▸ 展开' : '▾ 收起'}</span>
-            </button>
-            {!thinkingCollapsed && (
-              <div className="px-4 pb-3 flex flex-col gap-1.5 border-t border-[#dad4cd] pt-2">
-                {flowMindchain.map((item, i) => (
-                  <div key={i} className="text-xs leading-relaxed text-gray-600">
-                    {cleanThinking(item.content)}
-                  </div>
-                ))}
-              </div>
-            )}
+          <div className="self-start px-4 py-2.5 text-sm text-gray-400 flex items-center gap-2">
+            <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" />
+            <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }} />
+            <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }} />
+            <span className="text-xs">思考中…</span>
           </div>
         )}
       </div>
@@ -409,5 +381,21 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
       {showMemory && <MemoryModal onClose={() => setShowMemory(false)} />}
       {showKnowledge && <KnowledgeModal onClose={() => setShowKnowledge(false)} />}
     </main>
+  )
+}
+
+function CollapsibleThink({ think }: { think: string[] }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="mt-2 pt-2 border-t border-[#dad4cd]">
+      <button onClick={() => setOpen(!open)} className="text-[11px] text-gray-400 hover:text-gray-600 flex items-center gap-1">
+        <span>{open ? '▾' : '▸'}</span> 思考过程
+      </button>
+      {open && (
+        <div className="mt-2 text-[11px] text-gray-500 leading-relaxed whitespace-pre-wrap max-h-60 overflow-y-auto">
+          {think.join('\n')}
+        </div>
+      )}
+    </div>
   )
 }
