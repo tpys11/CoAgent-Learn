@@ -121,12 +121,21 @@ function App() {
             setFlowAgents(prev => prev.includes(data.agent) ? prev : [...prev, data.agent])
             setFlowActiveAgent(data.agent)
             setFlowThoughts(prev => ({ ...prev, [data.agent]: data.content }))
-            setFlowMindchain(prev => [...prev, { agent: data.agent, content: data.content }])
+            setFlowMindchain(prev => {
+              const next = [...prev, { agent: data.agent, content: data.content }]
+              const text = next.map(m => `**${m.agent}**：${m.content}`).join('\n')
+              setMessages(msgs => {
+                const last = msgs[msgs.length - 1]
+                if (last?.role === 'thinking') return [...msgs.slice(0, -1), { role: 'thinking', content: text }]
+                return [...msgs, { role: 'thinking', content: text }]
+              })
+              return next
+            })
           }
           if (data.type === 'done') { finalReply = data.reply; steps.push(...(data.steps || [])) }
         }
       }
-      setMessages(prev => [...prev, { role: 'assistant', content: finalReply || '处理完成', steps }])
+      setMessages(prev => [...prev.filter(m => m.role !== 'thinking'), { role: 'assistant', content: finalReply || '处理完成', steps }])
     } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: '抱歉，请求失败。' }])
     } finally { setIsLoading(false) }

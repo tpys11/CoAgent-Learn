@@ -132,22 +132,8 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
       <div className={`overflow-y-auto px-4 py-3 flex flex-col gap-3 flex-1`}>
         {/* Agent 思考过程 */}
         {showAgentFlow && (
-          <div className="mb-2 bg-white border border-[#dad4cd] rounded-xl overflow-hidden flex-shrink-0 flex flex-col" style={{ height: '35vh', minHeight: 220 }}>
-            <div className="flex-1">
-              <AgentFlow visible={true} agents={flowAgents} activeAgent={flowActiveAgent} thoughts={flowThoughts} />
-            </div>
-            <div className="flex-shrink-0 border-t border-[#dad4cd] overflow-y-auto px-3 py-2 bg-[#faf8f5]" style={{ maxHeight: '45%' }}>
-              {flowMindchain.length === 0 ? (
-                <p className="text-[11px] text-gray-400 text-center py-2">等待Agent执行...</p>
-              ) : (
-                flowMindchain.map((item, i) => (
-                  <div key={i} className="mb-1.5 text-[11px] leading-relaxed" style={{ animation: 'fadeIn 0.3s ease' }}>
-                    <span className="font-semibold text-[#b8952e]">{item.agent}：</span>
-                    <span className="text-gray-600">{item.content}</span>
-                  </div>
-                ))
-              )}
-            </div>
+          <div className="mb-2 bg-white border border-[#dad4cd] rounded-xl overflow-hidden flex-shrink-0" style={{ height: '28vh', minHeight: 150 }}>
+            <AgentFlow visible={true} agents={flowAgents} activeAgent={flowActiveAgent} thoughts={flowThoughts} />
           </div>
         )}
         {messages.length === 0 ? (
@@ -167,6 +153,8 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
               className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm ${
                 msg.role === 'user'
                   ? 'self-end bg-[#fef3eb] border border-[#c75f1a]/25 rounded-br-sm'
+                  : msg.role === 'thinking'
+                  ? 'self-start bg-[#faf8f5] border border-[#dad4cd] rounded-bl-sm italic'
                   : 'self-start bg-transparent border border-transparent rounded-bl-sm'
               }`}
             >
