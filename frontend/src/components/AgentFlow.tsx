@@ -47,18 +47,18 @@ const allNodes = [
 ]
 
 const allEdges: Edge[] = [
-  { id: 'e1', source: 'input', target: 'dispatch' },
-  { id: 'e2', source: 'dispatch', target: 'memory' },
-  { id: 'e3', source: 'dispatch', target: 'diagnose' },
-  { id: 'e4', source: 'dispatch', target: 'kb' },
-  { id: 'e5', source: 'dispatch', target: 'search' },
-  { id: 'e6', source: 'diagnose', target: 'generate' },
-  { id: 'e7', source: 'kb', target: 'generate' },
-  { id: 'e8', source: 'search', target: 'generate' },
-  { id: 'e9', source: 'dispatch', target: 'generate', style: { strokeDasharray: '8,3' } },
-  { id: 'e10', source: 'generate', target: 'review' },
-  { id: 'e11', source: 'review', target: 'generate', style: { strokeDasharray: '5,3' } },
-  { id: 'e12', source: 'review', target: 'memory', style: { strokeDasharray: '5,3' } },
+  { id: 'e1', source: 'input', target: 'dispatch', sourceHandle: 'right', targetHandle: 'left' },
+  { id: 'e2', source: 'dispatch', target: 'memory', sourceHandle: 'right', targetHandle: 'left' },
+  { id: 'e3', source: 'dispatch', target: 'diagnose', sourceHandle: 'right', targetHandle: 'left' },
+  { id: 'e4', source: 'dispatch', target: 'kb', sourceHandle: 'right', targetHandle: 'left' },
+  { id: 'e5', source: 'dispatch', target: 'search', sourceHandle: 'right', targetHandle: 'left' },
+  { id: 'e6', source: 'diagnose', target: 'generate', sourceHandle: 'right', targetHandle: 'left' },
+  { id: 'e7', source: 'kb', target: 'generate', sourceHandle: 'right', targetHandle: 'left' },
+  { id: 'e8', source: 'search', target: 'generate', sourceHandle: 'right', targetHandle: 'left' },
+  { id: 'e9', source: 'dispatch', target: 'generate', sourceHandle: 'right', targetHandle: 'left', style: { strokeDasharray: '8,3' } },
+  { id: 'e10', source: 'generate', target: 'review', sourceHandle: 'right', targetHandle: 'left' },
+  { id: 'e11', source: 'review', target: 'generate', sourceHandle: 'bottom', targetHandle: 'bottom', style: { strokeDasharray: '5,3' } },
+  { id: 'e12', source: 'review', target: 'memory', sourceHandle: 'top', targetHandle: 'bottom', style: { strokeDasharray: '5,3' } },
 ]
 
 export default function AgentFlow({ visible }: Props) {

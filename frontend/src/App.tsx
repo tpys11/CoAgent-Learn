@@ -202,7 +202,8 @@ function App() {
       {flowVisible && flowMinimized && (
         <button ref={btnRef} onClick={() => setFlowMinimized(false)}
           onMouseDown={(e) => {
-            const el = btnRef.current!; const sx = e.clientX - el.offsetLeft; const sy = e.clientY - el.offsetTop
+            const el = btnRef.current!; const rect = el.getBoundingClientRect()
+            const sx = e.clientX - rect.left; const sy = e.clientY - rect.top
             const onMove = (ev: MouseEvent) => { el.style.left = (ev.clientX - sx) + 'px'; el.style.top = (ev.clientY - sy) + 'px'; el.style.right = 'auto' }
             const onUp = () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
             window.addEventListener('mousemove', onMove); window.addEventListener('mouseup', onUp)
