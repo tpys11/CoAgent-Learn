@@ -143,11 +143,6 @@ function App() {
         onSendMessage={handleSendMessage}
         statsCollapsed={statsCollapsed} onToggleStats={() => setStatsCollapsed(!statsCollapsed)}
       />
-      {/* 右侧拖拽手柄 */}
-      {!rightCollapsed && (
-        <div onMouseDown={() => { dragging.current = 'right'; document.body.style.userSelect = 'none' }}
-          className="w-1.5 h-full cursor-col-resize hover:bg-[#c75f1a]/30 flex-shrink-0 transition-colors" />
-      )}
       {/* 右侧栏 */}
       {!rightCollapsed && (
         <>
@@ -155,6 +150,9 @@ function App() {
           <button onClick={() => setRightCollapsed(true)}
             className="w-5 h-5 flex items-center justify-center rounded bg-white border border-[#dad4cd] text-gray-400 hover:text-[#c75f1a] text-xs shadow-sm flex-shrink-0 self-start mt-2"
             title="收起右侧栏">▶</button>
+          {/* 右侧拖拽手柄 */}
+          <div onMouseDown={() => { dragging.current = 'right'; document.body.style.userSelect = 'none' }}
+            className="w-1.5 h-full cursor-col-resize hover:bg-[#c75f1a]/30 flex-shrink-0 transition-colors" />
           <div style={{ width: rightPanelWidth, minWidth: 180 }} className="h-full flex-shrink-0 relative">
             <RightPanel />
           </div>
