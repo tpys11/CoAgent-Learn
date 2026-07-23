@@ -2,21 +2,26 @@ import { useEffect, useMemo, useState } from 'react'
 import { ReactFlow, Background, Controls, Handle, Position, type Edge } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
-interface Props { visible: boolean; agents?: string[]; activeAgent?: string | null }
+interface Props { visible: boolean; agents?: string[]; activeAgent?: string | null; thoughts?: Record<string, string> }
 
 function AgentNode({ data }: any) {
-  const a = data.active; const size = a ? 1.08 : 1
+  const a = data.active; const size = a ? 1.08 : 1; const thought = data.thought as string | undefined
   return (
     <div className="transition-all duration-500 ease-out" style={{ transform: `scale(${size})`, opacity: 0.92 }}>
       <div className="px-3 py-2.5 rounded-xl border text-center" style={{
         background: 'rgba(255,255,255,0.45)', backdropFilter: 'blur(10px)', borderColor: '#b8952e', borderWidth: 1.5,
         boxShadow: a ? '0 4px 20px rgba(184,149,46,0.18)' : '0 1px 6px rgba(0,0,0,0.04)',
-        minWidth: a ? 170 : 120, transition: 'all 0.5s ease',
+        minWidth: a ? 180 : 120, transition: 'all 0.5s ease',
       }}>
         <div style={{ fontSize: a ? 9 : 10, fontWeight: 600, color: '#5c4a1e', display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
           <span>{data.icon}</span><span>{data.label}</span>
         </div>
-        {a && data.detail && <div className="text-[10px] text-gray-500 leading-relaxed mt-1 max-w-[160px]">{data.detail}</div>}
+        {a && thought && (
+          <div className="mt-1.5 text-[10px] text-gray-500 leading-relaxed max-w-[220px] text-left"
+               style={{ wordBreak: 'break-word' }}>
+            {thought.slice(0, 150)}{thought.length > 150 ? '...' : ''}
+          </div>
+        )}
         <Handle type="target" position={Position.Top} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
         <Handle type="source" position={Position.Top} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
         <Handle type="target" position={Position.Bottom} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
@@ -61,7 +66,7 @@ const allEdges: Edge[] = [
   { id: 'e12', source: 'review', target: 'memory', sourceHandle: 'top', targetHandle: 'bottom', style: { strokeDasharray: '5,3' } },
 ]
 
-export default function AgentFlow({ visible, agents, activeAgent }: Props) {
+export default function AgentFlow({ visible, agents, activeAgent, thoughts }: Props) {
   const [phase, setPhase] = useState(0)
   const agentNameToId: Record<string, string> = {
     '输入信息处理': 'input', '调度': 'dispatch', '记忆管理': 'memory',
@@ -80,6 +85,7 @@ export default function AgentFlow({ visible, agents, activeAgent }: Props) {
   const shownIds = new Set((agents || []).map(a => agentNameToId[a]).filter(Boolean))
   const vNodes = allNodes.filter(n => shownIds.has(n.id) || (n.data as any).phase <= phase)
   const activeId = activeAgent ? agentNameToId[activeAgent] : null
+  const idToName = Object.fromEntries(Object.entries(agentNameToId).map(([k,v]) => [v, k]))
   const defaultEdgeOptions = useMemo(() => ({
     type: 'smoothstep', style: { stroke: '#1a1a1a', strokeWidth: 1.5 },
     markerEnd: { type: 'arrowclosed' as const, color: '#1a1a1a', width: 12, height: 12 },
@@ -90,7 +96,7 @@ export default function AgentFlow({ visible, agents, activeAgent }: Props) {
     <div className={`transition-all duration-300 overflow-hidden ${visible ? 'h-full' : 'h-0'}`}>
       <div className="h-full w-full relative" style={{ background: 'rgba(250,248,245,0.6)' }}>
         <ReactFlow
-          nodes={vNodes.map(n => ({ ...n, data: { ...n.data, active: activeId === n.id } }))}
+          nodes={vNodes.map(n => ({ ...n, data: { ...n.data, active: activeId === n.id, thought: (thoughts || {})[idToName[n.id] || ''] } }))}
           edges={vEdges.map(e => ({ ...e, style: { ...(e.style || {}), stroke: '#1a1a1a' }, markerEnd: { type: 'arrowclosed', color: '#1a1a1a', width: 12, height: 12 } }))}
           nodeTypes={nodeTypes}
           defaultEdgeOptions={defaultEdgeOptions}

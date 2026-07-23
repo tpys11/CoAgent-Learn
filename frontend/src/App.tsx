@@ -42,6 +42,7 @@ function App() {
   const [flowMinimized, setFlowMinimized] = useState(false)
   const [flowAgents, setFlowAgents] = useState<string[]>([])
   const [flowActiveAgent, setFlowActiveAgent] = useState<string | null>(null)
+  const [flowThoughts, setFlowThoughts] = useState<Record<string, string>>({})
   const flowRef = useRef<HTMLDivElement>(null)
   const btnRef = useRef<HTMLButtonElement>(null)
   const btnDragged = useRef(false)
@@ -102,7 +103,7 @@ function App() {
     if (!currentDialogueId) return
     setMessages(prev => [...prev, { role: 'user', content: text }])
     setIsLoading(true)
-    setFlowVisible(true); setFlowMinimized(false); setFlowAgents([]); setFlowActiveAgent(null)
+    setFlowVisible(true); setFlowMinimized(false); setFlowAgents([]); setFlowActiveAgent(null); setFlowThoughts({})
     try {
       const res = await fetch('/api/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -119,6 +120,11 @@ function App() {
           if (data.type === 'step') {
             setFlowAgents(prev => prev.includes(data.agent) ? prev : [...prev, data.agent])
             setFlowActiveAgent(data.agent)
+          }
+          if (data.type === 'thought') {
+            setFlowAgents(prev => prev.includes(data.agent) ? prev : [...prev, data.agent])
+            setFlowActiveAgent(data.agent)
+            setFlowThoughts(prev => ({ ...prev, [data.agent]: data.content }))
           }
           if (data.type === 'done') { finalReply = data.reply; steps.push(...(data.steps || [])) }
         }
@@ -221,7 +227,7 @@ function App() {
             </div>
           </div>
           <div style={{ height: 'calc(100% - 32px)' }}>
-            <AgentFlow visible={true} agents={flowAgents} activeAgent={flowActiveAgent} />
+            <AgentFlow visible={true} agents={flowAgents} activeAgent={flowActiveAgent} thoughts={flowThoughts} />
           </div>
           {/* 八向 resize 手柄 */}
           {['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'].map(dir => {

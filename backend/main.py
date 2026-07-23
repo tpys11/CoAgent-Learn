@@ -69,13 +69,20 @@ async def chat(req: ChatRequest):
     async def stream():
         try:
             from agents.graph import create_workflow
+            import asyncio
             wf = create_workflow(req.api_key, req.settings)
             yield f"data: {json.dumps({'type': 'start'})}\n\n"
-            # 同步 invoke，分步 yield
-            result = wf.invoke({"user_input": req.message, "steps": []})
-            for s in result.get("steps", []):
-                yield f"data: {json.dumps({'type': 'step', 'agent': s.get('agent', ''), 'status': s.get('status', ''), 'detail': s.get('detail', '')})}\n\n"
-            yield f"data: {json.dumps({'type': 'done', 'reply': result.get('final_reply', '处理完成'), 'steps': [s for s in result.get('steps', []) if s.get('status') == 'done']})}\n\n"
+            async for chunk in wf.astream({"user_input": req.message, "steps": [], "mindchain": []}, stream_mode="updates"):
+                for node_data in chunk.values():
+                    mc = node_data.get("mindchain", [])
+                    if mc:
+                        latest = mc[-1]
+                        yield f"data: {json.dumps({'type': 'thought', 'agent': latest['agent'], 'content': latest['content']})}\n\n"
+                    for s in node_data.get("steps", []):
+                        yield f"data: {json.dumps({'type': 'step', 'agent': s.get('agent', ''), 'status': s.get('status', ''), 'detail': s.get('detail', '')})}\n\n"
+                await asyncio.sleep(0)
+            result = wf.invoke({"user_input": req.message, "steps": [], "mindchain": []})
+            yield f"data: {json.dumps({'type': 'done', 'reply': result.get('final_reply', '处理完成'), 'steps': [s for s in result.get('steps', []) if s.get('status') == 'done'], 'mindchain': result.get('mindchain', [])})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
     return StreamingResponse(stream(), media_type="text/event-stream")

@@ -23,6 +23,7 @@ class AgentState(TypedDict):
     steps: list
     dispatch_count: int
     _dispatch_result: dict
+    mindchain: list  # [{agent, content}]
 
 
 def create_workflow(api_key: str | None = None, settings: dict | None = None):
@@ -57,6 +58,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None):
 
     def input_node(state: AgentState) -> AgentState:
         state.setdefault("steps", []).append({"agent": "输入信息处理", "status": "running"})
+        state.setdefault("mindchain", [])
         try:
             result = llm.chat_with_json(
                 [{"role": "system", "content": _INPUT_PROMPT},
@@ -66,6 +68,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None):
             state["processed_input"] = result.get("processed", state["user_input"])
         except Exception:
             state["processed_input"] = state["user_input"]
+        state["mindchain"].append({"agent": "输入信息处理", "content": state["processed_input"][:200]})
         state.setdefault("steps", []).append({"agent": "输入信息处理", "status": "done"})
         state["dispatch_count"] = 0
         return state
@@ -87,6 +90,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None):
         except Exception:
             result = {"action": "enough", "summary": "调度异常，使用已有信息"}
         state.setdefault("steps", []).append({"agent": "调度", "status": "done", "detail": result.get("action", "unknown")})
+        state["mindchain"].append({"agent": "调度", "content": f"决定: {result.get('action', 'unknown')}" + (f" → {result.get('agent', '')}" if result.get('agent') else "")})
         state["_dispatch_result"] = result
         return state
 
@@ -141,6 +145,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None):
             state["generated"] = result.get("content", "")
         except Exception as e:
             state["generated"] = f"抱歉，生成内容时出现错误：{str(e)[:200]}"
+        state["mindchain"].append({"agent": "信息整理与生成", "content": state["generated"][:200]})
         state.setdefault("steps", []).append({"agent": "信息整理与生成", "status": "done"})
         return state
 
