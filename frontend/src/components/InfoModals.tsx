@@ -18,11 +18,8 @@ export function MemoryModal({ onClose }: Props) {
 
   const ToggleBtn = ({ on, setOn }: { on: boolean; setOn: (v: boolean) => void }) => (
     <button onClick={() => setOn(!on)}
-      className={`flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium transition-colors ${
-        on ? 'bg-green-50 text-green-600 border border-green-200' : 'bg-gray-100 text-gray-400 border border-gray-200'
-      }`}>
-      <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1 ${on ? 'bg-green-500' : 'bg-gray-400'}`} />
-      {on ? '自动' : '手动'}
+      className={`relative w-8 h-4 rounded-full transition-colors flex-shrink-0 ${on ? 'bg-green-400' : 'bg-gray-300'}`}>
+      <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-all ${on ? 'left-4' : 'left-0.5'}`} />
     </button>
   )
 
@@ -38,11 +35,13 @@ export function MemoryModal({ onClose }: Props) {
         <div className="px-5 py-3 bg-[#faf8f5] border-b border-[#dad4cd] flex-shrink-0">
           <p className="text-xs text-gray-500 mb-2">系统会根据您的行为自动更新记忆，您也可以手动管理。如果需要关闭系统自动管理，则关闭此按钮。</p>
           <button onClick={() => setAutoMemory(!autoMemory)}
-            className={`w-full py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2 ${
-              autoMemory ? 'bg-green-50 border border-green-300 text-green-700' : 'bg-gray-100 border border-gray-300 text-gray-500'
+            className={`relative w-full h-10 rounded-lg transition-colors flex items-center justify-center px-4 ${
+              autoMemory ? 'bg-green-50 border border-green-300' : 'bg-gray-100 border border-gray-300'
             }`}>
-            <span className={`w-3 h-3 rounded-full ${autoMemory ? 'bg-green-500' : 'bg-gray-400'}`} />
-            {autoMemory ? '自动管理：已开启' : '自动管理：已关闭'}
+            <span className="text-sm font-semibold mr-3">{autoMemory ? '自动管理：已开启' : '自动管理：已关闭'}</span>
+            <span className={`relative w-10 h-5 rounded-full transition-colors ${autoMemory ? 'bg-green-400' : 'bg-gray-300'}`}>
+              <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${autoMemory ? 'left-5' : 'left-0.5'}`} />
+            </span>
           </button>
         </div>
 
