@@ -9,6 +9,7 @@ export default function SettingsModal({ onClose }: Props) {
   const [fontSize, setFontSize] = useState(() => parseInt(localStorage.getItem('coagent-fontSize') || '15'))
   const [theme, setTheme] = useState(() => localStorage.getItem('coagent-theme') || 'system')
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('coagent-apikey') || '')
+  const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     document.documentElement.style.fontSize = `${fontSize}px`
@@ -23,6 +24,8 @@ export default function SettingsModal({ onClose }: Props) {
 
   const handleApiKeySave = () => {
     localStorage.setItem('coagent-apikey', apiKey)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
   }
 
   return (
@@ -95,6 +98,7 @@ export default function SettingsModal({ onClose }: Props) {
               >
                 保存
               </button>
+              {saved && <span className="text-xs text-green-600 font-medium ml-2">✓ 已保存</span>}
             </div>
             <p className="text-[10px] text-gray-400 mt-1.5">API Key 仅保存在浏览器本地，不会上传到服务器。</p>
           </div>
