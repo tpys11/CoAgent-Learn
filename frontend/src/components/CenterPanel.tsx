@@ -4,6 +4,8 @@ import type { Message, Project } from '../types'
 import { MemoryModal, KnowledgeModal } from './InfoModals'
 import AgentFlow from './AgentFlow'
 
+const cleanThinking = (t: string) => t.replace(/```json[\s\S]*?```/g, '').replace(/```[\s\S]*?```/g, '').trim()
+
 interface CenterPanelProps {
   messages: Message[]
   isLoading: boolean
@@ -33,6 +35,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
   const [depth, setDepth] = useState(1)
   const [showMemory, setShowMemory] = useState(false)
   const [showKnowledge, setShowKnowledge] = useState(false)
+  const [thinkingCollapsed, setThinkingCollapsed] = useState(true)
   const [showSearch, setShowSearch] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
   const [showInputOpt, setShowInputOpt] = useState(false)
@@ -55,6 +58,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
     }, 10000)
     return () => clearInterval(timer)
   }, [])
+  useEffect(() => { if (!isLoading && flowMindchain.length > 0) setThinkingCollapsed(true) }, [isLoading, flowMindchain.length])
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -194,11 +198,28 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
               </div>
             ) : (
               <div className="flex flex-col gap-1.5">
-                <span className="text-xs font-semibold text-[#b8952e]">思考中…</span>
                 {flowMindchain.map((item, i) => (
-                  <div key={i} className="text-xs leading-relaxed">
-                    <span className="font-semibold text-gray-600">{item.agent}：</span>
-                    <span className="text-gray-500">{item.content}</span>
+                  <div key={i} className="text-xs leading-relaxed text-gray-600">
+                    {cleanThinking(item.content)}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        {/* 思考完成后的折叠卡片 */}
+        {!isLoading && flowMindchain.length > 0 && (
+          <div className="self-start bg-[#faf8f5] border border-[#dad4cd] rounded-2xl rounded-bl-sm max-w-[80%] overflow-hidden">
+            <button onClick={() => setThinkingCollapsed(!thinkingCollapsed)}
+              className="w-full flex items-center justify-between px-4 py-2 text-xs text-gray-500 hover:bg-[#f0ebe4] transition-colors">
+              <span>✓ 已完成思考</span>
+              <span className="text-gray-400">{thinkingCollapsed ? '▸ 展开' : '▾ 收起'}</span>
+            </button>
+            {!thinkingCollapsed && (
+              <div className="px-4 pb-3 flex flex-col gap-1.5 border-t border-[#dad4cd] pt-2">
+                {flowMindchain.map((item, i) => (
+                  <div key={i} className="text-xs leading-relaxed text-gray-600">
+                    {cleanThinking(item.content)}
                   </div>
                 ))}
               </div>
