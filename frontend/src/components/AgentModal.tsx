@@ -17,6 +17,29 @@ export default function AgentModal({ agent, onSave, onClose }: Props) {
   const [allSkills, setAllSkills] = useState<SkillInfo[]>([])
   const [linkedSkills, setLinkedSkills] = useState<string[]>([])
   const [expandedSkill, setExpandedSkill] = useState<string | null>(null)
+  const [uploadedFiles, setUploadedFiles] = useState<string[]>([])
+
+  const handleSkillUpload = (e: any) => {
+    const files = Array.from(e.target.files || [])
+    setUploadedFiles(files.map((f: any) => (f as any).webkitRelativePath || f.name))
+  }
+
+  const handleSkillDrop = (e: any) => {
+    e.preventDefault()
+    const items = Array.from(e.dataTransfer.items) as any[]
+    const names: string[] = []
+    const processEntry = async (entry: any, path = '') => {
+      if (entry.isFile) { names.push(path + entry.name); return }
+      if (entry.isDirectory) {
+        const reader = entry.createReader()
+        const readAll = (): Promise<any[]> => new Promise(resolve => reader.readEntries(resolve))
+        let entries: any[] = []; let batch
+        while ((batch = await readAll()) && batch.length > 0) entries = entries.concat(batch)
+        for (const e of entries) await processEntry(e, path + entry.name + '/')
+      }
+    }
+    Promise.all(items.map(item => processEntry(item.webkitGetAsEntry()))).then(() => setUploadedFiles(names))
+  }
 
   useEffect(() => {
     fetch('/api/skills').then(r => r.json()).then(d => {
@@ -152,12 +175,23 @@ export default function AgentModal({ agent, onSave, onClose }: Props) {
             </div>
             {/* 上传新 Skill */}
             <div className="mt-3 border-2 border-dashed border-[#c4beb6] rounded-lg p-4 bg-[#faf8f5] flex flex-col items-center gap-2 hover:border-[#c75f1a]/50 transition-colors cursor-pointer"
-              onClick={() => document.getElementById('skill-file-input')?.click()}>
+              onClick={() => document.getElementById('skill-file-input')?.click()}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={handleSkillDrop}>
               <Upload size={22} className="text-gray-400" />
-              <span className="text-xs text-gray-400">点击上传 Skill 文件夹</span>
-              <span className="text-[10px] text-gray-300">将文件夹拖拽到此处，或点击选择</span>
-              <input id="skill-file-input" type="file" className="hidden" />
+              <span className="text-xs text-gray-400">上传 Skill 文件夹</span>
+              <span className="text-[10px] text-gray-300">点击选择或拖拽文件夹到此处</span>
+              <input id="skill-file-input" type="file" className="hidden"
+                {...({ webkitdirectory: '', directory: '' } as any)}
+                onChange={handleSkillUpload} />
             </div>
+            {uploadedFiles.length > 0 && (
+              <div className="mt-2 text-[10px] text-gray-500 bg-white border border-[#dad4cd] rounded-lg p-2 max-h-24 overflow-y-auto">
+                <span className="font-semibold">已上传 {uploadedFiles.length} 个文件：</span>
+                {uploadedFiles.slice(0, 10).map((f, i) => <div key={i} className="truncate">📄 {f}</div>)}
+                {uploadedFiles.length > 10 && <div>...还有 {uploadedFiles.length - 10} 个文件</div>}
+              </div>
+            )}
           </div>
         </div>
 
