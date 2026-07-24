@@ -25,6 +25,7 @@ services:
     volumes:
       - ../backend:/app
       - ../agents:/app/agents
+      - ../skills:/app/skills
       - ../data:/app/data
       - ../chroma_db:/app/chroma_db
     depends_on:

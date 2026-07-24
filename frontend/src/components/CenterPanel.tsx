@@ -200,10 +200,13 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
               <span className="text-gray-400">{thinkingCollapsed || isLoading ? '▸ 展开' : '▾ 收起'}</span>
             </button>
             {!thinkingCollapsed && (
-              <div className="px-4 pb-3 flex flex-col gap-1.5 border-t border-[#dad4cd] pt-2 max-h-60 overflow-y-auto">
+              <div className="px-4 pb-3 flex flex-col gap-2 border-t border-[#dad4cd] pt-2 max-h-60 overflow-y-auto">
                 {flowMindchain.map((item, i) => (
-                  <div key={i} className="text-[11px] leading-relaxed text-gray-500 whitespace-pre-wrap">
-                    {item.content}
+                  <div key={i} className="animate-[fadeIn_0.2s_ease]">
+                    <div className="text-[11px] font-semibold text-[#b8952e] mb-0.5">{item.agent}</div>
+                    <div className="text-[11px] leading-relaxed text-gray-500 whitespace-pre-wrap pl-2 border-l-2 border-[#dad4cd]">
+                      {item.content}
+                    </div>
                   </div>
                 ))}
               </div>
