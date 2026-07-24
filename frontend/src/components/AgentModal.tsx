@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { X, RotateCcw } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { X, RotateCcw, Folder, FolderOpen, Plus, Trash2, ExternalLink } from 'lucide-react'
 import type { AgentConfig } from '../types'
 
 interface Props {
@@ -8,21 +8,39 @@ interface Props {
   onClose: () => void
 }
 
+interface SkillInfo { name: string; description: string; folder: string }
+
 export default function AgentModal({ agent, onSave, onClose }: Props) {
   const [mode, setMode] = useState(agent.mode)
   const [prompt, setPrompt] = useState(agent.systemPrompt)
   const [skill, setSkill] = useState(agent.skill)
+  const [allSkills, setAllSkills] = useState<SkillInfo[]>([])
+  const [linkedSkills, setLinkedSkills] = useState<string[]>([])
+  const [expandedSkill, setExpandedSkill] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/api/skills').then(r => r.json()).then(d => {
+      setAllSkills(d.skills || [])
+      // 从当前skill文本中解析已关联的skill名
+      const names = (agent.skill || '').match(/[a-z_]+/g) || []
+      setLinkedSkills(names.filter((n: string) => (d.skills || []).some((s: SkillInfo) => s.name === n)))
+    })
+  }, [agent.skill])
 
   const currentMode = agent.modes.find(m => m.label === mode)
 
-  const handleModeChange = (label: string) => {
-    setMode(label)
-    // 恢复默认提示词再叠加模式
-    setPrompt(agent.defaultPrompt)
+  const handleModeChange = (label: string) => { setMode(label); setPrompt(agent.defaultPrompt) }
+
+  const toggleSkill = (name: string) => {
+    setLinkedSkills(prev => prev.includes(name) ? prev.filter(s => s !== name) : [...prev, name])
   }
 
   const handleSave = () => {
-    onSave({ ...agent, mode, systemPrompt: prompt, skill })
+    const linked = linkedSkills.map(n => {
+      const s = allSkills.find(x => x.name === n)
+      return s ? `${s.name}: ${s.description}` : n
+    }).join('\n')
+    onSave({ ...agent, mode, systemPrompt: prompt, skill: linked || skill })
     onClose()
   }
 
@@ -90,29 +108,51 @@ export default function AgentModal({ agent, onSave, onClose }: Props) {
             />
           </div>
 
-          {/* Skill */}
+          {/* Skill 文件夹管理 */}
           <div>
             <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Skill</label>
-              <button
-                onClick={() => setSkill(agent.defaultSkill)}
-                className="text-[10px] text-gray-400 hover:text-[#c75f1a] flex items-center gap-1"
-              >
-                <RotateCcw size={10} /> 恢复默认
-              </button>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                <Folder size={13} /> Skill 模块
+              </label>
+              <span className="text-[10px] text-gray-400">{linkedSkills.length} 个已关联</span>
             </div>
-            <textarea
-              value={skill}
-              onChange={(e) => agent.skillEditable ? setSkill(e.target.value) : null}
-              readOnly={!agent.skillEditable}
-              rows={4}
-              className={`w-full px-3 py-2 border border-[#c4beb6] rounded-lg text-xs font-mono outline-none resize-none ${
-                agent.skillEditable ? 'focus:border-[#c75f1a] bg-[#faf8f5]' : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-              }`}
-            />
-            {!agent.skillEditable && (
-              <p className="text-[10px] text-gray-400 mt-1">此 Skill 为系统预设，不可编辑</p>
-            )}
+            <div className="border border-[#dad4cd] rounded-lg divide-y divide-[#dad4cd] max-h-48 overflow-y-auto">
+              {allSkills.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-3">暂无可用 Skill</p>
+              ) : (
+                allSkills.map(s => {
+                  const linked = linkedSkills.includes(s.name)
+                  const expanded = expandedSkill === s.name
+                  return (
+                    <div key={s.name}>
+                      <div
+                        className={`flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#faf8f5] transition-colors ${linked ? 'bg-[#fef3eb]/30' : ''}`}
+                        onClick={() => setExpandedSkill(expanded ? null : s.name)}
+                      >
+                        {expanded ? <FolderOpen size={14} className="text-amber-500" /> : <Folder size={14} className="text-amber-500" />}
+                        <div className="flex-1 min-w-0">
+                          <span className="text-xs font-semibold">{s.name}</span>
+                          {expanded && <p className="text-[10px] text-gray-400 mt-0.5">{s.description}</p>}
+                        </div>
+                        <span className="text-[10px] text-gray-300">📁 {s.folder}/</span>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); toggleSkill(s.name) }}
+                          className={`p-1 rounded text-[10px] transition-colors ${
+                            linked ? 'text-red-400 hover:text-red-600' : 'text-green-500 hover:text-green-700'
+                          }`}
+                          title={linked ? '移除关联' : '关联到此 Agent'}
+                        >
+                          {linked ? <Trash2 size={12} /> : <Plus size={12} />}
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+            <p className="text-[10px] text-gray-400 mt-1.5 flex items-center gap-1">
+              <ExternalLink size={10} /> 点击文件夹展开详情，点击 + 关联到当前 Agent
+            </p>
           </div>
         </div>
 
