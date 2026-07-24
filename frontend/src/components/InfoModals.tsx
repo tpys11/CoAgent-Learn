@@ -11,12 +11,10 @@ const closeOnBackdrop = (onClose: () => void) => (e: React.MouseEvent) => {
 export function MemoryModal({ onClose }: Props) {
   const [autoMemory, setAutoMemory] = useState(true)
   const [autoGlobalDoc, setAutoGlobalDoc] = useState(true)
-  const [autoGlobalNote, setAutoGlobalNote] = useState(true)
   const [autoAbstract, setAutoAbstract] = useState(true)
   const [autoProfile, setAutoProfile] = useState(true)
   const [autoCustom, setAutoCustom] = useState(true)
   const [globalDoc, setGlobalDoc] = useState('')
-  const [globalNote, setGlobalNote] = useState('')
   const [globalAbstract, setGlobalAbstract] = useState('')
   const [userProfile, setUserProfile] = useState('')
   const [customNote, setCustomNote] = useState('')
@@ -57,13 +55,6 @@ export function MemoryModal({ onClose }: Props) {
               </div>
               <p className="text-[10px] text-gray-400 mb-1.5">输入后不做处理，用户从输入框输入内容时系统一并读取。</p>
               <DragDropInput value={globalDoc} onChange={setGlobalDoc} placeholder="在此粘贴 Markdown 文档内容，或拖拽文件上传" rows={3} />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 mb-1.5">
-                <label className="text-xs font-semibold text-gray-500 flex items-center gap-1 flex-1"><Edit3 size={12} /> 自定义指令</label>
-                <ToggleBtn on={autoGlobalNote} setOn={setAutoGlobalNote} />
-              </div>
-              <DragDropInput value={globalNote} onChange={setGlobalNote} placeholder="例如：所有回答使用中文、面向初学者..." rows={2} />
             </div>
           </div>
           <div className="border border-[#dad4cd] rounded-xl p-4">
