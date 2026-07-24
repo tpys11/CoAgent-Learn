@@ -5,7 +5,6 @@ import RightPanel from './components/RightPanel'
 import DiagnosisModal from './components/DiagnosisModal'
 import AgentModal from './components/AgentModal'
 import SettingsModal, { ApiKeyPrompt } from './components/SettingsModal'
-import SkillManagerModal from './components/SkillManagerModal'
 import type { Project, Dialogue, AgentConfig, Message } from './types'
 import { DEFAULT_AGENTS } from './types'
 
@@ -25,7 +24,6 @@ function App() {
   const [selectedAgent, setSelectedAgent] = useState<AgentConfig | null>(null)
   const [agents, setAgents] = useState<AgentConfig[]>(DEFAULT_AGENTS)
   const [showSettings, setShowSettings] = useState(false)
-  const [showSkills, setShowSkills] = useState(false)
   // 启动时应用保存的字体大小
   useEffect(() => {
     const saved = localStorage.getItem('coagent-fontSize')
@@ -178,7 +176,6 @@ function App() {
             onSelectDialogue={handleSelectDialogue} onArchiveDialogue={handleArchiveDialogue}
             onRenameDialogue={handleRenameDialogue}
             onSelectAgent={setSelectedAgent} onSettings={() => setShowSettings(true)}
-            onSkills={() => setShowSkills(true)}
           />
         </div>
         {/* 左侧拖拽手柄 */}
@@ -223,7 +220,6 @@ function App() {
       {showDiagnosis && <DiagnosisModal onClose={() => setShowDiagnosis(false)} />}
       {selectedAgent && <AgentModal agent={selectedAgent} onSave={handleSaveAgent} onClose={() => setSelectedAgent(null)} />}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
-      {showSkills && <SkillManagerModal onClose={() => setShowSkills(false)} />}
       {showApiKeyPrompt && <ApiKeyPrompt onClose={() => { setShowApiKeyPrompt(false); localStorage.setItem('coagent-apikey-skipped', '1') }} />}
     </div>
   )
