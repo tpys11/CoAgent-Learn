@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, RotateCcw, Folder, FolderOpen, Plus, Trash2, ExternalLink } from 'lucide-react'
+import { X, RotateCcw, Folder, FolderOpen, Plus, Trash2, Upload } from 'lucide-react'
 import type { AgentConfig } from '../types'
 
 interface Props {
@@ -17,6 +17,8 @@ export default function AgentModal({ agent, onSave, onClose }: Props) {
   const [allSkills, setAllSkills] = useState<SkillInfo[]>([])
   const [linkedSkills, setLinkedSkills] = useState<string[]>([])
   const [expandedSkill, setExpandedSkill] = useState<string | null>(null)
+  const [uploadName, setUploadName] = useState('')
+  const [uploadCode, setUploadCode] = useState('')
 
   useEffect(() => {
     fetch('/api/skills').then(r => r.json()).then(d => {
@@ -150,9 +152,17 @@ export default function AgentModal({ agent, onSave, onClose }: Props) {
                 })
               )}
             </div>
-            <p className="text-[10px] text-gray-400 mt-1.5 flex items-center gap-1">
-              <ExternalLink size={10} /> 点击文件夹展开详情，点击 + 关联到当前 Agent
-            </p>
+            {/* 上传新 Skill */}
+            <div className="mt-3 border border-dashed border-[#c4beb6] rounded-lg p-3 bg-[#faf8f5] space-y-2">
+              <span className="text-[11px] font-semibold text-gray-500 flex items-center gap-1"><Upload size={11} /> 上传新 Skill</span>
+              <input value={uploadName} onChange={e => setUploadName(e.target.value)} placeholder="Skill 名称（英文）"
+                className="w-full px-2 py-1.5 border border-[#c4beb6] rounded text-xs outline-none focus:border-[#c75f1a] bg-white" />
+              <textarea value={uploadCode} onChange={e => setUploadCode(e.target.value)} placeholder="粘贴 Skill 代码..." rows={3}
+                className="w-full px-2 py-1.5 border border-[#c4beb6] rounded text-[11px] font-mono outline-none resize-none focus:border-[#c75f1a] bg-white" />
+              <button className="w-full px-3 py-1.5 bg-[#c75f1a] text-white text-xs font-semibold rounded hover:bg-[#a84a10] transition-colors">
+                上传
+              </button>
+            </div>
           </div>
         </div>
 
