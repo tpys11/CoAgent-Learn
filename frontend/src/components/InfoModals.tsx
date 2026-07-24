@@ -53,7 +53,6 @@ export function MemoryModal({ onClose }: Props) {
                 <label className="text-xs font-semibold text-gray-500 flex items-center gap-1 flex-1"><Upload size={12} /> 上传 MD 文档</label>
                 <ToggleBtn on={autoGlobalDoc} setOn={setAutoGlobalDoc} />
               </div>
-              <p className="text-[10px] text-gray-400 mb-1.5">输入后不做处理，用户从输入框输入内容时系统一并读取。</p>
               <DragDropInput value={globalDoc} onChange={setGlobalDoc} placeholder="在此粘贴 Markdown 文档内容，或拖拽文件上传" rows={3} />
             </div>
           </div>
