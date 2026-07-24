@@ -33,7 +33,7 @@ function App() {
     () => !localStorage.getItem('coagent-apikey') && !localStorage.getItem('coagent-apikey-skipped')
   )
   const [sidebarWidth, setSidebarWidth] = useState(240)
-  const [rightPanelWidth, setRightPanelWidth] = useState(260)
+  const [rightPanelWidth, setRightPanelWidth] = useState(390)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [statsCollapsed, setStatsCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)

@@ -50,7 +50,7 @@ export function MemoryModal({ onClose }: Props) {
             <h3 className="text-sm font-bold mb-3 flex items-center gap-1.5"><FileText size={15} className="text-gray-400" /> 全局性记忆</h3>
             <div className="mb-3">
               <div className="flex items-center gap-2 mb-1.5">
-                <label className="text-xs font-semibold text-gray-500 flex items-center gap-1 flex-1"><Upload size={12} /> 上传 MD 文档</label>
+                <label className="text-xs font-semibold text-gray-500 flex items-center gap-1 flex-1"><Upload size={12} /> 文档</label>
                 <ToggleBtn on={autoGlobalDoc} setOn={setAutoGlobalDoc} />
               </div>
               <DragDropInput value={globalDoc} onChange={setGlobalDoc} placeholder="在此粘贴 Markdown 文档内容，或拖拽文件上传" rows={3} />
