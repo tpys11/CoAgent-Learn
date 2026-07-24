@@ -1,21 +1,20 @@
-"""Skill 基类 — 每个功能模块继承此类，即可被 Agent 通过统一接口调用"""
-
+"""Skill 基类 — 每个功能模块继承此类，存入独立文件夹"""
 from typing import Any
 
 
 class Skill:
-    """Agent 可调用的功能模块"""
+    """Agent 可调用的功能模块。一个文件夹 = 一个 Skill = 一个 MCP 模块"""
 
-    name: str = ""          # 唯一标识
-    description: str = ""   # LLM 判断何时调用
-    input_schema: dict = {} # 输入参数 JSON Schema
+    name: str = ""
+    description: str = ""
+    input_schema: dict = {}
+    resources: dict = {}
+    prompts: dict = {}
 
     def execute(self, **kwargs) -> dict:
-        """执行技能，返回结果字典"""
         raise NotImplementedError
 
     def to_api_desc(self) -> dict:
-        """生成 LLM function-calling 格式的描述"""
         return {
             "name": self.name,
             "description": self.description,

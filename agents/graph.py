@@ -8,7 +8,6 @@ from agents.prompts import (
     KB_PROMPT, SEARCH_PROMPT, MEMORY_PROMPT, GENERATE_PROMPT, REVIEW_PROMPT,
 )
 from skills.registry import registry
-import skills.builtins  # 注册内置 Skills
 
 
 class AgentState(TypedDict):

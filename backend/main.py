@@ -46,6 +46,31 @@ async def health_check():
     return {"status": "ok", "version": "0.3.0"}
 
 
+# ---------- Skill 管理 API ----------
+
+@app.get("/api/skills")
+async def list_skills():
+    from skills.registry import registry
+    return {"skills": registry.list_all()}
+
+
+class SkillUpload(BaseModel):
+    name: str
+    code: str
+
+
+@app.post("/api/skills")
+async def upload_skill(req: SkillUpload):
+    """上传新 Skill（占位——后续实现文件写入）"""
+    return {"status": "ok", "name": req.name, "message": "Skill 上传功能即将实现"}
+
+
+@app.delete("/api/skills/{name}")
+async def delete_skill(name: str):
+    """删除 Skill（占位）"""
+    return {"status": "ok", "name": name, "message": "Skill 删除功能即将实现"}
+
+
 # ---------- API 接口 ----------
 
 class ChatRequest(BaseModel):
