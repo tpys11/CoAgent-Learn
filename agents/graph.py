@@ -7,6 +7,8 @@ from agents.prompts import (
     INPUT_AGENT_PROMPT, DISPATCH_AGENT_PROMPT, DIAGNOSE_PROMPT,
     KB_PROMPT, SEARCH_PROMPT, MEMORY_PROMPT, GENERATE_PROMPT, REVIEW_PROMPT,
 )
+from skills.registry import registry
+import skills.builtins  # 注册内置 Skills
 
 
 class AgentState(TypedDict):
@@ -97,6 +99,9 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         state["dispatch_count"] = state.get("dispatch_count", 0) + 1
         state.setdefault("steps", []).append({"agent": "调度", "status": "running"})
         context = f"用户输入: {state.get('processed_input', state['user_input'])}\n"
+        # 注入可用 Skill 列表
+        skills_desc = json.dumps(registry.list_for_llm(), ensure_ascii=False, indent=1)
+        context += f"\n可用功能模块(Skills):\n{skills_desc}\n"
         if state.get("profile"): context += f"学情诊断: {json.dumps(state['profile'], ensure_ascii=False)}\n"
         if state.get("knowledge"): context += f"知识库结果数: {len(state['knowledge'])}\n"
         if state.get("search_results"): context += f"搜索结果数: {len(state['search_results'])}\n"
@@ -123,26 +128,40 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
 
     def kb_node(state: AgentState) -> AgentState:
         state.setdefault("steps", []).append({"agent": "知识库管理", "status": "running"})
+        thinking = ""
         try:
-            thinking, result = think_then_json(_KB_PROMPT, state["user_input"], "知识库管理")
+            from skills.registry import registry
+            result = registry.execute("knowledge_retrieval", query=state["user_input"])
             state["knowledge"] = result.get("results", [])
-        except Exception:
+            thinking = f"知识库检索完成：{result.get('total', 0)}条结果"
+        except Exception as e:
             state["knowledge"] = []
-        state["mindchain"].append({"agent": "知识库管理", "content": thinking[:600]})
+            thinking = f"知识库检索异常：{e}"
+        state["mindchain"].append({"agent": "知识库管理", "content": thinking})
         state.setdefault("steps", []).append({"agent": "知识库管理", "status": "done"})
         return state
 
     def search_node(state: AgentState) -> AgentState:
         state.setdefault("steps", []).append({"agent": "搜索", "status": "running"})
-        state["search_results"] = [{"content": "搜索功能即将接入 SearXNG+Perplexica", "source": "local"}]
-        state["mindchain"].append({"agent": "搜索", "content": "搜索完成（当前为占位结果）"})
+        try:
+            result = registry.execute("web_search", query=state["user_input"])
+            state["search_results"] = result.get("results", [])
+            state["mindchain"].append({"agent": "搜索", "content": f"搜索完成：{result.get('total', 0)}条结果"})
+        except Exception as e:
+            state["search_results"] = []
+            state["mindchain"].append({"agent": "搜索", "content": f"搜索异常：{e}"})
         state.setdefault("steps", []).append({"agent": "搜索", "status": "done"})
         return state
 
     def memory_node(state: AgentState) -> AgentState:
         state.setdefault("steps", []).append({"agent": "记忆管理", "status": "running"})
-        state["memory"] = state.get("memory", {})
-        state["mindchain"].append({"agent": "记忆管理", "content": "记忆已读取/更新"})
+        try:
+            result = registry.execute("memory_ops", action="read", layer="L2")
+            state["memory"] = result.get("memory", {})
+            state["mindchain"].append({"agent": "记忆管理", "content": f"记忆操作完成"})
+        except Exception as e:
+            state["memory"] = {}
+            state["mindchain"].append({"agent": "记忆管理", "content": f"记忆异常：{e}"})
         state.setdefault("steps", []).append({"agent": "记忆管理", "status": "done"})
         return state
 
