@@ -96,7 +96,16 @@ function App() {
     if (name.trim()) setDialogues(prev => prev.map(d => d.id === id ? { ...d, name: name.trim() } : d))
   }, [])
   const handleSendMessage = useCallback(async (text: string, settings?: Record<string, any>) => {
-    if (!currentDialogueId) return
+    let did = currentDialogueId
+    if (!did && currentProjectId) {
+      // 自动创建对话
+      const count = dialogues.filter(d => d.projectId === currentProjectId && !d.archived).length
+      const d: Dialogue = { id: generateId(), name: `对话 ${count + 1}`, projectId: currentProjectId, createdAt: new Date().toISOString(), archived: false }
+      setDialogues(prev => [...prev, d])
+      did = d.id
+      setCurrentDialogueId(d.id)
+    }
+    if (!did) return
     setMessages(prev => [...prev, { role: 'user', content: text }])
     setIsLoading(true)
     setFlowVisible(true); setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = []
