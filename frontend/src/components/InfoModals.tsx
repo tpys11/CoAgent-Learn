@@ -63,19 +63,17 @@ export function MemoryModal({ onClose }: Props) {
                 <label className="text-xs font-semibold text-gray-500 flex items-center gap-1 flex-1"><Edit3 size={12} /> 自定义指令</label>
                 <ToggleBtn on={autoGlobalNote} setOn={setAutoGlobalNote} />
               </div>
-              <textarea value={globalNote} onChange={(e) => setGlobalNote(e.target.value)} placeholder="例如：所有回答使用中文、面向初学者..." rows={2}
-                className="w-full px-3 py-2 border border-[#c4beb6] rounded-lg text-xs outline-none resize-none focus:border-[#c75f1a] bg-[#faf8f5]" />
+              <DragDropInput value={globalNote} onChange={setGlobalNote} placeholder="例如：所有回答使用中文、面向初学者..." rows={2} />
             </div>
           </div>
           <div className="border border-[#dad4cd] rounded-xl p-4">
             <h3 className="text-sm font-bold mb-3 flex items-center gap-1.5"><BookOpen size={15} className="text-gray-400" /> 项目记忆</h3>
             <div className="mb-3">
               <div className="flex items-center gap-2 mb-1.5">
-                <label className="text-xs font-semibold text-gray-500 flex-1">全局抽象表述</label>
+                <label className="text-xs font-semibold text-gray-500 flex-1">项目角度记忆</label>
                 <ToggleBtn on={autoAbstract} setOn={setAutoAbstract} />
               </div>
-              <textarea value={globalAbstract} onChange={(e) => setGlobalAbstract(e.target.value)} placeholder="从全局性记忆中自动提取或手动编辑..." rows={2}
-                className="w-full px-3 py-2 border border-[#c4beb6] rounded-lg text-xs outline-none resize-none focus:border-[#c75f1a] bg-[#faf8f5]" />
+              <DragDropInput value={globalAbstract} onChange={setGlobalAbstract} placeholder="从全局性记忆中自动提取或手动编辑..." rows={2} />
             </div>
             <div className="mb-3">
               <div className="flex items-center gap-2 mb-1.5">
@@ -83,16 +81,14 @@ export function MemoryModal({ onClose }: Props) {
                 <ToggleBtn on={autoProfile} setOn={setAutoProfile} />
               </div>
               <p className="text-[10px] text-gray-400 mb-1.5">根据知识诊断结果自动生成，记录用户知识掌握情况。</p>
-              <textarea value={userProfile} onChange={(e) => setUserProfile(e.target.value)} placeholder="知识诊断结果将自动填入..." rows={3}
-                className="w-full px-3 py-2 border border-[#c4beb6] rounded-lg text-xs outline-none resize-none focus:border-[#c75f1a] bg-[#faf8f5]" />
+              <DragDropInput value={userProfile} onChange={setUserProfile} placeholder="知识诊断结果将自动填入..." rows={3} />
             </div>
             <div>
               <div className="flex items-center gap-2 mb-1.5">
                 <label className="text-xs font-semibold text-gray-500 flex items-center gap-1 flex-1"><Edit3 size={12} /> 自定义</label>
                 <ToggleBtn on={autoCustom} setOn={setAutoCustom} />
               </div>
-              <textarea value={customNote} onChange={(e) => setCustomNote(e.target.value)} placeholder="自由记录项目相关信息..." rows={3}
-                className="w-full px-3 py-2 border border-[#c4beb6] rounded-lg text-xs outline-none resize-none focus:border-[#c75f1a] bg-[#faf8f5]" />
+              <DragDropInput value={customNote} onChange={setCustomNote} placeholder="自由记录项目相关信息..." rows={3} />
             </div>
           </div>
         </div>
