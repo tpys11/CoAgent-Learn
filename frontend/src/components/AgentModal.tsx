@@ -17,28 +17,37 @@ export default function AgentModal({ agent, onSave, onClose }: Props) {
   const [allSkills, setAllSkills] = useState<SkillInfo[]>([])
   const [linkedSkills, setLinkedSkills] = useState<string[]>([])
   const [expandedSkill, setExpandedSkill] = useState<string | null>(null)
-  const [uploadedFiles, setUploadedFiles] = useState<string[]>([])
+  const [uploadedFolders, setUploadedFolders] = useState<string[]>([])
 
   const handleSkillUpload = (e: any) => {
-    const files = Array.from(e.target.files || [])
-    setUploadedFiles(files.map((f: any) => (f as any).webkitRelativePath || f.name))
+    const files = Array.from(e.target.files || []) as any[]
+    const folders = new Set<string>()
+    files.forEach((f: any) => {
+      const path = f.webkitRelativePath || f.name
+      const topFolder = path.split('/')[0]
+      if (topFolder) folders.add(topFolder)
+    })
+    setUploadedFolders(prev => [...new Set([...prev, ...folders])])
+    e.target.value = '' // 允许重复选择同一文件夹
   }
 
   const handleSkillDrop = (e: any) => {
     e.preventDefault()
     const items = Array.from(e.dataTransfer.items) as any[]
     const names: string[] = []
-    const processEntry = async (entry: any, path = '') => {
-      if (entry.isFile) { names.push(path + entry.name); return }
+    const processEntry = async (entry: any) => {
+      if (entry.isFile) { names.push(entry.name); return }
       if (entry.isDirectory) {
         const reader = entry.createReader()
         const readAll = (): Promise<any[]> => new Promise(resolve => reader.readEntries(resolve))
         let entries: any[] = []; let batch
         while ((batch = await readAll()) && batch.length > 0) entries = entries.concat(batch)
-        for (const e of entries) await processEntry(e, path + entry.name + '/')
+        for (const e of entries) await processEntry(e)
       }
     }
-    Promise.all(items.map(item => processEntry(item.webkitGetAsEntry()))).then(() => setUploadedFiles(names))
+    Promise.all(items.map(item => processEntry(item.webkitGetAsEntry()))).then(() => {
+      if (names.length > 0) setUploadedFolders(prev => [...new Set([...prev, ...names])])
+    })
   }
 
   useEffect(() => {
@@ -185,11 +194,10 @@ export default function AgentModal({ agent, onSave, onClose }: Props) {
                 {...({ webkitdirectory: '', directory: '' } as any)}
                 onChange={handleSkillUpload} />
             </div>
-            {uploadedFiles.length > 0 && (
-              <div className="mt-2 text-[10px] text-gray-500 bg-white border border-[#dad4cd] rounded-lg p-2 max-h-24 overflow-y-auto">
-                <span className="font-semibold">已上传 {uploadedFiles.length} 个文件：</span>
-                {uploadedFiles.slice(0, 10).map((f, i) => <div key={i} className="truncate">📄 {f}</div>)}
-                {uploadedFiles.length > 10 && <div>...还有 {uploadedFiles.length - 10} 个文件</div>}
+            {uploadedFolders.length > 0 && (
+              <div className="mt-2 text-[10px] text-gray-500 bg-white border border-[#dad4cd] rounded-lg p-2">
+                <span className="font-semibold">已上传 {uploadedFolders.length} 个文件夹：</span>
+                {uploadedFolders.map((f, i) => <div key={i}>📁 {f}</div>)}
               </div>
             )}
           </div>
