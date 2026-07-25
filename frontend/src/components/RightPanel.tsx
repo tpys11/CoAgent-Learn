@@ -31,7 +31,7 @@ export default function RightPanel({ messageCount }: Props) {
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-semibold flex items-center gap-1"><Map size={14} /> 知识图谱</span>
         </div>
-        <div className="h-[70px] w-full border border-dashed border-[#1a1a1a]/50 bg-white rounded-lg flex items-center justify-center">
+        <div className="flex-1 w-full border border-dashed border-[#1a1a1a]/50 bg-white rounded-lg flex items-center justify-center">
           <span className="text-xs text-gray-400">知识图谱预览</span>
         </div>
       </div>
