@@ -38,7 +38,8 @@ export default function RightPanel({ messageCount }: Props) {
 
       <div className="flex-1 flex flex-col border-t border-[#e5e5e5] overflow-hidden">
         <div className="px-3 py-2 flex-shrink-0">
-          <span className="text-xs font-semibold">追问建议</span>
+          <span className="text-xs font-semibold">第二对话窗口</span>
+          <p className="text-[10px] text-gray-400 mt-0.5 leading-relaxed">独立对话区域，可访问主窗口的记忆、知识库等全部信息。</p>
         </div>
         <div className="flex-1 overflow-y-auto px-3 flex flex-col gap-2 pb-2">
           {!visible ? (
