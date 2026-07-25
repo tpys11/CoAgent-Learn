@@ -242,7 +242,7 @@ export default function Sidebar({
 
   return (
 
-    <aside className="w-full h-full bg-[#f5f5f5] border-r border-[#e5e5e5] flex flex-col rounded-lg overflow-hidden">
+    <aside className="w-full h-full bg-[#f5f5f5] border-r border-[#e5e5e5] flex flex-col rounded-lg overflow-hidden relative">
       {renderHeader()}
       {renderProjects()}
       <div className="flex-1" />
