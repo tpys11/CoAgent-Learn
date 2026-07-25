@@ -95,7 +95,7 @@ export default function Sidebar({
 
   /** 项目列表 + 对话窗口（仿 workbuddy） */
   const renderProjects = () => (
-    <div className="overflow-y-auto max-h-[45%]">
+    <div className="overflow-y-auto flex-shrink-0" style={{ maxHeight: '40%' }}>
       {showCreate && (
         <div className="flex gap-1 px-3 py-2">
           <input
