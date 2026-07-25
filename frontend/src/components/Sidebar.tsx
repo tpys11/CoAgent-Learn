@@ -195,14 +195,14 @@ export default function Sidebar({
                     )}
                     <button
                       onClick={(e) => { e.stopPropagation(); setEditingDialogue(d.id); setEditName(d.name) }}
-                      className="opacity-0 hover:opacity-100 p-0.5 hover:text-[#1a1a1a]"
+                      className="opacity-40 hover:opacity-100 p-0.5 hover:text-[#1a1a1a]"
                       title="重命名"
                     >
                       <Edit3 size={10} />
                     </button>
                     <button
                       onClick={(e) => { e.stopPropagation(); onArchiveDialogue(d.id) }}
-                      className="opacity-0 hover:opacity-100 p-0.5 hover:text-yellow-600"
+                      className="opacity-40 hover:opacity-100 p-0.5 hover:text-yellow-600"
                       title="归档"
                     >
                       <Archive size={10} />
@@ -219,12 +219,12 @@ export default function Sidebar({
 
   /** 资源列表 */
   const renderResources = () => (
-    <div className="border-t border-[#e5e5e5] flex-shrink-0">
+    <div className="border-t border-[#e5e5e5]">
       <div className="flex items-center gap-1 px-3 py-1.5 cursor-pointer hover:bg-[#ededed]" onClick={() => setExpandedResources(!expandedResources)}>
         <span className="flex-shrink-0">{expandedResources ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
         <span className="text-xs font-semibold flex-1">资源</span>
       </div>
-      {expandedResources && (
+      <div className="overflow-hidden transition-all duration-200" style={{ maxHeight: expandedResources ? '200px' : '0px' }}>
         <div className="ml-4 border-l border-[#e5e5e5]">
           {resources.map(r => (
             <div key={r.id} onClick={() => onResourceOpen?.(r.id, r.name)}
@@ -233,19 +233,20 @@ export default function Sidebar({
             </div>
           ))}
         </div>
-      )}
+      </div>
     </div>
   )
 
   return (
 
-    <aside className="w-full h-full bg-[#f5f5f5] border-r border-[#e5e5e5] flex flex-col rounded-lg overflow-hidden relative">
+    <aside className="w-full h-full bg-[#f5f5f5] border-r border-[#e5e5e5] flex flex-col rounded-lg overflow-hidden">
       {renderHeader()}
       {renderProjects()}
-      <div className="absolute left-0 right-0" style={{ top: "50%", transform: "translateY(-50%)" }}>
+      <div className="flex-1" />
+      <div className="absolute left-0 right-0" style={{ top: "50%", marginTop: -12 }}>
         {renderResources()}
       </div>
-      <div className="px-3 py-1.5 border-t border-[#e5e5e5] flex justify-end mt-auto">
+      <div className="px-3 py-1.5 border-t border-[#e5e5e5] flex justify-end">
         <button onClick={onSettings} className="p-1.5 rounded-lg hover:bg-[#ededed] text-[#888] hover:text-[#1a1a1a] transition-colors" title="设置">
           <Settings size={16} />
         </button>
