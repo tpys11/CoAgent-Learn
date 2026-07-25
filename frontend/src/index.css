@@ -5,3 +5,49 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body, #root { width: 100vw; height: 100vh; overflow: hidden; }
 body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; }
+
+/* ============ 主题系统 ============ */
+:root, [data-theme="light"] {
+  --bg-root: #ffffff;
+  --bg-sidebar: #f5f5f5;
+  --bg-panel: #ffffff;
+  --bg-hover: #ededed;
+  --bg-active: #f0f0f0;
+  --border-color: #e5e5e5;
+  --border-strong: #d0d0d0;
+  --bg-input: #fafafa;
+  --bg-modal: #ffffff;
+  --accent: #1a1a1a;
+  --accent-hover: #333333;
+  --text-muted: #888888;
+}
+
+[data-theme="dark"] {
+  --bg-root: #1a1a1a;
+  --bg-sidebar: #252525;
+  --bg-panel: #2a2a2a;
+  --bg-hover: #333333;
+  --bg-active: #3a3a3a;
+  --border-color: #404040;
+  --border-strong: #505050;
+  --bg-input: #222222;
+  --bg-modal: #2a2a2a;
+  --accent: #ffffff;
+  --accent-hover: #cccccc;
+  --text-muted: #999999;
+}
+
+[data-theme="warm"] {
+  --bg-root: #faf8f5;
+  --bg-sidebar: #f0ebe4;
+  --bg-panel: #ffffff;
+  --bg-hover: #e8e2d9;
+  --bg-active: #fef3eb;
+  --border-color: #dad4cd;
+  --border-strong: #c4beb6;
+  --bg-input: #faf8f5;
+  --bg-modal: #ffffff;
+  --accent: #c75f1a;
+  --accent-hover: #a84a10;
+  --text-muted: #888888;
+}

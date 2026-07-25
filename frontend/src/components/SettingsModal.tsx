@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Sun, Moon, Monitor, Type, Key } from 'lucide-react'
+import { X, Sun, Moon, Monitor, Type, Key, Palette } from 'lucide-react'
 
 interface Props {
   onClose: () => void
@@ -7,7 +7,7 @@ interface Props {
 
 export default function SettingsModal({ onClose }: Props) {
   const [fontSize, setFontSize] = useState(() => parseInt(localStorage.getItem('coagent-fontSize') || '15'))
-  const [theme, setTheme] = useState(() => localStorage.getItem('coagent-theme') || 'system')
+  const [theme, setTheme] = useState(() => localStorage.getItem('coagent-theme') || 'light')
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('coagent-apikey') || '')
   const [saved, setSaved] = useState(false)
 
@@ -18,8 +18,7 @@ export default function SettingsModal({ onClose }: Props) {
 
   useEffect(() => {
     localStorage.setItem('coagent-theme', theme)
-    if (theme === 'dark') document.documentElement.classList.add('dark')
-    else if (theme === 'light') document.documentElement.classList.remove('dark')
+    document.documentElement.setAttribute('data-theme', theme)
   }, [theme])
 
   const handleApiKeySave = () => {
@@ -59,8 +58,9 @@ export default function SettingsModal({ onClose }: Props) {
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">页面主题</label>
             <div className="flex gap-2">
               {[
-                { value: 'light', icon: Sun, label: '日间' },
+                { value: 'light', icon: Sun, label: '默认' },
                 { value: 'dark', icon: Moon, label: '夜间' },
+                { value: 'warm', icon: Palette, label: '柔和' },
                 { value: 'system', icon: Monitor, label: '跟随系统' },
               ].map(({ value, icon: Icon, label }) => (
                 <button
