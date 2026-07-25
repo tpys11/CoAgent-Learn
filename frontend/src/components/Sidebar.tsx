@@ -17,6 +17,7 @@ interface SidebarProps {
   onSelectDialogue: (id: string) => void
   onArchiveDialogue: (id: string) => void
   onRenameDialogue: (id: string, name: string) => void
+  onRenameProject: (id: string, name: string) => void
   onSettings: () => void
 }
 
@@ -24,6 +25,7 @@ export default function Sidebar({
   projects, dialogues, currentProjectId, currentDialogueId,
   onCreateProject, onDeleteProject, onSelectProject,
   onCreateDialogue, onSelectDialogue, onArchiveDialogue, onRenameDialogue,
+  onRenameProject,
   onSettings,
 }: SidebarProps) {
   const [showCreate, setShowCreate] = useState(false)

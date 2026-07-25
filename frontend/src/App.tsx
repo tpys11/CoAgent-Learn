@@ -76,6 +76,10 @@ function App() {
     setDialogues(prev => prev.filter(d => d.projectId !== id))
     if (currentProjectId === id) setCurrentProjectId(projects.filter(p => p.id !== id)[0]?.id ?? null)
   }, [currentProjectId, projects])
+  const handleRenameProject = useCallback((id: string, name: string) => {
+    setProjects(prev => prev.map(p => p.id === id ? { ...p, name } : p))
+  }, [])
+
   const handleSelectProject = useCallback((id: string) => {
     setCurrentProjectId(id)
     const first = dialogues.find(d => d.projectId === id && !d.archived)
@@ -173,6 +177,7 @@ function App() {
             onSelectProject={handleSelectProject} onCreateDialogue={handleCreateDialogue}
             onSelectDialogue={handleSelectDialogue} onArchiveDialogue={handleArchiveDialogue}
             onRenameDialogue={handleRenameDialogue}
+            onRenameProject={handleRenameProject}
             onSettings={() => setShowSettings(true)}
           />
         </div>
