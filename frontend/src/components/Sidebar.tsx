@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import {
-  Plus, Folder, FolderOpen, Trash2, Bot, MessageSquare,
-  Archive, ChevronDown, ChevronRight, Edit3, Settings,
+  Plus, Folder, FolderOpen, Trash2, MessageSquare,
+  Archive, ChevronDown, ChevronRight, Edit3, Settings, MoreHorizontal, Bot,
 } from 'lucide-react'
 import type { Project, Dialogue } from '../types'
 
@@ -18,6 +18,8 @@ interface SidebarProps {
   onArchiveDialogue: (id: string) => void
   onRenameDialogue: (id: string, name: string) => void
   onRenameProject: (id: string, name: string) => void
+  onProjectMemory?: (projectId: string) => void
+  onProjectKnowledge?: (projectId: string) => void
   onSettings: () => void
 }
 
@@ -26,6 +28,7 @@ export default function Sidebar({
   onCreateProject, onDeleteProject, onSelectProject,
   onCreateDialogue, onSelectDialogue, onArchiveDialogue, onRenameDialogue,
   onRenameProject,
+  onProjectMemory, onProjectKnowledge,
   onSettings,
 }: SidebarProps) {
   const [showCreate, setShowCreate] = useState(false)
@@ -33,6 +36,9 @@ export default function Sidebar({
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set(projects.map(p => p.id)))
   const [editingDialogue, setEditingDialogue] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
+  const [editingProject, setEditingProject] = useState<string | null>(null)
+  const [projectEditName, setProjectEditName] = useState('')
+  const [dropdownProject, setDropdownProject] = useState<string | null>(null)
 
   const toggleExpand = (id: string) => {
     const next = new Set(expandedProjects)
@@ -86,28 +92,59 @@ export default function Sidebar({
           <div key={project.id}>
             {/* 项目行 */}
             <div
-              onClick={() => { onSelectProject(project.id); toggleExpand(project.id) }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 cursor-pointer text-sm transition-colors ${
+              className={`flex items-center gap-1 px-3 py-1.5 cursor-pointer text-sm transition-colors ${
                 isActive ? 'bg-[#f0f0f0] text-[#1a1a1a]' : 'hover:bg-[#ededed]'
-              }`}
+              } group`}
             >
-              <span className="flex-shrink-0">
+              <span className="flex-shrink-0" onClick={() => { onSelectProject(project.id); toggleExpand(project.id) }}>
                 {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
               </span>
-              {isActive ? <FolderOpen size={14} /> : <Folder size={14} />}
-              <span className="flex-1 truncate text-xs font-medium">{project.name}</span>
-              <button
-                onClick={(e) => { e.stopPropagation(); onSelectProject(project.id); toggleExpand(project.id); onCreateDialogue(project.id) }}
-                className="opacity-0 group-hover:opacity-100 hover:text-[#1a1a1a] p-0.5"
-                title="新建对话"
-              >
-                <Plus size={12} />
+              {isActive ? <FolderOpen size={14} className="flex-shrink-0" /> : <Folder size={14} className="flex-shrink-0" />}
+              {/* 项目名：可编辑 */}
+              {editingProject === project.id ? (
+                <input autoFocus value={projectEditName}
+                  onChange={(e) => setProjectEditName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && projectEditName.trim()) { onRenameProject(project.id, projectEditName.trim()); setEditingProject(null) }
+                    if (e.key === 'Escape') setEditingProject(null)
+                  }}
+                  onBlur={() => { if (projectEditName.trim()) onRenameProject(project.id, projectEditName.trim()); setEditingProject(null) }}
+                  className="flex-1 px-1 py-0 text-[11px] border border-[#1a1a1a] rounded outline-none bg-white min-w-0"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : (
+                <span className="flex-1 truncate text-xs font-medium" onClick={() => { onSelectProject(project.id); toggleExpand(project.id) }}>{project.name}</span>
+              )}
+              {/* 三点菜单 */}
+              <div className="relative flex-shrink-0">
+                <button onClick={(e) => { e.stopPropagation(); setDropdownProject(dropdownProject === project.id ? null : project.id) }}
+                  className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-[#1a1a1a]" title="更多">
+                  <MoreHorizontal size={13} />
+                </button>
+                {dropdownProject === project.id && (
+                  <div className="absolute right-0 top-full mt-1 bg-white border border-[#e5e5e5] rounded-lg shadow-lg py-1 z-20 w-32"
+                    onClick={(e) => e.stopPropagation()}>
+                    <button onClick={() => { onProjectMemory?.(project.id); setDropdownProject(null) }}
+                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-[#f0f0f0]">项目记忆</button>
+                    <button onClick={() => { onProjectKnowledge?.(project.id); setDropdownProject(null) }}
+                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-[#f0f0f0]">项目知识库</button>
+                  </div>
+                )}
+              </div>
+              {/* 编辑按钮 */}
+              <button onClick={(e) => { e.stopPropagation(); setEditingProject(project.id); setProjectEditName(project.name) }}
+                className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-[#1a1a1a] flex-shrink-0" title="重命名">
+                <Edit3 size={10} />
               </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); onDeleteProject(project.id) }}
-                className="opacity-30 hover:opacity-100 hover:text-red-500 p-0.5"
-              >
+              {/* 删除按钮 */}
+              <button onClick={(e) => { e.stopPropagation(); onDeleteProject(project.id) }}
+                className="opacity-30 group-hover:opacity-100 hover:text-red-500 p-0.5 flex-shrink-0">
                 <Trash2 size={11} />
+              </button>
+              {/* 新建对话 */}
+              <button onClick={(e) => { e.stopPropagation(); onSelectProject(project.id); toggleExpand(project.id); onCreateDialogue(project.id) }}
+                className="opacity-0 group-hover:opacity-100 hover:text-[#1a1a1a] p-0.5 flex-shrink-0" title="新建对话">
+                <Plus size={12} />
               </button>
             </div>
 

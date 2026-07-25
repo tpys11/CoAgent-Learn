@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X, Brain, Database, Upload, FileText, BookOpen, User, Edit3 } from 'lucide-react'
+import { X, Brain, Database, Upload, FileText } from 'lucide-react'
 import DragDropInput from './DragDropInput'
 
 interface Props { onClose: () => void }
@@ -8,16 +8,11 @@ const closeOnBackdrop = (onClose: () => void) => (e: React.MouseEvent) => {
   if (e.target === e.currentTarget) onClose()
 }
 
+// ========== 记忆系统（仅全局性记忆） ==========
 export function MemoryModal({ onClose }: Props) {
   const [autoMemory, setAutoMemory] = useState(true)
   const [autoGlobalDoc, setAutoGlobalDoc] = useState(true)
-  const [autoAbstract, setAutoAbstract] = useState(true)
-  const [autoProfile, setAutoProfile] = useState(true)
-  const [autoCustom, setAutoCustom] = useState(true)
   const [globalDoc, setGlobalDoc] = useState('')
-  const [globalAbstract, setGlobalAbstract] = useState('')
-  const [userProfile, setUserProfile] = useState('')
-  const [customNote, setCustomNote] = useState('')
 
   const ToggleBtn = ({ on, setOn }: { on: boolean; setOn: (v: boolean) => void }) => (
     <button onClick={() => setOn(!on)}
@@ -29,13 +24,12 @@ export function MemoryModal({ onClose }: Props) {
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onMouseDown={closeOnBackdrop(onClose)}>
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl h-[85vh] flex flex-col mx-4" onMouseDown={e => e.stopPropagation()}>
-        {/* ... 内容不变 ... */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-[#e5e5e5] flex-shrink-0">
           <h2 className="text-base font-bold flex items-center gap-2"><Brain size={18} className="text-purple-500" /> 记忆系统</h2>
           <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
         </div>
         <div className="px-5 py-3 bg-[#ffffff] border-b border-[#e5e5e5] flex-shrink-0">
-          <p className="text-xs text-gray-500 mb-2">系统会根据您的行为自动更新记忆，您也可以手动管理。如果需要关闭系统自动管理，则关闭此按钮。</p>
+          <p className="text-xs text-gray-500 mb-2">系统会根据您的行为自动更新记忆，您也可以手动管理。</p>
           <button onClick={() => setAutoMemory(!autoMemory)}
             className={`relative w-full h-10 rounded-lg transition-colors flex items-center justify-center px-4 ${
               autoMemory ? 'bg-gray-50 border border-gray-300' : 'bg-gray-100 border border-gray-300'}`}>
@@ -56,38 +50,14 @@ export function MemoryModal({ onClose }: Props) {
               <DragDropInput value={globalDoc} onChange={setGlobalDoc} placeholder="在此粘贴 Markdown 文档内容，或拖拽文件上传" rows={3} />
             </div>
           </div>
-          <div className="border border-[#e5e5e5] rounded-xl p-4">
-            <h3 className="text-sm font-bold mb-3 flex items-center gap-1.5"><BookOpen size={15} className="text-gray-400" /> 项目记忆</h3>
-            <div className="mb-3">
-              <div className="flex items-center gap-2 mb-1.5">
-                <label className="text-xs font-semibold text-gray-500 flex-1">项目角度记忆</label>
-                <ToggleBtn on={autoAbstract} setOn={setAutoAbstract} />
-              </div>
-              <DragDropInput value={globalAbstract} onChange={setGlobalAbstract} placeholder="从全局性记忆中自动提取或手动编辑..." rows={2} />
-            </div>
-            <div className="mb-3">
-              <div className="flex items-center gap-2 mb-1.5">
-                <label className="text-xs font-semibold text-gray-500 flex items-center gap-1 flex-1"><User size={12} /> 用户知识画像</label>
-                <ToggleBtn on={autoProfile} setOn={setAutoProfile} />
-              </div>
-              <p className="text-[10px] text-gray-400 mb-1.5">根据知识诊断结果自动生成，记录用户知识掌握情况。</p>
-              <DragDropInput value={userProfile} onChange={setUserProfile} placeholder="知识诊断结果将自动填入..." rows={3} />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 mb-1.5">
-                <label className="text-xs font-semibold text-gray-500 flex items-center gap-1 flex-1"><Edit3 size={12} /> 自定义</label>
-                <ToggleBtn on={autoCustom} setOn={setAutoCustom} />
-              </div>
-              <DragDropInput value={customNote} onChange={setCustomNote} placeholder="自由记录项目相关信息..." rows={3} />
-            </div>
-          </div>
         </div>
       </div>
     </div>
   )
 }
 
-export function KnowledgeModal({ onClose }: Props) {
+// ========== 知识库（项目级，从项目三点菜单打开） ==========
+export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectId?: string }) {
   const [kbInput, setKbInput] = useState('')
   const [showGuide, setShowGuide] = useState(false)
 
@@ -95,7 +65,7 @@ export function KnowledgeModal({ onClose }: Props) {
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onMouseDown={closeOnBackdrop(onClose)}>
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl h-[85vh] flex flex-col mx-4" onMouseDown={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-3 border-b border-[#e5e5e5] flex-shrink-0">
-          <h2 className="text-base font-bold flex items-center gap-2"><Database size={18} className="text-green-500" /> 知识库</h2>
+          <h2 className="text-base font-bold flex items-center gap-2"><Database size={18} className="text-green-500" /> 项目知识库{projectId ? ` (${projectId.slice(0,6)})` : ''}</h2>
           <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
         </div>
         <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-5">

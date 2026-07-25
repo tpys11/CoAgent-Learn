@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Send, Bot, Clock, Zap, Brain, Database, Settings } from 'lucide-react'
 import type { Message, Project } from '../types'
-import { MemoryModal, KnowledgeModal } from './InfoModals'
+import { MemoryModal } from './InfoModals'
 import AgentFlow from './AgentFlow'
 
 const cleanThinking = (t: string) => t.replace(/```json[\s\S]*?```/g, '').replace(/```[\s\S]*?```/g, '').trim()
@@ -34,7 +34,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
   const [outputVolume, setOutputVolume] = useState(1)
   const [depth, setDepth] = useState(1)
   const [showMemory, setShowMemory] = useState(false)
-  const [showKnowledge, setShowKnowledge] = useState(false)
   const [thinkingCollapsed, setThinkingCollapsed] = useState(true)
   const [showSearch, setShowSearch] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
@@ -228,15 +227,8 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
           <span className="w-px h-4 bg-[#d0d0d0]" />
           {/* 记忆系统 */}
           <button onClick={() => setShowMemory(true)}
-            title="管理全局性和项目级记忆"
             className="text-[11px] px-2 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-1">
             <Brain size={12} className="text-purple-500" /> 记忆
-          </button>
-          {/* 知识库 */}
-          <button onClick={() => setShowKnowledge(true)}
-            title="查看RAG知识库状态和检索流程"
-            className="text-[11px] px-2 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-1">
-            <Database size={12} className="text-green-500" /> 知识库
           </button>
           {/* 输入信息优化 */}
           <div className="relative" ref={inputOptRef}>
@@ -401,7 +393,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
       </div>
 
       {showMemory && <MemoryModal onClose={() => setShowMemory(false)} />}
-      {showKnowledge && <KnowledgeModal onClose={() => setShowKnowledge(false)} />}
     </main>
   )
 }
