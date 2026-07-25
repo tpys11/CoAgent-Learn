@@ -5,6 +5,7 @@ import RightPanel from './components/RightPanel'
 import DiagnosisModal from './components/DiagnosisModal'
 import AgentSettingsModal from './components/AgentSettingsModal'
 import SettingsModal, { ApiKeyPrompt } from './components/SettingsModal'
+import { ProjectKnowledgeModal } from './components/InfoModals'
 import type { Project, Dialogue, AgentConfig, Message } from './types'
 import { DEFAULT_AGENTS } from './types'
 
@@ -24,6 +25,8 @@ function App() {
   const [agents, setAgents] = useState<AgentConfig[]>(DEFAULT_AGENTS)
   const [showSettings, setShowSettings] = useState(false)
   const [showAgentSettings, setShowAgentSettings] = useState(false)
+  const [showProjectKB, setShowProjectKB] = useState(false)
+  const [projectKBId, setProjectKBId] = useState<string | null>(null)
   // 启动时应用保存的字体大小
   useEffect(() => {
     const saved = localStorage.getItem('coagent-fontSize')
@@ -87,6 +90,12 @@ function App() {
     const first = dialogues.find(d => d.projectId === id && !d.archived)
     if (first) setCurrentDialogueId(first.id)
   }, [dialogues])
+
+  const handleProjectKB = useCallback((id: string) => {
+    setProjectKBId(id)
+    setShowProjectKB(true)
+  }, [])
+
   const handleCreateDialogue = useCallback((projectId: string) => {
     const count = dialogues.filter(d => d.projectId === projectId && !d.archived).length
     const d: Dialogue = { id: generateId(), name: `对话 ${count + 1}`, projectId, createdAt: new Date().toISOString(), archived: false }
@@ -180,6 +189,7 @@ function App() {
             onSelectDialogue={handleSelectDialogue} onArchiveDialogue={handleArchiveDialogue}
             onRenameDialogue={handleRenameDialogue}
             onRenameProject={handleRenameProject}
+            onProjectKnowledge={handleProjectKB}
             onSettings={() => setShowSettings(true)}
           />
         </div>
@@ -227,6 +237,7 @@ function App() {
       {showDiagnosis && <DiagnosisModal onClose={() => setShowDiagnosis(false)} />}
       {showAgentSettings && <AgentSettingsModal agents={agents} onSave={handleSaveAgent} onClose={() => setShowAgentSettings(false)} />}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {showProjectKB && <ProjectKnowledgeModal projectId={projectKBId || undefined} onClose={() => setShowProjectKB(false)} />}
       {showApiKeyPrompt && <ApiKeyPrompt onClose={() => { setShowApiKeyPrompt(false); localStorage.setItem('coagent-apikey-skipped', '1') }} />}
     </div>
   )
