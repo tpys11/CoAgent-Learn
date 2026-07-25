@@ -7,7 +7,7 @@ interface Props {
 
 export default function SettingsModal({ onClose }: Props) {
   const [fontSize, setFontSize] = useState(() => parseInt(localStorage.getItem('coagent-fontSize') || '15'))
-  const [theme, setTheme] = useState(() => localStorage.getItem('coagent-theme') || 'light')
+  const [theme, setTheme] = useState(() => localStorage.getItem('coagent-theme') || 'warm')
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('coagent-apikey') || '')
   const [saved, setSaved] = useState(false)
 
