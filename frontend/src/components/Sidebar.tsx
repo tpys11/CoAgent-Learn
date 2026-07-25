@@ -5,6 +5,8 @@ import {
 } from 'lucide-react'
 import type { Project, Dialogue } from '../types'
 
+interface Resource { id: string; name: string }
+
 interface SidebarProps {
   projects: Project[]
   dialogues: Dialogue[]
@@ -39,6 +41,14 @@ export default function Sidebar({
   const [editingProject, setEditingProject] = useState<string | null>(null)
   const [projectEditName, setProjectEditName] = useState('')
   const [dropdownProject, setDropdownProject] = useState<string | null>(null)
+  const [resources, setResources] = useState<Resource[]>([
+    { id: 'books', name: '书籍' },
+    { id: 'encyclopedia', name: '百科' },
+  ])
+  const [expandedResources, setExpandedResources] = useState(true)
+  const [editingResource, setEditingResource] = useState<string | null>(null)
+  const [newResourceName, setNewResourceName] = useState('')
+  const [showNewResource, setShowNewResource] = useState(false)
 
   const toggleExpand = (id: string) => {
     const next = new Set(expandedProjects)
@@ -67,6 +77,19 @@ export default function Sidebar({
       </button>
     </div>
   )
+
+  const handleCreateResource = () => {
+    if (!newResourceName.trim()) return
+    const id = 'res-' + Date.now()
+    setResources(prev => [...prev, { id, name: newResourceName.trim() }])
+    setNewResourceName('')
+    setShowNewResource(false)
+  }
+  const handleDeleteResource = (id: string) => setResources(prev => prev.filter(r => r.id !== id))
+  const handleRenameResource = (id: string, name: string) => {
+    if (!name.trim()) return
+    setResources(prev => prev.map(r => r.id === id ? { ...r, name: name.trim() } : r))
+  }
 
   /** 项目列表 + 对话窗口（仿 workbuddy） */
   const renderProjects = () => (
@@ -204,11 +227,44 @@ export default function Sidebar({
     </div>
   )
 
+  /** 资源列表 */
+  const renderResources = () => (
+    <div className="border-t border-[#e5e5e5] flex-shrink-0">
+      <div className="flex items-center gap-1 px-3 py-1.5 cursor-pointer hover:bg-[#ededed]" onClick={() => setExpandedResources(!expandedResources)}>
+        <span className="flex-shrink-0">{expandedResources ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
+        <span className="text-xs font-semibold flex-1">资源</span>
+        <button onClick={(e) => { e.stopPropagation(); setShowNewResource(true) }} className="opacity-0 hover:opacity-100 p-0.5 hover:text-[#1a1a1a]" title="新建资源"><Plus size={12} /></button>
+      </div>
+      {showNewResource && (
+        <div className="flex gap-1 px-3 py-1">
+          <input autoFocus value={newResourceName} onChange={e => setNewResourceName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCreateResource()} placeholder="资源名称" className="flex-1 px-2 py-0.5 text-[11px] border border-[#d0d0d0] rounded outline-none focus:border-[#1a1a1a]" />
+          <button onClick={handleCreateResource} className="px-2 py-0.5 text-[11px] bg-[#1a1a1a] text-white rounded font-semibold">添加</button>
+        </div>
+      )}
+      {expandedResources && (
+        <div className="ml-4 border-l border-[#e5e5e5]">
+          {resources.map(r => (
+            <div key={r.id} className="flex items-center gap-1.5 px-3 py-1 cursor-pointer text-xs hover:bg-[#ededed] text-gray-600 group">
+              {editingResource === r.id ? (
+                <input autoFocus value={newResourceName} onChange={e => setNewResourceName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { handleRenameResource(r.id, newResourceName); setEditingResource(null) } if (e.key === 'Escape') setEditingResource(null) }} onBlur={() => { handleRenameResource(r.id, newResourceName); setEditingResource(null) }} className="flex-1 px-1 py-0 text-[11px] border border-[#1a1a1a] rounded outline-none bg-white" onClick={e => e.stopPropagation()} />
+              ) : (
+                <span className="flex-1 truncate">{r.name}</span>
+              )}
+              <button onClick={(e) => { e.stopPropagation(); setEditingResource(r.id); setNewResourceName(r.name) }} className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-[#1a1a1a]"><Edit3 size={10} /></button>
+              <button onClick={(e) => { e.stopPropagation(); handleDeleteResource(r.id) }} className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-red-500"><Trash2 size={10} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 
   return (
+
     <aside className="w-full h-full bg-[#f5f5f5] border-r border-[#e5e5e5] flex flex-col rounded-lg overflow-hidden">
       {renderHeader()}
       {renderProjects()}
+      {renderResources()}
       <div className="px-3 py-1.5 border-t border-[#e5e5e5] flex justify-end mt-auto">
         <button onClick={onSettings} className="p-1.5 rounded-lg hover:bg-[#ededed] text-[#888] hover:text-[#1a1a1a] transition-colors" title="设置">
           <Settings size={16} />
