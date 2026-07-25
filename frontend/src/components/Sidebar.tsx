@@ -42,7 +42,6 @@ export default function Sidebar({
   const [editName, setEditName] = useState('')
   const [editingProject, setEditingProject] = useState<string | null>(null)
   const [projectEditName, setProjectEditName] = useState('')
-  const [dropdownProject, setDropdownProject] = useState<string | null>(null)
   const [resources, setResources] = useState<Resource[]>([
     { id: 'books', name: '书籍' },
     { id: 'encyclopedia', name: '百科' },
@@ -140,22 +139,11 @@ export default function Sidebar({
               ) : (
                 <span className="flex-1 truncate text-xs font-medium" onClick={() => { onSelectProject(project.id); toggleExpand(project.id) }}>{project.name}</span>
               )}
-              {/* 三点菜单 */}
-              <div className="relative flex-shrink-0">
-                <button onClick={(e) => { e.stopPropagation(); setDropdownProject(dropdownProject === project.id ? null : project.id) }}
-                  className="opacity-50 hover:opacity-100 p-0.5 hover:text-[#1a1a1a]" title="更多">
-                  <MoreHorizontal size={13} />
-                </button>
-                {dropdownProject === project.id && (
-                  <div className="absolute right-0 top-full mt-1 bg-white border border-[#e5e5e5] rounded-lg shadow-lg py-1 z-20 w-32"
-                    onClick={(e) => e.stopPropagation()}>
-                    <button onClick={() => { onProjectMemory?.(project.id); setDropdownProject(null) }}
-                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-[#f0f0f0]">项目记忆</button>
-                    <button onClick={() => { onProjectKnowledge?.(project.id); setDropdownProject(null) }}
-                      className="w-full text-left px-3 py-1.5 text-xs hover:bg-[#f0f0f0]">项目知识库</button>
-                  </div>
-                )}
-              </div>
+              {/* 三点菜单 → 直接打开项目配置窗口 */}
+              <button onClick={(e) => { e.stopPropagation(); onProjectKnowledge?.(project.id) }}
+                className="opacity-50 hover:opacity-100 p-0.5 hover:text-[#1a1a1a] flex-shrink-0" title="项目配置">
+                <MoreHorizontal size={13} />
+              </button>
               {/* 编辑按钮 */}
               <button onClick={(e) => { e.stopPropagation(); setEditingProject(project.id); setProjectEditName(project.name) }}
                 className="opacity-50 hover:opacity-100 p-0.5 hover:text-[#1a1a1a] flex-shrink-0" title="重命名">
