@@ -141,7 +141,7 @@ export default function Sidebar({
               {/* 三点菜单 */}
               <div className="relative flex-shrink-0">
                 <button onClick={(e) => { e.stopPropagation(); setDropdownProject(dropdownProject === project.id ? null : project.id) }}
-                  className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-[#1a1a1a]" title="更多">
+                  className="opacity-50 hover:opacity-100 p-0.5 hover:text-[#1a1a1a]" title="更多">
                   <MoreHorizontal size={13} />
                 </button>
                 {dropdownProject === project.id && (
@@ -156,12 +156,12 @@ export default function Sidebar({
               </div>
               {/* 编辑按钮 */}
               <button onClick={(e) => { e.stopPropagation(); setEditingProject(project.id); setProjectEditName(project.name) }}
-                className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-[#1a1a1a] flex-shrink-0" title="重命名">
+                className="opacity-50 hover:opacity-100 p-0.5 hover:text-[#1a1a1a] flex-shrink-0" title="重命名">
                 <Edit3 size={10} />
               </button>
               {/* 删除按钮 */}
               <button onClick={(e) => { e.stopPropagation(); onDeleteProject(project.id) }}
-                className="opacity-30 group-hover:opacity-100 hover:text-red-500 p-0.5 flex-shrink-0">
+                className="opacity-50 hover:opacity-100 hover:text-red-500 p-0.5 flex-shrink-0">
                 <Trash2 size={11} />
               </button>
               {/* 新建对话 */}
@@ -250,7 +250,7 @@ export default function Sidebar({
               ) : (
                 <span className="flex-1 truncate">{r.name}</span>
               )}
-              <button onClick={(e) => { e.stopPropagation(); setEditingResource(r.id); setNewResourceName(r.name) }} className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-[#1a1a1a]"><Edit3 size={10} /></button>
+              <button onClick={(e) => { e.stopPropagation(); setEditingResource(r.id); setNewResourceName(r.name) }} className="opacity-50 hover:opacity-100 p-0.5 hover:text-[#1a1a1a]"><Edit3 size={10} /></button>
               <button onClick={(e) => { e.stopPropagation(); handleDeleteResource(r.id) }} className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-red-500"><Trash2 size={10} /></button>
             </div>
           ))}
