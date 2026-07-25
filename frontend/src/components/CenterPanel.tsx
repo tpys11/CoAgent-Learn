@@ -18,9 +18,10 @@ interface CenterPanelProps {
   flowActiveAgent: string | null
   flowMindchain: Array<{agent: string; content: string}>
   onAgentSettings?: () => void
+  projectInitialized?: boolean
 }
 
-export default function CenterPanel({ messages, isLoading, currentProject, onSendMessage, statsCollapsed, onToggleStats, showAgentFlow, flowAgents, flowActiveAgent, flowMindchain, onAgentSettings }: CenterPanelProps) {
+export default function CenterPanel({ messages, isLoading, currentProject, onSendMessage, statsCollapsed, onToggleStats, showAgentFlow, flowAgents, flowActiveAgent, flowMindchain, onAgentSettings, projectInitialized }: CenterPanelProps) {
   const [input, setInput] = useState('')
   const [time, setTime] = useState(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }))
   const [searchMode, setSearchMode] = useState(0)
@@ -372,6 +373,12 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
 
         {/* Input row */}
         <div className="flex gap-2 items-end">
+          {projectInitialized === false ? (
+            <div className="flex-1 px-3 py-2 border border-dashed border-orange-400 rounded-lg bg-orange-50 text-xs text-orange-600 flex items-center gap-2">
+              <span>⚠️</span> 项目未初始化 — 请先在左侧栏点击项目 <span className="font-semibold">···</span> → 项目初始化
+            </div>
+          ) : (
+            <>
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -389,6 +396,8 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
           >
             <Send size={14} /> 发送
           </button>
+            </>
+          )}
         </div>
       </div>
 

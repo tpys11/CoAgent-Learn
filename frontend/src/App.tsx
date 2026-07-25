@@ -199,6 +199,7 @@ function App() {
         flowAgents={flowAgents} flowActiveAgent={flowActiveAgent}
         flowMindchain={flowMindchain}
         onAgentSettings={() => setShowAgentSettings(true)}
+        projectInitialized={currentProject?.initialized !== false}
       />
       {/* 右侧栏 */}
       {!rightCollapsed && (
