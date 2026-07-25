@@ -157,11 +157,11 @@ function App() {
   }, [])
 
   return (
-    <div ref={appRef} className="flex h-screen w-screen bg-[#faf8f5] text-[#1a1a1a] p-2 gap-0">
+    <div ref={appRef} className="flex h-screen w-screen bg-[#ffffff] text-[#1a1a1a] p-2 gap-0">
       {/* 左侧栏折叠后展开按钮 */}
       {sidebarCollapsed && (
         <button onClick={() => setSidebarCollapsed(false)}
-          className="flex-shrink-0 w-5 h-full flex items-center justify-center hover:bg-[#e8e2d9] rounded text-gray-400">▶</button>
+          className="flex-shrink-0 w-5 h-full flex items-center justify-center hover:bg-[#ededed] rounded text-gray-400">▶</button>
       )}
       {/* 左侧栏 */}
       {!sidebarCollapsed && (
@@ -183,7 +183,7 @@ function App() {
           className="w-1.5 h-full cursor-col-resize hover:bg-[#c75f1a]/30 flex-shrink-0 transition-colors" />
           {/* 折叠按钮：右侧 */}
           <button onClick={() => setSidebarCollapsed(true)}
-            className="w-5 h-5 flex items-center justify-center rounded bg-white border border-[#dad4cd] text-gray-400 hover:text-[#c75f1a] text-xs shadow-sm flex-shrink-0 self-start mt-2"
+            className="w-5 h-5 flex items-center justify-center rounded bg-white border border-[#e5e5e5] text-gray-400 hover:text-[#c75f1a] text-xs shadow-sm flex-shrink-0 self-start mt-2"
             title="收起侧栏">◀</button>
         </>
       )}
@@ -201,7 +201,7 @@ function App() {
         <>
           {/* 折叠按钮：左侧 */}
           <button onClick={() => setRightCollapsed(true)}
-            className="w-5 h-5 flex items-center justify-center rounded bg-white border border-[#dad4cd] text-gray-400 hover:text-[#c75f1a] text-xs shadow-sm flex-shrink-0 self-start mt-2"
+            className="w-5 h-5 flex items-center justify-center rounded bg-white border border-[#e5e5e5] text-gray-400 hover:text-[#c75f1a] text-xs shadow-sm flex-shrink-0 self-start mt-2"
             title="收起右侧栏">▶</button>
           {/* 右侧拖拽手柄 */}
           <div onMouseDown={() => { dragging.current = 'right'; document.body.style.userSelect = 'none' }}
@@ -214,7 +214,7 @@ function App() {
       {/* 右侧折叠后展开按钮 */}
       {rightCollapsed && (
         <button onClick={() => setRightCollapsed(false)}
-          className="flex-shrink-0 w-5 h-full flex items-center justify-center hover:bg-[#e8e2d9] rounded text-gray-400">◀</button>
+          className="flex-shrink-0 w-5 h-full flex items-center justify-center hover:bg-[#ededed] rounded text-gray-400">◀</button>
       )}
 
       {showDiagnosis && <DiagnosisModal onClose={() => setShowDiagnosis(false)} />}

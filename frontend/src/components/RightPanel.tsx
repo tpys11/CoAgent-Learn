@@ -26,7 +26,7 @@ export default function RightPanel({ messageCount }: Props) {
   }, [messageCount])
 
   return (
-    <aside className="w-full h-full bg-[#f0ebe4] flex flex-col overflow-hidden">
+    <aside className="w-full h-full bg-[#f5f5f5] flex flex-col overflow-hidden">
       <div className="p-3 flex-shrink-0">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-semibold flex items-center gap-1"><Map size={14} /> 知识图谱</span>
@@ -36,7 +36,7 @@ export default function RightPanel({ messageCount }: Props) {
         </div>
       </div>
 
-      <div className="flex-1 flex flex-col border-t border-[#dad4cd] overflow-hidden">
+      <div className="flex-1 flex flex-col border-t border-[#e5e5e5] overflow-hidden">
         <div className="px-3 py-2 flex-shrink-0">
           <span className="text-xs font-semibold">追问建议</span>
         </div>
@@ -47,7 +47,7 @@ export default function RightPanel({ messageCount }: Props) {
             QUESTIONS.map((item, i) => (
               <div key={i} className={`transition-all duration-300 ${i < showIdx ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
                 {i < showIdx && (
-                  <button className="w-full text-left bg-white border border-[#dad4cd] rounded-xl rounded-bl-sm px-3 py-2.5 hover:border-[#c75f1a]/40 hover:shadow-sm transition-all group">
+                  <button className="w-full text-left bg-white border border-[#e5e5e5] rounded-xl rounded-bl-sm px-3 py-2.5 hover:border-[#c75f1a]/40 hover:shadow-sm transition-all group">
                     <div className="flex items-center gap-1.5 mb-1">
                       <item.icon size={11} className="text-[#c75f1a]" />
                       <span className="text-[10px] text-gray-400">{item.type}</span>
@@ -62,10 +62,10 @@ export default function RightPanel({ messageCount }: Props) {
       </div>
 
       {/* 追问输入框 */}
-      <div className="p-2 flex-shrink-0 border-t border-[#dad4cd]">
+      <div className="p-2 flex-shrink-0 border-t border-[#e5e5e5]">
         <div className="flex gap-1.5 items-end">
           <textarea placeholder="追问..." rows={1}
-            className="flex-1 px-3 py-1.5 border border-[#c4beb6] rounded-lg bg-white text-xs outline-none resize-none focus:border-[#c75f1a]"
+            className="flex-1 px-3 py-1.5 border border-[#d0d0d0] rounded-lg bg-white text-xs outline-none resize-none focus:border-[#c75f1a]"
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) e.preventDefault() }} />
           <button className="px-3 py-1.5 bg-[#c75f1a] text-white rounded-lg hover:bg-[#a84a10] transition-colors flex-shrink-0">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>

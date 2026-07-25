@@ -35,7 +35,7 @@ export default function DragDropInput({ value, onChange, placeholder = '', rows 
     <div>
       {label && <label className="text-xs font-semibold text-gray-500 mb-1.5 block">{label}</label>}
       <div
-        className={`relative rounded-lg transition-colors ${dragOver ? 'border-[#c75f1a] bg-[#fef3eb]/30' : 'border-[#c4beb6] bg-[#faf8f5]'}`}
+        className={`relative rounded-lg transition-colors ${dragOver ? 'border-[#c75f1a] bg-[#fef3eb]/30' : 'border-[#d0d0d0] bg-[#ffffff]'}`}
         onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
@@ -44,7 +44,7 @@ export default function DragDropInput({ value, onChange, placeholder = '', rows 
         {files.length > 0 && (
           <div className="px-3 pt-2 flex flex-wrap gap-1.5">
             {files.map(f => (
-              <span key={f.name} className="inline-flex items-center gap-1 text-[11px] bg-white border border-[#dad4cd] rounded px-2 py-0.5">
+              <span key={f.name} className="inline-flex items-center gap-1 text-[11px] bg-white border border-[#e5e5e5] rounded px-2 py-0.5">
                 <FileText size={10} className="text-blue-500" />
                 {f.name} ({f.size})
                 <button onClick={() => removeFile(f.name)} className="hover:text-red-500"><X size={10} /></button>

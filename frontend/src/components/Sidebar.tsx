@@ -49,12 +49,12 @@ export default function Sidebar({
 
   /** 顶部：品牌 + 新建 */
   const renderHeader = () => (
-    <div className="p-3 flex items-center gap-2 border-b border-[#dad4cd]">
+    <div className="p-3 flex items-center gap-2 border-b border-[#e5e5e5]">
       <Bot size={20} className="text-[#c75f1a]" />
       <span className="text-sm font-bold flex-1">CoAgent-Learn</span>
       <button
         onClick={() => setShowCreate(true)}
-        className="p-1 rounded hover:bg-[#e8e2d9] text-gray-400 hover:text-[#c75f1a]"
+        className="p-1 rounded hover:bg-[#ededed] text-gray-400 hover:text-[#c75f1a]"
         title="新建项目"
       >
         <Plus size={16} />
@@ -71,7 +71,7 @@ export default function Sidebar({
             autoFocus value={newName} onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
             placeholder="项目名称"
-            className="flex-1 px-2 py-1 text-xs border border-[#c4beb6] rounded outline-none focus:border-[#c75f1a]"
+            className="flex-1 px-2 py-1 text-xs border border-[#d0d0d0] rounded outline-none focus:border-[#c75f1a]"
           />
           <button onClick={handleCreate} className="px-2 py-1 text-xs bg-[#c75f1a] text-white rounded font-semibold">创建</button>
         </div>
@@ -88,7 +88,7 @@ export default function Sidebar({
             <div
               onClick={() => { onSelectProject(project.id); toggleExpand(project.id) }}
               className={`flex items-center gap-1.5 px-3 py-1.5 cursor-pointer text-sm transition-colors ${
-                isActive ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-[#e8e2d9]'
+                isActive ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-[#ededed]'
               }`}
             >
               <span className="flex-shrink-0">
@@ -113,7 +113,7 @@ export default function Sidebar({
 
             {/* 对话窗口列表 */}
             {isExpanded && (
-              <div className="ml-4 border-l border-[#dad4cd]">
+              <div className="ml-4 border-l border-[#e5e5e5]">
                 {projectDialogues.length === 0 && (
                   <p className="text-[10px] text-gray-400 px-3 py-1">暂无对话</p>
                 )}
@@ -124,7 +124,7 @@ export default function Sidebar({
                     className={`flex items-center gap-1.5 px-3 py-1 cursor-pointer text-xs transition-colors ${
                       d.id === currentDialogueId
                         ? 'bg-[#fef3eb] text-[#c75f1a] font-medium'
-                        : 'hover:bg-[#e8e2d9] text-gray-600'
+                        : 'hover:bg-[#ededed] text-gray-600'
                     }`}
                   >
                     <MessageSquare size={11} />
@@ -169,22 +169,22 @@ export default function Sidebar({
 
   /** Agent 列表 */
   const renderAgents = () => (
-    <div className="border-t border-[#dad4cd] max-h-[50%] overflow-y-auto flex-shrink-0">
+    <div className="border-t border-[#e5e5e5] max-h-[50%] overflow-y-auto flex-shrink-0">
       <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-[#888]">Agent</div>
       {agents.map((agent) => (
         <div
           key={agent.id}
           onClick={() => onSelectAgent(agent)}
-          className="flex items-center gap-2 px-3 py-1.5 cursor-pointer text-xs hover:bg-[#e8e2d9] transition-colors text-gray-600"
+          className="flex items-center gap-2 px-3 py-1.5 cursor-pointer text-xs hover:bg-[#ededed] transition-colors text-gray-600"
         >
           <span>{agent.icon}</span>
           <span className="truncate">{agent.name}</span>
         </div>
       ))}
-      <div className="px-3 py-1.5 border-t border-[#dad4cd] flex justify-end">
+      <div className="px-3 py-1.5 border-t border-[#e5e5e5] flex justify-end">
         <button
           onClick={onSettings}
-          className="p-1.5 rounded-lg hover:bg-[#e8e2d9] text-[#888] hover:text-[#c75f1a] transition-colors"
+          className="p-1.5 rounded-lg hover:bg-[#ededed] text-[#888] hover:text-[#c75f1a] transition-colors"
           title="设置"
         >
           <Settings size={16} />
@@ -194,7 +194,7 @@ export default function Sidebar({
   )
 
   return (
-    <aside className="w-full h-full bg-[#f0ebe4] border-r border-[#dad4cd] flex flex-col rounded-lg overflow-hidden">
+    <aside className="w-full h-full bg-[#f5f5f5] border-r border-[#e5e5e5] flex flex-col rounded-lg overflow-hidden">
       {renderHeader()}
       {renderProjects()}
       {renderAgents()}

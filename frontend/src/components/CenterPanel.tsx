@@ -99,7 +99,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
               时间范围：<span className="text-[#c75f1a] font-semibold">{timeRange}</span> ▾
             </button>
             {showTimeRange && (
-              <div className="absolute top-full left-0 mt-1 bg-white border border-[#dad4cd] rounded-lg shadow-lg p-1 z-50 w-20">
+              <div className="absolute top-full left-0 mt-1 bg-white border border-[#e5e5e5] rounded-lg shadow-lg p-1 z-50 w-20">
                 {timeLabels.map(label => (
                   <button key={label} onClick={() => { setTimeRange(label); setShowTimeRange(false) }}
                     className={`text-[11px] px-2 py-1 rounded w-full text-left ${label === timeRange ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>
@@ -124,7 +124,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
       {/* 折叠按钮：下方正中间 */}
       <div className="flex justify-center -mt-0.5 mb-1">
         <button onClick={onToggleStats}
-          className="w-5 h-3 flex items-center justify-center rounded-b hover:bg-[#e8e2d9] text-gray-400 text-[10px] leading-none transition-colors"
+          className="w-5 h-3 flex items-center justify-center rounded-b hover:bg-[#ededed] text-gray-400 text-[10px] leading-none transition-colors"
           title={statsCollapsed ? '展开' : '收起'}>
           {statsCollapsed ? '▼' : '▲'}
         </button>
@@ -135,7 +135,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
       <div className={`overflow-y-auto px-4 py-3 flex flex-col gap-3 flex-1`}>
         {/* Agent 思考过程 */}
         {showAgentFlow && (
-          <div className="mb-2 bg-white border border-[#dad4cd] rounded-xl overflow-hidden flex-shrink-0" style={{ height: '28vh', minHeight: 150 }}>
+          <div className="mb-2 bg-white border border-[#e5e5e5] rounded-xl overflow-hidden flex-shrink-0" style={{ height: '28vh', minHeight: 150 }}>
             <AgentFlow visible={true} agents={flowAgents} activeAgent={flowActiveAgent} />
           </div>
         )}
@@ -157,7 +157,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
                 msg.role === 'user'
                   ? 'self-end bg-[#fef3eb] border border-[#c75f1a]/25 rounded-br-sm'
                   : msg.role === 'thinking'
-                  ? 'self-start bg-[#faf8f5] border border-[#dad4cd] rounded-bl-sm italic'
+                  ? 'self-start bg-[#ffffff] border border-[#e5e5e5] rounded-bl-sm italic'
                   : 'self-start bg-transparent border border-transparent rounded-bl-sm'
               }`}
             >
@@ -172,7 +172,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
                 <>
                   <div dangerouslySetInnerHTML={{ __html: msg.content.replace(/\n/g, '<br/>') }} />
                   {msg.steps && msg.steps.length > 0 && (
-                    <div className="mt-2 pt-2 border-t border-[#dad4cd] flex flex-wrap gap-1">
+                    <div className="mt-2 pt-2 border-t border-[#e5e5e5] flex flex-wrap gap-1">
                       {msg.steps.map((s, i) => (
                         <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-200"
                           title={s.detail || s.agent}>
@@ -190,9 +190,9 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
           ))
         )}
         {flowMindchain.length > 0 && (
-          <div className="self-start bg-[#faf8f5] border border-[#dad4cd] rounded-2xl rounded-bl-sm max-w-[80%] overflow-hidden">
+          <div className="self-start bg-[#ffffff] border border-[#e5e5e5] rounded-2xl rounded-bl-sm max-w-[80%] overflow-hidden">
             <button onClick={() => setThinkingCollapsed(!thinkingCollapsed)}
-              className="w-full flex items-center justify-between px-4 py-2 text-xs hover:bg-[#f0ebe4] transition-colors">
+              className="w-full flex items-center justify-between px-4 py-2 text-xs hover:bg-[#f5f5f5] transition-colors">
               <span className="flex items-center gap-1.5 text-gray-500">
                 {isLoading && <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse" />}
                 {isLoading ? '思考中…' : '✓ 思考过程'}
@@ -200,11 +200,11 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
               <span className="text-gray-400">{thinkingCollapsed || isLoading ? '▸ 展开' : '▾ 收起'}</span>
             </button>
             {!thinkingCollapsed && (
-              <div className="px-4 pb-3 flex flex-col gap-2 border-t border-[#dad4cd] pt-2 max-h-60 overflow-y-auto">
+              <div className="px-4 pb-3 flex flex-col gap-2 border-t border-[#e5e5e5] pt-2 max-h-60 overflow-y-auto">
                 {flowMindchain.map((item, i) => (
                   <div key={i} className="animate-[fadeIn_0.2s_ease]">
                     <div className="text-[11px] font-semibold text-[#b8952e] mb-0.5">{item.agent}</div>
-                    <div className="text-[11px] leading-relaxed text-gray-500 whitespace-pre-wrap pl-2 border-l-2 border-[#dad4cd]">
+                    <div className="text-[11px] leading-relaxed text-gray-500 whitespace-pre-wrap pl-2 border-l-2 border-[#e5e5e5]">
                       {item.content}
                     </div>
                   </div>
@@ -240,7 +240,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
               📥 输入优化 ▾
             </button>
             {showInputOpt && (
-              <div className="absolute bottom-full left-0 mb-1 bg-white border border-[#dad4cd] rounded-lg shadow-lg p-1.5 z-10" style={{ width: 220 }}>
+              <div className="absolute bottom-full left-0 mb-1 bg-white border border-[#e5e5e5] rounded-lg shadow-lg p-1.5 z-10" style={{ width: 220 }}>
                 {inputOptLabels.map((label, i) => (
                   <button key={label} onClick={() => { setInputOptMode(i) }}
                     className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === inputOptMode ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>
@@ -261,7 +261,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
               检索与搜索 ▾
             </button>
             {showSearch && (
-              <div className="absolute bottom-full left-0 mb-1 bg-white border border-[#dad4cd] rounded-lg shadow-lg p-2 z-10" style={{ width: 240 }}>
+              <div className="absolute bottom-full left-0 mb-1 bg-white border border-[#e5e5e5] rounded-lg shadow-lg p-2 z-10" style={{ width: 240 }}>
                 <div className="text-[10px] text-gray-400 mb-1">知识库检索：</div>
                 {searchLabels.map((label, i) => (
                   <button key={label} onClick={() => { setSearchMode(i) }}
@@ -294,7 +294,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
               输出形式 ▾
             </button>
             {showFormat && (
-              <div className="absolute bottom-full left-0 mb-1 bg-white border border-[#dad4cd] rounded-lg shadow-lg p-2 z-10" style={{ width: 260 }}>
+              <div className="absolute bottom-full left-0 mb-1 bg-white border border-[#e5e5e5] rounded-lg shadow-lg p-2 z-10" style={{ width: 260 }}>
                 <div className="text-[10px] text-gray-400 mb-1">结构化程度：</div>
                 {([
                   ['低结构化', '减少列表和表格，以段落为主'],
@@ -330,7 +330,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
               输出内容 ▾
             </button>
             {showContent && (
-              <div className="absolute bottom-full left-0 mb-1 bg-white border border-[#dad4cd] rounded-lg shadow-lg p-2 z-10" style={{ width: 260 }}>
+              <div className="absolute bottom-full left-0 mb-1 bg-white border border-[#e5e5e5] rounded-lg shadow-lg p-2 z-10" style={{ width: 260 }}>
                 <div className="text-[10px] text-gray-400 mb-1">思考链展示：</div>
                 {([
                   ['关', '不展示思考链'],
@@ -381,7 +381,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
             }}
             placeholder="输入你的问题...（Shift+Enter 换行）"
             rows={2}
-            className="flex-1 px-3 py-2 border border-[#c4beb6] rounded-lg bg-white text-sm outline-none resize-none focus:border-[#c75f1a] focus:ring-[3px] focus:ring-[#c75f1a]/10"
+            className="flex-1 px-3 py-2 border border-[#d0d0d0] rounded-lg bg-white text-sm outline-none resize-none focus:border-[#c75f1a] focus:ring-[3px] focus:ring-[#c75f1a]/10"
           />
           <button
             onClick={handleSend}
@@ -402,7 +402,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
 function CollapsibleThink({ think }: { think: string[] }) {
   const [open, setOpen] = useState(false)
   return (
-    <div className="mt-2 pt-2 border-t border-[#dad4cd]">
+    <div className="mt-2 pt-2 border-t border-[#e5e5e5]">
       <button onClick={() => setOpen(!open)} className="text-[11px] text-gray-400 hover:text-gray-600 flex items-center gap-1">
         <span>{open ? '▾' : '▸'}</span> 思考过程
       </button>
