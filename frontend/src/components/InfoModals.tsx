@@ -53,18 +53,18 @@ export function MemoryModal({ onClose }: Props) {
   const [autoFoundation, setAutoFoundation] = useState(true)
   const [autoFlexible, setAutoFlexible] = useState(true)
 
-  // 学习目的
-  const [purposePresets] = useState(['深入理解底层逻辑', '应用于实践/项目', '通过考试/认证', '拓展知识广度', '完成作业/任务'])
-  const [activePurpose, setActivePurpose] = useState<Set<string>>(new Set(['深入理解底层逻辑', '应用于实践/项目']))
+  // 学习偏好（几乎不变）
+  const [purposePresets] = useState(['理解原理优先于记忆', '视觉型学习（图表/流程）', '动手实践优先', '自顶向下学习', '费曼输出法', '定期复习间隔'])
+  const [activePurpose, setActivePurpose] = useState<Set<string>>(new Set(['理解原理优先于记忆', '自顶向下学习']))
   const [customPurpose, setCustomPurpose] = useState<string[]>([])
 
-  // 学习方式
-  const [methodPresets] = useState(['费曼学习法（讲解输出）', '做笔记/思维导图', '动手实践/写代码', '阅读官方文档', '看视频教程', '参与讨论/社群'])
-  const [activeMethod, setActiveMethod] = useState<Set<string>>(new Set(['费曼学习法（讲解输出）', '动手实践/写代码']))
+  // 资源配置（可更换）
+  const [methodPresets] = useState(['主用官方文档', '笔记工具辅助', '思维导图梳理', '代码实践验证', '视频教程补充', '参与社区讨论'])
+  const [activeMethod, setActiveMethod] = useState<Set<string>>(new Set(['主用官方文档', '代码实践验证']))
   const [customMethod, setCustomMethod] = useState<string[]>([])
 
-  // 本次约束
-  const [constraintPresets] = useState(['需要举例说明', '需要类比辅助', '输出Markdown格式', '控制在500字以内', '给出课后练习', '标注信息来源'])
+  // 本次要求（灵活调整）
+  const [constraintPresets] = useState(['需要举例说明', '需要类比辅助', '输出Markdown格式', '控制在500字以内', '给出课后练习', '标注信息来源', '附推荐阅读'])
   const [activeConstraint, setActiveConstraint] = useState<Set<string>>(new Set(['需要举例说明', '输出Markdown格式']))
   const [customConstraint, setCustomConstraint] = useState<string[]>([])
 
@@ -91,12 +91,12 @@ export function MemoryModal({ onClose }: Props) {
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-5">
-          {/* 学习目的 */}
+          {/* 学习偏好 */}
           <div className="border border-blue-200 rounded-xl p-4 bg-blue-50/20">
             <div className="flex items-center justify-between mb-3">
               <div>
-                <h3 className="text-sm font-bold flex items-center gap-1.5 text-blue-700">🎯 学习目的</h3>
-                <p className="text-[10px] text-gray-400 mt-0.5">核心不变。明确每次学习的目标导向。</p>
+                <h3 className="text-sm font-bold flex items-center gap-1.5 text-blue-700">🧠 学习偏好</h3>
+                <p className="text-[10px] text-gray-400 mt-0.5">几乎不变的底层学习风格。仅手动管理，不轻易调整。</p>
               </div>
               <ToggleBtn on={autoCore} setOn={setAutoCore} />
             </div>
@@ -107,12 +107,12 @@ export function MemoryModal({ onClose }: Props) {
               placeholder="添加目的" accentColor="#2563eb" />
           </div>
 
-          {/* 学习方式 */}
+          {/* 资源配置 */}
           <div className="border border-purple-200 rounded-xl p-4 bg-purple-50/20">
             <div className="flex items-center justify-between mb-3">
               <div>
-                <h3 className="text-sm font-bold flex items-center gap-1.5 text-purple-700">📖 学习方式</h3>
-                <p className="text-[10px] text-gray-400 mt-0.5">较大困难时可调整。选择适合的学习方法。</p>
+                <h3 className="text-sm font-bold flex items-center gap-1.5 text-purple-700">🔧 资源配置</h3>
+                <p className="text-[10px] text-gray-400 mt-0.5">较大困难时可更换。选择学习中使用的工具和资源。</p>
               </div>
               <ToggleBtn on={autoFoundation} setOn={setAutoFoundation} />
             </div>
@@ -123,12 +123,12 @@ export function MemoryModal({ onClose }: Props) {
               placeholder="添加方式" accentColor="#7c3aed" />
           </div>
 
-          {/* 本次约束 */}
+          {/* 本次要求 */}
           <div className="border border-green-200 rounded-xl p-4 bg-green-50/20">
             <div className="flex items-center justify-between mb-3">
               <div>
-                <h3 className="text-sm font-bold flex items-center gap-1.5 text-green-700">⚡ 本次约束</h3>
-                <p className="text-[10px] text-gray-400 mt-0.5">每次可灵活调整。对话前设定本次学习的具体要求。</p>
+                <h3 className="text-sm font-bold flex items-center gap-1.5 text-green-700">📝 本次要求</h3>
+                <p className="text-[10px] text-gray-400 mt-0.5">每次对话前可灵活调整。设定本次学习的具体要求。</p>
               </div>
               <ToggleBtn on={autoFlexible} setOn={setAutoFlexible} />
             </div>
