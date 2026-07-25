@@ -95,7 +95,7 @@ export default function Sidebar({
 
   /** 项目列表 + 对话窗口（仿 workbuddy） */
   const renderProjects = () => (
-    <div className="flex-1 overflow-y-auto">
+    <div className="overflow-y-auto max-h-[45%]">
       {showCreate && (
         <div className="flex gap-1 px-3 py-2">
           <input
@@ -254,8 +254,9 @@ export default function Sidebar({
     <aside className="w-full h-full bg-[#f5f5f5] border-r border-[#e5e5e5] flex flex-col rounded-lg overflow-hidden">
       {renderHeader()}
       {renderProjects()}
+      <div className="flex-1" />
       {renderResources()}
-      <div className="px-3 py-1.5 border-t border-[#e5e5e5] flex justify-end mt-auto">
+      <div className="px-3 py-1.5 border-t border-[#e5e5e5] flex justify-end">
         <button onClick={onSettings} className="p-1.5 rounded-lg hover:bg-[#ededed] text-[#888] hover:text-[#1a1a1a] transition-colors" title="设置">
           <Settings size={16} />
         </button>
