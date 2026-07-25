@@ -57,18 +57,18 @@ export function MemoryModal({ onClose }: Props) {
   const [autoFlexible, setAutoFlexible] = useState(true)
 
   // 核心原则
-  const [corePresets] = useState(['多智能体协同架构', 'MCP协议连接', '知识库驱动生成', 'Agent间独立通信'])
-  const [activeCore, setActiveCore] = useState<Set<string>>(new Set(['多智能体协同架构']))
+  const [corePresets] = useState(['以理解原理为目标', '理论结合实践', '主动输出倒逼输入', '先广度后深度', '费曼学习法'])
+  const [activeCore, setActiveCore] = useState<Set<string>>(new Set(['以理解原理为目标', '理论结合实践']))
   const [customCore, setCustomCore] = useState<string[]>([])
 
   // 基础框架
-  const [foundationPresets] = useState(['React + Tailwind', 'FastAPI + LangGraph', 'Chroma 向量库', 'Redis 缓存', 'Docker 部署'])
-  const [activeFoundation, setActiveFoundation] = useState<Set<string>>(new Set(['React + Tailwind', 'FastAPI + LangGraph']))
+  const [foundationPresets] = useState(['每周学习频率', '笔记工具偏好', '知识管理方式', '学习资料优先官方文档', '定期复习巩固'])
+  const [activeFoundation, setActiveFoundation] = useState<Set<string>>(new Set(['知识管理方式', '学习资料优先官方文档']))
   const [customFoundation, setCustomFoundation] = useState<string[]>([])
 
   // 灵活配置
-  const [flexiblePresets] = useState(['学习深度：中等', '输出格式：Markdown', '检索模式：增强', '思考链展示：开启'])
-  const [activeFlexible, setActiveFlexible] = useState<Set<string>>(new Set(['学习深度：中等', '输出格式：Markdown']))
+  const [flexiblePresets] = useState(['本次学习深度', '输出形式：笔记/脑图/讲解', '需要举例说明', '需要类比辅助', '需要课后练习'])
+  const [activeFlexible, setActiveFlexible] = useState<Set<string>>(new Set(['本次学习深度', '需要举例说明']))
   const [customFlexible, setCustomFlexible] = useState<string[]>([])
 
   const allCore = [...corePresets, ...customCore]
