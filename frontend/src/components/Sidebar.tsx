@@ -239,13 +239,13 @@ export default function Sidebar({
 
   return (
 
-    <aside className="w-full h-full bg-[#f5f5f5] border-r border-[#e5e5e5] flex flex-col rounded-lg overflow-hidden">
+    <aside className="w-full h-full bg-[#f5f5f5] border-r border-[#e5e5e5] flex flex-col rounded-lg overflow-hidden relative">
       {renderHeader()}
       {renderProjects()}
-      <div className="flex-1" />
-      {renderResources()}
-      <div className="flex-1" />
-      <div className="px-3 py-1.5 border-t border-[#e5e5e5] flex justify-end">
+      <div className="absolute left-0 right-0" style={{ top: "50%", transform: "translateY(-50%)" }}>
+        {renderResources()}
+      </div>
+      <div className="px-3 py-1.5 border-t border-[#e5e5e5] flex justify-end mt-auto">
         <button onClick={onSettings} className="p-1.5 rounded-lg hover:bg-[#ededed] text-[#888] hover:text-[#1a1a1a] transition-colors" title="设置">
           <Settings size={16} />
         </button>
