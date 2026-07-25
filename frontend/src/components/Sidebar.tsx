@@ -47,6 +47,9 @@ export default function Sidebar({
     { id: 'encyclopedia', name: '百科' },
   ])
   const [expandedResources, setExpandedResources] = useState(true)
+  const [editingResource, setEditingResource] = useState<string | null>(null)
+  const [newResourceName, setNewResourceName] = useState('')
+  const [showNewResource, setShowNewResource] = useState(false)
 
   const toggleExpand = (id: string) => {
     const next = new Set(expandedProjects)
@@ -75,6 +78,19 @@ export default function Sidebar({
       </button>
     </div>
   )
+
+  const handleCreateResource = () => {
+    if (!newResourceName.trim()) return
+    const id = 'res-' + Date.now()
+    setResources(prev => [...prev, { id, name: newResourceName.trim() }])
+    setNewResourceName('')
+    setShowNewResource(false)
+  }
+  const handleDeleteResource = (id: string) => setResources(prev => prev.filter(r => r.id !== id))
+  const handleRenameResource = (id: string, name: string) => {
+    if (!name.trim()) return
+    setResources(prev => prev.map(r => r.id === id ? { ...r, name: name.trim() } : r))
+  }
 
   /** 项目列表 + 对话窗口（仿 workbuddy） */
   const renderProjects = () => (
@@ -134,13 +150,13 @@ export default function Sidebar({
                 <Edit3 size={10} />
               </button>
               {/* 删除按钮 */}
-              <button onClick={(e) => { e.stopPropagation(); onDeleteProject(project.id) }}
+              <button onClick={(e) => { e.stopPropagation(); if (confirm('确定删除此项目及其所有对话？')) onDeleteProject(project.id) }}
                 className="opacity-50 hover:opacity-100 hover:text-red-500 p-0.5 flex-shrink-0">
                 <Trash2 size={11} />
               </button>
               {/* 新建对话 */}
-              <button onClick={(e) => { e.stopPropagation(); onSelectProject(project.id); toggleExpand(project.id); onCreateDialogue(project.id) }}
-                className="opacity-0 group-hover:opacity-100 hover:text-[#1a1a1a] p-0.5 flex-shrink-0" title="新建对话">
+              <button onClick={(e) => { e.stopPropagation(); onSelectProject(project.id); onCreateDialogue(project.id) }}
+                className="opacity-50 hover:opacity-100 hover:text-[#1a1a1a] p-0.5 flex-shrink-0" title="新建对话">
                 <Plus size={12} />
               </button>
             </div>
@@ -185,7 +201,7 @@ export default function Sidebar({
                       <Edit3 size={10} />
                     </button>
                     <button
-                      onClick={(e) => { e.stopPropagation(); onArchiveDialogue(d.id) }}
+                      onClick={(e) => { e.stopPropagation(); if (confirm('确定归档此对话？')) onArchiveDialogue(d.id) }}
                       className="opacity-40 hover:opacity-100 p-0.5 hover:text-yellow-600"
                       title="归档"
                     >
@@ -203,12 +219,12 @@ export default function Sidebar({
 
   /** 资源列表 */
   const renderResources = () => (
-    <div className="border-t border-[#e5e5e5]">
+    <div className="border-t border-[#e5e5e5] flex-shrink-0">
       <div className="flex items-center gap-1 px-3 py-1.5 cursor-pointer hover:bg-[#ededed]" onClick={() => setExpandedResources(!expandedResources)}>
         <span className="flex-shrink-0">{expandedResources ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
         <span className="text-xs font-semibold flex-1">资源</span>
       </div>
-      <div className="overflow-hidden transition-all duration-200" style={{ maxHeight: expandedResources ? '200px' : '0px' }}>
+      {expandedResources && (
         <div className="ml-4 border-l border-[#e5e5e5]">
           {resources.map(r => (
             <div key={r.id} onClick={() => onResourceOpen?.(r.id, r.name)}
@@ -217,7 +233,7 @@ export default function Sidebar({
             </div>
           ))}
         </div>
-      </div>
+      )}
     </div>
   )
 
@@ -227,9 +243,7 @@ export default function Sidebar({
       {renderHeader()}
       {renderProjects()}
       <div className="flex-1" />
-      <div className="absolute left-0 right-0" style={{ top: "50%", marginTop: -12 }}>
-        {renderResources()}
-      </div>
+      {renderResources()}
       <div className="px-3 py-1.5 border-t border-[#e5e5e5] flex justify-end">
         <button onClick={onSettings} className="p-1.5 rounded-lg hover:bg-[#ededed] text-[#888] hover:text-[#1a1a1a] transition-colors" title="设置">
           <Settings size={16} />
