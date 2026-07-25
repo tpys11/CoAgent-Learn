@@ -17,6 +17,11 @@ export interface AgentMode {
   promptOverride: string
 }
 
+export interface AgentMode {
+  label: string
+  promptOverride: string
+}
+
 export interface AgentConfig {
   id: string
   name: string

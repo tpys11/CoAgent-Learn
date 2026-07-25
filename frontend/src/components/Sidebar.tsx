@@ -47,9 +47,6 @@ export default function Sidebar({
     { id: 'encyclopedia', name: '百科' },
   ])
   const [expandedResources, setExpandedResources] = useState(true)
-  const [editingResource, setEditingResource] = useState<string | null>(null)
-  const [newResourceName, setNewResourceName] = useState('')
-  const [showNewResource, setShowNewResource] = useState(false)
 
   const toggleExpand = (id: string) => {
     const next = new Set(expandedProjects)
@@ -78,19 +75,6 @@ export default function Sidebar({
       </button>
     </div>
   )
-
-  const handleCreateResource = () => {
-    if (!newResourceName.trim()) return
-    const id = 'res-' + Date.now()
-    setResources(prev => [...prev, { id, name: newResourceName.trim() }])
-    setNewResourceName('')
-    setShowNewResource(false)
-  }
-  const handleDeleteResource = (id: string) => setResources(prev => prev.filter(r => r.id !== id))
-  const handleRenameResource = (id: string, name: string) => {
-    if (!name.trim()) return
-    setResources(prev => prev.map(r => r.id === id ? { ...r, name: name.trim() } : r))
-  }
 
   /** 项目列表 + 对话窗口（仿 workbuddy） */
   const renderProjects = () => (

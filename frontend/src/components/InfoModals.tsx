@@ -16,7 +16,7 @@ const ToggleBtn = ({ on, setOn }: { on: boolean; setOn: (v: boolean) => void }) 
 )
 
 /** 选项列表组件 */
-function OptionList({ title, desc, items, active, onToggle, onRemove, onAdd, placeholder, accentColor, disableAdd }: {
+function OptionList({ items, active, onToggle, onRemove, onAdd, placeholder, accentColor, disableAdd }: {
   title: string; desc: string; items: string[]; active: Set<string>; onToggle: (v: string) => void;
   onRemove: (v: string) => void; onAdd: (v: string) => void; placeholder: string; accentColor: string; disableAdd?: boolean
 }) {
