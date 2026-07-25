@@ -23,6 +23,7 @@ interface SidebarProps {
   onProjectMemory?: (projectId: string) => void
   onProjectKnowledge?: (projectId: string) => void
   onSettings: () => void
+  onResourceOpen?: (resourceId: string, resourceName: string) => void
 }
 
 export default function Sidebar({
@@ -32,6 +33,7 @@ export default function Sidebar({
   onRenameProject,
   onProjectMemory, onProjectKnowledge,
   onSettings,
+  onResourceOpen,
 }: SidebarProps) {
   const [showCreate, setShowCreate] = useState(false)
   const [newName, setNewName] = useState('')
@@ -233,25 +235,13 @@ export default function Sidebar({
       <div className="flex items-center gap-1 px-3 py-1.5 cursor-pointer hover:bg-[#ededed]" onClick={() => setExpandedResources(!expandedResources)}>
         <span className="flex-shrink-0">{expandedResources ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
         <span className="text-xs font-semibold flex-1">资源</span>
-        <button onClick={(e) => { e.stopPropagation(); setShowNewResource(true) }} className="opacity-0 hover:opacity-100 p-0.5 hover:text-[#1a1a1a]" title="新建资源"><Plus size={12} /></button>
       </div>
-      {showNewResource && (
-        <div className="flex gap-1 px-3 py-1">
-          <input autoFocus value={newResourceName} onChange={e => setNewResourceName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCreateResource()} placeholder="资源名称" className="flex-1 px-2 py-0.5 text-[11px] border border-[#d0d0d0] rounded outline-none focus:border-[#1a1a1a]" />
-          <button onClick={handleCreateResource} className="px-2 py-0.5 text-[11px] bg-[#1a1a1a] text-white rounded font-semibold">添加</button>
-        </div>
-      )}
       {expandedResources && (
         <div className="ml-4 border-l border-[#e5e5e5]">
           {resources.map(r => (
-            <div key={r.id} className="flex items-center gap-1.5 px-3 py-1 cursor-pointer text-xs hover:bg-[#ededed] text-gray-600 group">
-              {editingResource === r.id ? (
-                <input autoFocus value={newResourceName} onChange={e => setNewResourceName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { handleRenameResource(r.id, newResourceName); setEditingResource(null) } if (e.key === 'Escape') setEditingResource(null) }} onBlur={() => { handleRenameResource(r.id, newResourceName); setEditingResource(null) }} className="flex-1 px-1 py-0 text-[11px] border border-[#1a1a1a] rounded outline-none bg-white" onClick={e => e.stopPropagation()} />
-              ) : (
-                <span className="flex-1 truncate">{r.name}</span>
-              )}
-              <button onClick={(e) => { e.stopPropagation(); setEditingResource(r.id); setNewResourceName(r.name) }} className="opacity-50 hover:opacity-100 p-0.5 hover:text-[#1a1a1a]"><Edit3 size={10} /></button>
-              <button onClick={(e) => { e.stopPropagation(); handleDeleteResource(r.id) }} className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-red-500"><Trash2 size={10} /></button>
+            <div key={r.id} onClick={() => onResourceOpen?.(r.id, r.name)}
+              className="flex items-center gap-1.5 px-3 py-1 cursor-pointer text-xs hover:bg-[#ededed] text-gray-600">
+              <span>{r.name}</span>
             </div>
           ))}
         </div>
