@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X, Brain, Database } from 'lucide-react'
+import { X, Brain, Database, Plus } from 'lucide-react'
 import DragDropInput from './DragDropInput'
 
 interface Props { onClose: () => void }
@@ -15,15 +15,65 @@ const ToggleBtn = ({ on, setOn }: { on: boolean; setOn: (v: boolean) => void }) 
   </button>
 )
 
-// ========== 记忆系统（三层级分层排布） ==========
+/** Tag 选项组件 */
+function TagList({ items, active, onToggle, onRemove, onAdd, placeholder, colorClass, disableAdd }: {
+  items: string[]; active: Set<string>; onToggle: (v: string) => void; onRemove: (v: string) => void;
+  onAdd: (v: string) => void; placeholder: string; colorClass: string; disableAdd?: boolean
+}) {
+  const [input, setInput] = useState('')
+  return (
+    <div className="flex flex-wrap gap-1.5 items-center">
+      {items.map(item => {
+        const sel = active.has(item)
+        return (
+          <button key={item} onClick={() => onToggle(item)}
+            className={`inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full font-medium transition-colors ${
+              sel ? `${colorClass} text-white` : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+            } group`}>
+            {item}
+            {sel && <span onClick={(e) => { e.stopPropagation(); onRemove(item) }} className="text-white/70 hover:text-white ml-0.5">×</span>}
+          </button>
+        )
+      })}
+      {!disableAdd && (
+        <div className="flex items-center gap-1">
+          <input value={input} onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && input.trim()) { onAdd(input.trim()); setInput('') } }}
+            placeholder={placeholder}
+            className="w-24 px-2 py-1 text-[11px] border border-dashed border-gray-300 rounded-full outline-none focus:border-gray-400 bg-transparent" />
+          <button onClick={() => { if (input.trim()) { onAdd(input.trim()); setInput('') } }}
+            className="p-0.5 hover:text-[#1a1a1a]"><Plus size={12} /></button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ========== 记忆系统（三层模板设计） ==========
 export function MemoryModal({ onClose }: Props) {
   const [autoMemory, setAutoMemory] = useState(true)
-  const [corePrinciples, setCorePrinciples] = useState('')
-  const [foundation, setFoundation] = useState('')
-  const [flexibleConfig, setFlexibleConfig] = useState('')
   const [autoCore, setAutoCore] = useState(false)
   const [autoFoundation, setAutoFoundation] = useState(true)
   const [autoFlexible, setAutoFlexible] = useState(true)
+
+  // 核心原则
+  const [corePresets] = useState(['多智能体协同架构', 'MCP协议连接', '知识库驱动生成', 'Agent间独立通信'])
+  const [activeCore, setActiveCore] = useState<Set<string>>(new Set(['多智能体协同架构']))
+  const [customCore, setCustomCore] = useState<string[]>([])
+
+  // 基础框架
+  const [foundationPresets] = useState(['React + Tailwind', 'FastAPI + LangGraph', 'Chroma 向量库', 'Redis 缓存', 'Docker 部署'])
+  const [activeFoundation, setActiveFoundation] = useState<Set<string>>(new Set(['React + Tailwind', 'FastAPI + LangGraph']))
+  const [customFoundation, setCustomFoundation] = useState<string[]>([])
+
+  // 灵活配置
+  const [flexiblePresets] = useState(['学习深度：中等', '输出格式：Markdown', '检索模式：增强', '思考链展示：开启'])
+  const [activeFlexible, setActiveFlexible] = useState<Set<string>>(new Set(['学习深度：中等', '输出格式：Markdown']))
+  const [customFlexible, setCustomFlexible] = useState<string[]>([])
+
+  const allCore = [...corePresets, ...customCore]
+  const allFoundation = [...foundationPresets, ...customFoundation]
+  const allFlexible = [...flexiblePresets, ...customFlexible]
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onMouseDown={closeOnBackdrop(onClose)}>
@@ -33,7 +83,7 @@ export function MemoryModal({ onClose }: Props) {
           <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
         </div>
         <div className="px-5 py-3 bg-[#ffffff] border-b border-[#e5e5e5] flex-shrink-0">
-          <p className="text-xs text-gray-500 mb-2">系统根据行为自动更新记忆，您也可以手动管理。关闭后将仅保留手动编辑的内容。</p>
+          <p className="text-xs text-gray-500 mb-2">系统根据行为自动更新记忆。选中项为已激活，点击切换状态，× 可删除。</p>
           <button onClick={() => setAutoMemory(!autoMemory)}
             className={`relative w-full h-10 rounded-lg transition-colors flex items-center justify-center px-4 ${
               autoMemory ? 'bg-gray-50 border border-gray-300' : 'bg-gray-100 border border-gray-300'}`}>
@@ -44,64 +94,52 @@ export function MemoryModal({ onClose }: Props) {
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
-          {/* 第一层：核心原则 — 几乎不改 */}
-          <div className="border border-red-200 rounded-xl p-4 bg-red-50/30">
+          {/* 第一层：核心原则 */}
+          <div className="border border-red-200 rounded-xl p-4 bg-red-50/20">
             <div className="flex items-center justify-between mb-2">
               <div>
                 <h3 className="text-sm font-bold flex items-center gap-1.5 text-red-700">🔒 核心原则</h3>
-                <p className="text-[10px] text-gray-400 mt-1">极少数极其确定的内容。仅手动管理，不轻易改变。</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">极少数极其确定的内容。仅手动管理，不轻易改变。</p>
               </div>
               <ToggleBtn on={autoCore} setOn={setAutoCore} />
             </div>
-            <div className="flex gap-3">
-              <div className="w-28 flex-shrink-0 text-[10px] text-gray-400 pt-2 leading-relaxed">
-                宏观方法论、不可动摇的设计原则
-              </div>
-              <textarea value={corePrinciples} onChange={e => setCorePrinciples(e.target.value)}
-                placeholder="例如：始终采用多智能体协同架构；MCP作为唯一外部工具连接协议"
-                rows={3}
-                className="flex-1 px-3 py-2 border border-red-200 rounded-lg text-xs outline-none resize-none focus:border-red-400 bg-white" />
-            </div>
+            <TagList items={allCore} active={activeCore}
+              onToggle={v => setActiveCore(prev => { const n = new Set(prev); n.has(v) ? n.delete(v) : n.add(v); return n })}
+              onRemove={v => { setCustomCore(prev => prev.filter(x => x !== v)); setActiveCore(prev => { const n = new Set(prev); n.delete(v); return n }) }}
+              onAdd={v => { setCustomCore(prev => [...prev, v]); setActiveCore(prev => new Set([...prev, v])) }}
+              placeholder="自定义" colorClass="bg-red-500" />
           </div>
 
-          {/* 第二层：基础框架 — 遇大困难可改 */}
-          <div className="border border-orange-200 rounded-xl p-4 bg-orange-50/30">
+          {/* 第二层：基础框架 */}
+          <div className="border border-orange-200 rounded-xl p-4 bg-orange-50/20">
             <div className="flex items-center justify-between mb-2">
               <div>
                 <h3 className="text-sm font-bold flex items-center gap-1.5 text-orange-700">⚙️ 基础框架</h3>
-                <p className="text-[10px] text-gray-400 mt-1">项目基石。实践中遇到较大困难时可优先尝试改动。</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">项目基石。遇到较大困难时可优先尝试改动。</p>
               </div>
               <ToggleBtn on={autoFoundation} setOn={setAutoFoundation} />
             </div>
-            <div className="flex gap-3">
-              <div className="w-28 flex-shrink-0 text-[10px] text-gray-400 pt-2 leading-relaxed">
-                技术栈选型、架构决策、核心依赖
-              </div>
-              <textarea value={foundation} onChange={e => setFoundation(e.target.value)}
-                placeholder="例如：前端React+Tailwind、后端FastAPI+LangGraph、向量库Chroma"
-                rows={3}
-                className="flex-1 px-3 py-2 border border-orange-200 rounded-lg text-xs outline-none resize-none focus:border-orange-400 bg-white" />
-            </div>
+            <TagList items={allFoundation} active={activeFoundation}
+              onToggle={v => setActiveFoundation(prev => { const n = new Set(prev); n.has(v) ? n.delete(v) : n.add(v); return n })}
+              onRemove={v => { setCustomFoundation(prev => prev.filter(x => x !== v)); setActiveFoundation(prev => { const n = new Set(prev); n.delete(v); return n }) }}
+              onAdd={v => { setCustomFoundation(prev => [...prev, v]); setActiveFoundation(prev => new Set([...prev, v])) }}
+              placeholder="自定义" colorClass="bg-orange-500" />
           </div>
 
-          {/* 第三层：灵活配置 — 可随时调整 */}
-          <div className="border border-green-200 rounded-xl p-4 bg-green-50/30">
+          {/* 第三层：灵活配置 */}
+          <div className="border border-green-200 rounded-xl p-4 bg-green-50/20">
             <div className="flex items-center justify-between mb-2">
               <div>
                 <h3 className="text-sm font-bold flex items-center gap-1.5 text-green-700">🟢 灵活配置</h3>
-                <p className="text-[10px] text-gray-400 mt-1">可随时调整的目标、参数与偏好设置。</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">可随时调整的目标、参数与偏好设置。</p>
               </div>
               <ToggleBtn on={autoFlexible} setOn={setAutoFlexible} />
             </div>
-            <div className="flex gap-3">
-              <div className="w-28 flex-shrink-0 text-[10px] text-gray-400 pt-2 leading-relaxed">
-                学习深度、输出风格、检索偏好
-              </div>
-              <textarea value={flexibleConfig} onChange={e => setFlexibleConfig(e.target.value)}
-                placeholder="例如：学习深度设为中等、输出格式偏好Markdown、检索增强模式"
-                rows={3}
-                className="flex-1 px-3 py-2 border border-green-200 rounded-lg text-xs outline-none resize-none focus:border-green-400 bg-white" />
-            </div>
+            <TagList items={allFlexible} active={activeFlexible}
+              onToggle={v => setActiveFlexible(prev => { const n = new Set(prev); n.has(v) ? n.delete(v) : n.add(v); return n })}
+              onRemove={v => { setCustomFlexible(prev => prev.filter(x => x !== v)); setActiveFlexible(prev => { const n = new Set(prev); n.delete(v); return n }) }}
+              onAdd={v => { setCustomFlexible(prev => [...prev, v]); setActiveFlexible(prev => new Set([...prev, v])) }}
+              placeholder="自定义" colorClass="bg-green-500" />
           </div>
         </div>
       </div>
@@ -109,7 +147,7 @@ export function MemoryModal({ onClose }: Props) {
   )
 }
 
-// ========== 知识库（项目级，从项目三点菜单打开） ==========
+// ========== 知识库（项目级） ==========
 export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectId?: string }) {
   const [kbInput, setKbInput] = useState('')
   const [showGuide, setShowGuide] = useState(false)
