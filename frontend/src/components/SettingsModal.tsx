@@ -47,10 +47,10 @@ export default function SettingsModal({ onClose }: Props) {
               <input
                 type="range" min="12" max="20" value={fontSize}
                 onChange={(e) => setFontSize(Number(e.target.value))}
-                className="flex-1 accent-[#c75f1a]"
+                className="flex-1 accent-[#1a1a1a]"
               />
               <span className="text-xs text-gray-400">20</span>
-              <span className="text-xs font-semibold text-[#c75f1a] w-8 text-right">{fontSize}px</span>
+              <span className="text-xs font-semibold text-[#1a1a1a] w-8 text-right">{fontSize}px</span>
             </div>
           </div>
 
@@ -68,7 +68,7 @@ export default function SettingsModal({ onClose }: Props) {
                   onClick={() => setTheme(value)}
                   className={`flex-1 flex flex-col items-center gap-1 py-3 rounded-lg text-xs font-medium transition-colors ${
                     theme === value
-                      ? 'bg-[#fef3eb] text-[#c75f1a] border border-[#c75f1a]/30'
+                      ? 'bg-[#f0f0f0] text-[#1a1a1a] border border-[#1a1a1a]/30'
                       : 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100'
                   }`}
                 >
@@ -91,11 +91,11 @@ export default function SettingsModal({ onClose }: Props) {
                 onChange={(e) => setApiKey(e.target.value)}
                 onMouseDown={(e) => e.stopPropagation()}
                 placeholder="输入 DEEPSEEK_API_KEY"
-                className="flex-1 px-3 py-2 border border-[#c4beb6] rounded-lg text-sm outline-none focus:border-[#c75f1a] bg-[#faf8f5]"
+                className="flex-1 px-3 py-2 border border-[#c4beb6] rounded-lg text-sm outline-none focus:border-[#1a1a1a] bg-[#faf8f5]"
               />
               <button
                 onClick={handleApiKeySave}
-                className="px-4 py-2 bg-[#c75f1a] text-white text-sm font-semibold rounded-lg hover:bg-[#a84a10]"
+                className="px-4 py-2 bg-[#1a1a1a] text-white text-sm font-semibold rounded-lg hover:bg-[#333333]"
               >
                 保存
               </button>
@@ -131,11 +131,11 @@ export function ApiKeyPrompt({ onClose }: { onClose: () => void }) {
           onChange={(e) => setKey(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSave()}
           placeholder="sk-..."
-          className="w-full px-3 py-2.5 border border-[#c4beb6] rounded-lg text-sm outline-none focus:border-[#c75f1a] mb-4"
+          className="w-full px-3 py-2.5 border border-[#c4beb6] rounded-lg text-sm outline-none focus:border-[#1a1a1a] mb-4"
         />
         <div className="flex gap-2 justify-end">
           <button onClick={onClose} className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-100 rounded-lg">跳过</button>
-          <button onClick={handleSave} className="px-4 py-2 bg-[#c75f1a] text-white text-sm font-semibold rounded-lg hover:bg-[#a84a10]">确认</button>
+          <button onClick={handleSave} className="px-4 py-2 bg-[#1a1a1a] text-white text-sm font-semibold rounded-lg hover:bg-[#333333]">确认</button>
         </div>
       </div>
     </div>

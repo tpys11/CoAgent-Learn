@@ -50,11 +50,11 @@ export default function Sidebar({
   /** 顶部：品牌 + 新建 */
   const renderHeader = () => (
     <div className="p-3 flex items-center gap-2 border-b border-[#e5e5e5]">
-      <Bot size={20} className="text-[#c75f1a]" />
+      <Bot size={20} className="text-[#1a1a1a]" />
       <span className="text-sm font-bold flex-1">CoAgent-Learn</span>
       <button
         onClick={() => setShowCreate(true)}
-        className="p-1 rounded hover:bg-[#ededed] text-gray-400 hover:text-[#c75f1a]"
+        className="p-1 rounded hover:bg-[#ededed] text-gray-400 hover:text-[#1a1a1a]"
         title="新建项目"
       >
         <Plus size={16} />
@@ -71,9 +71,9 @@ export default function Sidebar({
             autoFocus value={newName} onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
             placeholder="项目名称"
-            className="flex-1 px-2 py-1 text-xs border border-[#d0d0d0] rounded outline-none focus:border-[#c75f1a]"
+            className="flex-1 px-2 py-1 text-xs border border-[#d0d0d0] rounded outline-none focus:border-[#1a1a1a]"
           />
-          <button onClick={handleCreate} className="px-2 py-1 text-xs bg-[#c75f1a] text-white rounded font-semibold">创建</button>
+          <button onClick={handleCreate} className="px-2 py-1 text-xs bg-[#1a1a1a] text-white rounded font-semibold">创建</button>
         </div>
       )}
 
@@ -88,7 +88,7 @@ export default function Sidebar({
             <div
               onClick={() => { onSelectProject(project.id); toggleExpand(project.id) }}
               className={`flex items-center gap-1.5 px-3 py-1.5 cursor-pointer text-sm transition-colors ${
-                isActive ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-[#ededed]'
+                isActive ? 'bg-[#f0f0f0] text-[#1a1a1a]' : 'hover:bg-[#ededed]'
               }`}
             >
               <span className="flex-shrink-0">
@@ -98,7 +98,7 @@ export default function Sidebar({
               <span className="flex-1 truncate text-xs font-medium">{project.name}</span>
               <button
                 onClick={(e) => { e.stopPropagation(); onSelectProject(project.id); toggleExpand(project.id); onCreateDialogue(project.id) }}
-                className="opacity-0 group-hover:opacity-100 hover:text-[#c75f1a] p-0.5"
+                className="opacity-0 group-hover:opacity-100 hover:text-[#1a1a1a] p-0.5"
                 title="新建对话"
               >
                 <Plus size={12} />
@@ -123,7 +123,7 @@ export default function Sidebar({
                     onClick={() => onSelectDialogue(d.id)}
                     className={`flex items-center gap-1.5 px-3 py-1 cursor-pointer text-xs transition-colors ${
                       d.id === currentDialogueId
-                        ? 'bg-[#fef3eb] text-[#c75f1a] font-medium'
+                        ? 'bg-[#f0f0f0] text-[#1a1a1a] font-medium'
                         : 'hover:bg-[#ededed] text-gray-600'
                     }`}
                   >
@@ -137,7 +137,7 @@ export default function Sidebar({
                           if (e.key === 'Escape') setEditingDialogue(null)
                         }}
                         onBlur={() => { onRenameDialogue(d.id, editName); setEditingDialogue(null) }}
-                        className="flex-1 px-1 py-0 text-[11px] border border-[#c75f1a] rounded outline-none bg-white"
+                        className="flex-1 px-1 py-0 text-[11px] border border-[#1a1a1a] rounded outline-none bg-white"
                         onClick={(e) => e.stopPropagation()}
                       />
                     ) : (
@@ -145,7 +145,7 @@ export default function Sidebar({
                     )}
                     <button
                       onClick={(e) => { e.stopPropagation(); setEditingDialogue(d.id); setEditName(d.name) }}
-                      className="opacity-0 hover:opacity-100 p-0.5 hover:text-[#c75f1a]"
+                      className="opacity-0 hover:opacity-100 p-0.5 hover:text-[#1a1a1a]"
                       title="重命名"
                     >
                       <Edit3 size={10} />
@@ -184,7 +184,7 @@ export default function Sidebar({
       <div className="px-3 py-1.5 border-t border-[#e5e5e5] flex justify-end">
         <button
           onClick={onSettings}
-          className="p-1.5 rounded-lg hover:bg-[#ededed] text-[#888] hover:text-[#c75f1a] transition-colors"
+          className="p-1.5 rounded-lg hover:bg-[#ededed] text-[#888] hover:text-[#1a1a1a] transition-colors"
           title="设置"
         >
           <Settings size={16} />

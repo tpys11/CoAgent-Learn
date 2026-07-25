@@ -96,7 +96,7 @@ export default function AgentModal({ agent, onSave, onClose }: Props) {
               <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">模式</label>
               <button
                 onClick={() => { setMode('标准'); setPrompt(agent.defaultPrompt) }}
-                className="text-[10px] text-gray-400 hover:text-[#c75f1a] flex items-center gap-1"
+                className="text-[10px] text-gray-400 hover:text-[#1a1a1a] flex items-center gap-1"
               >
                 <RotateCcw size={10} /> 恢复默认
               </button>
@@ -108,7 +108,7 @@ export default function AgentModal({ agent, onSave, onClose }: Props) {
                   onClick={() => handleModeChange(m.label)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                     mode === m.label
-                      ? 'bg-[#fef3eb] text-[#c75f1a] border border-[#c75f1a]/30'
+                      ? 'bg-[#f0f0f0] text-[#1a1a1a] border border-[#1a1a1a]/30'
                       : 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100'
                   }`}
                 >
@@ -127,7 +127,7 @@ export default function AgentModal({ agent, onSave, onClose }: Props) {
               <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">全局性提示词</label>
               <button
                 onClick={() => setPrompt(agent.defaultPrompt)}
-                className="text-[10px] text-gray-400 hover:text-[#c75f1a] flex items-center gap-1"
+                className="text-[10px] text-gray-400 hover:text-[#1a1a1a] flex items-center gap-1"
               >
                 <RotateCcw size={10} /> 恢复默认
               </button>
@@ -136,7 +136,7 @@ export default function AgentModal({ agent, onSave, onClose }: Props) {
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               rows={6}
-              className="w-full px-3 py-2 border border-[#c4beb6] rounded-lg text-xs font-mono outline-none resize-none focus:border-[#c75f1a] bg-[#faf8f5]"
+              className="w-full px-3 py-2 border border-[#c4beb6] rounded-lg text-xs font-mono outline-none resize-none focus:border-[#1a1a1a] bg-[#faf8f5]"
             />
           </div>
 
@@ -158,10 +158,10 @@ export default function AgentModal({ agent, onSave, onClose }: Props) {
                   return (
                     <div key={s.name}>
                       <div
-                        className={`flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#faf8f5] transition-colors ${linked ? 'bg-[#fef3eb]/30' : ''}`}
+                        className={`flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-[#faf8f5] transition-colors ${linked ? 'bg-[#f0f0f0]/30' : ''}`}
                         onClick={() => setExpandedSkill(expanded ? null : s.name)}
                       >
-                        {expanded ? <FolderOpen size={14} className="text-amber-500" /> : <Folder size={14} className="text-amber-500" />}
+                        {expanded ? <FolderOpen size={14} className="text-gray-500" /> : <Folder size={14} className="text-gray-500" />}
                         <div className="flex-1 min-w-0">
                           <span className="text-xs font-semibold">{s.name}</span>
                           {expanded && <p className="text-[10px] text-gray-400 mt-0.5">{s.description}</p>}
@@ -183,7 +183,7 @@ export default function AgentModal({ agent, onSave, onClose }: Props) {
               )}
             </div>
             {/* 上传新 Skill */}
-            <div className="mt-3 border-2 border-dashed border-[#c4beb6] rounded-lg p-4 bg-[#faf8f5] flex flex-col items-center gap-2 hover:border-[#c75f1a]/50 transition-colors cursor-pointer"
+            <div className="mt-3 border-2 border-dashed border-[#c4beb6] rounded-lg p-4 bg-[#faf8f5] flex flex-col items-center gap-2 hover:border-[#1a1a1a]/50 transition-colors cursor-pointer"
               onClick={() => document.getElementById('skill-file-input')?.click()}
               onDragOver={(e) => e.preventDefault()}
               onDrop={handleSkillDrop}>
@@ -206,7 +206,7 @@ export default function AgentModal({ agent, onSave, onClose }: Props) {
         {/* Footer */}
         <div className="flex gap-2 justify-end px-5 py-3 border-t border-[#dad4cd]">
           <button onClick={onClose} className="px-4 py-1.5 text-sm text-gray-500 hover:bg-gray-100 rounded-lg">取消</button>
-          <button onClick={handleSave} className="px-4 py-1.5 bg-[#c75f1a] text-white text-sm font-semibold rounded-lg hover:bg-[#a84a10]">保存</button>
+          <button onClick={handleSave} className="px-4 py-1.5 bg-[#1a1a1a] text-white text-sm font-semibold rounded-lg hover:bg-[#333333]">保存</button>
         </div>
       </div>
     </div>

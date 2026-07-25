@@ -70,7 +70,7 @@ export default function DiagnosisModal({ onClose }: Props) {
             <div className="flex gap-3 justify-end">
               <button onClick={onClose} className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-100 rounded-lg">不再提示</button>
               <button onClick={onClose} className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-100 rounded-lg">跳过</button>
-              <button onClick={() => setStage(2)} className="px-4 py-2 text-sm bg-[#c75f1a] text-white font-semibold rounded-lg hover:bg-[#a84a10]">开始诊断</button>
+              <button onClick={() => setStage(2)} className="px-4 py-2 text-sm bg-[#1a1a1a] text-white font-semibold rounded-lg hover:bg-[#333333]">开始诊断</button>
             </div>
           </div>
         )}
@@ -94,7 +94,7 @@ export default function DiagnosisModal({ onClose }: Props) {
                       answer(opt.value)
                     }
                   }}
-                  className="w-full text-left px-4 py-2.5 border border-[#dad4cd] rounded-lg text-sm hover:border-[#c75f1a] hover:bg-[#fef3eb] transition-colors"
+                  className="w-full text-left px-4 py-2.5 border border-[#dad4cd] rounded-lg text-sm hover:border-[#1a1a1a] hover:bg-[#f0f0f0] transition-colors"
                 >
                   {opt.label}
                 </button>
@@ -114,7 +114,7 @@ export default function DiagnosisModal({ onClose }: Props) {
                     }
                   }}
                   placeholder="请输入你的回答..."
-                  className="flex-1 px-3 py-2 border border-[#c4beb6] rounded-lg text-sm outline-none focus:border-[#c75f1a]"
+                  className="flex-1 px-3 py-2 border border-[#c4beb6] rounded-lg text-sm outline-none focus:border-[#1a1a1a]"
                 />
                 <button
                   onClick={() => {
@@ -124,7 +124,7 @@ export default function DiagnosisModal({ onClose }: Props) {
                       setShowCustomInput(false)
                     }
                   }}
-                  className="px-4 py-2 bg-[#c75f1a] text-white text-sm font-semibold rounded-lg"
+                  className="px-4 py-2 bg-[#1a1a1a] text-white text-sm font-semibold rounded-lg"
                 >
                   确认
                 </button>
@@ -152,7 +152,7 @@ export default function DiagnosisModal({ onClose }: Props) {
                 <div className="text-xs text-gray-400">待学</div>
               </div>
             </div>
-            <button onClick={onClose} className="w-full py-2.5 bg-[#c75f1a] text-white font-semibold rounded-lg hover:bg-[#a84a10]">
+            <button onClick={onClose} className="w-full py-2.5 bg-[#1a1a1a] text-white font-semibold rounded-lg hover:bg-[#333333]">
               开始学习
             </button>
           </div>

@@ -96,13 +96,13 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
           <div className="relative" ref={timeRangeRef}>
             <button onClick={() => setShowTimeRange(!showTimeRange)}
               className="text-[11px] px-2 py-0.5 rounded hover:bg-gray-100 transition-colors">
-              时间范围：<span className="text-[#c75f1a] font-semibold">{timeRange}</span> ▾
+              时间范围：<span className="text-[#1a1a1a] font-semibold">{timeRange}</span> ▾
             </button>
             {showTimeRange && (
               <div className="absolute top-full left-0 mt-1 bg-white border border-[#e5e5e5] rounded-lg shadow-lg p-1 z-50 w-20">
                 {timeLabels.map(label => (
                   <button key={label} onClick={() => { setTimeRange(label); setShowTimeRange(false) }}
-                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${label === timeRange ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>
+                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${label === timeRange ? 'bg-[#f0f0f0] text-[#1a1a1a]' : 'hover:bg-gray-50'}`}>
                     {label}
                   </button>
                 ))}
@@ -155,7 +155,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
               key={idx}
               className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm ${
                 msg.role === 'user'
-                  ? 'self-end bg-[#fef3eb] border border-[#c75f1a]/25 rounded-br-sm'
+                  ? 'self-end bg-[#f0f0f0] border border-[#1a1a1a]/25 rounded-br-sm'
                   : msg.role === 'thinking'
                   ? 'self-start bg-[#ffffff] border border-[#e5e5e5] rounded-bl-sm italic'
                   : 'self-start bg-transparent border border-transparent rounded-bl-sm'
@@ -194,7 +194,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
             <button onClick={() => setThinkingCollapsed(!thinkingCollapsed)}
               className="w-full flex items-center justify-between px-4 py-2 text-xs hover:bg-[#f5f5f5] transition-colors">
               <span className="flex items-center gap-1.5 text-gray-500">
-                {isLoading && <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse" />}
+                {isLoading && <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" />}
                 {isLoading ? '思考中…' : '✓ 思考过程'}
               </span>
               <span className="text-gray-400">{thinkingCollapsed || isLoading ? '▸ 展开' : '▾ 收起'}</span>
@@ -203,7 +203,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
               <div className="px-4 pb-3 flex flex-col gap-2 border-t border-[#e5e5e5] pt-2 max-h-60 overflow-y-auto">
                 {flowMindchain.map((item, i) => (
                   <div key={i} className="animate-[fadeIn_0.2s_ease]">
-                    <div className="text-[11px] font-semibold text-[#b8952e] mb-0.5">{item.agent}</div>
+                    <div className="text-[11px] font-semibold text-[#666666] mb-0.5">{item.agent}</div>
                     <div className="text-[11px] leading-relaxed text-gray-500 whitespace-pre-wrap pl-2 border-l-2 border-[#e5e5e5]">
                       {item.content}
                     </div>
@@ -243,7 +243,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
               <div className="absolute bottom-full left-0 mb-1 bg-white border border-[#e5e5e5] rounded-lg shadow-lg p-1.5 z-10" style={{ width: 220 }}>
                 {inputOptLabels.map((label, i) => (
                   <button key={label} onClick={() => { setInputOptMode(i) }}
-                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === inputOptMode ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>
+                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === inputOptMode ? 'bg-[#f0f0f0] text-[#1a1a1a]' : 'hover:bg-gray-50'}`}>
                     <span className="font-medium">{label}</span>
                     <span className="text-[10px] text-gray-400 ml-1.5">— {inputOptDescs[i]}</span>
                   </button>
@@ -265,7 +265,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
                 <div className="text-[10px] text-gray-400 mb-1">知识库检索：</div>
                 {searchLabels.map((label, i) => (
                   <button key={label} onClick={() => { setSearchMode(i) }}
-                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === searchMode ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>
+                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === searchMode ? 'bg-[#f0f0f0] text-[#1a1a1a]' : 'hover:bg-gray-50'}`}>
                     <span className="font-medium">{label}</span>
                     <span className="text-[10px] text-gray-400 ml-1">— {searchDescs[i]}</span>
                   </button>
@@ -276,7 +276,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
                   ['增强', '寻找优质信息源'],
                 ].map(([label, desc], i) => (
                   <button key={label} onClick={() => setWebSearchMode(i)}
-                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === webSearchMode ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>
+                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === webSearchMode ? 'bg-[#f0f0f0] text-[#1a1a1a]' : 'hover:bg-gray-50'}`}>
                     <span className="font-medium">{label}</span>
                     <span className="text-[10px] text-gray-400 ml-1.5">— {desc}</span>
                   </button>
@@ -301,7 +301,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
                   ['高结构化', '增加有序/无序列表和表格'],
                 ] as const).map(([s, desc], i) => (
                   <button key={s} onClick={() => setOutputFormat(i)}
-                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === outputFormat ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>
+                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === outputFormat ? 'bg-[#f0f0f0] text-[#1a1a1a]' : 'hover:bg-gray-50'}`}>
                     <span className="font-medium">{s}</span>
                     <span className="text-[10px] text-gray-400 ml-1.5">— {desc}</span>
                   </button>
@@ -312,7 +312,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
                   ['对话形式', '以对话消息形式直接输出'],
                 ] as const).map(([s, desc], i) => (
                   <button key={s} onClick={() => setOutputStyle(i)}
-                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === outputStyle ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>
+                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === outputStyle ? 'bg-[#f0f0f0] text-[#1a1a1a]' : 'hover:bg-gray-50'}`}>
                     <span className="font-medium">{s}</span>
                     <span className="text-[10px] text-gray-400 ml-1.5">— {desc}</span>
                   </button>
@@ -337,7 +337,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
                   ['开', '大模型思考时展示'],
                 ] as const).map(([s, desc], i) => (
                   <button key={s} onClick={() => setThinking(i === 1)}
-                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${(i === 1) === thinking ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>
+                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${(i === 1) === thinking ? 'bg-[#f0f0f0] text-[#1a1a1a]' : 'hover:bg-gray-50'}`}>
                     <span className="font-medium">{s}</span>
                     <span className="text-[10px] text-gray-400 ml-1.5">— {desc}</span>
                   </button>
@@ -349,7 +349,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
                   ['拓展', '补充拓展性相关内容'],
                 ] as const).map(([s, desc], i) => (
                   <button key={s} onClick={() => setOutputVolume(i)}
-                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === outputVolume ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>
+                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === outputVolume ? 'bg-[#f0f0f0] text-[#1a1a1a]' : 'hover:bg-gray-50'}`}>
                     <span className="font-medium">{s}</span>
                     <span className="text-[10px] text-gray-400 ml-1.5">— {desc}</span>
                   </button>
@@ -361,7 +361,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
                   ['深', '原理+推导+前沿'],
                 ] as const).map(([s, desc], i) => (
                   <button key={s} onClick={() => setDepth(i)}
-                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === depth ? 'bg-[#fef3eb] text-[#c75f1a]' : 'hover:bg-gray-50'}`}>
+                    className={`text-[11px] px-2 py-1 rounded w-full text-left ${i === depth ? 'bg-[#f0f0f0] text-[#1a1a1a]' : 'hover:bg-gray-50'}`}>
                     <span className="font-medium">{s}</span>
                     <span className="text-[10px] text-gray-400 ml-1.5">— {desc}</span>
                   </button>
@@ -381,12 +381,12 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
             }}
             placeholder="输入你的问题...（Shift+Enter 换行）"
             rows={2}
-            className="flex-1 px-3 py-2 border border-[#d0d0d0] rounded-lg bg-white text-sm outline-none resize-none focus:border-[#c75f1a] focus:ring-[3px] focus:ring-[#c75f1a]/10"
+            className="flex-1 px-3 py-2 border border-[#d0d0d0] rounded-lg bg-white text-sm outline-none resize-none focus:border-[#1a1a1a] focus:ring-[3px] focus:ring-[#1a1a1a]/10"
           />
           <button
             onClick={handleSend}
             disabled={isLoading}
-            className="px-5 py-2 bg-[#c75f1a] text-white font-semibold rounded-lg hover:bg-[#a84a10] transition-colors flex items-center gap-1 text-sm disabled:opacity-50"
+            className="px-5 py-2 bg-[#1a1a1a] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors flex items-center gap-1 text-sm disabled:opacity-50"
           >
             <Send size={14} /> 发送
           </button>

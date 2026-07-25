@@ -45,10 +45,10 @@ export default function SkillManagerModal({ onClose }: Props) {
           <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-5 mb-3 flex items-center gap-1"><Upload size={12} /> 上传新 Skill</h3>
           <div className="border border-dashed border-[#c4beb6] rounded-lg p-4 bg-[#faf8f5] space-y-3">
             <input value={uploadName} onChange={e => setUploadName(e.target.value)} placeholder="Skill 名称（英文，如 my_search）"
-              className="w-full px-3 py-2 border border-[#c4beb6] rounded-lg text-sm outline-none focus:border-[#c75f1a] bg-white" />
+              className="w-full px-3 py-2 border border-[#c4beb6] rounded-lg text-sm outline-none focus:border-[#1a1a1a] bg-white" />
             <textarea value={uploadCode} onChange={e => setUploadCode(e.target.value)} placeholder="粘贴 Skill 代码..." rows={5}
-              className="w-full px-3 py-2 border border-[#c4beb6] rounded-lg text-xs font-mono outline-none resize-none focus:border-[#c75f1a] bg-white" />
-            <button className="px-4 py-2 bg-[#c75f1a] text-white text-sm font-semibold rounded-lg hover:bg-[#a84a10] w-full">
+              className="w-full px-3 py-2 border border-[#c4beb6] rounded-lg text-xs font-mono outline-none resize-none focus:border-[#1a1a1a] bg-white" />
+            <button className="px-4 py-2 bg-[#1a1a1a] text-white text-sm font-semibold rounded-lg hover:bg-[#333333] w-full">
               上传 Skill
             </button>
           </div>

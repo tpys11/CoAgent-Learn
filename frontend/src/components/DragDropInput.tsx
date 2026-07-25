@@ -35,7 +35,7 @@ export default function DragDropInput({ value, onChange, placeholder = '', rows 
     <div>
       {label && <label className="text-xs font-semibold text-gray-500 mb-1.5 block">{label}</label>}
       <div
-        className={`relative rounded-lg transition-colors ${dragOver ? 'border-[#c75f1a] bg-[#fef3eb]/30' : 'border-[#d0d0d0] bg-[#ffffff]'}`}
+        className={`relative rounded-lg transition-colors ${dragOver ? 'border-[#1a1a1a] bg-[#f0f0f0]/30' : 'border-[#d0d0d0] bg-[#ffffff]'}`}
         onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}

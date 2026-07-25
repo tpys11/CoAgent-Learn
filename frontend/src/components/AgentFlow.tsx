@@ -9,21 +9,21 @@ function AgentNode({ data }: any) {
   return (
     <div className="transition-all duration-500 ease-out" style={{ transform: `scale(${size})`, opacity: 0.92 }}>
       <div className="px-3 py-2.5 rounded-xl border text-center" style={{
-        background: 'rgba(255,255,255,0.45)', backdropFilter: 'blur(10px)', borderColor: '#b8952e', borderWidth: 1.5,
+        background: 'rgba(255,255,255,0.45)', backdropFilter: 'blur(10px)', borderColor: '#666666', borderWidth: 1.5,
         boxShadow: a ? '0 4px 20px rgba(184,149,46,0.18)' : '0 1px 6px rgba(0,0,0,0.04)',
         minWidth: 120, transition: 'all 0.5s ease',
       }}>
-        <div style={{ fontSize: 10, fontWeight: 600, color: '#5c4a1e', display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
+        <div style={{ fontSize: 10, fontWeight: 600, color: '#333333', display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
           <span>{data.icon}</span><span>{data.label}</span>
         </div>
-        <Handle type="target" position={Position.Top} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
-        <Handle type="source" position={Position.Top} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
-        <Handle type="target" position={Position.Bottom} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
-        <Handle type="source" position={Position.Bottom} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
-        <Handle type="target" position={Position.Left} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
-        <Handle type="source" position={Position.Left} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
-        <Handle type="target" position={Position.Right} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
-        <Handle type="source" position={Position.Right} style={{ background: '#b8952e', width: 6, height: 6, border: 'none' }} />
+        <Handle type="target" position={Position.Top} style={{ background: '#666666', width: 6, height: 6, border: 'none' }} />
+        <Handle type="source" position={Position.Top} style={{ background: '#666666', width: 6, height: 6, border: 'none' }} />
+        <Handle type="target" position={Position.Bottom} style={{ background: '#666666', width: 6, height: 6, border: 'none' }} />
+        <Handle type="source" position={Position.Bottom} style={{ background: '#666666', width: 6, height: 6, border: 'none' }} />
+        <Handle type="target" position={Position.Left} style={{ background: '#666666', width: 6, height: 6, border: 'none' }} />
+        <Handle type="source" position={Position.Left} style={{ background: '#666666', width: 6, height: 6, border: 'none' }} />
+        <Handle type="target" position={Position.Right} style={{ background: '#666666', width: 6, height: 6, border: 'none' }} />
+        <Handle type="source" position={Position.Right} style={{ background: '#666666', width: 6, height: 6, border: 'none' }} />
       </div>
     </div>
   )

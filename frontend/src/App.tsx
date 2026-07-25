@@ -180,10 +180,10 @@ function App() {
         </div>
         {/* 左侧拖拽手柄 */}
         <div onMouseDown={() => { dragging.current = 'left'; document.body.style.userSelect = 'none' }}
-          className="w-1.5 h-full cursor-col-resize hover:bg-[#c75f1a]/30 flex-shrink-0 transition-colors" />
+          className="w-1.5 h-full cursor-col-resize hover:bg-[#1a1a1a]/30 flex-shrink-0 transition-colors" />
           {/* 折叠按钮：右侧 */}
           <button onClick={() => setSidebarCollapsed(true)}
-            className="w-5 h-5 flex items-center justify-center rounded bg-white border border-[#e5e5e5] text-gray-400 hover:text-[#c75f1a] text-xs shadow-sm flex-shrink-0 self-start mt-2"
+            className="w-5 h-5 flex items-center justify-center rounded bg-white border border-[#e5e5e5] text-gray-400 hover:text-[#1a1a1a] text-xs shadow-sm flex-shrink-0 self-start mt-2"
             title="收起侧栏">◀</button>
         </>
       )}
@@ -201,11 +201,11 @@ function App() {
         <>
           {/* 折叠按钮：左侧 */}
           <button onClick={() => setRightCollapsed(true)}
-            className="w-5 h-5 flex items-center justify-center rounded bg-white border border-[#e5e5e5] text-gray-400 hover:text-[#c75f1a] text-xs shadow-sm flex-shrink-0 self-start mt-2"
+            className="w-5 h-5 flex items-center justify-center rounded bg-white border border-[#e5e5e5] text-gray-400 hover:text-[#1a1a1a] text-xs shadow-sm flex-shrink-0 self-start mt-2"
             title="收起右侧栏">▶</button>
           {/* 右侧拖拽手柄 */}
           <div onMouseDown={() => { dragging.current = 'right'; document.body.style.userSelect = 'none' }}
-            className="w-1.5 h-full cursor-col-resize hover:bg-[#c75f1a]/30 flex-shrink-0 transition-colors" />
+            className="w-1.5 h-full cursor-col-resize hover:bg-[#1a1a1a]/30 flex-shrink-0 transition-colors" />
           <div style={{ width: rightPanelWidth, minWidth: 180 }} className="h-full flex-shrink-0 relative">
             <RightPanel messageCount={messages.filter(m => m.role === 'assistant').length} />
           </div>
