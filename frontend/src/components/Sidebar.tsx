@@ -42,6 +42,9 @@ export default function Sidebar({
   const [editName, setEditName] = useState('')
   const [editingProject, setEditingProject] = useState<string | null>(null)
   const [projectEditName, setProjectEditName] = useState('')
+  
+  const [confirmMsg, setConfirmMsg] = useState("")
+  const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null)
   const [resources, setResources] = useState<Resource[]>([
     { id: 'books', name: '书籍' },
     { id: 'encyclopedia', name: '百科' },
@@ -150,7 +153,7 @@ export default function Sidebar({
                 <Edit3 size={10} />
               </button>
               {/* 删除按钮 */}
-              <button onClick={(e) => { e.stopPropagation(); if (confirm('确定删除此项目及其所有对话？')) onDeleteProject(project.id) }}
+              <button onClick={(e) => { e.stopPropagation(); { setConfirmMsg('确定删除此项目及其所有对话？'); setConfirmAction(() => () => onDeleteProject(project.id)) } }}
                 className="opacity-50 hover:opacity-100 hover:text-red-500 p-0.5 flex-shrink-0">
                 <Trash2 size={11} />
               </button>
@@ -201,7 +204,7 @@ export default function Sidebar({
                       <Edit3 size={10} />
                     </button>
                     <button
-                      onClick={(e) => { e.stopPropagation(); if (confirm('确定归档此对话？')) onArchiveDialogue(d.id) }}
+                      onClick={(e) => { e.stopPropagation(); { setConfirmMsg('确定归档此对话？'); setConfirmAction(() => () => onArchiveDialogue(d.id)) } }}
                       className="opacity-40 hover:opacity-100 p-0.5 hover:text-yellow-600"
                       title="归档"
                     >
@@ -243,12 +246,25 @@ export default function Sidebar({
       {renderHeader()}
       {renderProjects()}
       <div className="flex-1" />
-      {renderResources()}
+      <div className="absolute left-0 right-0" style={{ top: "50%", marginTop: -12 }}>
+        {renderResources()}
+      </div>
       <div className="px-3 py-1.5 border-t border-[#e5e5e5] flex justify-end">
         <button onClick={onSettings} className="p-1.5 rounded-lg hover:bg-[#ededed] text-[#888] hover:text-[#1a1a1a] transition-colors" title="设置">
           <Settings size={16} />
         </button>
       </div>
+      {confirmMsg && (
+        <div className="absolute inset-0 bg-black/20 flex items-center justify-center z-30" onClick={() => { setConfirmMsg(""); setConfirmAction(null) }}>
+          <div className="bg-white rounded-xl shadow-lg p-4 mx-4 text-sm" onClick={e => e.stopPropagation()}>
+            <p className="mb-3 text-gray-700">{confirmMsg}</p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => { setConfirmMsg(""); setConfirmAction(null) }} className="px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100 rounded-lg">取消</button>
+              <button onClick={() => { confirmAction?.(); setConfirmMsg(""); setConfirmAction(null) }} className="px-3 py-1.5 text-xs bg-red-500 text-white rounded-lg hover:bg-red-600">确认</button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   )
 }
