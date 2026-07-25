@@ -255,7 +255,7 @@ export default function Sidebar({
         </button>
       </div>
       {confirmMsg && (
-        <div className="absolute top-1/2 left-2 right-2 z-30" onClick={() => { setConfirmMsg(""); setConfirmAction(null) }}>
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => { setConfirmMsg(""); setConfirmAction(null) }}>
           <div className="bg-white rounded-xl shadow-lg p-4 mx-4 text-sm" onClick={e => e.stopPropagation()}>
             <p className="mb-3 text-gray-700">{confirmMsg}</p>
             <div className="flex gap-2 justify-end">
