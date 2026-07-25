@@ -27,7 +27,7 @@ export default function RightPanel({ messageCount }: Props) {
 
   return (
     <aside className="w-full h-full bg-[#f5f5f5] flex flex-col overflow-hidden">
-      <div className="p-3 flex-shrink-0">
+      <div className="p-3 flex-shrink-0" style={{ height: "33%", minHeight: 120 }}>
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-semibold flex items-center gap-1"><Map size={14} /> 知识图谱</span>
         </div>
