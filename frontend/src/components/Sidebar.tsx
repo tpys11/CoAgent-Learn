@@ -165,12 +165,16 @@ export default function Sidebar({
     </div>
   )
 
-  /** Agent 列表 */
 
   return (
     <aside className="w-full h-full bg-[#f5f5f5] border-r border-[#e5e5e5] flex flex-col rounded-lg overflow-hidden">
       {renderHeader()}
       {renderProjects()}
+      <div className="px-3 py-1.5 border-t border-[#e5e5e5] flex justify-end mt-auto">
+        <button onClick={onSettings} className="p-1.5 rounded-lg hover:bg-[#ededed] text-[#888] hover:text-[#1a1a1a] transition-colors" title="设置">
+          <Settings size={16} />
+        </button>
+      </div>
     </aside>
   )
 }
