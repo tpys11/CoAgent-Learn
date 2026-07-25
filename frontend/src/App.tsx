@@ -28,6 +28,8 @@ function App() {
   useEffect(() => {
     const saved = localStorage.getItem('coagent-fontSize')
     if (saved) document.documentElement.style.fontSize = saved + 'px'
+    const theme = localStorage.getItem('coagent-theme') || 'warm'
+    document.documentElement.setAttribute('data-theme', theme)
   }, [])
   const [showApiKeyPrompt, setShowApiKeyPrompt] = useState(
     () => !localStorage.getItem('coagent-apikey') && !localStorage.getItem('coagent-apikey-skipped')
