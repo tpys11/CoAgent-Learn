@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Send, Bot, Clock, Zap, Brain, Database } from 'lucide-react'
+import { Send, Bot, Clock, Zap, Brain, Database, Settings } from 'lucide-react'
 import type { Message, Project } from '../types'
 import { MemoryModal, KnowledgeModal } from './InfoModals'
 import AgentFlow from './AgentFlow'
@@ -17,9 +17,10 @@ interface CenterPanelProps {
   flowAgents: string[]
   flowActiveAgent: string | null
   flowMindchain: Array<{agent: string; content: string}>
+  onAgentSettings?: () => void
 }
 
-export default function CenterPanel({ messages, isLoading, currentProject, onSendMessage, statsCollapsed, onToggleStats, showAgentFlow, flowAgents, flowActiveAgent, flowMindchain }: CenterPanelProps) {
+export default function CenterPanel({ messages, isLoading, currentProject, onSendMessage, statsCollapsed, onToggleStats, showAgentFlow, flowAgents, flowActiveAgent, flowMindchain, onAgentSettings }: CenterPanelProps) {
   const [input, setInput] = useState('')
   const [time, setTime] = useState(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }))
   const [searchMode, setSearchMode] = useState(0)
@@ -219,6 +220,12 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
       <div className="flex-shrink-0 px-3 pb-3 pt-2">
         {/* Control bar — 自定义按钮 */}
         <div className="flex gap-2 px-3 py-1.5 mb-1 border border-[#d0d0d0] rounded-lg bg-white items-center">
+          {/* Agent 设置 */}
+          <button onClick={() => onAgentSettings?.()}
+            className="text-[11px] px-2 py-1 rounded hover:bg-gray-100 transition-colors flex items-center gap-1">
+            <Settings size={12} /> Agent设置
+          </button>
+          <span className="w-px h-4 bg-[#d0d0d0]" />
           {/* 记忆系统 */}
           <button onClick={() => setShowMemory(true)}
             title="管理全局性和项目级记忆"

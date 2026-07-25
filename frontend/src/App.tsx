@@ -3,7 +3,7 @@ import Sidebar from './components/Sidebar'
 import CenterPanel from './components/CenterPanel'
 import RightPanel from './components/RightPanel'
 import DiagnosisModal from './components/DiagnosisModal'
-import AgentModal from './components/AgentModal'
+import AgentSettingsModal from './components/AgentSettingsModal'
 import SettingsModal, { ApiKeyPrompt } from './components/SettingsModal'
 import type { Project, Dialogue, AgentConfig, Message } from './types'
 import { DEFAULT_AGENTS } from './types'
@@ -21,9 +21,9 @@ function App() {
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [showDiagnosis, setShowDiagnosis] = useState(false)
-  const [selectedAgent, setSelectedAgent] = useState<AgentConfig | null>(null)
   const [agents, setAgents] = useState<AgentConfig[]>(DEFAULT_AGENTS)
   const [showSettings, setShowSettings] = useState(false)
+  const [showAgentSettings, setShowAgentSettings] = useState(false)
   // 启动时应用保存的字体大小
   useEffect(() => {
     const saved = localStorage.getItem('coagent-fontSize')
@@ -153,7 +153,6 @@ function App() {
   }, [currentDialogueId])
   const handleSaveAgent = useCallback((updated: AgentConfig) => {
     setAgents(prev => prev.map(a => a.id === updated.id ? updated : a))
-    setSelectedAgent(null)
   }, [])
 
   return (
@@ -170,12 +169,11 @@ function App() {
           <Sidebar
             projects={projects} dialogues={dialogues}
             currentProjectId={currentProjectId} currentDialogueId={currentDialogueId}
-            agents={agents}
-            onCreateProject={handleCreateProject} onDeleteProject={handleDeleteProject}
+                        onCreateProject={handleCreateProject} onDeleteProject={handleDeleteProject}
             onSelectProject={handleSelectProject} onCreateDialogue={handleCreateDialogue}
             onSelectDialogue={handleSelectDialogue} onArchiveDialogue={handleArchiveDialogue}
             onRenameDialogue={handleRenameDialogue}
-            onSelectAgent={setSelectedAgent} onSettings={() => setShowSettings(true)}
+            onSettings={() => setShowSettings(true)}
           />
         </div>
         {/* 左侧拖拽手柄 */}
@@ -195,6 +193,7 @@ function App() {
         showAgentFlow={flowVisible}
         flowAgents={flowAgents} flowActiveAgent={flowActiveAgent}
         flowMindchain={flowMindchain}
+        onAgentSettings={() => setShowAgentSettings(true)}
       />
       {/* 右侧栏 */}
       {!rightCollapsed && (
@@ -218,7 +217,7 @@ function App() {
       )}
 
       {showDiagnosis && <DiagnosisModal onClose={() => setShowDiagnosis(false)} />}
-      {selectedAgent && <AgentModal agent={selectedAgent} onSave={handleSaveAgent} onClose={() => setSelectedAgent(null)} />}
+      {showAgentSettings && <AgentSettingsModal agents={agents} onSave={handleSaveAgent} onClose={() => setShowAgentSettings(false)} />}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {showApiKeyPrompt && <ApiKeyPrompt onClose={() => { setShowApiKeyPrompt(false); localStorage.setItem('coagent-apikey-skipped', '1') }} />}
     </div>

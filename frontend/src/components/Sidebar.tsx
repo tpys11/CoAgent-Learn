@@ -3,14 +3,13 @@ import {
   Plus, Folder, FolderOpen, Trash2, Bot, MessageSquare,
   Archive, ChevronDown, ChevronRight, Edit3, Settings,
 } from 'lucide-react'
-import type { Project, Dialogue, AgentConfig } from '../types'
+import type { Project, Dialogue } from '../types'
 
 interface SidebarProps {
   projects: Project[]
   dialogues: Dialogue[]
   currentProjectId: string | null
   currentDialogueId: string | null
-  agents: AgentConfig[]
   onCreateProject: (name: string) => void
   onDeleteProject: (id: string) => void
   onSelectProject: (id: string) => void
@@ -18,15 +17,14 @@ interface SidebarProps {
   onSelectDialogue: (id: string) => void
   onArchiveDialogue: (id: string) => void
   onRenameDialogue: (id: string, name: string) => void
-  onSelectAgent: (agent: AgentConfig) => void
   onSettings: () => void
 }
 
 export default function Sidebar({
-  projects, dialogues, currentProjectId, currentDialogueId, agents,
+  projects, dialogues, currentProjectId, currentDialogueId,
   onCreateProject, onDeleteProject, onSelectProject,
   onCreateDialogue, onSelectDialogue, onArchiveDialogue, onRenameDialogue,
-  onSelectAgent, onSettings,
+  onSettings,
 }: SidebarProps) {
   const [showCreate, setShowCreate] = useState(false)
   const [newName, setNewName] = useState('')
@@ -168,36 +166,11 @@ export default function Sidebar({
   )
 
   /** Agent 列表 */
-  const renderAgents = () => (
-    <div className="border-t border-[#e5e5e5] max-h-[50%] overflow-y-auto flex-shrink-0">
-      <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-[#888]">Agent</div>
-      {agents.map((agent) => (
-        <div
-          key={agent.id}
-          onClick={() => onSelectAgent(agent)}
-          className="flex items-center gap-2 px-3 py-1.5 cursor-pointer text-xs hover:bg-[#ededed] transition-colors text-gray-600"
-        >
-          <span>{agent.icon}</span>
-          <span className="truncate">{agent.name}</span>
-        </div>
-      ))}
-      <div className="px-3 py-1.5 border-t border-[#e5e5e5] flex justify-end">
-        <button
-          onClick={onSettings}
-          className="p-1.5 rounded-lg hover:bg-[#ededed] text-[#888] hover:text-[#1a1a1a] transition-colors"
-          title="设置"
-        >
-          <Settings size={16} />
-        </button>
-      </div>
-    </div>
-  )
 
   return (
     <aside className="w-full h-full bg-[#f5f5f5] border-r border-[#e5e5e5] flex flex-col rounded-lg overflow-hidden">
       {renderHeader()}
       {renderProjects()}
-      {renderAgents()}
     </aside>
   )
 }
