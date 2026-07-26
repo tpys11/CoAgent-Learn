@@ -132,7 +132,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
 
 
       {/* Messages */}
-      <div className={`overflow-y-auto px-4 py-3 flex flex-col gap-3 max-h-[50%] flex-shrink-0`}>
+      <div className={`overflow-y-auto px-4 py-3 flex flex-col gap-3 ${messages.length > 0 ? 'flex-1' : 'max-h-[50%] flex-shrink-0'}`}>
         {/* Agent 思考过程 */}
         {showAgentFlow && (
           <div className="mb-2 bg-white border border-[#e5e5e5] rounded-xl overflow-hidden flex-shrink-0" style={{ height: '28vh', minHeight: 150 }}>
@@ -371,8 +371,8 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
         </div>
 
         {/* Input area — 页面正中间 */}
-      <div className="flex-1 flex items-center justify-center">
-        <div className="flex-shrink-0 px-8 pb-4 pt-2 flex flex-col items-center gap-2 w-full max-w-xl">
+      <div className={`${messages.length === 0 ? 'flex-1 flex items-center justify-center' : 'flex-shrink-0'}`}>
+        <div className="px-8 pb-4 pt-2 flex flex-col items-center gap-2 w-full max-w-xl mx-auto">
           {projectInitialized === false ? (
             <div className="w-full max-w-xl px-3 py-2 border border-dashed border-orange-400 rounded-lg bg-orange-50 text-xs text-orange-600 flex items-center gap-2">
               <span>⚠️</span> 项目未初始化
