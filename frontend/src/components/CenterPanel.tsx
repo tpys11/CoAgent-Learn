@@ -372,7 +372,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
         </div>
 
         {/* Input area — 页面正中间 */}
-      <div className="flex-1 flex items-center justify-center">
+      <div className="flex-1 flex items-center justify-center" style={{ marginBottom: '8vh' }}>
         <div className="flex-shrink-0 px-8 pb-4 pt-2 flex flex-col items-center gap-2 w-full max-w-xl">
           {projectInitialized === false ? (
             <div className="w-full max-w-xl px-3 py-2 border border-dashed border-orange-400 rounded-lg bg-orange-50 text-xs text-orange-600 flex items-center gap-2">
