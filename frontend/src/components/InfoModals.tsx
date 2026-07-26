@@ -59,7 +59,6 @@ export function MemoryModal({ onClose }: Props) {
   const [activeConstraint, setActiveConstraint] = useState<Set<string>>(new Set(['需要举例说明', '输出Markdown格式']))
   const [customConstraint, setCustomConstraint] = useState<string[]>([])
 
-  // 个人画像记忆
   const [persona, setPersona] = useState('')
   const [autoPersona, setAutoPersona] = useState(true)
 
@@ -82,7 +81,6 @@ export function MemoryModal({ onClose }: Props) {
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-4">
-          {/* 个人画像记忆 */}
           <div className="border border-blue-300 rounded-xl p-4 bg-blue-50/30">
             <div className="flex items-center justify-between mb-2">
               <div>
@@ -92,22 +90,13 @@ export function MemoryModal({ onClose }: Props) {
               <ToggleBtn on={autoPersona} setOn={setAutoPersona} />
             </div>
             <textarea value={persona} onChange={e => setPersona(e.target.value)}
-              placeholder="例：该用户偏好理解原理而非记忆，视觉型学习者，动手实践能力强，关注AI Agent开发领域。当前知识水平：已掌握React+Python基础，正在学习LangGraph多智能体框架……"
+              placeholder="例：该用户偏好理解原理而非记忆，视觉型学习者，动手实践能力强，关注AI Agent开发领域……"
               rows={5}
               className="w-full px-3 py-2 border border-blue-200 rounded-lg text-xs outline-none resize-none focus:border-blue-400 bg-white" />
-            <div className="flex justify-between mt-1">
-              <span className="text-[9px] text-gray-400">跨项目综合提炼</span>
-              <span className="text-[9px] text-gray-400">{persona.length}/500</span>
-            </div>
           </div>
-
-          {/* 学习偏好 */}
           <div className="border border-blue-200 rounded-xl p-4 bg-blue-50/20">
             <div className="flex items-center justify-between mb-3">
-              <div>
-                <h3 className="text-sm font-bold flex items-center gap-1.5 text-blue-700">🧠 学习偏好</h3>
-                <p className="text-[10px] text-gray-400 mt-0.5">几乎不变的底层学习风格。仅手动管理，不轻易调整。</p>
-              </div>
+              <div><h3 className="text-sm font-bold text-blue-700">🧠 学习偏好</h3><p className="text-[10px] text-gray-400 mt-0.5">几乎不变的底层学习风格。</p></div>
             </div>
             <OptionList items={[...purposePresets, ...customPurpose]} active={activePurpose}
               onToggle={v => setActivePurpose(prev => { const n = new Set(prev); n.has(v) ? n.delete(v) : n.add(v); return n })}
@@ -115,14 +104,9 @@ export function MemoryModal({ onClose }: Props) {
               onAdd={v => { setCustomPurpose(prev => [...prev, v]); setActivePurpose(prev => new Set([...prev, v])) }}
               placeholder="自定义" accentColor="#2563eb" />
           </div>
-
-          {/* 资源配置 */}
           <div className="border border-purple-200 rounded-xl p-4 bg-purple-50/20">
             <div className="flex items-center justify-between mb-3">
-              <div>
-                <h3 className="text-sm font-bold flex items-center gap-1.5 text-purple-700">🔧 资源配置</h3>
-                <p className="text-[10px] text-gray-400 mt-0.5">较大困难时可更换。选择学习中使用的工具和资源。</p>
-              </div>
+              <div><h3 className="text-sm font-bold text-purple-700">🔧 资源配置</h3><p className="text-[10px] text-gray-400 mt-0.5">较大困难时可更换。</p></div>
             </div>
             <OptionList items={[...methodPresets, ...customMethod]} active={activeMethod}
               onToggle={v => setActiveMethod(prev => { const n = new Set(prev); n.has(v) ? n.delete(v) : n.add(v); return n })}
@@ -130,14 +114,9 @@ export function MemoryModal({ onClose }: Props) {
               onAdd={v => { setCustomMethod(prev => [...prev, v]); setActiveMethod(prev => new Set([...prev, v])) }}
               placeholder="自定义" accentColor="#7c3aed" />
           </div>
-
-          {/* 本次要求 */}
           <div className="border border-green-200 rounded-xl p-4 bg-green-50/20">
             <div className="flex items-center justify-between mb-3">
-              <div>
-                <h3 className="text-sm font-bold flex items-center gap-1.5 text-green-700">📝 本次要求</h3>
-                <p className="text-[10px] text-gray-400 mt-0.5">每次对话前可灵活调整。设定本次学习的具体要求。</p>
-              </div>
+              <div><h3 className="text-sm font-bold text-green-700">📝 本次要求</h3><p className="text-[10px] text-gray-400 mt-0.5">每次对话前可灵活调整。</p></div>
             </div>
             <OptionList items={[...constraintPresets, ...customConstraint]} active={activeConstraint}
               onToggle={v => setActiveConstraint(prev => { const n = new Set(prev); n.has(v) ? n.delete(v) : n.add(v); return n })}
@@ -153,11 +132,13 @@ export function MemoryModal({ onClose }: Props) {
 
 // ==================== 项目配置窗口 ====================
 export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectId?: string }) {
-  const [tab, setTab] = useState<'resource' | 'knowledge' | 'memory'>('resource')
+  const [tab, setTab] = useState<'knowledge' | 'memory'>('knowledge')
   const [kbInput, setKbInput] = useState('')
   const [showGuide, setShowGuide] = useState(false)
   const [projectMemory, setProjectMemory] = useState('')
   const [episodicMemory, setEpisodicMemory] = useState('')
+  const defaultResources = ['书籍', '百科', '论文', '官方文档', '教程', '视频', '代码仓库', '课件/PPT']
+  const [selectedResources, setSelectedResources] = useState<Set<string>>(new Set(['书籍', '官方文档']))
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onMouseDown={closeOnBackdrop(onClose)}>
@@ -166,23 +147,37 @@ export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectI
           <h2 className="text-base font-bold flex items-center gap-2"><Database size={18} className="text-green-500" /> 项目配置</h2>
           <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
         </div>
-
-        {/* Tab 栏 */}
         <div className="flex border-b border-[#e5e5e5] flex-shrink-0">
-          {(['resource','knowledge','memory'] as const).map(t => (
+          {(['knowledge','memory'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`flex-1 py-2 text-xs font-medium transition-colors ${
                 tab === t ? 'text-[#1a1a1a] border-b-2 border-[#1a1a1a]' : 'text-gray-400 hover:text-gray-600'
               }`}>
-              {{ resource: '资源选择', knowledge: '知识库', memory: '项目记忆' }[t]}
+              {{ knowledge: '知识库', memory: '项目记忆' }[t]}
             </button>
           ))}
         </div>
-
         <div className="flex-1 overflow-y-auto p-5">
-          {tab === 'resource' && <ResourceTab />}
           {tab === 'knowledge' && (
             <div className="flex flex-col gap-5">
+              {/* 系统资源选择 */}
+              <div className="border border-[#e5e5e5] rounded-xl p-4">
+                <h3 className="text-sm font-bold mb-2">选择系统资源</h3>
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {defaultResources.map(r => (
+                    <button key={r} onClick={() => setSelectedResources(prev => { const n = new Set(prev); n.has(r) ? n.delete(r) : n.add(r); return n })}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium ${
+                        selectedResources.has(r) ? 'bg-[#f0f0f0] text-[#1a1a1a] border border-[#1a1a1a]/30' : 'bg-gray-50 text-gray-500 border border-gray-200'
+                      }`}>{r}</button>
+                  ))}
+                </div>
+              </div>
+              {/* 上传资源 */}
+              <div className="border border-[#e5e5e5] rounded-xl p-4">
+                <h3 className="text-sm font-bold mb-2">上传资源</h3>
+                <DragDropInput value="" onChange={() => {}} placeholder="拖拽文件到此处或点击上传" rows={1} />
+              </div>
+              {/* 知识库内容 */}
               <div className="border border-[#e5e5e5] rounded-xl p-4">
                 <h3 className="text-sm font-bold mb-3">输入内容</h3>
                 <DragDropInput value={kbInput} onChange={setKbInput} placeholder="输入知识库内容，或拖拽文件上传" rows={5} />
@@ -195,56 +190,24 @@ export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectI
           )}
           {tab === 'memory' && (
             <div className="flex flex-col gap-5">
-              {/* 情景记忆 */}
               <div className="border border-indigo-200 rounded-xl p-4 bg-indigo-50/20">
-                <h3 className="text-sm font-bold flex items-center gap-1.5 text-indigo-700 mb-2">
-                  <Clock size={14} /> 情景记忆
-                </h3>
-                <p className="text-[10px] text-gray-400 mb-2">基于用户与AI对话内容的简要概述。由 Agent 自动提取关键信息并更新（≤1000字）。</p>
+                <h3 className="text-sm font-bold flex items-center gap-1.5 text-indigo-700 mb-2"><Clock size={14} /> 情景记忆</h3>
+                <p className="text-[10px] text-gray-400 mb-2">基于用户与AI对话内容的简要概述（≤1000字）。</p>
                 <textarea value={episodicMemory} onChange={e => setEpisodicMemory(e.target.value)}
-                  placeholder="例：用户询问了LangGraph的状态管理机制，AI解释了StateGraph和MessageGraph的区别。用户对条件路由的概念有疑问，AI用代码示例进行了说明。用户表示理解了基本用法……"
+                  placeholder="例：用户询问了LangGraph的状态管理机制……"
                   rows={8}
                   className="w-full px-3 py-2 border border-indigo-200 rounded-lg text-xs outline-none resize-none focus:border-indigo-400 bg-white" />
-                <div className="flex justify-between mt-1">
-                  <span className="text-[9px] text-gray-400">对话自动提取</span>
-                  <span className="text-[9px] text-gray-400">{episodicMemory.length}/1000</span>
-                </div>
               </div>
-              {/* 项目记忆 */}
               <div className="border border-[#e5e5e5] rounded-xl p-4">
                 <h3 className="text-sm font-bold mb-2">项目上下文记忆</h3>
-                <p className="text-[10px] text-gray-400 mb-2">记录与本项目相关的配置和上下文信息。</p>
                 <textarea value={projectMemory} onChange={e => setProjectMemory(e.target.value)}
-                  placeholder="例：本项目聚焦多智能体系统开发，已完成前端UI搭建，正在对接LangGraph后端……"
+                  placeholder="例：本项目聚焦多智能体系统开发……"
                   rows={4}
                   className="w-full px-3 py-2 border border-[#d0d0d0] rounded-lg text-xs outline-none resize-none focus:border-[#1a1a1a] bg-[#fafafa]" />
               </div>
             </div>
           )}
         </div>
-      </div>
-    </div>
-  )
-}
-
-/** 资源选择 Tab */
-function ResourceTab() {
-  const resources = ['书籍', '百科', '论文', '官方文档', '教程', '视频', '代码仓库', '课件/PPT']
-  const [selected, setSelected] = useState<Set<string>>(new Set(['书籍', '官方文档']))
-  return (
-    <div className="space-y-4">
-      <h3 className="text-sm font-bold">选择项目依赖资源</h3>
-      <div className="flex flex-wrap gap-2">
-        {resources.map(r => (
-          <button key={r} onClick={() => setSelected(prev => { const n = new Set(prev); n.has(r) ? n.delete(r) : n.add(r); return n })}
-            className={`px-3 py-1.5 rounded-lg text-xs font-medium ${
-              selected.has(r) ? 'bg-[#f0f0f0] text-[#1a1a1a] border border-[#1a1a1a]/30' : 'bg-gray-50 text-gray-500 border border-gray-200'
-            }`}>{r}</button>
-        ))}
-      </div>
-      <div className="border-t border-[#e5e5e5] pt-4">
-        <h3 className="text-sm font-bold mb-2">上传资料</h3>
-        <DragDropInput value="" onChange={() => {}} placeholder="拖拽文件到此处或点击上传" rows={1} />
       </div>
     </div>
   )
