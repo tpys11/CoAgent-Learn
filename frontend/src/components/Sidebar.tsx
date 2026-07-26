@@ -20,10 +20,8 @@ interface SidebarProps {
   onArchiveDialogue: (id: string) => void
   onRenameDialogue: (id: string, name: string) => void
   onRenameProject: (id: string, name: string) => void
-  onProjectMemory?: (projectId: string) => void
   onProjectKnowledge?: (projectId: string) => void
   onSettings: () => void
-  onResourceOpen?: (resourceId: string, resourceName: string) => void
 }
 
 export default function Sidebar({
@@ -31,9 +29,8 @@ export default function Sidebar({
   onCreateProject, onDeleteProject, onSelectProject,
   onCreateDialogue, onSelectDialogue, onArchiveDialogue, onRenameDialogue,
   onRenameProject,
-  onProjectMemory, onProjectKnowledge,
+  onProjectKnowledge,
   onSettings,
-  onResourceOpen,
 }: SidebarProps) {
   const [showCreate, setShowCreate] = useState(false)
   const [newName, setNewName] = useState('')
@@ -50,9 +47,6 @@ export default function Sidebar({
     { id: 'encyclopedia', name: '百科' },
   ])
   const [expandedResources, setExpandedResources] = useState(true)
-  const [editingResource, setEditingResource] = useState<string | null>(null)
-  const [newResourceName, setNewResourceName] = useState('')
-  const [showNewResource, setShowNewResource] = useState(false)
 
   const toggleExpand = (id: string) => {
     const next = new Set(expandedProjects)
@@ -82,18 +76,6 @@ export default function Sidebar({
     </div>
   )
 
-  const handleCreateResource = () => {
-    if (!newResourceName.trim()) return
-    const id = 'res-' + Date.now()
-    setResources(prev => [...prev, { id, name: newResourceName.trim() }])
-    setNewResourceName('')
-    setShowNewResource(false)
-  }
-  const handleDeleteResource = (id: string) => setResources(prev => prev.filter(r => r.id !== id))
-  const handleRenameResource = (id: string, name: string) => {
-    if (!name.trim()) return
-    setResources(prev => prev.map(r => r.id === id ? { ...r, name: name.trim() } : r))
-  }
 
   /** 项目列表 + 对话窗口（仿 workbuddy） */
   const renderProjects = () => (
@@ -230,7 +212,7 @@ export default function Sidebar({
       {expandedResources && (
         <div className="ml-4 border-l border-[#e5e5e5]">
           {resources.map(r => (
-            <div key={r.id} onClick={() => onResourceOpen?.(r.id, r.name)}
+            <div key={r.id}
               className="flex items-center gap-1.5 px-3 py-1 cursor-pointer text-xs hover:bg-[#ededed] text-gray-600">
               <span>{r.name}</span>
             </div>

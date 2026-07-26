@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import { Send, Bot, Clock, Zap, Brain, Database, Settings } from 'lucide-react'
+import { Send, Bot, Clock, Zap, Brain, Settings } from 'lucide-react'
 import type { Message, Project } from '../types'
 import { MemoryModal } from './InfoModals'
 import AgentFlow from './AgentFlow'
 
-const cleanThinking = (t: string) => t.replace(/```json[\s\S]*?```/g, '').replace(/```[\s\S]*?```/g, '').trim()
 
 interface CenterPanelProps {
   messages: Message[]

@@ -84,9 +84,6 @@ class ChatStep(BaseModel):
     status: str
     detail: str | None = None
 
-class ChatResponse(BaseModel):
-    reply: str
-    steps: list[ChatStep] = []
 
 
 @app.post("/api/chat")
