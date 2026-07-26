@@ -124,7 +124,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
       {/* 折叠按钮：下方正中间 */}
       <div className="flex justify-center -mt-0.5 mb-1">
         <button onClick={onToggleStats}
-          className="w-5 h-3 flex items-end justify-center pb-[12vh] rounded-b hover:bg-[#ededed] text-gray-400 text-[10px] leading-none transition-colors"
+          className="w-5 h-3 flex items-center justify-center rounded-b hover:bg-[#ededed] text-gray-400 text-[10px] leading-none transition-colors"
           title={statsCollapsed ? '展开' : '收起'}>
           {statsCollapsed ? '▼' : '▲'}
         </button>
@@ -140,15 +140,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
           </div>
         )}
         {messages.length === 0 ? (
-          <div className="flex-1 flex flex-col items-end justify-center pb-[12vh] gap-3 text-center">
-            <Bot size={48} className="text-gray-300" />
-            <h1 className="text-2xl font-bold">CoAgent-Learn</h1>
-            <p className="text-sm text-gray-400">
-              {currentProject
-                ? `当前项目: ${currentProject.name}`
-                : '选择或新建一个项目开始学习'}
-            </p>
-          </div>
+          <div className="flex-1" />
         ) : (
           messages.map((msg, idx) => (
             <div
@@ -215,7 +207,19 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
         )}
       </div>
 
-      {/* Input area */}
+      
+      {/* Welcome */}
+      {messages.length === 0 && (
+        <div className="flex flex-col items-center gap-3 pb-6 -mt-4">
+          <Bot size={40} className="text-gray-300" />
+          <h1 className="text-xl font-bold text-gray-700">CoAgent-Learn</h1>
+          <p className="text-xs text-gray-400">
+            {currentProject ? `当前项目: ${currentProject.name}` : '选择或新建一个项目开始学习'}
+          </p>
+        </div>
+      )}
+
+{/* Input area */}
       <div className="flex-shrink-0 px-3 pb-3 pt-2">
         {/* Control bar — 自定义按钮 */}
         <div className="flex gap-2 px-3 py-1.5 mb-1 border border-[#d0d0d0] rounded-lg bg-white items-center">
@@ -371,7 +375,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
         </div>
 
         {/* Input area — 页面正中间 */}
-      <div className={`${messages.length === 0 ? 'flex-1 flex items-end justify-center pb-[12vh]' : 'flex-shrink-0'}`}>
+      <div className={`${messages.length === 0 ? 'flex-1 flex items-center justify-center' : 'flex-shrink-0'}`}>
         <div className="px-8 pb-4 pt-2 flex flex-col items-center gap-2 w-full max-w-xl mx-auto">
           {projectInitialized === false ? (
             <div className="w-full max-w-xl px-3 py-2 border border-dashed border-orange-400 rounded-lg bg-orange-50 text-xs text-orange-600 flex items-center gap-2">
