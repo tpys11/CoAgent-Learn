@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
-import { Send, Bot, Clock, Zap, Brain, Settings } from 'lucide-react'
+import { Send, Bot, Clock, Zap, Brain, Database, Settings } from 'lucide-react'
 import type { Message, Project } from '../types'
 import { MemoryModal } from './InfoModals'
 import AgentFlow from './AgentFlow'
 
+const cleanThinking = (t: string) => t.replace(/```json[\s\S]*?```/g, '').replace(/```[\s\S]*?```/g, '').trim()
 
 interface CenterPanelProps {
   messages: Message[]
@@ -370,31 +371,48 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
           </div>
         </div>
 
-        {/* Input row */}
-        <div className="flex gap-2 items-end">
+        {/* Input area — 居中大输入框 */}
+        <div className="flex-shrink-0 px-8 pb-4 pt-2 flex flex-col items-center gap-2">
           {projectInitialized === false ? (
-            <div className="flex-1 px-3 py-2 border border-dashed border-orange-400 rounded-lg bg-orange-50 text-xs text-orange-600 flex items-center gap-2">
-              <span>⚠️</span> 项目未初始化 — 请先在左侧栏点击项目 <span className="font-semibold">···</span> → 项目初始化
+            <div className="w-full max-w-xl px-3 py-2 border border-dashed border-orange-400 rounded-lg bg-orange-50 text-xs text-orange-600 flex items-center gap-2">
+              <span>⚠️</span> 项目未初始化
             </div>
           ) : (
             <>
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
-            }}
-            placeholder="输入你的问题...（Shift+Enter 换行）"
-            rows={2}
-            className="flex-1 px-3 py-2 border border-[#d0d0d0] rounded-lg bg-white text-sm outline-none resize-none focus:border-[#1a1a1a] focus:ring-[3px] focus:ring-[#1a1a1a]/10"
-          />
-          <button
-            onClick={handleSend}
-            disabled={isLoading}
-            className="px-5 py-2 bg-[#1a1a1a] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors flex items-center gap-1 text-sm disabled:opacity-50"
-          >
-            <Send size={14} /> 发送
-          </button>
+          <div className="w-full max-w-xl flex gap-2 items-end">
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
+              }}
+              placeholder="输入你的问题..."
+              rows={2}
+              className="flex-1 px-4 py-3 border border-[#d0d0d0] rounded-xl bg-white text-sm outline-none resize-none focus:border-[#1a1a1a] focus:ring-[3px] focus:ring-[#1a1a1a]/10 shadow-sm"
+            />
+            <button
+              onClick={handleSend}
+              disabled={isLoading}
+              className="px-5 py-3 bg-[#1a1a1a] text-white font-semibold rounded-xl hover:bg-[#333333] transition-colors flex items-center gap-1 text-sm disabled:opacity-50"
+            >
+              <Send size={14} />
+            </button>
+          </div>
+          {/* 功能按钮栏 */}
+          <div className="flex gap-3 text-[11px] text-gray-400">
+            <button className="flex items-center gap-1 hover:text-gray-600 transition-colors">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              上传文件夹
+            </button>
+            <button className="flex items-center gap-1 hover:text-gray-600 transition-colors">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+              选择模型
+            </button>
+            <button className="flex items-center gap-1 hover:text-gray-600 transition-colors">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              更多设置
+            </button>
+          </div>
             </>
           )}
         </div>
