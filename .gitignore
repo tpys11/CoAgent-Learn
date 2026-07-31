@@ -33,3 +33,4 @@ docs/
 
 # Docker
 docker-compose.override.yml
+deploy/data/

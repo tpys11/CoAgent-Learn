@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X, Brain, Database, Plus, Trash2, Clock } from 'lucide-react'
 import DragDropInput from './DragDropInput'
 
@@ -46,6 +46,35 @@ function OptionList({ items, active, onToggle, onRemove, onAdd, placeholder, acc
 // ==================== 全局记忆系统 ====================
 export function MemoryModal({ onClose }: Props) {
   const [autoMemory, setAutoMemory] = useState(true)
+  useEffect(function(){
+    var S=sessionStorage.getItem('coagent-s')||''
+    fetch('/api/global-profile?session_id='+encodeURIComponent(S))
+      .then(function(r){return r.json()})
+      .then(function(d){
+        if(d&&d.profile){
+          var NL=String.fromCharCode(10)
+          var txt=''
+          if(d.profile.用户背景)txt+='用户背景: '+d.profile.用户背景+NL
+          if(d.profile.偏好提问方式&&d.profile.偏好提问方式.length)txt+='偏好提问方式: '+d.profile.偏好提问方式.join(', ')+NL
+          if(d.profile.偏好学习方式&&d.profile.偏好学习方式.length)txt+='偏好学习方式: '+d.profile.偏好学习方式.join(', ')+NL
+          if(d.profile.偏好_输出&&d.profile.偏好_输出.length)txt+='偏好_输出: '+d.profile.偏好_输出.join(', ')+NL
+          if(d.profile.学习时长)txt+='学习时长: '+d.profile.学习时长+NL
+          if(d.profile.学习内容&&d.profile.学习内容.length)txt+='学习内容: '+d.profile.学习内容.join(', ')+NL
+          if(d.profile.项目摘要){
+            for(var pn in d.profile.项目摘要){
+              var pi=d.profile.项目摘要[pn]
+              txt+=pn+'项目摘要:'+NL
+              if(pi.领域)txt+='  领域: '+pi.领域+NL
+              if(pi.水平)txt+='  水平: '+pi.水平+NL
+              if(pi.薄弱点&&pi.薄弱点.length)txt+='  薄弱点: '+pi.薄弱点.join(', ')+NL
+              if(pi.兴趣&&pi.兴趣.length)txt+='  兴趣: '+pi.兴趣.join(', ')+NL
+              if(pi.偏好&&pi.偏好.length)txt+='  偏好: '+pi.偏好.join(', ')+NL
+            }
+          }
+          if(txt)setPersona(txt.trim())
+        }
+      }).catch(function(){})
+  },[])
 
   const [purposePresets] = useState(['理解原理优先于记忆', '视觉型学习（图表/流程）', '动手实践优先', '自顶向下学习', '费曼输出法', '定期复习间隔'])
   const [activePurpose, setActivePurpose] = useState<Set<string>>(new Set(['理解原理优先于记忆', '自顶向下学习']))
@@ -136,6 +165,36 @@ export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectI
   const [kbInput, setKbInput] = useState('')
   const [showGuide, setShowGuide] = useState(false)
   const [projectMemory, setProjectMemory] = useState('')
+  useEffect(function(){
+    if(!projectId)return
+    var S=sessionStorage.getItem('coagent-s')||''
+    fetch('/api/project-memory/'+projectId+'?session_id='+encodeURIComponent(S))
+      .then(function(r){return r.json()})
+      .then(function(d){
+        if(d&&d.memory){
+          var NL=String.fromCharCode(10)
+          var txt=''
+          if(d.memory.项目概述)txt+='项目概述: '+d.memory.项目概述+NL
+          if(d.memory.当前进度)txt+='当前进度: '+d.memory.当前进度+NL
+          if(d.memory.领域)txt+='领域: '+d.memory.领域+NL
+          if(d.memory.水平)txt+='水平: '+d.memory.水平+NL
+          if(d.memory.薄弱点&&d.memory.薄弱点.length)txt+='薄弱点: '+d.memory.薄弱点.join(', ')+NL
+          if(d.memory.兴趣&&d.memory.兴趣.length)txt+='兴趣: '+d.memory.兴趣.join(', ')+NL
+          if(d.memory.偏好&&d.memory.偏好.length)txt+='偏好: '+d.memory.偏好.join(', ')+NL
+          if(txt)setEpisodicMemory(txt.trim())
+          var txt2=''
+          if(d.memory.知识点&&d.memory.知识点.length)txt2+='知识点: '+d.memory.知识点.join(', ')+NL
+          if(d.memory.难点&&d.memory.难点.length)txt2+='难点: '+d.memory.难点.join(', ')+NL
+          if(d.memory.对话摘要&&d.memory.对话摘要.length){
+            txt2+='对话摘要:'+NL
+            for(var i=0;i<d.memory.对话摘要.length;i++){
+              txt2+='  '+(i+1)+'. '+(d.memory.对话摘要[i].摘要||'')+NL
+            }
+          }
+          if(txt2)setProjectMemory(txt2.trim())
+        }
+      }).catch(function(){})
+  },[projectId])
   const [episodicMemory, setEpisodicMemory] = useState('')
   const defaultResources = ['书籍', '百科', '论文', '官方文档', '教程', '视频', '代码仓库', '课件/PPT']
   const [selectedResources, setSelectedResources] = useState<Set<string>>(new Set(['书籍', '官方文档']))

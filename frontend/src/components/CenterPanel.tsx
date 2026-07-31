@@ -22,6 +22,7 @@ interface CenterPanelProps {
 
 export default function CenterPanel({ messages, isLoading, currentProject, onSendMessage, statsCollapsed, onToggleStats, showAgentFlow, flowAgents, flowActiveAgent, flowMindchain, onAgentSettings, projectInitialized }: CenterPanelProps) {
   const [input, setInput] = useState('')
+  const [flowCollapsed, setFlowCollapsed] = useState(false)
   const [time, setTime] = useState(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }))
   const [searchMode, setSearchMode] = useState(0)
   const [showFormat, setShowFormat] = useState(false)
@@ -134,9 +135,18 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
       {/* Messages */}
       <div className={`overflow-y-auto px-4 py-3 flex flex-col gap-3 ${messages.length > 0 ? 'flex-1' : 'max-h-[50%] flex-shrink-0'}`}>
         {/* Agent 思考过程 */}
-        {showAgentFlow && (
+        {showAgentFlow && !flowCollapsed && (
           <div className="mb-2 bg-white border border-[#e5e5e5] rounded-xl overflow-hidden flex-shrink-0" style={{ height: '28vh', minHeight: 150 }}>
+            <div className="flex items-center justify-between px-3 py-1 bg-[#fafafa] border-b border-[#e5e5e5]">
+              <span className="text-xs text-gray-500 font-medium">Agent 执行流程</span>
+              <button onClick={() => setFlowCollapsed(true)} className="text-xs text-gray-400 hover:text-gray-600">▲ 收起</button>
+            </div>
             <AgentFlow visible={true} agents={flowAgents} activeAgent={flowActiveAgent} />
+          </div>
+        )}
+        {showAgentFlow && flowCollapsed && (
+          <div className="mb-2 flex justify-center">
+            <button onClick={() => setFlowCollapsed(false)} className="text-xs text-gray-400 bg-white border border-[#e5e5e5] rounded-full px-3 py-1">▾ Agent 流程</button>
           </div>
         )}
         {messages.length === 0 ? (

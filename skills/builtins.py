@@ -49,9 +49,9 @@ class MemoryReadWrite(Skill):
     }
 
     def execute(self, action: str = "read", layer: str = "L2", data: dict = None, **kwargs) -> dict:
-        # TODO: 接入 SQLite 用户画像存储
+        # TODO: 接入 PostgreSQL 用户画像存储
         if action == "read":
-            return {"memory": {layer: "暂无数据（SQLite 接入后生效）"}}
+            return {"memory": {layer: "暂无数据（PostgreSQL 接入后生效）"}}
         return {"status": "written", "layer": layer}
 
 

@@ -14,6 +14,11 @@ class Config:
     REDIS_HOST: str = os.getenv("REDIS_HOST", "localhost")
     REDIS_PORT: int = int(os.getenv("REDIS_PORT", "6379"))
     CHROMA_PERSIST_DIRECTORY: str = os.getenv("CHROMA_PERSIST_DIRECTORY", "./chroma_db")
+    POSTGRES_HOST: str = os.getenv("POSTGRES_HOST", "localhost")
+    POSTGRES_PORT: int = int(os.getenv("POSTGRES_PORT", "5432"))
+    POSTGRES_DB: str = os.getenv("POSTGRES_DB", "coagent")
+    POSTGRES_USER: str = os.getenv("POSTGRES_USER", "coagent")
+    POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "coagent123")
 
 
 config = Config()

@@ -5,7 +5,10 @@ langchain>=0.3.14
 langchain-deepseek>=0.1.2
 chromadb>=0.5.23
 redis>=5.2.1
-sqlalchemy>=2.0.36
 python-dotenv>=1.0.1
 pydantic>=2.10.4
 httpx>=0.28.1
+
+# 数据库连接
+psycopg2-binary>=2.9.9
+neo4j>=5.23.0

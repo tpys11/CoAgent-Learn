@@ -19,7 +19,8 @@ function App() {
   ])
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(defaultProjectId)
   const [currentDialogueId, setCurrentDialogueId] = useState<string | null>(dialogues[0].id)
-  const [messages, setMessages] = useState<Message[]>([])
+  const [allMessages, setAllMessages] = useState<Record<string, Message[]>>({})
+  const currentMessages = (currentDialogueId ? allMessages[currentDialogueId] : []) || []
   const [isLoading, setIsLoading] = useState(false)
   const [showDiagnosis, setShowDiagnosis] = useState(false)
   const [agents, setAgents] = useState<AgentConfig[]>(DEFAULT_AGENTS)
@@ -47,6 +48,7 @@ function App() {
   const [flowActiveAgent, setFlowActiveAgent] = useState<string | null>(null)
   const [flowMindchain, setFlowMindchain] = useState<Array<{agent: string; content: string}>>([])
   const mindchainRef = useRef<Array<{agent: string; content: string}>>([])
+  const sessionId=useRef((sessionStorage.setItem("coagent-s",Math.random().toString(36).slice(2)+Date.now().toString(36)),sessionStorage.getItem("coagent-s")))
   const dragging = useRef<'left' | 'right' | 'flow' | null>(null)
   const appRef = useRef<HTMLDivElement>(null)
 
@@ -73,7 +75,7 @@ function App() {
     const dId = generateId()
     setDialogues(prev => [...prev, { id: dId, name: '新对话', projectId: id, createdAt: new Date().toISOString(), archived: false }])
     setCurrentDialogueId(dId)
-    setMessages([])
+    setAllMessages(prev => ({ ...prev, [dId]: [] }))
     setShowDiagnosis(true)
   }, [])
   const handleDeleteProject = useCallback((id: string) => {
@@ -101,9 +103,9 @@ function App() {
     const d: Dialogue = { id: generateId(), name: `对话 ${count + 1}`, projectId, createdAt: new Date().toISOString(), archived: false }
     setDialogues(prev => [...prev, d])
     setCurrentDialogueId(d.id)
-    setMessages([])
+    setAllMessages(prev => ({ ...prev, [d.id]: [] }))
   }, [dialogues])
-  const handleSelectDialogue = useCallback((id: string) => { setCurrentDialogueId(id) }, [])
+  const handleSelectDialogue = useCallback((id: string) => { setCurrentDialogueId(id); setFlowVisible(false); setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = [] }, [])
   const handleArchiveDialogue = useCallback((id: string) => {
     setDialogues(prev => prev.map(d => d.id === id ? { ...d, archived: true } : d))
   }, [])
@@ -121,20 +123,23 @@ function App() {
       setCurrentDialogueId(d.id)
     }
     if (!did) return
-    setMessages(prev => [...prev, { role: 'user', content: text }])
+    setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'user', content: text }] }))
     setIsLoading(true)
     setFlowVisible(true); setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = []
     try {
       const res = await fetch('/api/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text.trim(), api_key: localStorage.getItem('coagent-apikey') || undefined, settings: settings || {} }),
+        body: JSON.stringify({ message: text.trim(), session_id: sessionId.current, dialogue_id: currentDialogueId, project_id: currentProjectId, api_key: localStorage.getItem('coagent-apikey') || undefined, settings: settings || {} }),
       })
       const reader = res.body!.getReader(); const decoder = new TextDecoder()
       let finalReply = ''; const steps: any[] = []
+      var _buf=""
       while (true) {
         const { done, value } = await reader.read(); if (done) break
-        const text = decoder.decode(value, { stream: true })
-        for (const line of text.split('\n')) {
+        _buf+=decoder.decode(value,{stream:true})
+        var _lines=_buf.split(String.fromCharCode(10))
+        _buf=_lines.pop()||""
+        for (const line of _lines) {
           if (!line.startsWith('data: ')) continue
           const data = JSON.parse(line.slice(6))
           if (data.type === 'step') {
@@ -161,9 +166,12 @@ function App() {
           if (data.type === 'done') { finalReply = data.reply; steps.push(...(data.steps || [])) }
         }
       }
-      setMessages(prev => [...prev, { role: 'assistant', content: finalReply || '处理完成', steps, think: mindchainRef.current.map(m => m.content) }])
+      try{
+        if(_buf.trim()){var _blines=_buf.split(String.fromCharCode(10));for(var _bi=0;_bi<_blines.length;_bi++){var _bl=_blines[_bi];if(!_bl.startsWith("data: "))continue;try{var _bd=JSON.parse(_bl.slice(6));if(_bd.type==="done")finalReply=_bd.reply||finalReply}catch(_be){}}}
+        setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'assistant', content: finalReply || '处理完成', steps, think: mindchainRef.current.map(m => m.content) }] }))
+      }catch(_ex){}
     } catch {
-      setMessages(prev => [...prev, { role: 'assistant', content: '抱歉，请求失败。' }])
+      setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'assistant', content: '抱歉，请求失败。' }] }))
     } finally { setIsLoading(false) }
   }, [currentDialogueId])
   const handleSaveAgent = useCallback((updated: AgentConfig) => {
@@ -204,7 +212,7 @@ function App() {
       )}
       {/* 中间 */}
       <CenterPanel
-        messages={messages} isLoading={isLoading} currentProject={currentProject}
+        messages={currentMessages} isLoading={isLoading} currentProject={currentProject}
         onSendMessage={handleSendMessage}
         statsCollapsed={statsCollapsed} onToggleStats={() => setStatsCollapsed(!statsCollapsed)}
         showAgentFlow={flowVisible}
@@ -224,7 +232,7 @@ function App() {
           <div onMouseDown={() => { dragging.current = 'right'; document.body.style.userSelect = 'none' }}
             className="w-1.5 h-full cursor-col-resize hover:bg-[#1a1a1a]/30 flex-shrink-0 transition-colors" />
           <div style={{ width: rightPanelWidth, minWidth: 180 }} className="h-full flex-shrink-0 relative">
-            <RightPanel messageCount={messages.filter(m => m.role === 'assistant').length} />
+            <RightPanel messageCount={currentMessages.filter(m => m.role === 'assistant').length} />
           </div>
         </>
       )}

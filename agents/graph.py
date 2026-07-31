@@ -12,6 +12,9 @@ from skills.registry import registry
 
 class AgentState(TypedDict):
     user_input: str
+    project_id: str
+    dialogue_id: str
+    session_id: str
     processed_input: str
     profile: dict
     knowledge: list
@@ -48,8 +51,12 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             )
             raw = "".join(collected)
             m = re.search(r'```json\s*([\s\S]*?)\s*```', raw)
-            thinking = raw[:m.start()].strip() if m else raw[:500]
-            result = json.loads(m.group(1)) if m else {}
+            if m:
+                thinking = raw[:m.start()].strip()
+                result = json.loads(m.group(1))
+            else:
+                thinking = raw[:500]
+                result = {"content": raw}
             return thinking, result
         except Exception as e:
             return f"执行异常: {e}", {}
@@ -166,9 +173,29 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
 
     def generate_node(state: AgentState) -> AgentState:
         state.setdefault("steps", []).append({"agent": "信息整理与生成", "status": "running"})
-        context = f"用户问题: {state['user_input']}\n"
-        if state.get("profile"): context += f"学情: {json.dumps(state['profile'], ensure_ascii=False)}\n"
-        if state.get("knowledge"): context += f"知识库: {json.dumps(state['knowledge'], ensure_ascii=False)}\n"
+        context = f"用户问题: {state['user_input']}" + chr(10)
+        if state.get("profile"): context += f"学情: {json.dumps(state['profile'], ensure_ascii=False)}" + chr(10)
+        if state.get("knowledge"): context += f"知识库: {json.dumps(state['knowledge'], ensure_ascii=False)}" + chr(10)
+        # 读最近对话历史
+        try:
+            import psycopg2
+            from core.config import config as _cfg
+            _conn=psycopg2.connect(host=_cfg.POSTGRES_HOST,port=_cfg.POSTGRES_PORT,dbname=_cfg.POSTGRES_DB,user=_cfg.POSTGRES_USER,password=_cfg.POSTGRES_PASSWORD)
+            _cur=_conn.cursor()
+            _cur.execute("SELECT role,content FROM messages WHERE dialogue_id=%s ORDER BY created_at DESC LIMIT 10",(state.get("dialogue_id","default"),))
+            _rows=_cur.fetchall()
+            _rows.reverse()
+            import sys as _s
+            _s.stderr.write("[gen-hist] did="+str(state.get("dialogue_id"))[:15]+" rows="+str(len(_rows))+chr(10));_s.stderr.flush()
+            if _rows:
+                context+=chr(10)+"【历史对话】"+chr(10)
+                for _r in _rows[:-1]:
+                    _c=str(_r[1]) if _r[1] else ""
+                    if _c and _c!="（系统未生成内容）":
+                        context+=("user: " if _r[0]=="user" else "assistant: ")+_c[:150]+chr(10)
+            _cur.close();_conn.close()
+        except Exception:
+            pass
         try:
             thinking, result = think_then_json(_GENERATE_PROMPT, context, "信息整理与生成")
             state["generated"] = result.get("content", "")
@@ -202,6 +229,8 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         return state
 
     def route_dispatch(state: AgentState) -> str:
+        if state.get("dispatch_count", 0) >= 3:
+            return "enough"
         agent = state.get("_dispatch_result", {}).get("agent", "kb")
         m = {"diagnose": "diagnose", "kb": "kb", "search": "search", "memory": "memory"}
         return m.get(agent, "enough") if state.get("_dispatch_result", {}).get("action") == "call_agent" else "enough"

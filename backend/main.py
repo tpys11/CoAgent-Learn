@@ -45,6 +45,18 @@ app.add_middleware(
 async def health_check():
     return {"status": "ok", "version": "0.3.0"}
 
+@app.get("/api/global-profile")
+async def get_global_profile(session_id: str = "default"):
+    from core.postgres_client import pg_client
+    rows = pg_client.execute("SELECT data FROM global_profile WHERE session_id = %s", (session_id,))
+    return {"profile": rows[0]["data"] if rows else {}}
+
+@app.get("/api/project-memory/{project_id}")
+async def get_project_memory(project_id: str, session_id: str = "default"):
+    from core.postgres_client import pg_client
+    rows = pg_client.execute("SELECT data FROM project_memories WHERE session_id = %s AND project_id = %s", (session_id, project_id))
+    return {"memory": rows[0]["data"] if rows else {}}
+
 
 # ---------- Skill 管理 API ----------
 
@@ -75,6 +87,8 @@ async def delete_skill(name: str):
 
 class ChatRequest(BaseModel):
     message: str
+    session_id: str | None = None
+    dialogue_id: str | None = None
     project_id: str | None = None
     api_key: str | None = None
     settings: dict | None = None
@@ -100,8 +114,37 @@ async def chat(req: ChatRequest):
             def run_workflow():
                 try:
                     wf = create_workflow(req.api_key, req.settings, on_token)
-                    result = wf.invoke({"user_input": req.message, "steps": [], "mindchain": []})
+                    pid = req.project_id or "default"
+                    _did = req.dialogue_id or "default"
+                    # 先存用户消息（invoke 时 generate_node 才能读到）
+                    try:
+                        from core.postgres_client import pg_client as _pg
+                        _exist=_pg.execute("SELECT id FROM dialogues WHERE id=%s",(_did,))
+                        if not _exist:
+                            _pg.execute("INSERT INTO dialogues(id,project_id,name) VALUES(%s,%s,%s)",(_did,pid,"新对话"))
+                        _pg.execute("INSERT INTO messages(dialogue_id,role,content) VALUES(%s,%s,%s)",(_did,"user",req.message))
+                    except Exception as _e:
+                        print("[存储]",_e)
+                    result = wf.invoke({"user_input": req.message, "project_id": pid, "dialogue_id": _did, "session_id": req.session_id or "default", "steps": [], "mindchain": []})
+                    # invoke 后存 AI 回复
+                    try:
+                        from core.postgres_client import pg_client as _pg
+                        _reply=result.get("final_reply","")
+                        if _reply:
+                            _pg.execute("INSERT INTO messages(dialogue_id,role,content) VALUES(%s,%s,%s)",(_did,"assistant",_reply))
+                    except Exception as _e:
+                        print("[存储]",_e)
                     token_queue.put(("done", result))
+                    # 后台异步分析记忆
+                    try:
+                        reply = result.get("final_reply", "")
+                        if reply:
+                            from core.memory_analysis import update_memories
+                            from core.postgres_client import pg_client
+                            import threading
+                            threading.Thread(target=update_memories, args=(req.api_key, pid, "用户:" + req.message + chr(10) + "AI:" + reply, pg_client, req.session_id or "default"), daemon=True).start()
+                    except Exception as e:
+                        print("[记忆] err:", e)
                 except Exception as e:
                     token_queue.put(("error", str(e)))
 
