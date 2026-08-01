@@ -149,4 +149,5 @@ class DeepSeekLLM(BaseLLM):
         return OpenAI(
             api_key=self._api_key or config.DEEPSEEK_API_KEY,
             base_url=config.DEEPSEEK_BASE_URL,
+            timeout=120,
         )

@@ -1,4 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
+
+// 模块级 session：页面刷新(JS重载)时重新生成一次；组件重挂载不改变
+const SESSION_ID = (() => {
+  const s = Math.random().toString(36).slice(2) + Date.now().toString(36)
+  sessionStorage.setItem('coagent-s', s)
+  return s
+})()
 import Sidebar from './components/Sidebar'
 import CenterPanel from './components/CenterPanel'
 import RightPanel from './components/RightPanel'
@@ -48,7 +55,7 @@ function App() {
   const [flowActiveAgent, setFlowActiveAgent] = useState<string | null>(null)
   const [flowMindchain, setFlowMindchain] = useState<Array<{agent: string; content: string}>>([])
   const mindchainRef = useRef<Array<{agent: string; content: string}>>([])
-  const sessionId=useRef((sessionStorage.setItem("coagent-s",Math.random().toString(36).slice(2)+Date.now().toString(36)),sessionStorage.getItem("coagent-s")))
+  const sessionId = useRef(SESSION_ID)
   const dragging = useRef<'left' | 'right' | 'flow' | null>(null)
   const appRef = useRef<HTMLDivElement>(null)
 

@@ -90,6 +90,9 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
     dialogue_id: str | None = None
     project_id: str | None = None
+    session_id: str | None = None
+    dialogue_id: str | None = None
+    project_id: str | None = None
     api_key: str | None = None
     settings: dict | None = None
 
@@ -138,11 +141,13 @@ async def chat(req: ChatRequest):
                     # 后台异步分析记忆
                     try:
                         reply = result.get("final_reply", "")
+                        import sys as _s
+                        _s.stderr.write("[mem] reply_len="+str(len(reply or ""))+chr(10));_s.stderr.flush()
                         if reply:
                             from core.memory_analysis import update_memories
                             from core.postgres_client import pg_client
                             import threading
-                            threading.Thread(target=update_memories, args=(req.api_key, pid, "用户:" + req.message + chr(10) + "AI:" + reply, pg_client, req.session_id or "default"), daemon=True).start()
+                            threading.Thread(target=update_memories, args=(req.api_key, pid, _did, pg_client, req.session_id or "default"), daemon=True).start()
                     except Exception as e:
                         print("[记忆] err:", e)
                 except Exception as e:
