@@ -198,7 +198,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             pass
         try:
             thinking, result = think_then_json(_GENERATE_PROMPT, context, "信息整理与生成")
-            state["generated"] = result.get("content", "")
+            state["generated"] = (result.get("content", "") or "").replace("\n", chr(10))
         except Exception as e:
             state["generated"] = f"抱歉，生成内容时出现错误：{str(e)[:200]}"
         state["mindchain"].append({"agent": "信息整理与生成", "content": thinking[:800]})

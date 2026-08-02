@@ -39,6 +39,7 @@ class PostgresClient:
             CREATE TABLE IF NOT EXISTS dialogues (
                 id VARCHAR(255) PRIMARY KEY,
                 project_id VARCHAR(255) NOT NULL DEFAULT 'default',
+                session_id VARCHAR(255) NOT NULL DEFAULT 'default',
                 name VARCHAR(255) NOT NULL DEFAULT '新对话',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 archived BOOLEAN DEFAULT FALSE
@@ -48,6 +49,7 @@ class PostgresClient:
             CREATE INDEX IF NOT EXISTS idx_dialogues_project
             ON dialogues (project_id, created_at)
         """)
+        self.execute("ALTER TABLE dialogues ADD COLUMN IF NOT EXISTS session_id VARCHAR(255) NOT NULL DEFAULT 'default'")
         # 迁移旧 conversations 表数据（如有）到新表
         self.execute("""DROP TABLE IF EXISTS conversations""")
         self.execute("""
@@ -115,3 +117,6 @@ class PostgresClient:
 
 # 全局单例
 pg_client = PostgresClient()
+
+# 启动时自动建表（幂等）
+pg_client.init_tables()

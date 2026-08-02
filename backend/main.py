@@ -124,7 +124,7 @@ async def chat(req: ChatRequest):
                         from core.postgres_client import pg_client as _pg
                         _exist=_pg.execute("SELECT id FROM dialogues WHERE id=%s",(_did,))
                         if not _exist:
-                            _pg.execute("INSERT INTO dialogues(id,project_id,name) VALUES(%s,%s,%s)",(_did,pid,"新对话"))
+                            _pg.execute("INSERT INTO dialogues(id,project_id,session_id,name) VALUES(%s,%s,%s,%s)",(_did,pid,req.session_id or "default","新对话"))
                         _pg.execute("INSERT INTO messages(dialogue_id,role,content) VALUES(%s,%s,%s)",(_did,"user",req.message))
                     except Exception as _e:
                         print("[存储]",_e)

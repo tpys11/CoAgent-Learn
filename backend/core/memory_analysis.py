@@ -98,7 +98,7 @@ def update_memories(api_key, project_id, dialogue_id, db, session_id="default"):
 
     # 3. 个人记忆（所有项目）
     try:
-        all_dialogs = db.execute("SELECT id, project_id FROM dialogues")
+        all_dialogs = db.execute("SELECT id, project_id FROM dialogues WHERE session_id=%s", (session_id,))
         if not all_dialogs:
             return
         all_ids = [d["id"] for d in all_dialogs]
