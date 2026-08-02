@@ -198,6 +198,28 @@ export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectI
   const [episodicMemory, setEpisodicMemory] = useState('')
   const defaultResources = ['书籍', '百科', '论文', '官方文档', '教程', '视频', '代码仓库', '课件/PPT']
   const [selectedResources, setSelectedResources] = useState<Set<string>>(new Set(['书籍', '官方文档']))
+  const [kbStatus, setKbStatus] = useState('')
+  const [kbDocs, setKbDocs] = useState<Array<{source: string; chunks: number; preview: string; blocks: Array<{chunk: number; content: string}>}>>([])
+  const [kbOpen, setKbOpen] = useState<string | null>(null)
+
+  const refreshKb = function(){
+    if(!projectId)return
+    fetch('/api/knowledge/list?project_id='+encodeURIComponent(projectId))
+      .then(function(r){return r.json()})
+      .then(function(d){ if(d&&d.docs)setKbDocs(d.docs) })
+      .catch(function(){})
+  }
+  useEffect(function(){ refreshKb() }, [projectId])
+
+  const saveKb = function(){
+    if(!projectId||!kbInput.trim()){setKbStatus('请输入内容');return}
+    setKbStatus('上传中…')
+    fetch('/api/knowledge/upload',{method:'POST',headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({project_id:projectId, text:kbInput, source:'手动输入 '+new Date().toLocaleTimeString(), api_key: localStorage.getItem('coagent-apikey') || ''})})
+      .then(function(r){return r.json()})
+      .then(function(d){ setKbStatus('已入库 '+d.chunks+' 块'); refreshKb(); setKbInput('') })
+      .catch(function(e){ setKbStatus('上传失败: '+e) })
+  }
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onMouseDown={closeOnBackdrop(onClose)}>
@@ -242,7 +264,37 @@ export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectI
                 <DragDropInput value={kbInput} onChange={setKbInput} placeholder="输入知识库内容，或拖拽文件上传" rows={5} />
                 <div className="flex items-center gap-3 mt-3">
                   <p className="text-[11px] text-gray-400 cursor-pointer hover:text-[#1a1a1a]" onClick={() => setShowGuide(!showGuide)}>💡 我需要引导</p>
-                  <button className="text-[11px] px-3 py-1.5 bg-[#1a1a1a] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors">进入知识库建立模式</button>
+                  <button onClick={saveKb} className="text-[11px] px-3 py-1.5 bg-[#1a1a1a] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors">保存到知识库</button>
+                </div>
+                {kbStatus && <p className="mt-2 text-[11px] text-gray-500">{kbStatus}</p>}
+                {/* 已入库文档 */}
+                <div className="mt-3 border-t border-[#e5e5e5] pt-3">
+                  <h4 className="text-xs font-bold mb-2">已入库内容（{kbDocs.length}）</h4>
+                  {kbDocs.length === 0 ? (
+                    <p className="text-[11px] text-gray-400">还没有入库内容</p>
+                  ) : (
+                    <div className="flex flex-col gap-2 max-h-40 overflow-y-auto">
+                      {kbDocs.map((d,i) => (
+                        <div key={i} className="border border-[#e5e5e5] rounded-lg p-2">
+                          <div className="flex justify-between items-center cursor-pointer" onClick={() => setKbOpen(kbOpen === d.source ? null : d.source)}>
+                            <span className="text-[11px] font-medium">{d.source}</span>
+                            <span className="text-[10px] text-gray-400">{d.chunks} 块 {kbOpen === d.source ? '▲' : '▼'}</span>
+                          </div>
+                          <p className="text-[10px] text-gray-500 mt-1 truncate">{d.preview}</p>
+                          {kbOpen === d.source && (
+                            <div className="mt-2 pt-2 border-t border-[#e5e5e5] flex flex-col gap-2 max-h-64 overflow-y-auto">
+                              {d.blocks && d.blocks.map((b,j) => (
+                                <div key={j} className="bg-gray-50 rounded p-2">
+                                  <p className="text-[10px] text-gray-400 mb-1">第 {b.chunk+1} 块</p>
+                                  <p className="text-[10px] text-gray-700 whitespace-pre-wrap">{b.content}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

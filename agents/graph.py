@@ -137,7 +137,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         thinking = ""
         try:
             from skills.registry import registry
-            result = registry.execute("knowledge_retrieval", query=state["user_input"])
+            result = registry.execute("knowledge_retrieval", query=state["user_input"], project_id=state.get("project_id", "default"))
             state["knowledge"] = result.get("results", [])
             thinking = f"知识库检索完成：{result.get('total', 0)}条结果"
         except Exception as e:

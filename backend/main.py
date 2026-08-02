@@ -58,6 +58,43 @@ async def get_project_memory(project_id: str, session_id: str = "default"):
     return {"memory": rows[0]["data"] if rows else {}}
 
 
+
+# ---------- 知识库 API ----------
+
+class KnowledgeUpload(BaseModel):
+    project_id: str = "default"
+    text: str = ""
+    source: str = "未命名"
+    session_id: str = "default"
+    api_key: str = ""
+
+
+@app.post("/api/knowledge/upload")
+async def knowledge_upload(req: KnowledgeUpload):
+    from core.knowledge_service import add_document
+    n = add_document(req.project_id, req.text, req.source, req.session_id, req.api_key)
+    return {"status": "ok", "chunks": n}
+
+
+@app.get("/api/knowledge/list")
+async def knowledge_list(project_id: str = "default"):
+    from core.knowledge_service import list_docs
+    return {"docs": list_docs(project_id)}
+
+
+@app.delete("/api/knowledge/delete")
+async def knowledge_delete(project_id: str = "default", source: str = ""):
+    from core.knowledge_service import delete_doc
+    n = delete_doc(project_id, source)
+    return {"status": "ok", "deleted": n}
+
+
+@app.get("/api/knowledge/query")
+async def knowledge_query(project_id: str = "default", q: str = "", top_k: int = 3):
+    from core.knowledge_service import search
+    return {"results": search(project_id, q, top_k)}
+
+
 # ---------- Skill 管理 API ----------
 
 @app.get("/api/skills")
