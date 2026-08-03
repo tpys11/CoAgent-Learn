@@ -220,7 +220,11 @@ export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectI
     fd.append('api_key', localStorage.getItem('coagent-apikey') || '')
     fetch('/api/knowledge/upload-file',{method:'POST',body:fd})
       .then(function(r){return r.json()})
-      .then(function(d){ setKbStatus(d.status==='ok' ? ('已入库 '+d.chunks+' 块') : ('解析失败: '+(d.msg||'未知'))); refreshKb() })
+      .then(function(d){
+        if(d.status==='processing'){ setKbStatus('处理中…（内容较大时需十几秒）'); setTimeout(refreshKb, 5000); setTimeout(refreshKb, 12000) }
+        else if(d.status==='ok'){ setKbStatus('已入库 '+d.chunks+' 块'); refreshKb() }
+        else { setKbStatus('解析失败: '+(d.msg||'未知')) }
+      })
       .catch(function(e){ setKbStatus('上传失败: '+e) })
   }
 
@@ -239,7 +243,10 @@ export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectI
     fetch('/api/knowledge/upload',{method:'POST',headers:{'Content-Type':'application/json'},
       body: JSON.stringify({project_id:projectId, text:kbInput, source:'手动输入 '+new Date().toLocaleTimeString(), api_key: localStorage.getItem('coagent-apikey') || ''})})
       .then(function(r){return r.json()})
-      .then(function(d){ setKbStatus('已入库 '+d.chunks+' 块'); refreshKb(); setKbInput('') })
+      .then(function(d){
+        if(d.status==='processing'){ setKbStatus('处理中…（内容较大时需十几秒）'); setTimeout(refreshKb, 5000); setTimeout(refreshKb, 12000); setKbInput('') }
+        else { setKbStatus('已入库 '+d.chunks+' 块'); refreshKb(); setKbInput('') }
+      })
       .catch(function(e){ setKbStatus('上传失败: '+e) })
   }
 

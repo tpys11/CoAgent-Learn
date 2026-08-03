@@ -61,6 +61,26 @@ async def get_project_memory(project_id: str, session_id: str = "default"):
 
 # ---------- 知识库 API ----------
 
+import threading as _threading
+
+
+def _process_upload(project_id, text, source, session_id, api_key):
+    """后台处理上传：切块+前缀+入库+抽取图谱"""
+    try:
+        from core.knowledge_service import add_document
+        add_document(project_id, text, source, session_id, api_key)
+    except Exception:
+        pass
+    try:
+        from core.graph_service import extract_relations, store_relations
+        rels = extract_relations(text, api_key)
+        store_relations(project_id, rels, source)
+    except Exception:
+        pass
+
+
+
+
 class KnowledgeUpload(BaseModel):
     project_id: str = "default"
     text: str = ""
@@ -71,22 +91,8 @@ class KnowledgeUpload(BaseModel):
 
 @app.post("/api/knowledge/upload")
 async def knowledge_upload(req: KnowledgeUpload):
-    from core.knowledge_service import add_document
-    n = add_document(req.project_id, req.text, req.source, req.session_id, req.api_key)
-    # 顺带抽取实体关系存入 Neo4j（P4 知识图谱）
-    graph_n = 0
-    try:
-        from core.graph_service import extract_relations, store_relations
-        import sys as _s
-        _s.stderr.write("[graph] 抽取开始 key=" + str(req.api_key)[:12] + " text_len=" + str(len(req.text)) + chr(10)); _s.stderr.flush()
-        rels = extract_relations(req.text, req.api_key)
-        _s.stderr.write("[graph] 抽取到 " + str(len(rels)) + " 条: " + str(rels)[:400] + chr(10)); _s.stderr.flush()
-        graph_n = store_relations(req.project_id, rels)
-        _s.stderr.write("[graph] 写入 " + str(graph_n) + " 条" + chr(10)); _s.stderr.flush()
-    except Exception as e:
-        import sys as _s
-        _s.stderr.write("[graph] 异常: " + str(e)[:200] + chr(10)); _s.stderr.flush()
-    return {"status": "ok", "chunks": n, "graph_relations": graph_n}
+    _threading.Thread(target=_process_upload, args=(req.project_id, req.text, req.source, req.session_id, req.api_key), daemon=True).start()
+    return {"status": "processing", "msg": "正在处理，稍后刷新查看"}
 
 
 @app.post("/api/knowledge/upload-file")
@@ -97,21 +103,12 @@ async def knowledge_upload_file(
     file: UploadFile = File(...),
 ):
     from core.file_parser import parse_file
-    from core.knowledge_service import add_document
     data = await file.read()
     text = parse_file(file.filename or "file", data)
     if not text.strip():
         return {"status": "error", "msg": "无法解析该文件内容（可能为空或格式不支持）"}
-    n = add_document(project_id, text, file.filename or "file", session_id, api_key)
-    graph_n = 0
-    try:
-        from core.graph_service import extract_relations, store_relations
-        import sys as _s
-        rels = extract_relations(text, api_key)
-        graph_n = store_relations(project_id, rels)
-    except Exception:
-        pass
-    return {"status": "ok", "chunks": n, "graph_relations": graph_n, "chars": len(text)}
+    _threading.Thread(target=_process_upload, args=(project_id, text, file.filename or "file", session_id, api_key), daemon=True).start()
+    return {"status": "processing", "msg": "正在处理，稍后刷新查看"}
 
 
 @app.get("/api/knowledge/list")
@@ -124,7 +121,13 @@ async def knowledge_list(project_id: str = "default"):
 async def knowledge_delete(project_id: str = "default", source: str = ""):
     from core.knowledge_service import delete_doc
     n = delete_doc(project_id, source)
-    return {"status": "ok", "deleted": n}
+    graph_n = 0
+    try:
+        from core.graph_service import delete_relations_by_source
+        graph_n = delete_relations_by_source(project_id, source)
+    except Exception:
+        pass
+    return {"status": "ok", "deleted": n, "graph_relations": graph_n}
 
 
 @app.get("/api/graph")

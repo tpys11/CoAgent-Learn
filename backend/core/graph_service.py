@@ -50,7 +50,7 @@ def extract_relations(text: str, api_key: str = "") -> list:
         return []
 
 
-def store_relations(project_id: str, relations: list) -> int:
+def store_relations(project_id: str, relations: list, source: str = "") -> int:
     """把关系写入 Neo4j（按项目隔离），返回写入条数"""
     if not relations:
         return 0
@@ -66,8 +66,8 @@ def store_relations(project_id: str, relations: list) -> int:
             neo4j_client.run(
                 "MERGE (x:Entity {name:$a, project_id:$p}) "
                 "MERGE (y:Entity {name:$b, project_id:$p}) "
-                "MERGE (x)-[r:REL {type:$rel, project_id:$p}]->(y)",
-                {"a": a, "b": b, "rel": rel, "p": project_id})
+                "MERGE (x)-[r:REL {type:$rel, project_id:$p, source:$s}]->(y)",
+                {"a": a, "b": b, "rel": rel, "p": project_id, "s": source})
             count += 1
         except Exception:
             continue
@@ -96,3 +96,23 @@ def get_graph(project_id: str, limit: int = 200) -> dict:
         nodes_map[t] = {"id": t, "name": t}
         edges.append({"source": f, "target": t, "relation": rel})
     return {"nodes": list(nodes_map.values()), "edges": edges}
+
+
+def delete_relations_by_source(project_id: str, source: str) -> int:
+    """删除某来源文档的全部图谱关系，并清理孤立实体，返回删除关系数"""
+    from core.neo4j_client import neo4j_client
+    try:
+        rows = neo4j_client.run(
+            "MATCH ()-[r:REL {project_id:$p, source:$s}]->() RETURN count(r) AS c",
+            {"p": project_id, "s": source})
+        n = rows[0]["c"] if rows else 0
+        neo4j_client.run(
+            "MATCH ()-[r:REL {project_id:$p, source:$s}]->() DELETE r",
+            {"p": project_id, "s": source})
+        # 清理该项目的孤立实体（没有关系的节点）
+        neo4j_client.run(
+            "MATCH (n:Entity {project_id:$p}) WHERE NOT (n)--() DELETE n",
+            {"p": project_id})
+        return n
+    except Exception:
+        return 0
