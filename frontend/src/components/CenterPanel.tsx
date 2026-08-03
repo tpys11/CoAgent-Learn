@@ -116,8 +116,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
     const html = content
       .replace(/【用户上传文件: ([^】]+)】[\s\S]*?(?=【用户上传文件:|$)/g,
         '<span style="display:inline-flex;align-items:center;gap:4px;background:#f5f5f5;border:1px solid #e5e5e5;border-radius:6px;padding:2px 8px;font-size:12px;color:#555;margin:2px">📄 $1</span>')
-      .replace(/
-/g, '<br/>')
+      .replace(/\n/g, '<br/>')
     return html
   }
 
