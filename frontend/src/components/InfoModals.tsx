@@ -208,6 +208,7 @@ export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectI
       .then(function(r){return r.json()})
       .then(function(d){ if(d&&d.docs)setKbDocs(d.docs) })
       .catch(function(){})
+    window.dispatchEvent(new Event('kb-updated'))
   }
   useEffect(function(){ refreshKb() }, [projectId])
 

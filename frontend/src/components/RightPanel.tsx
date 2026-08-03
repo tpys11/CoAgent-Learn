@@ -59,6 +59,28 @@ export default function RightPanel({ messageCount, projectId }: Props) {
     return () => { if (chartInst.current) { chartInst.current.dispose(); chartInst.current = null } }
   }, [projectId])
 
+  // 监听知识库更新事件，重新加载图谱
+  useEffect(() => {
+    const onKb = () => {
+      if (!projectId) return
+      fetch('/api/graph?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' })
+        .then(r => r.json())
+        .then(d => {
+          const nodesRaw = d.nodes || []
+          const empty = nodesRaw.length === 0
+          setGraphEmpty(empty)
+          if (!chartRef.current || empty) return
+          if (!chartInst.current) chartInst.current = echarts.init(chartRef.current)
+          const nodes = (d.nodes || []).map((n: any) => ({ id: n.id, name: n.name, symbolSize: 28, itemStyle: { color: '#4f8cff' }, label: { show: true, fontSize: 10 } }))
+          const edges = (d.edges || []).map((e: any) => ({ source: e.source, target: e.target, label: { show: true, formatter: e.relation, fontSize: 9 }, lineStyle: { width: 1.5, color: '#bbb' } }))
+          chartInst.current.setOption({ tooltip: { trigger: 'item' }, series: [{ type: 'graph', layout: 'force', roam: true, draggable: true, force: { repulsion: 300, edgeLength: 80 }, data: nodes, links: edges, emphasis: { focus: 'adjacency', lineStyle: { width: 3 } } }] }, true)
+        })
+        .catch(() => setGraphEmpty(true))
+    }
+    window.addEventListener('kb-updated', onKb)
+    return () => window.removeEventListener('kb-updated', onKb)
+  }, [projectId])
+
   // 窗口尺寸变化自适应
   useEffect(() => {
     const onResize = () => chartInst.current && chartInst.current.resize()
