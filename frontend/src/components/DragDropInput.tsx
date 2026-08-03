@@ -15,12 +15,11 @@ export default function DragDropInput({ value, onChange, placeholder = '', rows 
   const [dragOver, setDragOver] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
-  const handleDrop = (e: DragEvent) => {
-    e.preventDefault(); setDragOver(false)
-    const dropped = Array.from(e.dataTransfer.files)
-    dropped.forEach(f => {
-      setFiles(prev => [...prev, { name: f.name, size: formatSize(f.size) }])
-      const ext = (f.name.split('.').pop() || '').toLowerCase()
+  const pickInputRef = useRef<HTMLInputElement>(null)
+
+  const processFile = function(f: File) {
+    setFiles(prev => prev.some(x => x.name === f.name) ? prev : [...prev, { name: f.name, size: formatSize(f.size) }])
+    const ext = (f.name.split('.').pop() || '').toLowerCase()
       const textExts = ['txt','md','py','js','ts','json','csv','html','css','log','yaml','yml']
       if (textExts.includes(ext)) {
         const reader = new FileReader()
@@ -34,7 +33,17 @@ export default function DragDropInput({ value, onChange, placeholder = '', rows 
       } else {
         alert('该格式暂不支持：' + f.name)
       }
-    })
+  }
+
+  const handleDrop = (e: DragEvent) => {
+    e.preventDefault(); setDragOver(false)
+    Array.from(e.dataTransfer.files).forEach(processFile)
+  }
+
+  const handlePick = function(e: React.ChangeEvent<HTMLInputElement>) {
+    const fs = e.target.files ? Array.from(e.target.files) : []
+    e.target.value = ''
+    fs.forEach(processFile)
   }
 
   const removeFile = (name: string) => setFiles(prev => prev.filter(f => f.name !== name))
@@ -69,9 +78,14 @@ export default function DragDropInput({ value, onChange, placeholder = '', rows 
           className="w-full px-3 py-2 border-0 bg-transparent text-sm outline-none resize-none"
         />
       </div>
-      <p className="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
-        <Upload size={10} /> 支持拖拽上传 TXT/MD/代码，以及 PDF、Word、PPT 文件
-      </p>
+      <div className="flex items-center justify-between mt-1">
+        <p className="text-[10px] text-gray-400 flex items-center gap-1">
+          <Upload size={10} /> 支持拖拽或点击选择 TXT/MD/代码、PDF、Word、PPT
+        </p>
+        <input ref={pickInputRef} type="file" multiple onChange={handlePick} className="hidden" accept=".txt,.md,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml,.pdf,.docx,.pptx" />
+        <button onClick={() => pickInputRef.current && pickInputRef.current.click()}
+          className="text-[10px] px-2 py-1 bg-[#1a1a1a] text-white rounded-lg hover:bg-[#333333] transition-colors">选择文件</button>
+      </div>
     </div>
   )
 }

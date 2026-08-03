@@ -224,6 +224,15 @@ export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectI
       .catch(function(e){ setKbStatus('上传失败: '+e) })
   }
 
+  const deleteKb = function(source: string) {
+    if(!projectId)return
+    if(!window.confirm('确定删除「'+source+'」？'))return
+    fetch('/api/knowledge/delete?project_id='+encodeURIComponent(projectId)+'&source='+encodeURIComponent(source),{method:'DELETE'})
+      .then(function(r){return r.json()})
+      .then(function(d){ setKbStatus('已删除 '+d.deleted+' 块'); refreshKb() })
+      .catch(function(e){ setKbStatus('删除失败: '+e) })
+  }
+
   const saveKb = function(){
     if(!projectId||!kbInput.trim()){setKbStatus('请输入内容');return}
     setKbStatus('上传中…')
@@ -289,9 +298,12 @@ export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectI
                     <div className="flex flex-col gap-2 max-h-40 overflow-y-auto">
                       {kbDocs.map((d,i) => (
                         <div key={i} className="border border-[#e5e5e5] rounded-lg p-2">
-                          <div className="flex justify-between items-center cursor-pointer" onClick={() => setKbOpen(kbOpen === d.source ? null : d.source)}>
-                            <span className="text-[11px] font-medium">{d.source}</span>
-                            <span className="text-[10px] text-gray-400">{d.chunks} 块 {kbOpen === d.source ? '▲' : '▼'}</span>
+                          <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-2 cursor-pointer" onClick={() => setKbOpen(kbOpen === d.source ? null : d.source)}>
+                              <span className="text-[11px] font-medium">{d.source}</span>
+                              <span className="text-[10px] text-gray-400">{d.chunks} 块 {kbOpen === d.source ? '▲' : '▼'}</span>
+                            </div>
+                            <button onClick={() => deleteKb(d.source)} className="text-[10px] text-gray-400 hover:text-red-500 transition-colors" title="删除">删除</button>
                           </div>
                           <p className="text-[10px] text-gray-500 mt-1 truncate">{d.preview}</p>
                           {kbOpen === d.source && (
