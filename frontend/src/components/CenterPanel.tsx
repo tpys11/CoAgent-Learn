@@ -29,13 +29,33 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
     const f = e.target.files && e.target.files[0]
     e.target.value = ''
     if (!f) return
-    if (f.size > 300 * 1024) { alert('文件过大（>300KB），请用文本形式上传到知识库'); return }
-    const reader = new FileReader()
-    reader.onload = () => {
-      const text = (reader.result as string) || ''
-      setAttachments(prev => [...prev, { name: f.name, content: text }])
+    if (f.size > 2 * 1024 * 1024) { alert('文件过大（>2MB），请裁剪后上传'); return }
+    const ext = (f.name.split('.').pop() || '').toLowerCase()
+    const textExts = ['txt','md','py','js','ts','json','csv','html','css','log','yaml','yml']
+    if (textExts.includes(ext)) {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const text = (reader.result as string) || ''
+        setAttachments(prev => [...prev, { name: f.name, content: text }])
+      }
+      reader.readAsText(f)
+    } else if (['pdf','docx','pptx'].includes(ext)) {
+      // 二进制文件：先发后端解析成文本
+      const fd = new FormData()
+      fd.append('file', f)
+      fetch('/api/file-to-text', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+          if (d.status === 'ok') {
+            setAttachments(prev => [...prev, { name: f.name, content: d.text || '' }])
+          } else {
+            alert('无法解析文件：' + (d.msg || '未知'))
+          }
+        })
+        .catch(() => alert('文件解析失败'))
+    } else {
+      alert('不支持的格式：' + f.name)
     }
-    reader.readAsText(f)
   }
 
   const removeAttachment = function(name: string) {
@@ -434,7 +454,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
               </div>
             )}
             <div className="w-full flex gap-2 items-end">
-            <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept=".txt,.md,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml" />
+            <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept=".txt,.md,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml,.pdf,.docx,.pptx" />
             <button onClick={() => fileInputRef.current && fileInputRef.current.click()} title="上传文件"
               className="px-2.5 py-3 border border-[#d0d0d0] rounded-xl bg-white text-gray-400 hover:text-[#1a1a1a] hover:border-[#1a1a1a]/40 transition-colors flex-shrink-0">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>

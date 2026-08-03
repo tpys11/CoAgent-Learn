@@ -130,6 +130,16 @@ async def knowledge_delete(project_id: str = "default", source: str = ""):
     return {"status": "ok", "deleted": n, "graph_relations": graph_n}
 
 
+@app.post("/api/file-to-text")
+async def file_to_text(file: UploadFile = File(...)):
+    from core.file_parser import parse_file
+    data = await file.read()
+    text = parse_file(file.filename or "file", data)
+    if not text.strip():
+        return {"status": "error", "msg": "无法解析该文件内容"}
+    return {"status": "ok", "text": text[:50000], "chars": len(text)}
+
+
 @app.get("/api/graph")
 async def get_graph(project_id: str = "default"):
     from fastapi.responses import JSONResponse
