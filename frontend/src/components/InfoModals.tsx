@@ -256,7 +256,7 @@ export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectI
               {/* 上传资源 */}
               <div className="border border-[#e5e5e5] rounded-xl p-4">
                 <h3 className="text-sm font-bold mb-2">上传资源</h3>
-                <DragDropInput value="" onChange={() => {}} placeholder="拖拽文件到此处或点击上传" rows={1} />
+                <DragDropInput value={kbInput} onChange={(v) => setKbInput(v)} placeholder="拖拽文件到此处或点击上传" rows={1} />
               </div>
               {/* 知识库内容 */}
               <div className="border border-[#e5e5e5] rounded-xl p-4">

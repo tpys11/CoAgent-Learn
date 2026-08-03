@@ -27,7 +27,19 @@ class Neo4jClient:
 
     def init_constraints(self):
         """初始化约束和索引"""
-        self.run("CREATE CONSTRAINT IF NOT EXISTS FOR (e:Entity) REQUIRE e.name IS UNIQUE")
+        # 兼容旧版本：删除全局 name 唯一约束（阻止跨项目同名实体）
+        try:
+            rows = self.run("SHOW CONSTRAINTS")
+            for row in rows:
+                if row.get("name"):
+                    self.run("DROP CONSTRAINT " + row["name"] + " IF EXISTS")
+        except Exception:
+            pass
+        # 复合唯一：同项目内 name 唯一，跨项目允许同名（Neo4j 5.9+）
+        try:
+            self.run("CREATE CONSTRAINT entity_project_unique IF NOT EXISTS FOR (e:Entity) REQUIRE (e.name, e.project_id) IS UNIQUE")
+        except Exception:
+            pass
         print("[Neo4j] 约束初始化完成")
 
     def close(self):

@@ -17,16 +17,20 @@ export default function RightPanel({ messageCount, projectId }: Props) {
   const [visible, setVisible] = useState(false)
   const [showIdx, setShowIdx] = useState(0)
   const [graphEmpty, setGraphEmpty] = useState(true)
+  const [graphErr, setGraphErr] = useState('')
   const chartRef = useRef<HTMLDivElement>(null)
   const chartInst = useRef<any>(null)
 
   // 加载项目知识图谱
   useEffect(() => {
     if (!projectId) return
-    fetch('/api/graph?project_id=' + encodeURIComponent(projectId))
+    fetch('/api/graph?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' })
       .then(r => r.json())
       .then(d => {
-        if (!chartRef.current) return
+        const nodesRaw = d.nodes || []
+        const empty = nodesRaw.length === 0
+        setGraphEmpty(empty)
+        if (!chartRef.current || empty) return
         if (!chartInst.current) {
           chartInst.current = echarts.init(chartRef.current)
         }
@@ -40,8 +44,6 @@ export default function RightPanel({ messageCount, projectId }: Props) {
           label: { show: true, formatter: e.relation, fontSize: 9 },
           lineStyle: { width: 1.5, color: '#bbb' }
         }))
-        const empty = nodes.length === 0
-        setGraphEmpty(empty)
         chartInst.current.setOption({
           tooltip: { trigger: 'item' },
           series: [{
@@ -53,7 +55,7 @@ export default function RightPanel({ messageCount, projectId }: Props) {
           }]
         }, true)
       })
-      .catch(() => setGraphEmpty(true))
+      .catch((e) => { console.error('[graph] 加载失败:', e); setGraphErr(String(e)); setGraphEmpty(true) })
     return () => { if (chartInst.current) { chartInst.current.dispose(); chartInst.current = null } }
   }, [projectId])
 
@@ -81,13 +83,12 @@ export default function RightPanel({ messageCount, projectId }: Props) {
           <span className="text-xs font-semibold flex items-center gap-1"><Map size={14} /> 知识图谱</span>
         </div>
         <div className="flex-1 w-full border border-dashed border-[#1a1a1a]/30 bg-white rounded-lg relative overflow-hidden">
-          {graphEmpty ? (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <span className="text-xs text-gray-400">暂无知识图谱（上传文档后自动生成）</span>
+          {graphEmpty && (
+            <div className="absolute inset-0 flex items-center justify-center z-10 px-2">
+              <span className="text-xs text-gray-400 text-center">{graphErr ? ('图谱加载失败: ' + graphErr) : '暂无知识图谱（上传文档后自动生成）'}</span>
             </div>
-          ) : (
-            <div ref={chartRef} className="w-full h-full" />
           )}
+          <div ref={chartRef} className="w-full h-full" />
         </div>
       </div>
 

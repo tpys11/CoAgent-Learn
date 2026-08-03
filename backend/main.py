@@ -77,10 +77,15 @@ async def knowledge_upload(req: KnowledgeUpload):
     graph_n = 0
     try:
         from core.graph_service import extract_relations, store_relations
+        import sys as _s
+        _s.stderr.write("[graph] 抽取开始 key=" + str(req.api_key)[:12] + " text_len=" + str(len(req.text)) + chr(10)); _s.stderr.flush()
         rels = extract_relations(req.text, req.api_key)
+        _s.stderr.write("[graph] 抽取到 " + str(len(rels)) + " 条: " + str(rels)[:400] + chr(10)); _s.stderr.flush()
         graph_n = store_relations(req.project_id, rels)
-    except Exception:
-        pass
+        _s.stderr.write("[graph] 写入 " + str(graph_n) + " 条" + chr(10)); _s.stderr.flush()
+    except Exception as e:
+        import sys as _s
+        _s.stderr.write("[graph] 异常: " + str(e)[:200] + chr(10)); _s.stderr.flush()
     return {"status": "ok", "chunks": n, "graph_relations": graph_n}
 
 
@@ -99,8 +104,11 @@ async def knowledge_delete(project_id: str = "default", source: str = ""):
 
 @app.get("/api/graph")
 async def get_graph(project_id: str = "default"):
+    from fastapi.responses import JSONResponse
     from core.graph_service import get_graph
-    return get_graph(project_id)
+    resp = JSONResponse(get_graph(project_id))
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 @app.get("/api/knowledge/query")
