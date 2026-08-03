@@ -26,9 +26,7 @@ export default function DragDropInput({ value, onChange, placeholder = '', rows 
         const reader = new FileReader()
         reader.onload = () => {
           const text = reader.result as string
-          onChange(value ? value + '
-
-' + text : text)
+          onChange(value ? value + '\n\n' + text : text)
         }
         reader.readAsText(f)
       } else if (onFile) {
