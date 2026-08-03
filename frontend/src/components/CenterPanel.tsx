@@ -22,6 +22,7 @@ interface CenterPanelProps {
 
 export default function CenterPanel({ messages, isLoading, currentProject, onSendMessage, statsCollapsed, onToggleStats, showAgentFlow, flowAgents, flowActiveAgent, flowMindchain, onAgentSettings, projectInitialized }: CenterPanelProps) {
   const [input, setInput] = useState('')
+  const [attachments, setAttachments] = useState<Array<{name: string; content: string}>>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileSelect = function(e: React.ChangeEvent<HTMLInputElement>) {
@@ -32,10 +33,13 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
     const reader = new FileReader()
     reader.onload = () => {
       const text = (reader.result as string) || ''
-      const prefix = '【用户上传文件: ' + f.name + '】' + String.fromCharCode(10)
-      setInput(prev => prev ? prev + String.fromCharCode(10) + prefix + text : prefix + text)
+      setAttachments(prev => [...prev, { name: f.name, content: text }])
     }
     reader.readAsText(f)
+  }
+
+  const removeAttachment = function(name: string) {
+    setAttachments(prev => prev.filter(a => a.name !== name))
   }
   const [flowCollapsed, setFlowCollapsed] = useState(false)
   const [time, setTime] = useState(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }))
@@ -89,8 +93,14 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
 
   const handleSend = () => {
     const text = input.trim()
-    if (!text) return
-    onSendMessage(text, {
+    if (!text && attachments.length === 0) return
+    let full = text
+    if (attachments.length > 0) {
+      const NL = String.fromCharCode(10)
+      const parts = attachments.map(a => '【用户上传文件: ' + a.name + '】' + NL + a.content)
+      full = text ? text + NL + NL + parts.join(NL + NL) : parts.join(NL + NL)
+    }
+    onSendMessage(full, {
       searchMode: searchLabels[searchMode],
       outputFormat: outputFormat === 0 ? '低结构化' : '高结构化',
       outputStyle: outputStyle === 0 ? 'MD文档' : '对话形式',
@@ -101,6 +111,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
       webSearchMode: webSearchMode === 0 ? '默认' : '增强',
     })
     setInput('')
+    setAttachments([])
   }
 
   return (
@@ -410,6 +421,19 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
             <>
           <div className="w-full max-w-xl flex gap-2 items-end">
             <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept=".txt,.md,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml" />
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-2 w-full">
+                {attachments.map(a => (
+                  <span key={a.name} className="inline-flex items-center gap-1.5 bg-white border border-[#d0d0d0] rounded-lg px-2.5 py-1.5 text-xs text-gray-700 shadow-sm">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    {a.name}
+                    <button onClick={() => removeAttachment(a.name)} className="text-gray-400 hover:text-red-500 transition-colors ml-1" title="删除">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
             <button onClick={() => fileInputRef.current && fileInputRef.current.click()} title="上传文件"
               className="px-2.5 py-3 border border-[#d0d0d0] rounded-xl bg-white text-gray-400 hover:text-[#1a1a1a] hover:border-[#1a1a1a]/40 transition-colors flex-shrink-0">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
