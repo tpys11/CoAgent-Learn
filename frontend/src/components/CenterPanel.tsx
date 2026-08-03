@@ -22,6 +22,21 @@ interface CenterPanelProps {
 
 export default function CenterPanel({ messages, isLoading, currentProject, onSendMessage, statsCollapsed, onToggleStats, showAgentFlow, flowAgents, flowActiveAgent, flowMindchain, onAgentSettings, projectInitialized }: CenterPanelProps) {
   const [input, setInput] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleFileSelect = function(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files && e.target.files[0]
+    e.target.value = ''
+    if (!f) return
+    if (f.size > 300 * 1024) { alert('文件过大（>300KB），请用文本形式上传到知识库'); return }
+    const reader = new FileReader()
+    reader.onload = () => {
+      const text = (reader.result as string) || ''
+      const prefix = '【用户上传文件: ' + f.name + '】' + String.fromCharCode(10)
+      setInput(prev => prev ? prev + String.fromCharCode(10) + prefix + text : prefix + text)
+    }
+    reader.readAsText(f)
+  }
   const [flowCollapsed, setFlowCollapsed] = useState(false)
   const [time, setTime] = useState(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }))
   const [searchMode, setSearchMode] = useState(0)
@@ -394,6 +409,11 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
           ) : (
             <>
           <div className="w-full max-w-xl flex gap-2 items-end">
+            <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept=".txt,.md,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml" />
+            <button onClick={() => fileInputRef.current && fileInputRef.current.click()} title="上传文件"
+              className="px-2.5 py-3 border border-[#d0d0d0] rounded-xl bg-white text-gray-400 hover:text-[#1a1a1a] hover:border-[#1a1a1a]/40 transition-colors flex-shrink-0">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            </button>
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
