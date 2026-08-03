@@ -10,6 +10,22 @@ _client = chromadb.HttpClient(host="guashuai-chroma", port=8000)
 # BM25 缓存：project_id -> (ids, tokenized_docs, bm25)
 _bm25_cache = {}
 
+# P3 重排序模型（懒加载，进程内只加载一次）
+_reranker = None
+
+
+def _get_reranker():
+    global _reranker
+    if _reranker is None:
+        try:
+            import os
+            os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+            from sentence_transformers import CrossEncoder
+            _reranker = CrossEncoder("BAAI/bge-reranker-base", max_length=512)
+        except Exception:
+            _reranker = False
+    return _reranker or None
+
 
 def _tokenize(text: str) -> list:
     """中文分词（jieba），供 BM25 使用"""
@@ -168,15 +184,28 @@ def search(project_id: str, query: str, top_k: int = 3) -> list:
                     all_hits[h] = {"content": got["documents"][i], "metadata": got["metadatas"][i] if got.get("metadatas") else {}, "distance": None}
             except Exception:
                 pass
-    # 5. 按 RRF 分数取 top_k
-    ranked = sorted(rrf.keys(), key=lambda k: -rrf[k])[:top_k]
-    out = []
+    # 5. 按 RRF 分数取候选（多取一些供 P3 精排）
+    candidate_n = max(top_k * 6, 12)
+    ranked = sorted(rrf.keys(), key=lambda k: -rrf[k])[:candidate_n]
+    cands = []
     for h in ranked:
         if h in all_hits:
             item = dict(all_hits[h])
             item["rrf"] = round(rrf.get(h, 0), 4)
-            out.append(item)
-    return out
+            cands.append(item)
+    # 6. P3：CrossEncoder 重排序
+    reranker = _get_reranker()
+    if reranker and len(cands) > 1:
+        try:
+            pairs = [(query, it["content"][:500]) for it in cands]
+            scores = reranker.predict(pairs)
+            for i, s in enumerate(scores):
+                cands[i]["rerank"] = float(s)
+            cands.sort(key=lambda x: -x.get("rerank", 0))
+            return cands[:top_k]
+        except Exception:
+            pass
+    return cands[:top_k]
 
 
 def list_docs(project_id: str) -> list:
