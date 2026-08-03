@@ -17,7 +17,15 @@ import type { Project, Dialogue, AgentConfig, Message } from './types'
 import { DEFAULT_AGENTS } from './types'
 
 function generateId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }
-const defaultProjectId = generateId()
+// 项目 ID 固定：首次生成后存 localStorage，刷新复用（保证知识库/图谱数据不因刷新丢失）
+const defaultProjectId = (() => {
+  const k = 'coagent-default-project'
+  const old = localStorage.getItem(k)
+  if (old) return old
+  const nid = generateId()
+  localStorage.setItem(k, nid)
+  return nid
+})()
 
 function App() {
   const [projects, setProjects] = useState<Project[]>([{ id: defaultProjectId, name: '默认项目' }])
