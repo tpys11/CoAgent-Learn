@@ -211,6 +211,19 @@ export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectI
   }
   useEffect(function(){ refreshKb() }, [projectId])
 
+  const uploadKbFile = function(f: File) {
+    if(!projectId){setKbStatus('请先选择项目');return}
+    setKbStatus('上传中…')
+    const fd = new FormData()
+    fd.append('file', f)
+    fd.append('project_id', projectId)
+    fd.append('api_key', localStorage.getItem('coagent-apikey') || '')
+    fetch('/api/knowledge/upload-file',{method:'POST',body:fd})
+      .then(function(r){return r.json()})
+      .then(function(d){ setKbStatus(d.status==='ok' ? ('已入库 '+d.chunks+' 块') : ('解析失败: '+(d.msg||'未知'))); refreshKb() })
+      .catch(function(e){ setKbStatus('上传失败: '+e) })
+  }
+
   const saveKb = function(){
     if(!projectId||!kbInput.trim()){setKbStatus('请输入内容');return}
     setKbStatus('上传中…')
@@ -256,7 +269,7 @@ export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectI
               {/* 上传资源 */}
               <div className="border border-[#e5e5e5] rounded-xl p-4">
                 <h3 className="text-sm font-bold mb-2">上传资源</h3>
-                <DragDropInput value={kbInput} onChange={(v) => setKbInput(v)} placeholder="拖拽文件到此处或点击上传" rows={1} />
+                <DragDropInput value={kbInput} onChange={(v) => setKbInput(v)} onFile={uploadKbFile} placeholder="拖拽文件到此处或点击上传" rows={1} />
               </div>
               {/* 知识库内容 */}
               <div className="border border-[#e5e5e5] rounded-xl p-4">

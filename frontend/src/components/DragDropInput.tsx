@@ -7,9 +7,10 @@ interface Props {
   placeholder?: string
   rows?: number
   label?: string
+  onFile?: (f: File) => void
 }
 
-export default function DragDropInput({ value, onChange, placeholder = '', rows = 4, label }: Props) {
+export default function DragDropInput({ value, onChange, placeholder = '', rows = 4, label, onFile }: Props) {
   const [files, setFiles] = useState<Array<{name: string; size: string}>>([])
   const [dragOver, setDragOver] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -19,13 +20,22 @@ export default function DragDropInput({ value, onChange, placeholder = '', rows 
     const dropped = Array.from(e.dataTransfer.files)
     dropped.forEach(f => {
       setFiles(prev => [...prev, { name: f.name, size: formatSize(f.size) }])
-      // TODO: 实际读取文件内容并填入 value
-      const reader = new FileReader()
-      reader.onload = () => {
-        const text = reader.result as string
-        onChange(value ? value + '\n\n' + text : text)
+      const ext = (f.name.split('.').pop() || '').toLowerCase()
+      const textExts = ['txt','md','py','js','ts','json','csv','html','css','log','yaml','yml']
+      if (textExts.includes(ext)) {
+        const reader = new FileReader()
+        reader.onload = () => {
+          const text = reader.result as string
+          onChange(value ? value + '
+
+' + text : text)
+        }
+        reader.readAsText(f)
+      } else if (onFile) {
+        onFile(f)
+      } else {
+        alert('该格式暂不支持：' + f.name)
       }
-      reader.readAsText(f)
     })
   }
 
@@ -62,7 +72,7 @@ export default function DragDropInput({ value, onChange, placeholder = '', rows 
         />
       </div>
       <p className="text-[10px] text-gray-400 mt-1 flex items-center gap-1">
-        <Upload size={10} /> 支持拖拽上传 MD、PDF、TXT 文件
+        <Upload size={10} /> 支持拖拽上传 TXT/MD/代码，以及 PDF、Word、PPT 文件
       </p>
     </div>
   )

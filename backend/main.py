@@ -5,7 +5,7 @@ FastAPI + LangGraph 多智能体协同 + RAG 向量检索
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
@@ -87,6 +87,31 @@ async def knowledge_upload(req: KnowledgeUpload):
         import sys as _s
         _s.stderr.write("[graph] 异常: " + str(e)[:200] + chr(10)); _s.stderr.flush()
     return {"status": "ok", "chunks": n, "graph_relations": graph_n}
+
+
+@app.post("/api/knowledge/upload-file")
+async def knowledge_upload_file(
+    project_id: str = Form("default"),
+    session_id: str = Form("default"),
+    api_key: str = Form(""),
+    file: UploadFile = File(...),
+):
+    from core.file_parser import parse_file
+    from core.knowledge_service import add_document
+    data = await file.read()
+    text = parse_file(file.filename or "file", data)
+    if not text.strip():
+        return {"status": "error", "msg": "无法解析该文件内容（可能为空或格式不支持）"}
+    n = add_document(project_id, text, file.filename or "file", session_id, api_key)
+    graph_n = 0
+    try:
+        from core.graph_service import extract_relations, store_relations
+        import sys as _s
+        rels = extract_relations(text, api_key)
+        graph_n = store_relations(project_id, rels)
+    except Exception:
+        pass
+    return {"status": "ok", "chunks": n, "graph_relations": graph_n, "chars": len(text)}
 
 
 @app.get("/api/knowledge/list")
