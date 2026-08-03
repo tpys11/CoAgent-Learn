@@ -9,11 +9,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@xyflow/react": "^12.5.0",
+    "echarts": "^6.1.0",
+    "lucide-react": "^0.460.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "@xyflow/react": "^12.5.0",
-    "react-markdown": "^9.0.0",
-    "lucide-react": "^0.460.0"
+    "react-markdown": "^9.0.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

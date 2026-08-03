@@ -10,7 +10,6 @@ class Config:
     DEEPSEEK_BASE_URL: str = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
     LLM_MAX_CONCURRENCY: int = int(os.getenv("LLM_MAX_CONCURRENCY", "3"))
     LLM_REQUEST_TIMEOUT: int = int(os.getenv("LLM_REQUEST_TIMEOUT", "120"))
-    SQLITE_PATH: str = os.getenv("SQLITE_PATH", "./data/app.db")
     REDIS_HOST: str = os.getenv("REDIS_HOST", "localhost")
     REDIS_PORT: int = int(os.getenv("REDIS_PORT", "6379"))
     CHROMA_PERSIST_DIRECTORY: str = os.getenv("CHROMA_PERSIST_DIRECTORY", "./chroma_db")
@@ -19,6 +18,9 @@ class Config:
     POSTGRES_DB: str = os.getenv("POSTGRES_DB", "coagent")
     POSTGRES_USER: str = os.getenv("POSTGRES_USER", "coagent")
     POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "coagent123")
+    NEO4J_URI: str = os.getenv("NEO4J_URI", "bolt://guashuai-neo4j:7687")
+    NEO4J_USER: str = os.getenv("NEO4J_USER", "neo4j")
+    NEO4J_PASSWORD: str = os.getenv("NEO4J_PASSWORD", "neo4j123")
 
 
 config = Config()

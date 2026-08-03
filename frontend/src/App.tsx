@@ -239,7 +239,7 @@ function App() {
           <div onMouseDown={() => { dragging.current = 'right'; document.body.style.userSelect = 'none' }}
             className="w-1.5 h-full cursor-col-resize hover:bg-[#1a1a1a]/30 flex-shrink-0 transition-colors" />
           <div style={{ width: rightPanelWidth, minWidth: 180 }} className="h-full flex-shrink-0 relative">
-            <RightPanel messageCount={currentMessages.filter(m => m.role === 'assistant').length} />
+            <RightPanel messageCount={currentMessages.filter(m => m.role === 'assistant').length} projectId={currentProjectId} />
           </div>
         </>
       )}

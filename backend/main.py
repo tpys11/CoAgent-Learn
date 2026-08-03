@@ -73,7 +73,15 @@ class KnowledgeUpload(BaseModel):
 async def knowledge_upload(req: KnowledgeUpload):
     from core.knowledge_service import add_document
     n = add_document(req.project_id, req.text, req.source, req.session_id, req.api_key)
-    return {"status": "ok", "chunks": n}
+    # 顺带抽取实体关系存入 Neo4j（P4 知识图谱）
+    graph_n = 0
+    try:
+        from core.graph_service import extract_relations, store_relations
+        rels = extract_relations(req.text, req.api_key)
+        graph_n = store_relations(req.project_id, rels)
+    except Exception:
+        pass
+    return {"status": "ok", "chunks": n, "graph_relations": graph_n}
 
 
 @app.get("/api/knowledge/list")
@@ -87,6 +95,12 @@ async def knowledge_delete(project_id: str = "default", source: str = ""):
     from core.knowledge_service import delete_doc
     n = delete_doc(project_id, source)
     return {"status": "ok", "deleted": n}
+
+
+@app.get("/api/graph")
+async def get_graph(project_id: str = "default"):
+    from core.graph_service import get_graph
+    return get_graph(project_id)
 
 
 @app.get("/api/knowledge/query")

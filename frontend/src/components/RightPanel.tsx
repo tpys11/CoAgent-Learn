@@ -1,8 +1,10 @@
 import { Map, Search, Lightbulb, BookOpen } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import * as echarts from 'echarts'
 
 interface Props {
   messageCount: number
+  projectId?: string | null
 }
 
 const QUESTIONS = [
@@ -11,9 +13,56 @@ const QUESTIONS = [
   { icon: BookOpen, text: '有没有推荐的进阶学习资源？', type: '学习' },
 ]
 
-export default function RightPanel({ messageCount }: Props) {
+export default function RightPanel({ messageCount, projectId }: Props) {
   const [visible, setVisible] = useState(false)
   const [showIdx, setShowIdx] = useState(0)
+  const [graphEmpty, setGraphEmpty] = useState(true)
+  const chartRef = useRef<HTMLDivElement>(null)
+  const chartInst = useRef<any>(null)
+
+  // 加载项目知识图谱
+  useEffect(() => {
+    if (!projectId) return
+    fetch('/api/graph?project_id=' + encodeURIComponent(projectId))
+      .then(r => r.json())
+      .then(d => {
+        if (!chartRef.current) return
+        if (!chartInst.current) {
+          chartInst.current = echarts.init(chartRef.current)
+        }
+        const nodes = (d.nodes || []).map((n: any) => ({
+          id: n.id, name: n.name, symbolSize: 28,
+          itemStyle: { color: '#4f8cff' },
+          label: { show: true, fontSize: 10 }
+        }))
+        const edges = (d.edges || []).map((e: any) => ({
+          source: e.source, target: e.target,
+          label: { show: true, formatter: e.relation, fontSize: 9 },
+          lineStyle: { width: 1.5, color: '#bbb' }
+        }))
+        const empty = nodes.length === 0
+        setGraphEmpty(empty)
+        chartInst.current.setOption({
+          tooltip: { trigger: 'item' },
+          series: [{
+            type: 'graph', layout: 'force', roam: true,
+            draggable: true,
+            force: { repulsion: 300, edgeLength: 80 },
+            data: nodes, links: edges,
+            emphasis: { focus: 'adjacency', lineStyle: { width: 3 } }
+          }]
+        }, true)
+      })
+      .catch(() => setGraphEmpty(true))
+    return () => { if (chartInst.current) { chartInst.current.dispose(); chartInst.current = null } }
+  }, [projectId])
+
+  // 窗口尺寸变化自适应
+  useEffect(() => {
+    const onResize = () => chartInst.current && chartInst.current.resize()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
 
   // 主窗口输出后自动显示追问
   useEffect(() => {
@@ -31,8 +80,14 @@ export default function RightPanel({ messageCount }: Props) {
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-semibold flex items-center gap-1"><Map size={14} /> 知识图谱</span>
         </div>
-        <div className="flex-1 w-full border border-dashed border-[#1a1a1a]/30 bg-white rounded-lg flex items-center justify-center">
-          <span className="text-xs text-gray-400">知识图谱预览</span>
+        <div className="flex-1 w-full border border-dashed border-[#1a1a1a]/30 bg-white rounded-lg relative overflow-hidden">
+          {graphEmpty ? (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-xs text-gray-400">暂无知识图谱（上传文档后自动生成）</span>
+            </div>
+          ) : (
+            <div ref={chartRef} className="w-full h-full" />
+          )}
         </div>
       </div>
 
