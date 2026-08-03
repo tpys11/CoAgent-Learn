@@ -111,6 +111,16 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
+  // 消息渲染：文件标记段转成卡片，其余文本正常显示
+  const renderContent = function(content: string) {
+    const html = content
+      .replace(/【用户上传文件: ([^】]+)】[\s\S]*?(?=【用户上传文件:|$)/g,
+        '<span style="display:inline-flex;align-items:center;gap:4px;background:#f5f5f5;border:1px solid #e5e5e5;border-radius:6px;padding:2px 8px;font-size:12px;color:#555;margin:2px">📄 $1</span>')
+      .replace(/
+/g, '<br/>')
+    return html
+  }
+
   const handleSend = () => {
     const text = input.trim()
     if (!text && attachments.length === 0) return
@@ -218,7 +228,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
                 </div>
               ) : (
                 <>
-                  <div dangerouslySetInnerHTML={{ __html: msg.content.replace(/\n/g, '<br/>') }} />
+                  <div dangerouslySetInnerHTML={{ __html: renderContent(msg.content) }} />
                   {msg.steps && msg.steps.length > 0 && (
                     <div className="mt-2 pt-2 border-t border-[#e5e5e5] flex flex-wrap gap-1">
                       {msg.steps.map((s, i) => (
