@@ -159,6 +159,54 @@ async def knowledge_query(project_id: str = "default", q: str = "", top_k: int =
     return {"results": search(project_id, q, top_k)}
 
 
+# ---------- 评估 API ----------
+
+@app.post("/api/evaluate")
+async def run_evaluate(project_id: str = "default", api_key: str = ""):
+    from core.evaluator import hallucination_rate, adaptation_accuracy, knowledge_coverage
+    from core.knowledge_service import list_docs
+    from core.postgres_client import pg_client
+    import json
+    # 1. 读项目知识库作为"标准答案"
+    kb_texts = []
+    try:
+        docs = list_docs(project_id)
+        for d in docs:
+            for b in d.get("blocks", []):
+                kb_texts.append(b.get("content", ""))
+    except Exception:
+        pass
+    # 2. 预置测试题 + 3组画像 + 知识点（垂直领域可换）
+    questions = [
+        "什么是牛顿第二定律？",
+        "欧姆定律的公式是什么？",
+        "简述能量守恒定律。",
+        "什么是动量守恒？",
+        "热力学第二定律讲了什么？",
+    ]
+    profiles = [
+        {"level": "beginner", "topic": "牛顿第一定律"},
+        {"level": "beginner", "topic": "电路基础"},
+        {"level": "intermediate", "topic": "牛顿第二定律的应用"},
+        {"level": "advanced", "topic": "麦克斯韦方程组"},
+        {"level": "advanced", "topic": "相对论质能方程"},
+    ]
+    knowledge_points = ["牛顿第一定律", "牛顿第二定律", "牛顿第三定律", "万有引力", "动量守恒", "能量守恒", "欧姆定律", "楞次定律", "热力学第二定律"]
+    # 3. 跑指标
+    h = hallucination_rate(questions, kb_texts, api_key)
+    a = adaptation_accuracy(profiles, api_key)
+    k = knowledge_coverage(knowledge_points, "经典力学", api_key)
+    result = {"hallucination": h, "adaptation": a, "coverage": k}
+    # 4. 写 stats
+    try:
+        pg_client.execute(
+            "INSERT INTO stats (project_id, metrics) VALUES (%s,%s) ON CONFLICT DO NOTHING",
+            (project_id, json.dumps(result, ensure_ascii=False)))
+    except Exception:
+        pass
+    return result
+
+
 # ---------- 项目/对话持久化 API ----------
 
 class ProjectCreate(BaseModel):

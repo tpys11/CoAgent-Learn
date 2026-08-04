@@ -212,6 +212,19 @@ export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectI
   }
   useEffect(function(){ refreshKb() }, [projectId])
 
+  const [evalRunning, setEvalRunning] = useState(false)
+  const [evalResult, setEvalResult] = useState<any>(null)
+  const [evalErr, setEvalErr] = useState('')
+
+  const runEval = function() {
+    if(!projectId)return
+    setEvalRunning(true); setEvalErr('')
+    fetch('/api/evaluate?project_id='+encodeURIComponent(projectId)+'&api_key='+encodeURIComponent(localStorage.getItem('coagent-apikey')||''),{method:'POST'})
+      .then(function(r){return r.json()})
+      .then(function(d){ setEvalResult(d); setEvalRunning(false) })
+      .catch(function(e){ setEvalErr('评估失败: '+e); setEvalRunning(false) })
+  }
+
   const uploadKbFile = function(f: File) {
     if(!projectId){setKbStatus('请先选择项目');return}
     setKbStatus('上传中…')
@@ -259,12 +272,12 @@ export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectI
           <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
         </div>
         <div className="flex border-b border-[#e5e5e5] flex-shrink-0">
-          {(['knowledge','memory'] as const).map(t => (
+          {(['knowledge','memory','evaluate'] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`flex-1 py-2 text-xs font-medium transition-colors ${
                 tab === t ? 'text-[#1a1a1a] border-b-2 border-[#1a1a1a]' : 'text-gray-400 hover:text-gray-600'
               }`}>
-              {{ knowledge: '知识库', memory: '项目记忆' }[t]}
+              {{ knowledge: '知识库', memory: '项目记忆', evaluate: '评估' }[t]}
             </button>
           ))}
         </div>
@@ -329,6 +342,35 @@ export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectI
                     </div>
                   )}
                 </div>
+              </div>
+            </div>
+          )}
+          {tab === 'evaluate' && (
+            <div className="flex flex-col gap-5">
+              <div className="border border-[#e5e5e5] rounded-xl p-4">
+                <h3 className="text-sm font-bold mb-2">三指标评估</h3>
+                <p className="text-[11px] text-gray-500 mb-3">用预置的测试题、3组学习者画像和知识点清单，评估系统的幻觉率、资源难度适配准确率、知识点覆盖率（需真实 API key 才有结果）。</p>
+                <button onClick={runEval} disabled={evalRunning}
+                  className="text-xs px-4 py-2 bg-[#1a1a1a] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors disabled:opacity-50">
+                  {evalRunning ? '评估中…（需几分钟）' : '一键运行评估'}
+                </button>
+                {evalResult && (
+                  <div className="mt-4 flex flex-col gap-3">
+                    <div className="border rounded-lg p-3">
+                      <div className="flex justify-between text-xs"><span>幻觉率</span><span className={evalResult.hallucination.rate < 5 ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>{evalResult.hallucination.rate}% {evalResult.hallucination.rate < 5 ? '✓ 达标(<5%)' : '✗ 未达标'}</span></div>
+                      <div className="text-[10px] text-gray-400 mt-1">断言 {evalResult.hallucination.total_claims} 条，幻觉 {evalResult.hallucination.hallucinated} 条</div>
+                    </div>
+                    <div className="border rounded-lg p-3">
+                      <div className="flex justify-between text-xs"><span>画像-资源难度适配准确率</span><span className={evalResult.adaptation.rate >= 85 ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>{evalResult.adaptation.rate}% {evalResult.adaptation.rate >= 85 ? '✓ 达标(≥85%)' : '✗ 未达标'}</span></div>
+                      <div className="text-[10px] text-gray-400 mt-1">测试 {evalResult.adaptation.total} 组，匹配 {evalResult.adaptation.matched} 组</div>
+                    </div>
+                    <div className="border rounded-lg p-3">
+                      <div className="flex justify-between text-xs"><span>核心知识点覆盖率</span><span className={evalResult.coverage.rate >= 90 ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>{evalResult.coverage.rate}% {evalResult.coverage.rate >= 90 ? '✓ 达标(≥90%)' : '✗ 未达标'}</span></div>
+                      <div className="text-[10px] text-gray-400 mt-1">共 {evalResult.coverage.total} 个知识点，覆盖 {evalResult.coverage.covered} 个</div>
+                    </div>
+                  </div>
+                )}
+                {evalErr && <p className="text-[11px] text-red-500 mt-2">{evalErr}</p>}
               </div>
             </div>
           )}
