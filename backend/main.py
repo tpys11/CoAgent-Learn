@@ -22,6 +22,10 @@ async def lifespan(app: FastAPI):
     missing = [v for v in required if not os.getenv(v)]
     if missing:
         warnings.warn(f"缺少环境变量: {', '.join(missing)}。Agent 功能不可用。")
+    try:
+        _ensure_default_project()
+    except Exception:
+        pass
     yield
 
 
@@ -153,6 +157,112 @@ async def get_graph(project_id: str = "default"):
 async def knowledge_query(project_id: str = "default", q: str = "", top_k: int = 3):
     from core.knowledge_service import search
     return {"results": search(project_id, q, top_k)}
+
+
+# ---------- 项目/对话持久化 API ----------
+
+class ProjectCreate(BaseModel):
+    name: str = "新项目"
+    domain: str = ""
+
+
+@app.get("/api/projects")
+async def list_projects():
+    from core.postgres_client import pg_client
+    rows = pg_client.execute("SELECT id, name, is_default, domain, created_at FROM projects WHERE archived = FALSE ORDER BY created_at")
+    return {"projects": rows}
+
+
+@app.post("/api/projects")
+async def create_project(req: ProjectCreate):
+    import time
+    from core.postgres_client import pg_client
+    pid = time.strftime("%Y%m%d%H%M%S") + str(int(time.time() * 1000))[-4:]
+    pg_client.execute("INSERT INTO projects (id, name, is_default, domain) VALUES (%s,%s,%s,%s)",
+                      (pid, req.name, False, req.domain))
+    return {"id": pid, "name": req.name, "is_default": False, "domain": req.domain}
+
+
+@app.patch("/api/projects/{pid}")
+async def update_project(pid: str, req: ProjectCreate):
+    from core.postgres_client import pg_client
+    pg_client.execute("UPDATE projects SET name=%s, domain=%s WHERE id=%s", (req.name, req.domain, pid))
+    return {"status": "ok"}
+
+
+@app.delete("/api/projects/{pid}")
+async def delete_project(pid: str):
+    """级联删除项目：对话+消息+画像+知识库+图谱"""
+    from core.postgres_client import pg_client
+    # 查该项目对话
+    dialogs = pg_client.execute("SELECT id FROM dialogues WHERE project_id=%s", (pid,))
+    d_ids = [d["id"] for d in dialogs]
+    try:
+        # 删消息
+        for d in d_ids:
+            pg_client.execute("DELETE FROM messages WHERE dialogue_id=%s", (d,))
+        # 删对话画像
+        for d in d_ids:
+            pg_client.execute("DELETE FROM dialogue_memories WHERE dialogue_id=%s", (d,))
+        # 删对话
+        pg_client.execute("DELETE FROM dialogues WHERE project_id=%s", (pid,))
+        # 删项目画像
+        pg_client.execute("DELETE FROM project_memories WHERE project_id=%s", (pid,))
+        # 删反馈
+        pg_client.execute("DELETE FROM feedback WHERE project_id=%s", (pid,))
+        # 删项目行
+        pg_client.execute("DELETE FROM projects WHERE id=%s", (pid,))
+    except Exception as e:
+        return {"status": "error", "msg": str(e)}
+    # 删知识库（Chroma）
+    kb_deleted = 0
+    try:
+        import chromadb
+        client = chromadb.HttpClient(host="guashuai-chroma", port=8000)
+        try:
+            client.delete_collection("kb_" + pid)
+            kb_deleted = 1
+        except Exception:
+            pass
+    except Exception:
+        pass
+    # 删图谱（Neo4j）
+    try:
+        from core.neo4j_client import neo4j_client
+        neo4j_client.run("MATCH (n:Entity {project_id:$p}) DETACH DELETE n", {"p": pid})
+    except Exception:
+        pass
+    return {"status": "ok", "dialogues": len(d_ids), "kb": kb_deleted}
+
+
+@app.get("/api/projects/{pid}/dialogues")
+async def list_dialogues(pid: str):
+    from core.postgres_client import pg_client
+    rows = pg_client.execute("SELECT id, name, created_at FROM dialogues WHERE project_id=%s AND archived=FALSE ORDER BY created_at", (pid,))
+    return {"dialogues": rows}
+
+
+@app.delete("/api/dialogues/{did}")
+async def delete_dialogue(did: str):
+    """级联删除对话：消息+对话画像"""
+    from core.postgres_client import pg_client
+    pg_client.execute("DELETE FROM messages WHERE dialogue_id=%s", (did,))
+    pg_client.execute("DELETE FROM dialogue_memories WHERE dialogue_id=%s", (did,))
+    pg_client.execute("DELETE FROM dialogues WHERE id=%s", (did,))
+    return {"status": "ok"}
+
+
+# 启动时确保有默认项目
+import time as _time
+
+def _ensure_default_project():
+    from core.postgres_client import pg_client
+    rows = pg_client.execute("SELECT id FROM projects WHERE is_default=TRUE")
+    if rows:
+        return rows[0]["id"]
+    pid = _time.strftime("%Y%m%d%H%M%S") + "default"
+    pg_client.execute("INSERT INTO projects (id, name, is_default) VALUES (%s,%s,%s)", (pid, "默认项目", True))
+    return pid
 
 
 # ---------- Skill 管理 API ----------

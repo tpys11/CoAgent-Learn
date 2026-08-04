@@ -28,12 +28,10 @@ const defaultProjectId = (() => {
 })()
 
 function App() {
-  const [projects, setProjects] = useState<Project[]>([{ id: defaultProjectId, name: '默认项目' }])
-  const [dialogues, setDialogues] = useState<Dialogue[]>([
-    { id: generateId(), name: '新对话', projectId: defaultProjectId, createdAt: new Date().toISOString(), archived: false },
-  ])
-  const [currentProjectId, setCurrentProjectId] = useState<string | null>(defaultProjectId)
-  const [currentDialogueId, setCurrentDialogueId] = useState<string | null>(dialogues[0].id)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [dialogues, setDialogues] = useState<Dialogue[]>([])
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null)
+  const [currentDialogueId, setCurrentDialogueId] = useState<string | null>(null)
   const [allMessages, setAllMessages] = useState<Record<string, Message[]>>({})
   const currentMessages = (currentDialogueId ? allMessages[currentDialogueId] : []) || []
   const [isLoading, setIsLoading] = useState(false)
@@ -49,6 +47,37 @@ function App() {
     if (saved) document.documentElement.style.fontSize = saved + 'px'
     const theme = localStorage.getItem('coagent-theme') || 'warm'
     document.documentElement.setAttribute('data-theme', theme)
+  }, [])
+
+  // 从后端加载项目/对话（持久化）
+  const [loaded, setLoaded] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/projects')
+      .then(r => r.json())
+      .then(async (d) => {
+        if (cancelled) return
+        const projs: Project[] = (d.projects || []).map((p: any) => ({ id: p.id, name: p.name, domain: p.domain || '' }))
+        setProjects(projs)
+        // 加载每个项目下的对话
+        const allD: Dialogue[] = []
+        for (const p of projs) {
+          const r2 = await fetch('/api/projects/' + p.id + '/dialogues')
+          const d2 = await r2.json()
+          ;(d2.dialogues || []).forEach((dd: any) => allD.push({ id: dd.id, name: dd.name, projectId: p.id, createdAt: dd.created_at || '', archived: false }))
+        }
+        if (cancelled) return
+        setDialogues(allD)
+        // 默认选中第一个项目
+        if (projs.length > 0) {
+          setCurrentProjectId(projs[0].id)
+          const first = allD.find(d => d.projectId === projs[0].id)
+          if (first) setCurrentDialogueId(first.id)
+        }
+        setLoaded(true)
+      })
+      .catch(() => setLoaded(true))
+    return () => { cancelled = true }
   }, [])
   const [showApiKeyPrompt, setShowApiKeyPrompt] = useState(
     () => !localStorage.getItem('coagent-apikey') && !localStorage.getItem('coagent-apikey-skipped')
@@ -84,19 +113,27 @@ function App() {
 
   const currentProject = projects.find(p => p.id === currentProjectId) ?? null
   const handleCreateProject = useCallback((name: string) => {
-    const id = generateId()
-    setProjects(prev => [...prev, { id, name }])
-    setCurrentProjectId(id)
-    const dId = generateId()
-    setDialogues(prev => [...prev, { id: dId, name: '新对话', projectId: id, createdAt: new Date().toISOString(), archived: false }])
-    setCurrentDialogueId(dId)
-    setAllMessages(prev => ({ ...prev, [dId]: [] }))
-    setShowDiagnosis(true)
+    fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) })
+      .then(r => r.json())
+      .then((d) => {
+        const id = d.id
+        setProjects(prev => [...prev, { id, name }])
+        setCurrentProjectId(id)
+        const dId = generateId()
+        setDialogues(prev => [...prev, { id: dId, name: '新对话', projectId: id, createdAt: new Date().toISOString(), archived: false }])
+        setCurrentDialogueId(dId)
+        setAllMessages(prev => ({ ...prev, [dId]: [] }))
+        setShowDiagnosis(true)
+      })
   }, [])
   const handleDeleteProject = useCallback((id: string) => {
-    setProjects(prev => prev.filter(p => p.id !== id))
-    setDialogues(prev => prev.filter(d => d.projectId !== id))
-    if (currentProjectId === id) setCurrentProjectId(projects.filter(p => p.id !== id)[0]?.id ?? null)
+    if (!window.confirm('确定删除该项目及其所有对话/知识库/图谱？')) return
+    fetch('/api/projects/' + id, { method: 'DELETE' })
+      .then(() => {
+        setProjects(prev => prev.filter(p => p.id !== id))
+        setDialogues(prev => prev.filter(d => d.projectId !== id))
+        if (currentProjectId === id) setCurrentProjectId(projects.find(p => p.id !== id)?.id ?? null)
+      })
   }, [currentProjectId, projects])
   const handleRenameProject = useCallback((id: string, name: string) => {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, name } : p))
@@ -122,8 +159,13 @@ function App() {
   }, [dialogues])
   const handleSelectDialogue = useCallback((id: string) => { setCurrentDialogueId(id); setFlowVisible(false); setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = [] }, [])
   const handleArchiveDialogue = useCallback((id: string) => {
-    setDialogues(prev => prev.map(d => d.id === id ? { ...d, archived: true } : d))
-  }, [])
+    if (!window.confirm('确定删除该对话？')) return
+    fetch('/api/dialogues/' + id, { method: 'DELETE' })
+      .then(() => {
+        setDialogues(prev => prev.filter(d => d.id !== id))
+        if (currentDialogueId === id) setCurrentDialogueId(null)
+      })
+  }, [currentDialogueId])
   const handleRenameDialogue = useCallback((id: string, name: string) => {
     if (name.trim()) setDialogues(prev => prev.map(d => d.id === id ? { ...d, name: name.trim() } : d))
   }, [])

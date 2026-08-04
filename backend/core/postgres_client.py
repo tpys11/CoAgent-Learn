@@ -36,6 +36,45 @@ class PostgresClient:
     def init_tables(self):
         """初始化基础表结构"""
         self.execute("""
+            CREATE TABLE IF NOT EXISTS projects (
+                id VARCHAR(255) PRIMARY KEY,
+                name VARCHAR(255) NOT NULL DEFAULT '新项目',
+                is_default BOOLEAN DEFAULT FALSE,
+                domain VARCHAR(255) DEFAULT '',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                archived BOOLEAN DEFAULT FALSE
+            )
+        """)
+        self.execute("""
+            CREATE TABLE IF NOT EXISTS dialogue_memories (
+                dialogue_id VARCHAR(255) PRIMARY KEY,
+                project_id VARCHAR(255) NOT NULL DEFAULT 'default',
+                profile_data JSONB DEFAULT '{}',
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        self.execute("""
+            CREATE TABLE IF NOT EXISTS feedback (
+                id SERIAL PRIMARY KEY,
+                dialogue_id VARCHAR(255) NOT NULL DEFAULT '',
+                project_id VARCHAR(255) NOT NULL DEFAULT 'default',
+                resource_type VARCHAR(50) DEFAULT '',
+                feedback VARCHAR(50) DEFAULT '',
+                note TEXT DEFAULT '',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        self.execute("""
+            CREATE TABLE IF NOT EXISTS stats (
+                id SERIAL PRIMARY KEY,
+                project_id VARCHAR(255) NOT NULL DEFAULT 'default',
+                tokens BIGINT DEFAULT 0,
+                duration_seconds BIGINT DEFAULT 0,
+                metrics JSONB DEFAULT '{}',
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        self.execute("""
             CREATE TABLE IF NOT EXISTS dialogues (
                 id VARCHAR(255) PRIMARY KEY,
                 project_id VARCHAR(255) NOT NULL DEFAULT 'default',
