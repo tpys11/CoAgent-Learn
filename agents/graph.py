@@ -6,6 +6,7 @@ from core.base_llm import DeepSeekLLM
 from agents.prompts import (
     INPUT_AGENT_PROMPT, DISPATCH_AGENT_PROMPT, DIAGNOSE_PROMPT,
     KB_PROMPT, SEARCH_PROMPT, MEMORY_PROMPT, GENERATE_PROMPT, REVIEW_PROMPT,
+    REVIEW_A_PROMPT, REVIEW_B_PROMPT, REVIEW_C_PROMPT, ARBITRATE_PROMPT,
 )
 from skills.registry import registry
 
@@ -206,15 +207,34 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         return state
 
     def review_node(state: AgentState) -> AgentState:
-        state.setdefault("steps", []).append({"agent": "审核裁判", "status": "running"})
+        state.setdefault("steps", []).append({"agent": "交叉审核", "status": "running"})
         state["retry_count"] = state.get("retry_count", 0) + 1
+        generated = state.get("generated", "")
+        profile_txt = json.dumps(state.get("profile", {}), ensure_ascii=False) if state.get("profile") else "未知学情"
+        NL = chr(10)
+        opinions = []
+        reviewers = [
+            ("审核A·符实性", REVIEW_A_PROMPT, ""),
+            ("审核B·难度适配", REVIEW_B_PROMPT, NL + "学情画像：" + profile_txt),
+            ("审核C·规范性", REVIEW_C_PROMPT, ""),
+        ]
+        for name, prompt, extra in reviewers:
+            try:
+                thinking, result = think_then_json(prompt, generated + extra, name)
+                opinions.append({"agent": name, "thinking": thinking[:300], "result": result})
+                state["mindchain"].append({"agent": name, "content": thinking[:400]})
+            except Exception:
+                opinions.append({"agent": name, "thinking": "", "result": {"passed": True, "score": 80}})
         try:
-            thinking, result = think_then_json(REVIEW_PROMPT, state.get("generated", ""), "审核裁判")
+            arb_txt = json.dumps([{"agent": o["agent"], "opinion": o["result"]} for o in opinions], ensure_ascii=False)
+            thinking, result = think_then_json(ARBITRATE_PROMPT, arb_txt, "仲裁Agent")
             state["reviewed"] = result
+            state["mindchain"].append({"agent": "仲裁Agent", "content": thinking[:400]})
         except Exception:
-            state["reviewed"] = {"passed": True, "score": 80}
-        state.setdefault("steps", []).append({"agent": "审核裁判", "status": "done", "detail": f"score={state['reviewed'].get('score', 0)}"})
-        state["mindchain"].append({"agent": "审核裁判", "content": thinking[:600]})
+            state["reviewed"] = {"passed": True, "score": 80, "verdict": "仲裁异常，默认通过"}
+        state["review_opinions"] = opinions
+        state.setdefault("steps", []).append({"agent": "交叉审核", "status": "done",
+            "detail": "3审核+仲裁 score=" + str(state['reviewed'].get('score', 0))})
         return state
 
     def output_node(state: AgentState) -> AgentState:
