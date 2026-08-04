@@ -153,6 +153,30 @@ async def get_graph(project_id: str = "default"):
     return resp
 
 
+@app.get("/api/graph/node")
+async def get_graph_node(project_id: str = "default", name: str = ""):
+    """节点详情：该实体的关系 + 知识库相关原文"""
+    from core.neo4j_client import neo4j_client
+    from core.knowledge_service import search
+    result = {"relations": [], "kb_refs": []}
+    if not name:
+        return result
+    try:
+        rows = neo4j_client.run(
+            "MATCH (a:Entity {project_id:$p, name:$n})-[r:REL {project_id:$p}]->(b:Entity) RETURN r.type AS rel, b.name AS to UNION MATCH (a:Entity {project_id:$p})-[r:REL {project_id:$p}]->(b:Entity {project_id:$p, name:$n}) RETURN r.type AS rel, a.name AS to",
+            {"p": project_id, "n": name})
+        for r in rows:
+            result["relations"].append({"rel": r.get("rel", ""), "target": r.get("to", "")})
+    except Exception:
+        pass
+    try:
+        refs = search(project_id, name, top_k=3)
+        result["kb_refs"] = [{"content": x["content"][:200], "source": (x.get("metadata") or {}).get("source", "")} for x in refs]
+    except Exception:
+        pass
+    return result
+
+
 @app.get("/api/knowledge/query")
 async def knowledge_query(project_id: str = "default", q: str = "", top_k: int = 3):
     from core.knowledge_service import search
@@ -252,6 +276,23 @@ async def save_dialogue_profile(did: str, req: ProfileData):
         pg_client.execute("UPDATE dialogue_memories SET profile_data=%s, updated_at=CURRENT_TIMESTAMP WHERE dialogue_id=%s", (data, did))
     else:
         pg_client.execute("INSERT INTO dialogue_memories (dialogue_id, project_id, profile_data) VALUES (%s,%s,%s)", (did, pid, data))
+    # 汇总对话画像进项目画像
+    try:
+        rows = pg_client.execute("SELECT data FROM project_memories WHERE project_id=%s", (pid,))
+        proj = dict(rows[0]["data"]) if rows and rows[0]["data"] else {}
+        for k, v in req.profile.items():
+            if v and k not in proj:
+                proj[k] = v
+        # 记录该项目下有哪些对话
+        dlist = proj.get("dialogues", [])
+        if did not in dlist:
+            dlist.append(did)
+        proj["dialogues"] = dlist
+        proj["topic_summary"] = req.profile.get("topic", proj.get("topic_summary", ""))
+        pg_client.execute("UPDATE project_memories SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE project_id=%s",
+                          (json.dumps(proj, ensure_ascii=False), pid))
+    except Exception:
+        pass
     return {"status": "ok"}
 
 
@@ -453,6 +494,7 @@ class ChatRequest(BaseModel):
     project_id: str | None = None
     api_key: str | None = None
     settings: dict | None = None
+    mode: str | None = None
 
 class ChatStep(BaseModel):
     agent: str
@@ -486,7 +528,7 @@ async def chat(req: ChatRequest):
                         _pg.execute("INSERT INTO messages(dialogue_id,role,content) VALUES(%s,%s,%s)",(_did,"user",req.message))
                     except Exception as _e:
                         print("[存储]",_e)
-                    result = wf.invoke({"user_input": req.message, "project_id": pid, "dialogue_id": _did, "session_id": req.session_id or "default", "steps": [], "mindchain": []})
+                    result = wf.invoke({"user_input": req.message, "project_id": pid, "dialogue_id": _did, "session_id": req.session_id or "default", "mode": req.mode or "kb", "steps": [], "mindchain": []})
                     # invoke 后存 AI 回复
                     try:
                         from core.postgres_client import pg_client as _pg

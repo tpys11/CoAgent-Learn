@@ -13,6 +13,7 @@ from skills.registry import registry
 
 class AgentState(TypedDict):
     user_input: str
+    mode: str
     project_id: str
     dialogue_id: str
     session_id: str
@@ -175,6 +176,11 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
     def generate_node(state: AgentState) -> AgentState:
         state.setdefault("steps", []).append({"agent": "信息整理与生成", "status": "running"})
         context = f"用户问题: {state['user_input']}" + chr(10)
+        mode = state.get("mode", "kb")
+        if mode == "kb":
+            context += "【输出模式】知识库模式：请优先基于知识库内容回答；若知识库没有相关内容，回答第一句必须明确告知：⚠️ 未在知识库中检索到相关内容，以下为模型通识回答。" + chr(10)
+        else:
+            context += "【输出模式】默认模式：可自由发挥回答，不限制。" + chr(10)
         if state.get("profile"): context += f"学情: {json.dumps(state['profile'], ensure_ascii=False)}" + chr(10)
         if state.get("knowledge"): context += f"知识库: {json.dumps(state['knowledge'], ensure_ascii=False)}" + chr(10)
         # 读最近对话历史

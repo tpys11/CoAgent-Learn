@@ -25,6 +25,8 @@ export default function RightPanel({ messageCount, projectId }: Props) {
   const [sideMessages, setSideMessages] = useState<Array<{role: string; content: string}>>([])
   const [sideInput, setSideInput] = useState('')
   const [sideLoading, setSideLoading] = useState(false)
+  const [sideMode, setSideMode] = useState<'kb'|'free'>('free')
+  const [nodeDetail, setNodeDetail] = useState<{name: string; relations: any[]; kb_refs: any[]} | null>(null)
 
   const sendSide = async () => {
     const text = sideInput.trim()
@@ -36,7 +38,7 @@ export default function RightPanel({ messageCount, projectId }: Props) {
       const resp = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, dialogue_id: sideDialogueId.current, project_id: projectId || 'default', api_key: localStorage.getItem('coagent-apikey') || undefined })
+        body: JSON.stringify({ message: text, dialogue_id: sideDialogueId.current, project_id: projectId || 'default', api_key: localStorage.getItem('coagent-apikey') || undefined, mode: sideMode })
       })
       const reader = resp.body ? resp.body.getReader() : null
       let buf = ''
@@ -119,6 +121,15 @@ export default function RightPanel({ messageCount, projectId }: Props) {
           const nodes = (d.nodes || []).map((n: any) => ({ id: n.id, name: n.name, symbolSize: 28, itemStyle: { color: '#4f8cff' }, label: { show: true, fontSize: 10 } }))
           const edges = (d.edges || []).map((e: any) => ({ source: e.source, target: e.target, label: { show: true, formatter: e.relation, fontSize: 9 }, lineStyle: { width: 1.5, color: '#bbb' } }))
           chartInst.current.setOption({ tooltip: { trigger: 'item' }, series: [{ type: 'graph', layout: 'force', roam: true, draggable: true, force: { repulsion: 300, edgeLength: 80 }, data: nodes, links: edges, emphasis: { focus: 'adjacency', lineStyle: { width: 3 } } }] }, true)
+          chartInst.current.off('click')
+          chartInst.current.on('click', (params: any) => {
+            if (params && params.data && params.data.name) {
+              fetch('/api/graph/node?project_id=' + encodeURIComponent(projectId || '') + '&name=' + encodeURIComponent(params.data.name), { cache: 'no-store' })
+                .then(r => r.json())
+                .then(d => setNodeDetail({ name: params.data.name, relations: d.relations || [], kb_refs: d.kb_refs || [] }))
+                .catch(() => {})
+            }
+          })
         })
         .catch(() => setGraphEmpty(true))
     }
@@ -161,15 +172,21 @@ export default function RightPanel({ messageCount, projectId }: Props) {
 
       <div className="flex-1 flex flex-col border-t border-[#e5e5e5] overflow-hidden">
         <div className="px-3 py-2 flex-shrink-0">
-          <span className="text-xs font-semibold">第二对话窗口</span>
-          <p className="text-[10px] text-gray-400 mt-0.5 leading-relaxed">独立对话区域，可访问主窗口的记忆、知识库等全部信息。</p>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-semibold">第二对话窗口</span>
+            <div className="flex gap-1 text-[10px]">
+              <button onClick={() => setSideMode('free')} className={`px-2 py-0.5 rounded border ${sideMode === 'free' ? 'bg-[#1a1a1a] text-white' : 'bg-white text-gray-500 border-gray-200'}`}>模型自由回答</button>
+              <button onClick={() => setSideMode('kb')} className={`px-2 py-0.5 rounded border ${sideMode === 'kb' ? 'bg-[#1a1a1a] text-white' : 'bg-white text-gray-500 border-gray-200'}`}>参考知识库</button>
+            </div>
+          </div>
+          <p className="text-[10px] text-gray-400 leading-relaxed">遇到不懂的概念可在这里单独提问，不影响主对话。</p>
         </div>
         <div className="flex-1 overflow-y-auto px-3 flex flex-col gap-2 pb-2">
           {sideMessages.length === 0 ? (
             <p className="text-[11px] text-gray-400 text-center py-4">遇到不懂的概念可在这里单独提问，不影响主对话</p>
           ) : (
             sideMessages.map((m, i) => (
-              <div key={i} className={`max-w-[90%] rounded-xl rounded-bl-sm px-3 py-2 text-xs leading-relaxed ${m.role === 'user' ? 'self-end bg-[#1a1a1a] text-white' : 'self-start bg-white border border-[#e5e5e5] text-gray-700'}`}>
+              <div key={i} className={`max-w-[90%] rounded-xl rounded-bl-sm px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap ${m.role === 'user' ? 'self-end bg-[#1a1a1a] text-white' : 'self-start bg-white border border-[#e5e5e5] text-gray-700'}`}>
                 {m.content}
               </div>
             ))
@@ -190,6 +207,37 @@ export default function RightPanel({ messageCount, projectId }: Props) {
           </button>
         </div>
       </div>
+      {nodeDetail && (
+        <div className="fixed right-6 top-1/2 -translate-y-1/2 bg-white border border-[#e5e5e5] rounded-2xl shadow-xl w-72 p-4 z-50 max-h-[70vh] overflow-y-auto">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-bold">🔍 {nodeDetail.name}</span>
+            <button onClick={() => setNodeDetail(null)} className="text-gray-400 hover:text-gray-600">✕</button>
+          </div>
+          <div className="mb-3">
+            <h4 className="text-[11px] font-semibold text-gray-500 mb-1">相关关系</h4>
+            {nodeDetail.relations.length === 0 ? <p className="text-[10px] text-gray-400">无</p> : (
+              <div className="flex flex-col gap-1">
+                {nodeDetail.relations.map((r, i) => (
+                  <span key={i} className="text-[11px] bg-gray-50 rounded px-2 py-1">{nodeDetail.name} —{r.rel}→ {r.target}</span>
+                ))}
+              </div>
+            )}
+          </div>
+          <div>
+            <h4 className="text-[11px] font-semibold text-gray-500 mb-1">知识库相关</h4>
+            {nodeDetail.kb_refs.length === 0 ? <p className="text-[10px] text-gray-400">无</p> : (
+              <div className="flex flex-col gap-1.5">
+                {nodeDetail.kb_refs.map((r, i) => (
+                  <div key={i} className="text-[10px] text-gray-600 border-l-2 border-gray-200 pl-2">
+                    <p className="line-clamp-3">{r.content}</p>
+                    {r.source && <p className="text-gray-400 mt-0.5">来源：{r.source}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </aside>
   )
 }
