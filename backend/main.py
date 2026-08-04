@@ -159,6 +159,60 @@ async def knowledge_query(project_id: str = "default", q: str = "", top_k: int =
     return {"results": search(project_id, q, top_k)}
 
 
+# ---------- 反馈/统计 API ----------
+
+class FeedbackReq(BaseModel):
+    dialogue_id: str = ""
+    project_id: str = "default"
+    resource_type: str = ""
+    feedback: str = ""
+    note: str = ""
+
+
+@app.post("/api/feedback")
+async def add_feedback(req: FeedbackReq):
+    from core.postgres_client import pg_client
+    pg_client.execute("INSERT INTO feedback (dialogue_id, project_id, resource_type, feedback, note) VALUES (%s,%s,%s,%s,%s)",
+                      (req.dialogue_id, req.project_id, req.resource_type, req.feedback, req.note))
+    # 反馈并入对话画像：难度类反馈调整水平
+    if req.dialogue_id and req.feedback in ("太难", "太简单"):
+        try:
+            rows = pg_client.execute("SELECT profile_data FROM dialogue_memories WHERE dialogue_id=%s", (req.dialogue_id,))
+            if rows:
+                import json as _json
+                p = dict(rows[0]["profile_data"] or {})
+                level_map = {"零基础": 1, "有基础": 2, "熟练": 3, "精通": 4}
+                cur = level_map.get(p.get("selfLevel", "有基础"), 2)
+                if req.feedback == "太难":
+                    cur = max(1, cur - 1)
+                else:
+                    cur = min(4, cur + 1)
+                rev = {v: k for k, v in level_map.items()}
+                p["selfLevel"] = rev[cur]
+                pg_client.execute("UPDATE dialogue_memories SET profile_data=%s WHERE dialogue_id=%s",
+                                  (_json.dumps(p, ensure_ascii=False), req.dialogue_id))
+        except Exception:
+            pass
+    return {"status": "ok"}
+
+
+@app.get("/api/stats")
+async def get_stats(project_id: str = "default"):
+    from core.postgres_client import pg_client
+    # 对话数、消息数、token估算、最近学习时间
+    d = pg_client.execute("SELECT count(*) AS c FROM dialogues WHERE project_id=%s", (project_id,))
+    m = pg_client.execute("SELECT count(*) AS c, COALESCE(SUM(LENGTH(content)),0) AS chars FROM messages", ())
+    s = pg_client.execute("SELECT metrics FROM stats WHERE project_id=%s ORDER BY updated_at DESC LIMIT 1", (project_id,))
+    metrics = s[0]["metrics"] if s else {}
+    return {
+        "dialogue_count": d[0]["c"] if d else 0,
+        "message_count": m[0]["c"] if m else 0,
+        "total_chars": m[0]["chars"] if m else 0,
+        "tokens_estimate": int((m[0]["chars"] if m else 0) / 2),
+        "metrics": metrics,
+    }
+
+
 # ---------- 画像 API ----------
 
 class ProfileData(BaseModel):

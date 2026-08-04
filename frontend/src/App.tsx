@@ -14,6 +14,7 @@ import AgentSettingsModal from './components/AgentSettingsModal'
 import SettingsModal, { ApiKeyPrompt } from './components/SettingsModal'
 import { ProjectKnowledgeModal } from './components/InfoModals'
 import ProfileWizard from './components/ProfileWizard'
+import GuideModal from './components/GuideModal'
 import type { Project, Dialogue, AgentConfig, Message } from './types'
 import { DEFAULT_AGENTS } from './types'
 
@@ -43,6 +44,7 @@ function App() {
   const [showProjectKB, setShowProjectKB] = useState(false)
   const [projectKBId, setProjectKBId] = useState<string | null>(null)
   const [wizard, setWizard] = useState<{mode: 'project'|'dialogue'; id: string; name?: string} | null>(null)
+  const [showGuide, setShowGuide] = useState(false)
   // 启动时应用保存的字体大小
   useEffect(() => {
     const saved = localStorage.getItem('coagent-fontSize')
@@ -279,6 +281,7 @@ function App() {
         flowAgents={flowAgents} flowActiveAgent={flowActiveAgent}
         flowMindchain={flowMindchain}
         onAgentSettings={() => setShowAgentSettings(true)}
+          onOpenGuide={() => setShowGuide(true)}
         projectInitialized={currentProject?.initialized !== false}
       />
       {/* 右侧栏 */}
@@ -306,6 +309,7 @@ function App() {
       {showAgentSettings && <AgentSettingsModal agents={agents} onSave={handleSaveAgent} onClose={() => setShowAgentSettings(false)} />}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {showProjectKB && <ProjectKnowledgeModal projectId={projectKBId || undefined} onClose={() => setShowProjectKB(false)} />}
+      {showGuide && <GuideModal onClose={() => setShowGuide(false)} />}
       {wizard && <ProfileWizard mode={wizard.mode} projectName={wizard.name} onClose={() => setWizard(null)}
         onSave={(profile) => {
           const url = wizard.mode === 'project' ? '/api/projects/' + wizard.id + '/profile' : '/api/dialogues/' + wizard.id + '/profile'

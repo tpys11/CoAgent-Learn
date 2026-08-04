@@ -17,11 +17,20 @@ interface CenterPanelProps {
   flowActiveAgent: string | null
   flowMindchain: Array<{agent: string; content: string}>
   onAgentSettings?: () => void
+  onOpenGuide?: () => void
   projectInitialized?: boolean
 }
 
-export default function CenterPanel({ messages, isLoading, currentProject, onSendMessage, statsCollapsed, onToggleStats, showAgentFlow, flowAgents, flowActiveAgent, flowMindchain, onAgentSettings, projectInitialized }: CenterPanelProps) {
+export default function CenterPanel({ messages, isLoading, currentProject, onSendMessage, statsCollapsed, onToggleStats, showAgentFlow, flowAgents, flowActiveAgent, flowMindchain, onAgentSettings, onOpenGuide, projectInitialized }: CenterPanelProps) {
   const [input, setInput] = useState('')
+  const [stats, setStats] = useState<{dialogue_count: number; tokens_estimate: number; metrics: any}>({dialogue_count: 0, tokens_estimate: 0, metrics: null})
+  useEffect(() => {
+    if (!currentProject) return
+    fetch('/api/stats?project_id=' + encodeURIComponent(currentProject.id), { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => setStats(d))
+      .catch(() => {})
+  }, [currentProject])
   const [attachments, setAttachments] = useState<Array<{name: string; content: string}>>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -175,6 +184,21 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
           <span className="text-xs text-gray-400">Tokens</span>
           <span className="flex-1" />
           <span className="text-xs text-gray-400">{time}</span>
+          <span className="text-gray-300" />
+          <span className="text-xs font-semibold text-gray-500">💬 {stats.dialogue_count}</span>
+          <span className="text-xs text-gray-400">对话</span>
+          <span className="text-gray-300" />
+          <span className="text-xs font-semibold text-gray-500">🔑 {(stats.tokens_estimate || 0).toLocaleString()}</span>
+          <span className="text-xs text-gray-400">Tokens</span>
+          {stats.metrics && stats.metrics.hallucination && (
+            <>
+              <span className="text-gray-300" />
+              <span className="text-xs font-semibold text-gray-500">✅ {stats.metrics.hallucination.rate || 0}%</span>
+              <span className="text-xs text-gray-400">幻觉率</span>
+            </>
+          )}
+          <span className="flex-1" />
+          <button onClick={() => onOpenGuide?.()} className="text-[11px] px-2 py-0.5 rounded hover:bg-gray-100 text-gray-500" title="使用指南">📖 指南</button>
         </div>
       </div>
       {/* 折叠按钮：下方正中间 */}

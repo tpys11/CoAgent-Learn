@@ -20,6 +20,51 @@ export default function RightPanel({ messageCount, projectId }: Props) {
   const [graphErr, setGraphErr] = useState('')
   const chartRef = useRef<HTMLDivElement>(null)
   const chartInst = useRef<any>(null)
+  // 第二对话窗口：独立会话
+  const sideDialogueId = useRef('sd-' + Math.random().toString(36).slice(2) + Date.now().toString(36))
+  const [sideMessages, setSideMessages] = useState<Array<{role: string; content: string}>>([])
+  const [sideInput, setSideInput] = useState('')
+  const [sideLoading, setSideLoading] = useState(false)
+
+  const sendSide = async () => {
+    const text = sideInput.trim()
+    if (!text || sideLoading) return
+    setSideInput('')
+    setSideMessages(prev => [...prev, { role: 'user', content: text }])
+    setSideLoading(true)
+    try {
+      const resp = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, dialogue_id: sideDialogueId.current, project_id: projectId || 'default', api_key: localStorage.getItem('coagent-apikey') || undefined })
+      })
+      const reader = resp.body ? resp.body.getReader() : null
+      let buf = ''
+      let reply = ''
+      if (reader) {
+        const dec = new TextDecoder()
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          buf += dec.decode(value, { stream: true })
+          let idx
+          while ((idx = buf.indexOf('\n\n')) >= 0) {
+            const chunk = buf.slice(0, idx); buf = buf.slice(idx + 2)
+            if (chunk.startsWith('data: ')) {
+              try {
+                const d = JSON.parse(chunk.slice(6))
+                if (d.type === 'done' && d.reply) reply = d.reply
+              } catch (e) {}
+            }
+          }
+        }
+      }
+      setSideMessages(prev => [...prev, { role: 'assistant', content: reply || '（无回复）' }])
+    } catch (e) {
+      setSideMessages(prev => [...prev, { role: 'assistant', content: '请求失败' }])
+    }
+    setSideLoading(false)
+  }
 
   // 加载项目知识图谱
   useEffect(() => {
@@ -120,33 +165,27 @@ export default function RightPanel({ messageCount, projectId }: Props) {
           <p className="text-[10px] text-gray-400 mt-0.5 leading-relaxed">独立对话区域，可访问主窗口的记忆、知识库等全部信息。</p>
         </div>
         <div className="flex-1 overflow-y-auto px-3 flex flex-col gap-2 pb-2">
-          {!visible ? (
-            <p className="text-[11px] text-gray-400 text-center py-4">主窗口回复后自动生成</p>
+          {sideMessages.length === 0 ? (
+            <p className="text-[11px] text-gray-400 text-center py-4">遇到不懂的概念可在这里单独提问，不影响主对话</p>
           ) : (
-            QUESTIONS.map((item, i) => (
-              <div key={i} className={`transition-all duration-300 ${i < showIdx ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}>
-                {i < showIdx && (
-                  <button className="w-full text-left bg-white border border-[#e5e5e5] rounded-xl rounded-bl-sm px-3 py-2.5 hover:border-[#1a1a1a]/40 hover:shadow-sm transition-all group">
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <item.icon size={11} className="text-[#1a1a1a]" />
-                      <span className="text-[10px] text-gray-400">{item.type}</span>
-                    </div>
-                    <p className="text-xs text-gray-700 leading-relaxed">{item.text}</p>
-                  </button>
-                )}
+            sideMessages.map((m, i) => (
+              <div key={i} className={`max-w-[90%] rounded-xl rounded-bl-sm px-3 py-2 text-xs leading-relaxed ${m.role === 'user' ? 'self-end bg-[#1a1a1a] text-white' : 'self-start bg-white border border-[#e5e5e5] text-gray-700'}`}>
+                {m.content}
               </div>
             ))
           )}
+          {sideLoading && <p className="text-[10px] text-gray-400 text-center">思考中…</p>}
         </div>
       </div>
 
       {/* 追问输入框 */}
       <div className="p-2 flex-shrink-0 border-t border-[#e5e5e5]">
         <div className="flex gap-1.5 items-end">
-          <textarea placeholder="追问..." rows={1}
+          <textarea placeholder="在此提问..." rows={1} value={sideInput}
+            onChange={e => setSideInput(e.target.value)}
             className="flex-1 px-3 py-1.5 border border-[#d0d0d0] rounded-lg bg-white text-xs outline-none resize-none focus:border-[#1a1a1a]"
-            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) e.preventDefault() }} />
-          <button className="px-3 py-1.5 bg-[#1a1a1a] text-white rounded-lg hover:bg-[#333333] transition-colors flex-shrink-0">
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendSide() } }} />
+          <button onClick={sendSide} disabled={sideLoading} className="px-3 py-1.5 bg-[#1a1a1a] text-white rounded-lg hover:bg-[#333333] transition-colors flex-shrink-0 disabled:opacity-50">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
           </button>
         </div>
