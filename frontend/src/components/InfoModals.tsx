@@ -212,6 +212,21 @@ export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectI
   }
   useEffect(function(){ refreshKb() }, [projectId])
 
+  const [showResPick, setShowResPick] = useState(false)
+  const [resList, setResList] = useState<Array<{id:string; name:string; content:string}>>([])
+
+  const openResPick = function() {
+    if(!projectId)return
+    fetch('/api/resources?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' })
+      .then(function(r){return r.json()})
+      .then(function(d){ setResList(d.resources || []); setShowResPick(true) })
+  }
+
+  const pickResource = function(r: any) {
+    setKbInput(prev => prev ? prev + String.fromCharCode(10) + r.content : r.content)
+    setShowResPick(false)
+  }
+
   const [evalRunning, setEvalRunning] = useState(false)
   const [evalResult, setEvalResult] = useState<any>(null)
   const [evalErr, setEvalErr] = useState('')
@@ -307,8 +322,27 @@ export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectI
                 <DragDropInput value={kbInput} onChange={setKbInput} placeholder="输入知识库内容，或拖拽文件上传" rows={5} />
                 <div className="flex items-center gap-3 mt-3">
                   <p className="text-[11px] text-gray-400 cursor-pointer hover:text-[#1a1a1a]" onClick={() => setShowGuide(!showGuide)}>💡 我需要引导</p>
+                  <button onClick={openResPick} className="text-[11px] px-3 py-1.5 bg-white border border-gray-200 text-gray-600 rounded-lg hover:border-[#1a1a1a]/40 transition-colors">📁 从资源选择</button>
                   <button onClick={saveKb} className="text-[11px] px-3 py-1.5 bg-[#1a1a1a] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors">保存到知识库</button>
                 </div>
+                {showResPick && (
+                  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[70]" onMouseDown={e => { if (e.target === e.currentTarget) setShowResPick(false) }}>
+                    <div className="bg-white rounded-2xl shadow-xl w-96 p-4" onMouseDown={e => e.stopPropagation()}>
+                      <h3 className="text-sm font-bold mb-3">从资源中选择</h3>
+                      {resList.length === 0 ? <p className="text-xs text-gray-400">暂无资源，请先在左侧"资源"区保存资料</p> : (
+                        <div className="flex flex-col gap-1.5 max-h-60 overflow-y-auto">
+                          {resList.map((r: any) => (
+                            <button key={r.id} onClick={() => pickResource(r)} className="text-left px-3 py-2 border border-gray-200 rounded-lg text-xs hover:border-[#1a1a1a]/40">
+                              <span className="font-medium">{r.name}</span>
+                              <span className="text-gray-400 ml-2 truncate block">{String(r.content || '').slice(0, 40)}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <button onClick={() => setShowResPick(false)} className="mt-3 text-xs px-3 py-1.5 text-gray-500">关闭</button>
+                    </div>
+                  </div>
+                )}
                 {kbStatus && <p className="mt-2 text-[11px] text-gray-500">{kbStatus}</p>}
                 {/* 已入库文档 */}
                 <div className="mt-3 border-t border-[#e5e5e5] pt-3">

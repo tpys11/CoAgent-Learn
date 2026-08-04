@@ -183,6 +183,42 @@ async def knowledge_query(project_id: str = "default", q: str = "", top_k: int =
     return {"results": search(project_id, q, top_k)}
 
 
+# ---------- 资源 API ----------
+
+class ResourceSave(BaseModel):
+    name: str
+    content: str = ""
+    project_id: str = "default"
+
+
+@app.get("/api/resources")
+async def list_resources(project_id: str = "default"):
+    from core.postgres_client import pg_client
+    rows = pg_client.execute("SELECT id, name, content FROM resources WHERE project_id=%s ORDER BY created_at", (project_id,))
+    return {"resources": rows}
+
+
+@app.post("/api/resources")
+async def save_resource(req: ResourceSave):
+    import time, hashlib
+    from core.postgres_client import pg_client
+    rid = hashlib.md5((req.name + req.project_id).encode()).hexdigest()[:16]
+    has = pg_client.execute("SELECT id FROM resources WHERE id=%s", (rid,))
+    if has:
+        pg_client.execute("UPDATE resources SET content=%s WHERE id=%s", (req.content, rid))
+    else:
+        pg_client.execute("INSERT INTO resources (id, name, content, project_id) VALUES (%s,%s,%s,%s)",
+                          (rid, req.name, req.content, req.project_id))
+    return {"status": "ok", "id": rid}
+
+
+@app.delete("/api/resources/{rid}")
+async def delete_resource(rid: str):
+    from core.postgres_client import pg_client
+    pg_client.execute("DELETE FROM resources WHERE id=%s", (rid,))
+    return {"status": "ok"}
+
+
 # ---------- 反馈/统计 API ----------
 
 class FeedbackReq(BaseModel):

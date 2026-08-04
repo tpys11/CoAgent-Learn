@@ -75,6 +75,15 @@ class PostgresClient:
             )
         """)
         self.execute("""
+            CREATE TABLE IF NOT EXISTS resources (
+                id VARCHAR(255) PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                content TEXT DEFAULT '',
+                project_id VARCHAR(255) NOT NULL DEFAULT 'default',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        self.execute("""
             CREATE TABLE IF NOT EXISTS dialogues (
                 id VARCHAR(255) PRIMARY KEY,
                 project_id VARCHAR(255) NOT NULL DEFAULT 'default',

@@ -24,6 +24,11 @@ interface CenterPanelProps {
 export default function CenterPanel({ messages, isLoading, currentProject, onSendMessage, statsCollapsed, onToggleStats, showAgentFlow, flowAgents, flowActiveAgent, flowMindchain, onAgentSettings, onOpenGuide, projectInitialized }: CenterPanelProps) {
   const [input, setInput] = useState('')
   const [chatMode, setChatMode] = useState<'kb'|'free'>('kb')
+  const msgScrollRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = msgScrollRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [messages, flowMindchain, isLoading])
   const [stats, setStats] = useState<{dialogue_count: number; tokens_estimate: number; metrics: any}>({dialogue_count: 0, tokens_estimate: 0, metrics: null})
   useEffect(() => {
     if (!currentProject) return
@@ -178,10 +183,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
           </div>
           <span className="text-gray-300">|</span>
           <Clock size={14} className="text-gray-400" />
-          <span className="text-xs font-semibold text-gray-500">⏱ {stats.dialogue_count * 3}</span>
-          <span className="text-xs text-gray-400">分钟</span>
-          <span className="text-gray-300">|</span>
-          <Zap size={14} className="text-gray-400" />
+
           <span className="flex-1" />
           <span className="text-xs text-gray-400">{time}</span>
           <span className="text-gray-300" />
@@ -213,7 +215,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
 
 
       {/* Messages */}
-      <div className={`overflow-y-auto px-4 py-3 flex flex-col gap-3 ${messages.length > 0 ? 'flex-1' : 'max-h-[50%] flex-shrink-0'}`}>
+      <div ref={msgScrollRef} className={`overflow-y-auto px-4 py-3 flex flex-col gap-3 ${messages.length > 0 ? 'flex-1' : 'max-h-[50%] flex-shrink-0'}`}>
         {/* Agent 思考过程 */}
         {showAgentFlow && !flowCollapsed && (
           <div className="mb-2 bg-white border border-[#e5e5e5] rounded-xl overflow-hidden flex-shrink-0" style={{ height: '28vh', minHeight: 150 }}>
@@ -232,30 +234,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
         {messages.length === 0 ? (
           <div className="flex-1" />
         ) : (
-        {flowMindchain.length > 0 && (
-          <div className="self-start bg-[#ffffff] border border-[#e5e5e5] rounded-2xl rounded-bl-sm max-w-[80%] overflow-hidden">
-            <button onClick={() => setThinkingCollapsed(!thinkingCollapsed)}
-              className="w-full flex items-center justify-between px-4 py-2 text-xs hover:bg-[#f5f5f5] transition-colors">
-              <span className="flex items-center gap-1.5 text-gray-500">
-                {isLoading && <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" />}
-                {isLoading ? '思考中…' : '✓ 思考过程'}
-              </span>
-              <span className="text-gray-400">{thinkingCollapsed || isLoading ? '▸ 展开' : '▾ 收起'}</span>
-            </button>
-            {!thinkingCollapsed && (
-              <div className="px-4 pb-3 flex flex-col gap-2 border-t border-[#e5e5e5] pt-2 max-h-60 overflow-y-auto">
-                {flowMindchain.map((item, i) => (
-                  <div key={i} className="animate-[fadeIn_0.2s_ease]">
-                    <div className="text-[11px] font-semibold text-[#666666] mb-0.5">{item.agent}</div>
-                    <div className="text-[11px] leading-relaxed text-gray-500 whitespace-pre-wrap pl-2 border-l-2 border-[#e5e5e5]">
-                      {item.content}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
           messages.map((msg, idx) => (
             <div
               key={idx}
@@ -294,6 +272,30 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
               )}
             </div>
           ))
+        )}
+        {flowMindchain.length > 0 && (
+          <div className="self-start bg-[#ffffff] border border-[#e5e5e5] rounded-2xl rounded-bl-sm max-w-[80%] overflow-hidden">
+            <button onClick={() => setThinkingCollapsed(!thinkingCollapsed)}
+              className="w-full flex items-center justify-between px-4 py-2 text-xs hover:bg-[#f5f5f5] transition-colors">
+              <span className="flex items-center gap-1.5 text-gray-500">
+                {isLoading && <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" />}
+                {isLoading ? '思考中…' : '✓ 思考过程'}
+              </span>
+              <span className="text-gray-400">{thinkingCollapsed || isLoading ? '▸ 展开' : '▾ 收起'}</span>
+            </button>
+            {!thinkingCollapsed && (
+              <div className="px-4 pb-3 flex flex-col gap-2 border-t border-[#e5e5e5] pt-2 max-h-60 overflow-y-auto">
+                {flowMindchain.map((item, i) => (
+                  <div key={i} className="animate-[fadeIn_0.2s_ease]">
+                    <div className="text-[11px] font-semibold text-[#666666] mb-0.5">{item.agent}</div>
+                    <div className="text-[11px] leading-relaxed text-gray-500 whitespace-pre-wrap pl-2 border-l-2 border-[#e5e5e5]">
+                      {item.content}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         )}
       </div>
 
@@ -512,7 +514,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
             </button>
             </div>
           </div>
-          {/* 模式开关 + 选择模型 */}
+                    {/* 模式开关 + 选择模型 */}
           <div className="flex items-center gap-2 text-[11px]">
             <span className="text-gray-400">模式：</span>
             <button onClick={() => setChatMode('kb')}
@@ -521,7 +523,9 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
               className={`px-2.5 py-1 rounded-lg border transition-colors ${chatMode === 'free' ? 'bg-[#1a1a1a] text-white border-[#1a1a1a]' : 'bg-white text-gray-600 border-gray-200'}`}>🌐 默认模式</button>
             <span className="text-gray-300">|</span>
             <button className="text-gray-400 hover:text-gray-600 transition-colors" title="选择模型（暂未开放）">⚙️ 选择模型 ▾</button>
-          </div>
+          </div>            </>
+          )}
+        </div>
       </div>
       </div>
 
