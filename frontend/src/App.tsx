@@ -13,6 +13,7 @@ import DiagnosisModal from './components/DiagnosisModal'
 import AgentSettingsModal from './components/AgentSettingsModal'
 import SettingsModal, { ApiKeyPrompt } from './components/SettingsModal'
 import { ProjectKnowledgeModal } from './components/InfoModals'
+import ProfileWizard from './components/ProfileWizard'
 import type { Project, Dialogue, AgentConfig, Message } from './types'
 import { DEFAULT_AGENTS } from './types'
 
@@ -41,6 +42,7 @@ function App() {
   const [showAgentSettings, setShowAgentSettings] = useState(false)
   const [showProjectKB, setShowProjectKB] = useState(false)
   const [projectKBId, setProjectKBId] = useState<string | null>(null)
+  const [wizard, setWizard] = useState<{mode: 'project'|'dialogue'; id: string; name?: string} | null>(null)
   // 启动时应用保存的字体大小
   useEffect(() => {
     const saved = localStorage.getItem('coagent-fontSize')
@@ -123,7 +125,7 @@ function App() {
         setDialogues(prev => [...prev, { id: dId, name: '新对话', projectId: id, createdAt: new Date().toISOString(), archived: false }])
         setCurrentDialogueId(dId)
         setAllMessages(prev => ({ ...prev, [dId]: [] }))
-        setShowDiagnosis(true)
+        setWizard({ mode: 'project', id, name })
       })
   }, [])
   const handleDeleteProject = useCallback((id: string) => {
@@ -156,6 +158,7 @@ function App() {
     setDialogues(prev => [...prev, d])
     setCurrentDialogueId(d.id)
     setAllMessages(prev => ({ ...prev, [d.id]: [] }))
+    setWizard({ mode: 'dialogue', id: d.id, name: d.name })
   }, [dialogues])
   const handleSelectDialogue = useCallback((id: string) => { setCurrentDialogueId(id); setFlowVisible(false); setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = [] }, [])
   const handleArchiveDialogue = useCallback((id: string) => {
@@ -303,6 +306,12 @@ function App() {
       {showAgentSettings && <AgentSettingsModal agents={agents} onSave={handleSaveAgent} onClose={() => setShowAgentSettings(false)} />}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {showProjectKB && <ProjectKnowledgeModal projectId={projectKBId || undefined} onClose={() => setShowProjectKB(false)} />}
+      {wizard && <ProfileWizard mode={wizard.mode} projectName={wizard.name} onClose={() => setWizard(null)}
+        onSave={(profile) => {
+          const url = wizard.mode === 'project' ? '/api/projects/' + wizard.id + '/profile' : '/api/dialogues/' + wizard.id + '/profile'
+          fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ profile }) })
+          setWizard(null)
+        }} />}
       {showApiKeyPrompt && <ApiKeyPrompt onClose={() => { setShowApiKeyPrompt(false); localStorage.setItem('coagent-apikey-skipped', '1') }} />}
     </div>
   )

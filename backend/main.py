@@ -159,6 +159,55 @@ async def knowledge_query(project_id: str = "default", q: str = "", top_k: int =
     return {"results": search(project_id, q, top_k)}
 
 
+# ---------- 画像 API ----------
+
+class ProfileData(BaseModel):
+    profile: dict = {}
+
+
+@app.post("/api/projects/{pid}/profile")
+async def save_project_profile(pid: str, req: ProfileData):
+    import json
+    from core.postgres_client import pg_client
+    # 项目画像存 project_memories（session 用 project 维度）
+    has = pg_client.execute("SELECT project_id FROM project_memories WHERE project_id=%s", (pid,))
+    data = json.dumps(req.profile, ensure_ascii=False)
+    if has:
+        pg_client.execute("UPDATE project_memories SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE project_id=%s", (data, pid))
+    else:
+        pg_client.execute("INSERT INTO project_memories (session_id, project_id, data) VALUES (%s,%s,%s)", ("project", pid, data))
+    return {"status": "ok"}
+
+
+@app.get("/api/projects/{pid}/profile")
+async def get_project_profile(pid: str):
+    from core.postgres_client import pg_client
+    rows = pg_client.execute("SELECT data FROM project_memories WHERE project_id=%s", (pid,))
+    return {"profile": rows[0]["data"] if rows else {}}
+
+
+@app.post("/api/dialogues/{did}/profile")
+async def save_dialogue_profile(did: str, req: ProfileData):
+    import json
+    from core.postgres_client import pg_client
+    pid_row = pg_client.execute("SELECT project_id FROM dialogues WHERE id=%s", (did,))
+    pid = pid_row[0]["project_id"] if pid_row else "default"
+    data = json.dumps(req.profile, ensure_ascii=False)
+    has = pg_client.execute("SELECT dialogue_id FROM dialogue_memories WHERE dialogue_id=%s", (did,))
+    if has:
+        pg_client.execute("UPDATE dialogue_memories SET profile_data=%s, updated_at=CURRENT_TIMESTAMP WHERE dialogue_id=%s", (data, did))
+    else:
+        pg_client.execute("INSERT INTO dialogue_memories (dialogue_id, project_id, profile_data) VALUES (%s,%s,%s)", (did, pid, data))
+    return {"status": "ok"}
+
+
+@app.get("/api/dialogues/{did}/profile")
+async def get_dialogue_profile(did: str):
+    from core.postgres_client import pg_client
+    rows = pg_client.execute("SELECT profile_data FROM dialogue_memories WHERE dialogue_id=%s", (did,))
+    return {"profile": rows[0]["profile_data"] if rows else {}}
+
+
 # ---------- 评估 API ----------
 
 @app.post("/api/evaluate")

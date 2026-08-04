@@ -199,7 +199,25 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             pass
         try:
             thinking, result = think_then_json(_GENERATE_PROMPT, context, "信息整理与生成")
-            state["generated"] = (result.get("content", "") or "").replace("\n", chr(10))
+            state["resources"] = result
+            NL = chr(10)
+            if isinstance(result, dict) and result.get("讲义"):
+                parts = ["## 📘 定制讲义", str(result.get("讲义", "")), "", "## 🛠 实操指南", str(result.get("实操指南", ""))]
+                tests = result.get("测试题") or []
+                if tests:
+                    parts.append("")
+                    parts.append("## 📝 分阶测试题")
+                    for t in tests:
+                        if isinstance(t, dict):
+                            parts.append("**【" + str(t.get("难度", "基础")) + "】** " + str(t.get("题目", "")))
+                            parts.append("> 答案：" + str(t.get("答案", "")))
+                src = result.get("溯源")
+                if src:
+                    parts.append("")
+                    parts.append("_溯源：" + "、".join(str(s) for s in src) + "_")
+                state["generated"] = NL.join(parts)
+            else:
+                state["generated"] = (result.get("content", "") or "").replace("\n", NL)
         except Exception as e:
             state["generated"] = f"抱歉，生成内容时出现错误：{str(e)[:200]}"
         state["mindchain"].append({"agent": "信息整理与生成", "content": thinking[:800]})
