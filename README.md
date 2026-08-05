@@ -170,3 +170,79 @@ CoAgent-Learn/
 | [界面搭建](docs/二、界面搭建.md) | 前端全部功能模块说明 |
 | [多智能体系统](docs/三（1）、多智能体系统与展示.md) | Agent 架构、工作流、思考链 |
 | [启动方式](docs/零、项目启动方式.md) | 启动原理与故障排查 |
+
+---
+
+## 🚀 协作者快速上手（clone 后必读）
+
+### 第 1 步：拉取代码
+```bash
+git clone https://github.com/tpys11/CoAgent-Learn.git
+cd CoAgent-Learn
+```
+
+### 第 2 步：创建 .env（**必须**，否则 AI 对话不可用）
+```bash
+# 复制模板
+cp .env.template .env
+```
+然后编辑 `.env`，填入**你自己的** DeepSeek API Key：
+```
+DEEPSEEK_API_KEY=sk-你的key
+```
+> `.env` 已被 gitignore，不会提交，每人填自己的。
+
+### 第 3 步：启动（首次约 5-10 分钟拉镜像）
+```bash
+docker compose -f deploy/docker-compose.yml up -d
+```
+等所有容器变绿后，浏览器打开 `http://localhost:5173`。
+
+### 第 4 步：填 API Key（或已在 .env 配置）
+首次打开界面会提示填 Key（存浏览器），或直接用 .env 的配置。
+
+---
+
+## ✅ 已实现功能一览
+
+| 功能 | 说明 |
+|------|------|
+| 多智能体协同 | LangGraph 9 节点：输入→调度→[诊断/知识库/搜索/记忆]→生成→**3审核+仲裁**→输出 |
+| 个性化资源 | 生成【定制讲义 / 实操指南 / 分阶测试题】3 种形态 + 溯源 |
+| 三级画像 | 个人/项目/对话画像 + 新建项目/对话弹窗向导 |
+| 知识库 | 上传 txt/md/PDF/Word/PPT；P1上下文前缀 + P2向量+BM25混合检索 + P3重排序 |
+| 知识图谱 | 上传文档自动抽实体关系 → Neo4j → ECharts 展示，点击节点看详情 |
+| 记忆 | 对话记忆 + 个人/情景记忆，刷新保留 |
+| 评估 | 项目配置→评估 tab，一键测【幻觉率/适配准确率/覆盖率】 |
+| 反馈闭环 | 资源反馈 → 更新画像 → 影响下次生成 |
+| 第二对话窗口 | 右侧独立会话，不干扰主对话，支持知识库/自由模式 |
+| 资源区 | 左侧保存资料，知识库上传可从资源选 |
+| 统计栏 | 顶部实时显示对话数/Tokens/三率指标 |
+
+---
+
+## ⚠️ 注意事项（协作者必看）
+
+1. **.env 必须自己建**——仓库里没有（含密钥不提交），不建则 AI 无法对话
+2. **首次用知识库会下载模型**：ONNX MiniLM（79MB）+ bge-reranker（1.1GB），需联网，慢属正常
+3. **新依赖要进 `backend/requirements.txt`**：容器重建后手动 `pip install` 的包会丢
+4. **数据库自动建表**：空库启动自动创建，无需手动初始化
+5. **`.env` 和 `deploy/data/`（数据库数据）不会提交**：别人拿到的是干净代码
+6. **改了后端代码**：`docker compose restart backend`（Python 可能需清 `__pycache__`）
+
+---
+
+## 项目结构
+
+```
+CoAgent-Learn/
+├── frontend/src/           # React 前端
+│   └── components/         # 三栏布局、AgentFlow、ProfileWizard、GuideModal...
+├── backend/
+│   ├── main.py             # FastAPI 全部接口
+│   └── core/               # base_llm、config、knowledge_service、evaluator、graph_service...
+├── agents/                 # LangGraph 工作流 + Agent 提示词
+├── skills/                 # 可插拔 Skill（知识检索/记忆/诊断/搜索）
+├── deploy/                 # Docker Compose + 数据目录
+└── docs（已开发内容记录）/ # 开发文档 + 错误记录
+```
