@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { X, Sun, Moon, Monitor, Type, Key, Palette } from 'lucide-react'
+import { X, Sun, Moon, Monitor, Type, Key, LampDesk } from 'lucide-react'
+import { getThemePref, setThemePref, type ThemePref } from '../theme'
 
 interface Props {
   onClose: () => void
@@ -7,7 +8,7 @@ interface Props {
 
 export default function SettingsModal({ onClose }: Props) {
   const [fontSize, setFontSize] = useState(() => parseInt(localStorage.getItem('coagent-fontSize') || '15'))
-  const [theme, setTheme] = useState(() => localStorage.getItem('coagent-theme') || 'warm')
+  const [theme, setTheme] = useState<ThemePref>(() => getThemePref())
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('coagent-apikey') || '')
   const [saved, setSaved] = useState(false)
 
@@ -17,8 +18,7 @@ export default function SettingsModal({ onClose }: Props) {
   }, [fontSize])
 
   useEffect(() => {
-    localStorage.setItem('coagent-theme', theme)
-    document.documentElement.setAttribute('data-theme', theme)
+    setThemePref(theme)
   }, [theme])
 
   const handleApiKeySave = () => {
@@ -58,14 +58,14 @@ export default function SettingsModal({ onClose }: Props) {
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">页面主题</label>
             <div className="flex gap-2">
               {[
-                { value: 'light', icon: Sun, label: '默认' },
+                { value: 'light', icon: Sun, label: '日间' },
                 { value: 'dark', icon: Moon, label: '夜间' },
-                { value: 'warm', icon: Palette, label: '柔和' },
+                { value: 'warm', icon: LampDesk, label: '均衡' },
                 { value: 'system', icon: Monitor, label: '跟随系统' },
               ].map(({ value, icon: Icon, label }) => (
                 <button
                   key={value}
-                  onClick={() => setTheme(value)}
+                  onClick={() => setTheme(value as ThemePref)}
                   className={`flex-1 flex flex-col items-center gap-1 py-3 rounded-lg text-xs font-medium transition-colors ${
                     theme === value
                       ? 'bg-[#f0f0f0] text-[#1a1a1a] border border-[#1a1a1a]/30'

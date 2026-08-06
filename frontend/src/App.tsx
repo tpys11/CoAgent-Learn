@@ -15,6 +15,11 @@ import SettingsModal, { ApiKeyPrompt } from './components/SettingsModal'
 import { ProjectKnowledgeModal } from './components/InfoModals'
 import ProfileWizard from './components/ProfileWizard'
 import GuideModal from './components/GuideModal'
+import ActivityBar, { type ViewKey } from './components/ActivityBar'
+import TutorialView from './components/TutorialView'
+import ResourceView from './components/ResourceView'
+import IntroPanel from './components/IntroPanel'
+import { initTheme } from './theme'
 import type { Project, Dialogue, AgentConfig, Message } from './types'
 import { DEFAULT_AGENTS } from './types'
 
@@ -45,12 +50,14 @@ function App() {
   const [projectKBId, setProjectKBId] = useState<string | null>(null)
   const [wizard, setWizard] = useState<{mode: 'project'|'dialogue'; id: string; name?: string} | null>(null)
   const [showGuide, setShowGuide] = useState(false)
-  // 启动时应用保存的字体大小
+  const [view, setView] = useState<ViewKey>('chat')
+  // 首次进入：弹出项目介绍面板（localStorage 标记，只弹一次）
+  const [showIntro, setShowIntro] = useState(() => !localStorage.getItem('coagent-intro-seen'))
+  // 启动时应用保存的字体大小与主题（system 模式自动解析亮暗）
   useEffect(() => {
     const saved = localStorage.getItem('coagent-fontSize')
     if (saved) document.documentElement.style.fontSize = saved + 'px'
-    const theme = localStorage.getItem('coagent-theme') || 'warm'
-    document.documentElement.setAttribute('data-theme', theme)
+    initTheme()
   }, [])
 
   // 从后端加载项目/对话（持久化）
@@ -102,7 +109,7 @@ function App() {
 
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
-      if (dragging.current === 'left') setSidebarWidth(Math.max(180, Math.min(400, e.clientX - 8)))
+      if (dragging.current === 'left') setSidebarWidth(Math.max(180, Math.min(400, e.clientX - 64)))
       if (dragging.current === 'right') setRightPanelWidth(Math.max(180, Math.min(400, window.innerWidth - e.clientX - 8)))
     }
     const onMouseUp = () => {
@@ -241,7 +248,12 @@ function App() {
   }, [])
 
   return (
-    <div ref={appRef} className="flex h-screen w-screen bg-[#ffffff] text-[#1a1a1a] p-2 gap-0">
+    <div ref={appRef} className="flex h-screen w-screen bg-[#ffffff] text-[#1a1a1a] p-2 gap-2">
+      {/* 最左侧：三界面切换（VSCode Activity Bar 风格） */}
+      <ActivityBar view={view} onChange={setView} onSettings={() => setShowSettings(true)} />
+      {view === 'tutorial' && <TutorialView />}
+      {view === 'resources' && <ResourceView projectId={currentProjectId} />}
+      {view === 'chat' && (<>
       {/* 左侧栏折叠后展开按钮 */}
       {sidebarCollapsed && (
         <button onClick={() => setSidebarCollapsed(false)}
@@ -275,6 +287,7 @@ function App() {
       {/* 中间 */}
       <CenterPanel
         messages={currentMessages} isLoading={isLoading} currentProject={currentProject}
+        dialogueId={currentDialogueId}
         onSendMessage={handleSendMessage}
         statsCollapsed={statsCollapsed} onToggleStats={() => setStatsCollapsed(!statsCollapsed)}
         showAgentFlow={flowVisible}
@@ -304,6 +317,7 @@ function App() {
         <button onClick={() => setRightCollapsed(false)}
           className="flex-shrink-0 w-5 h-full flex items-center justify-center hover:bg-[#ededed] rounded text-gray-400">◀</button>
       )}
+      </>)}
 
       {showDiagnosis && <DiagnosisModal onClose={() => setShowDiagnosis(false)} />}
       {showAgentSettings && <AgentSettingsModal agents={agents} onSave={handleSaveAgent} onClose={() => setShowAgentSettings(false)} />}
@@ -317,6 +331,7 @@ function App() {
           setWizard(null)
         }} />}
       {showApiKeyPrompt && <ApiKeyPrompt onClose={() => { setShowApiKeyPrompt(false); localStorage.setItem('coagent-apikey-skipped', '1') }} />}
+      {showIntro && <IntroPanel onClose={() => { setShowIntro(false); localStorage.setItem('coagent-intro-seen', '1') }} />}
     </div>
   )
 }

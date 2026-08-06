@@ -161,7 +161,7 @@ export function MemoryModal({ onClose }: Props) {
 
 // ==================== 项目配置窗口 ====================
 export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectId?: string }) {
-  const [tab, setTab] = useState<'knowledge' | 'memory'>('knowledge')
+  const [tab, setTab] = useState<'knowledge' | 'memory' | 'evaluate'>('knowledge')
   const [kbInput, setKbInput] = useState('')
   const [showGuide, setShowGuide] = useState(false)
   const [projectMemory, setProjectMemory] = useState('')

@@ -9,6 +9,7 @@ interface CenterPanelProps {
   messages: Message[]
   isLoading: boolean
   currentProject: Project | null
+  dialogueId?: string | null
   onSendMessage: (text: string, settings?: Record<string, any>) => void
   statsCollapsed: boolean
   onToggleStats: () => void
@@ -21,9 +22,30 @@ interface CenterPanelProps {
   projectInitialized?: boolean
 }
 
-export default function CenterPanel({ messages, isLoading, currentProject, onSendMessage, statsCollapsed, onToggleStats, showAgentFlow, flowAgents, flowActiveAgent, flowMindchain, onAgentSettings, onOpenGuide, projectInitialized }: CenterPanelProps) {
+export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, statsCollapsed, onToggleStats, showAgentFlow, flowAgents, flowActiveAgent, flowMindchain, onAgentSettings, onOpenGuide, projectInitialized }: CenterPanelProps) {
   const [input, setInput] = useState('')
   const [chatMode, setChatMode] = useState<'kb'|'free'>('kb')
+  // 上次会话保存的三条追问（进入对话时展示，抢占注意力）
+  const [followups, setFollowups] = useState<string[]>([])
+  const loadFollowups = () => {
+    if (!dialogueId) { setFollowups([]); return }
+    fetch('/api/dialogues/' + encodeURIComponent(dialogueId) + '/followups', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => setFollowups(Array.isArray(d.questions) ? d.questions.slice(0, 3) : []))
+      .catch(() => {})
+  }
+  useEffect(() => { loadFollowups() }, [dialogueId])
+  // 回答结束后台线程生成新追问，延迟拉取一次
+  const prevLoading = useRef(isLoading)
+  useEffect(() => {
+    if (prevLoading.current && !isLoading) {
+      const t1 = setTimeout(loadFollowups, 5000)
+      const t2 = setTimeout(loadFollowups, 12000)
+      prevLoading.current = isLoading
+      return () => { clearTimeout(t1); clearTimeout(t2) }
+    }
+    prevLoading.current = isLoading
+  }, [isLoading])
   const msgScrollRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const el = msgScrollRef.current
@@ -295,6 +317,21 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
                 ))}
               </div>
             )}
+          </div>
+        )}
+        {/* 上次会话保存的三条追问：抢占注意力，点击直接发送 */}
+        {followups.length > 0 && !isLoading && messages.length > 0 && (
+          <div className="self-stretch flex flex-col gap-2 mt-1">
+            <p className="text-[11px] text-gray-400 font-medium px-1">💡 继续追问：</p>
+            {followups.map((q, i) => (
+              <button
+                key={i}
+                onClick={() => onSendMessage(q)}
+                className="self-start text-left text-sm px-4 py-2.5 bg-white border border-[#d0d0d0] rounded-2xl rounded-bl-sm hover:border-[#1a1a1a] hover:shadow-sm transition-all text-gray-700 max-w-[80%]"
+              >
+                {q}
+              </button>
+            ))}
           </div>
         )}
       </div>
