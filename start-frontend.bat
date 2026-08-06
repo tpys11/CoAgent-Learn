@@ -1,18 +1,14 @@
 @echo off
-cd /d "D:\desktop\guashuai-project\frontend"
+cd /d "D:\desktop\coAgent-Learn\frontend"
 echo ========================================
 echo   CoAgent-Learn Frontend Server
 echo   http://localhost:5173
 echo ========================================
 echo.
-
-echo 启动前端服务...
-start "CoAgent-Learn Frontend" cmd /c "cd /d D:\desktop\guashuai-project\frontend && npm run dev"
-
-echo 等待服务就绪...
+echo Starting frontend service...
+start "CoAgent-Learn Frontend" cmd /c "cd /d D:\desktop\coAgent-Learn\frontend && npm run dev"
+echo Waiting for service ready...
 timeout /t 4 /nobreak >nul
-
-echo 打开浏览器...
+echo Opening browser...
 start http://localhost:5173
-
 pause

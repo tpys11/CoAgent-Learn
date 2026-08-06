@@ -451,16 +451,11 @@ async def delete_project(pid: str):
         pg_client.execute("DELETE FROM projects WHERE id=%s", (pid,))
     except Exception as e:
         return {"status": "error", "msg": str(e)}
-    # 删知识库（Chroma）
+    # 删知识库（SQLite 向量表）
     kb_deleted = 0
     try:
-        import chromadb
-        client = chromadb.HttpClient(host="guashuai-chroma", port=8000)
-        try:
-            client.delete_collection("kb_" + pid)
-            kb_deleted = 1
-        except Exception:
-            pass
+        from core.knowledge_service import delete_project_kb
+        kb_deleted = delete_project_kb(pid)
     except Exception:
         pass
     # 删图谱（Neo4j）
@@ -556,7 +551,12 @@ async def chat(req: ChatRequest):
             import queue, threading, asyncio
             token_queue = queue.Queue()
 
+            _seen_agents = set()
+
             def on_token(agent_name: str, chunk: str):
+                if agent_name not in _seen_agents:
+                    _seen_agents.add(agent_name)
+                    token_queue.put(("step", agent_name))
                 token_queue.put(("token", agent_name, chunk))
 
             def run_workflow():
@@ -606,12 +606,14 @@ async def chat(req: ChatRequest):
                 except queue.Empty:
                     await asyncio.sleep(0.05)
                     continue
-                if msg[0] == "token":
+                if msg[0] == "step":
+                    yield f"data: {json.dumps({'type': 'step', 'agent': msg[1]})}\n\n"
+                elif msg[0] == "token":
                     _, agent, chunk = msg
                     yield f"data: {json.dumps({'type': 'thought_token', 'agent': agent, 'chunk': chunk})}\n\n"
                 elif msg[0] == "done":
                     result = msg[1]
-                    yield f"data: {json.dumps({'type': 'done', 'reply': result.get('final_reply', '处理完成')})}\n\n"
+                    yield f"data: {json.dumps({'type': 'done', 'reply': result.get('final_reply', '处理完成'), 'steps': result.get('steps', []), 'mindchain': result.get('mindchain', [])})}\n\n"
                     break
                 elif msg[0] == "error":
                     yield f"data: {json.dumps({'type': 'error', 'message': msg[1]})}\n\n"

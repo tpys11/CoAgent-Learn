@@ -185,22 +185,18 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         if state.get("knowledge"): context += f"知识库: {json.dumps(state['knowledge'], ensure_ascii=False)}" + chr(10)
         # 读最近对话历史
         try:
-            import psycopg2
-            from core.config import config as _cfg
-            _conn=psycopg2.connect(host=_cfg.POSTGRES_HOST,port=_cfg.POSTGRES_PORT,dbname=_cfg.POSTGRES_DB,user=_cfg.POSTGRES_USER,password=_cfg.POSTGRES_PASSWORD)
-            _cur=_conn.cursor()
-            _cur.execute("SELECT role,content FROM messages WHERE dialogue_id=%s ORDER BY created_at DESC LIMIT 10",(state.get("dialogue_id","default"),))
-            _rows=_cur.fetchall()
+            from core.sqlite_client import get_db
+            _dbx = get_db()
+            _rows = _dbx.execute("SELECT role,content FROM messages WHERE dialogue_id=%s ORDER BY created_at DESC LIMIT 10", (state.get("dialogue_id","default"),))
             _rows.reverse()
             import sys as _s
             _s.stderr.write("[gen-hist] did="+str(state.get("dialogue_id"))[:15]+" rows="+str(len(_rows))+chr(10));_s.stderr.flush()
             if _rows:
                 context+=chr(10)+"【历史对话】"+chr(10)
                 for _r in _rows[:-1]:
-                    _c=str(_r[1]) if _r[1] else ""
+                    _c=str(_r.get("content")) if _r.get("content") else ""
                     if _c and _c!="（系统未生成内容）":
-                        context+=("user: " if _r[0]=="user" else "assistant: ")+_c[:150]+chr(10)
-            _cur.close();_conn.close()
+                        context+=("user: " if _r.get("role")=="user" else "assistant: ")+_c[:150]+chr(10)
         except Exception:
             pass
         try:

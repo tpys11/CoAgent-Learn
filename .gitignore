@@ -34,3 +34,8 @@ docs/
 # Docker
 docker-compose.override.yml
 deploy/data/
+
+# SQLite 数据库
+*.db
+*.db-shm
+*.db-wal

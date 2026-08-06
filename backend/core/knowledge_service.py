@@ -1,30 +1,48 @@
 # -*- coding: utf-8 -*-
-"""知识库服务：文本切块 → 向量化 → Chroma 存储/检索（按项目隔离）"""
+"""知识库服务：文本切块 → 向量化 → SQLite(sqlite-vec) 存储/检索（按项目隔离）
+替换原 Chroma 实现；embedding 用 bge-small-zh-v1.5（中文，512维）。
+"""
 import hashlib
 import re
-import chromadb
 
+from core.sqlite_client import get_db
 
-_client = chromadb.HttpClient(host="guashuai-chroma", port=8000)
+_db = get_db()
 
 # BM25 缓存：project_id -> (ids, tokenized_docs, bm25)
 _bm25_cache = {}
 
-# P3 重排序模型（懒加载，进程内只加载一次）
-_reranker = None
+# embedding 模型（懒加载）
+_embedder = None
 
 
-def _get_reranker():
-    global _reranker
-    if _reranker is None:
+def _get_embedder():
+    """加载中文 embedding 模型（bge-small-zh-v1.5，512 维）"""
+    global _embedder
+    if _embedder is None:
         try:
             import os
             os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
-            from sentence_transformers import CrossEncoder
-            _reranker = CrossEncoder("BAAI/bge-reranker-base", max_length=512)
+            from sentence_transformers import SentenceTransformer
+            _embedder = SentenceTransformer("BAAI/bge-small-zh-v1.5")
         except Exception:
-            _reranker = False
-    return _reranker or None
+            _embedder = False
+    return _embedder or None
+
+
+def _embed(texts: list[str]) -> list[list[float]]:
+    """批量向量化；模型不可用时降级为哈希伪向量（仍可检索但效果差）"""
+    emb = _get_embedder()
+    if emb:
+        return emb.encode(texts, normalize_embeddings=True).tolist()
+    # 降级：确定性伪向量（相同文本得到相同向量）
+    vecs = []
+    for t in texts:
+        v = [0.0] * 512
+        for i, ch in enumerate((t or "")[:512]):
+            v[i] = (ord(ch) % 100) / 100.0
+        vecs.append(v)
+    return vecs
 
 
 def _tokenize(text: str) -> list:
@@ -42,14 +60,13 @@ def _get_bm25(project_id: str):
     if cache is not None:
         return cache
     try:
-        col = _client.get_collection(_col_name(project_id))
+        rows = _db.get_kb_docs(project_id)
     except Exception:
         return None
-    r = col.get(include=["documents"])
-    if not r or not r.get("ids"):
+    if not rows:
         return None
-    ids = r["ids"]
-    tokenized = [_tokenize(d) for d in (r.get("documents") or [])]
+    ids = [r["doc_id"] for r in rows]
+    tokenized = [_tokenize(r["content"]) for r in rows]
     from rank_bm25 import BM25Okapi
     bm25 = BM25Okapi(tokenized)
     _bm25_cache[project_id] = (ids, tokenized, bm25)
@@ -58,12 +75,6 @@ def _get_bm25(project_id: str):
 
 def _invalidate_bm25(project_id: str):
     _bm25_cache.pop(project_id, None)
-
-
-def _col_name(project_id: str) -> str:
-    """Chroma collection 名需合法，用 project_id 生成唯一名"""
-    safe = re.sub(r"[^a-zA-Z0-9_-]", "", str(project_id)) or "default"
-    return "kb_" + safe[:60]
 
 
 def _chunk_text(text: str, size: int = 400) -> list:
@@ -121,36 +132,38 @@ def add_document(project_id: str, text: str, source: str = "", session_id: str =
             prefixes = list(ex.map(lambda ck: _gen_context(ck, text, api_key), chunks))
     except Exception:
         prefixes = [""] * len(chunks)
-    col = _client.get_or_create_collection(_col_name(project_id))
-    ids, docs, metas = [], [], []
+    # 组装文档文本
+    docs = []
     for i, c in enumerate(chunks):
-        uid = hashlib.md5((source + str(i) + c[:80]).encode("utf-8")).hexdigest()[:24]
-        ids.append(uid)
         pfx = prefixes[i] if i < len(prefixes) else ""
         docs.append((pfx + chr(10) + chr(10) + c).strip() if pfx else c)
-        metas.append({"source": source, "project_id": project_id, "chunk": i, "session_id": session_id, "has_context": bool(pfx)})
-    col.upsert(ids=ids, documents=docs, metadatas=metas)
+    # 向量化（分批，模型一次 32 条）
+    embeddings = []
+    batch = 32
+    for i in range(0, len(docs), batch):
+        embeddings.extend(_embed(docs[i:i + batch]))
+    # 入库
+    for i, c in enumerate(chunks):
+        uid = hashlib.md5((source + str(i) + c[:80]).encode("utf-8")).hexdigest()[:24]
+        pfx = prefixes[i] if i < len(prefixes) else ""
+        _db.upsert_kb_vector(
+            doc_id=uid, project_id=project_id, source=source, chunk=i,
+            session_id=session_id, has_context=bool(pfx),
+            content=docs[i], embedding=embeddings[i],
+        )
     _invalidate_bm25(project_id)
     return len(chunks)
 
 
 def search(project_id: str, query: str, top_k: int = 3) -> list:
-    """混合检索：向量语义检索 + BM25 关键词检索 → RRF 融合"""
-    try:
-        col = _client.get_collection(_col_name(project_id))
-    except Exception:
+    """混合检索：向量语义检索 + BM25 关键词检索 → RRF 融合 → P3 重排"""
+    docs = _db.get_kb_docs(project_id)
+    if not docs:
         return []
-    if col.count() == 0:
-        return []
-    # 1. 向量检索（取 3 倍候选），key 用 chroma uid
-    r = col.query(query_texts=[query], n_results=top_k * 3)
-    vec = {}
-    qids = (r.get("ids") or [[]])[0]
-    docs = r.get("documents") or [[]]
-    metas = r.get("metadatas") or [[]]
-    dists = r.get("distances") or [[]]
-    for i in range(len(docs[0])):
-        vec[qids[i]] = docs[0][i]
+    # 1. 向量检索（取 3 倍候选）
+    qvec = _embed([query])[0]
+    vec_rows = _db.search_kb_vectors(project_id, qvec, k=top_k * 3)
+    vec = {r["doc_id"]: r for r in vec_rows}
     # 2. BM25 检索
     bm = _get_bm25(project_id)
     bm_hits = {}
@@ -169,21 +182,28 @@ def search(project_id: str, query: str, top_k: int = 3) -> list:
         sorted_bm = sorted(bm_hits.keys(), key=lambda k: bm_hits[k])
         for i, k in enumerate(sorted_bm[: top_k * 3]):
             rrf[k] = rrf.get(k, 0) + 1.0 / (60 + i)
-    # 4. 合并：向量结果 + BM25 独有命中（从 chroma 取回原文）
+    # 4. 合并：向量结果 + BM25 独有命中
     all_hits = {}
-    for i in range(len(docs[0])):
-        h = qids[i]
-        all_hits[h] = {"content": docs[0][i], "metadata": metas[0][i] if metas and metas[0] else {}, "distance": dists[0][i] if dists and dists[0] else None}
+    for h, r in vec.items():
+        all_hits[h] = {
+            "content": r["content"],
+            "metadata": {"source": r["source"], "project_id": project_id, "chunk": r["chunk"],
+                         "session_id": r["session_id"], "has_context": bool(r["has_context"])},
+            "distance": r["distance"],
+        }
     if bm:
         bm_only = [k for k in bm_hits.keys() if k not in all_hits]
         if bm_only:
-            try:
-                got = col.get(ids=bm_only, include=["documents", "metadatas"])
-                for i in range(len(got.get("ids") or [])):
-                    h = got["ids"][i]
-                    all_hits[h] = {"content": got["documents"][i], "metadata": got["metadatas"][i] if got.get("metadatas") else {}, "distance": None}
-            except Exception:
-                pass
+            doc_map = {d["doc_id"]: d for d in docs}
+            for k in bm_only:
+                d = doc_map.get(k)
+                if d:
+                    all_hits[k] = {
+                        "content": d["content"],
+                        "metadata": {"source": d["source"], "project_id": project_id, "chunk": d["chunk"],
+                                     "session_id": d["session_id"], "has_context": bool(d["has_context"])},
+                        "distance": None,
+                    }
     # 5. 按 RRF 分数取候选（多取一些供 P3 精排）
     candidate_n = max(top_k * 6, 12)
     ranked = sorted(rrf.keys(), key=lambda k: -rrf[k])[:candidate_n]
@@ -208,40 +228,49 @@ def search(project_id: str, query: str, top_k: int = 3) -> list:
     return cands[:top_k]
 
 
+# P3 重排序模型（懒加载，进程内只加载一次）
+_reranker = None
+
+
+def _get_reranker():
+    global _reranker
+    if _reranker is None:
+        try:
+            import os
+            os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+            from sentence_transformers import CrossEncoder
+            _reranker = CrossEncoder("BAAI/bge-reranker-base", max_length=512)
+        except Exception:
+            _reranker = False
+    return _reranker or None
+
+
 def list_docs(project_id: str) -> list:
     """列出项目知识库的文档（按 source 聚合）"""
-    try:
-        col = _client.get_collection(_col_name(project_id))
-    except Exception:
-        return []
-    r = col.get(include=["metadatas", "documents"])
-    if not r or not r.get("ids"):
+    rows = _db.get_kb_docs(project_id)
+    if not rows:
         return []
     grouped = {}
-    for i in range(len(r["ids"])):
-        m = r["metadatas"][i] if r.get("metadatas") else {}
-        src = m.get("source", "") or "未命名"
+    for r in rows:
+        src = r["source"] or "未命名"
         g = grouped.setdefault(src, {"source": src, "chunks": 0, "preview": "", "blocks": []})
         g["chunks"] += 1
-        if r.get("documents"):
-            content = r["documents"][i]
-            if not g["preview"]:
-                g["preview"] = content[:60]
-            g["blocks"].append({"chunk": m.get("chunk", 0), "content": content})
+        content = r["content"] or ""
+        if not g["preview"]:
+            g["preview"] = content[:60]
+        g["blocks"].append({"chunk": r["chunk"], "content": content})
     return list(grouped.values())
 
 
 def delete_doc(project_id: str, source: str) -> int:
     """删除某个来源的全部块，返回删除块数"""
-    try:
-        col = _client.get_collection(_col_name(project_id))
-    except Exception:
-        return 0
-    r = col.get(include=["metadatas"])
-    if not r or not r.get("ids"):
-        return 0
-    to_del = [r["ids"][i] for i in range(len(r["ids"])) if (r["metadatas"][i] or {}).get("source") == source]
-    if to_del:
-        col.delete(ids=to_del)
+    n = _db.delete_kb_by_source(project_id, source)
     _invalidate_bm25(project_id)
-    return len(to_del)
+    return n
+
+
+def delete_project_kb(project_id: str) -> int:
+    """删除项目全部知识库（级联删除时调用）"""
+    n = _db.delete_kb_project(project_id)
+    _invalidate_bm25(project_id)
+    return n
