@@ -13,7 +13,7 @@
 
 **一句话流程**：输入问题 → 信息输入处理 → 调度 Agent 决定调用哪些子 Agent → 信息整理与生成 → 三个审核 Agent 交叉验证 + 仲裁 → 输出。
 
-**项目定位**：前端由 React 搭建，后端由 FastAPI + LangGraph 驱动多智能体工作流，数据库使用 PostgreSQL(pgvector) + Neo4j + Chroma + Redis。
+**项目定位**：前端由 React 搭建，后端由 FastAPI + LangGraph 驱动多智能体工作流，数据库使用 SQLite(sqlite-vec) + Neo4j（三服务轻量架构）。
 
 ---
 
@@ -27,13 +27,13 @@
 | 后端 | FastAPI + uvicorn | REST API + SSE 流式 |
 | 智能体编排 | LangGraph (StateGraph) | 9 节点有向图工作流 |
 | LLM | DeepSeek (langchain-deepseek / OpenAI 兼容) | chat + streaming |
-| 文本数据库 | PostgreSQL + pgvector | 对话/项目/画像/统计持久化 |
-| 向量库 | Chroma (远程容器) | 知识库切片向量存储 |
-| 图数据库 | Neo4j | 实体关系知识图谱 |
-| 缓存 | Redis | 已配置未使用（占位） |
+| 文本数据库 | SQLite (sqlite-vec) | 业务表+向量表统一单文件 app.db |
+| 向量库 | sqlite-vec (SQLite内嵌) | 知识库/记忆向量存储，bge-small-zh 中文embedding |
+| 向量检索 | 混合检索(向量+BM25+RRF+bge重排) | P1上下文前缀+P3精排 |
+| 向量检索 | 混合检索(向量+BM25+RRF+bge重排) | P1上下文前缀+P3精排 |
 | 技能框架 | 自研 Skill 注册中心（MCP 前身思想） | 功能模块插件化 |
 
-> 💡 架构演进方向（已分析，待决策）：PostgreSQL→SQLite(+sqlite-vec)、删 Redis、Chroma 可并入 SQLite——从 6 容器降到 3 容器。
+> ✅ 2026-08-06 已实施：PostgreSQL+Redis+Chroma → SQLite(sqlite-vec) 单文件，6 容器精简为 3 服务（frontend/backend/neo4j）。
 
 ---
 
@@ -234,11 +234,9 @@ docker compose up -d --build
 | 服务 | 端口 | 说明 |
 |------|------|------|
 | frontend | 5173 | Vite dev，挂载 src 热更新 |
-| backend | 8000 | uvicorn，挂载 backend/agents/skills/data/chroma_db |
-| redis | 6379 | 占位未用 |
-| chroma | 8001 | 向量库 |
-| postgres | 5432 | pgvector，coagent/coagent/coagent123 |
+| backend | 8000 | uvicorn，挂载 backend/agents/skills/data |
 | neo4j | 7474/7687 | neo4j/neo4j123 |
+（PostgreSQL/Redis/Chroma 已移除：业务+向量统一 SQLite app.db）
 
 ### 本地直跑
 ```bash
