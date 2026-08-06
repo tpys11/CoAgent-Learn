@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Send, Bot, Brain, Settings, Lightbulb, BookOpen, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Globe, Cpu, SlidersHorizontal, Check, AlertTriangle, Search, FileText } from 'lucide-react'
+import { Send, Bot, Brain, Settings, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Globe, Cpu, SlidersHorizontal, Check, AlertTriangle, Search, FileText } from 'lucide-react'
 import type { Message, Project } from '../types'
 import { MemoryModal } from './InfoModals'
 import AgentFlow from './AgentFlow'
@@ -234,9 +234,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
           </button>
           <button onClick={() => setShowMemory(true)} className="text-[11px] px-2 py-1 rounded-lg row-hover transition-colors flex items-center gap-1" title="记忆系统">
             <Brain size={12} /> 记忆
-          </button>
-          <button onClick={() => onOpenGuide?.()} className="text-[11px] px-2 py-1 rounded-lg row-hover transition-colors flex items-center gap-1" title="使用指南">
-            <BookOpen size={12} /> 指南
           </button>
           <button onClick={onToggleStats} className="w-6 h-6 flex items-center justify-center rounded-lg row-hover text-[10px]" title="收起">▲</button>
         </div>

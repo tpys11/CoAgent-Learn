@@ -1,11 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import {
   Plus, Folder, Trash2, MessageSquare,
   Archive, ChevronDown, ChevronRight, Edit3, Settings, MoreHorizontal,
 } from 'lucide-react'
 import type { Project, Dialogue } from '../types'
-
-interface Resource { id: string; name: string }
 
 interface SidebarProps {
   projects: Project[]
@@ -42,28 +40,8 @@ export default function Sidebar({
 
   const [confirmMsg, setConfirmMsg] = useState("")
   const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null)
-  const [resources, setResources] = useState<Resource[]>([])
-  const [expandedResources, setExpandedResources] = useState(true)
-  const [showSaveResource, setShowSaveResource] = useState(false)
-  const [resName, setResName] = useState('')
-  const [resContent, setResContent] = useState('')
 
-  // 加载资源
-  useEffect(() => {
-    if (!currentProjectId) return
-    fetch('/api/resources?project_id=' + encodeURIComponent(currentProjectId), { cache: 'no-store' })
-      .then(r => r.json())
-      .then(d => setResources(d.resources || []))
-      .catch(() => {})
-  }, [currentProjectId])
 
-  const saveResource = () => {
-    if (!resName.trim() || !currentProjectId) return
-    fetch('/api/resources', { method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ name: resName.trim(), content: resContent, project_id: currentProjectId }) })
-      .then(() => { setShowSaveResource(false); setResName(''); setResContent('')
-        fetch('/api/resources?project_id=' + encodeURIComponent(currentProjectId)).then(r => r.json()).then(d => setResources(d.resources || [])) })
-  }
 
   const toggleExpand = (id: string) => {
     const next = new Set(expandedProjects)
@@ -212,48 +190,12 @@ export default function Sidebar({
         })}
       </div>
 
-      {/* 资源列表 */}
-      <div className="flex-shrink-0 px-2 pb-2">
-        <div className="flex items-center gap-1 px-2.5 py-1.5 cursor-pointer rounded-xl row-hover" onClick={() => setExpandedResources(!expandedResources)}>
-          <span className="flex-shrink-0 text-dim">{expandedResources ? <ChevronDown size={12} /> : <ChevronRight size={12} />}</span>
-          <span className="text-[11px] font-semibold text-dim uppercase tracking-widest flex-1">资源</span>
-        </div>
-        {expandedResources && (
-          <div className="ml-2 flex flex-col gap-0.5">
-            {resources.map(r => (
-              <div key={r.id}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 cursor-pointer text-xs row-hover rounded-xl text-dim">
-                <span className="truncate">{r.name}</span>
-              </div>
-            ))}
-            <button onClick={() => setShowSaveResource(true)} className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-dim hover:text-[#1a1a1a] rounded-xl row-hover">
-              <Plus size={11} /> 保存资料
-            </button>
-          </div>
-        )}
-      </div>
-
       {/* 底部设置 */}
       <div className="px-3 py-2 flex justify-end flex-shrink-0">
         <button onClick={onSettings} className="w-8 h-8 flex items-center justify-center rounded-xl icon-btn" title="设置">
           <Settings size={15} />
         </button>
       </div>
-
-      {/* 保存资料弹窗 */}
-      {showSaveResource && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60]" onMouseDown={e => { if (e.target === e.currentTarget) setShowSaveResource(false) }}>
-          <div className="card-lift w-80 p-5" onMouseDown={e => e.stopPropagation()}>
-            <h3 className="font-display text-lg mb-3">保存资料</h3>
-            <input value={resName} onChange={e => setResName(e.target.value)} placeholder="资料名称" className="w-full px-3 py-2 input-surface rounded-xl text-sm mb-2 outline-none" />
-            <textarea value={resContent} onChange={e => setResContent(e.target.value)} placeholder="粘贴资料内容" rows={5} className="w-full px-3 py-2 input-surface rounded-xl text-sm outline-none resize-none mb-3" />
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setShowSaveResource(false)} className="text-xs px-4 py-2 text-dim rounded-full row-hover">取消</button>
-              <button onClick={saveResource} className="text-xs px-4 py-2 btn-primary font-semibold">保存</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* 确认弹窗 */}
       {confirmMsg && (
