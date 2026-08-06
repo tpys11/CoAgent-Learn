@@ -8,6 +8,9 @@ services:
       - "5173:5173"
     volumes:
       - ../frontend/src:/app/src
+      - ../frontend/tailwind.config.js:/app/tailwind.config.js
+      - ../frontend/postcss.config.js:/app/postcss.config.js
+      - ../frontend/index.html:/app/index.html
     depends_on:
       - backend
     networks:
