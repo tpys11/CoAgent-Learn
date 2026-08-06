@@ -39,3 +39,10 @@ deploy/data/
 *.db
 *.db-shm
 *.db-wal
+
+# 备份与缓存
+*.bak
+*.bak2
+*.bak3
+.workbuddy/
+*.tsbuildinfo
