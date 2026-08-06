@@ -1,11 +1,10 @@
-import { MessageSquare, GraduationCap, Library, Settings } from 'lucide-react'
+import { MessageSquare, GraduationCap, Library } from 'lucide-react'
 
 export type ViewKey = 'chat' | 'tutorial' | 'resources'
 
 interface Props {
   view: ViewKey
   onChange: (v: ViewKey) => void
-  onSettings: () => void
 }
 
 const ITEMS: Array<{ key: ViewKey; icon: any; label: string }> = [
@@ -15,7 +14,7 @@ const ITEMS: Array<{ key: ViewKey; icon: any; label: string }> = [
 ]
 
 /** 最左侧细轨（无边框，融入底色）：切换三个主界面 */
-export default function ActivityBar({ view, onChange, onSettings }: Props) {
+export default function ActivityBar({ view, onChange }: Props) {
   return (
     <nav className="w-[52px] h-full flex-shrink-0 flex flex-col items-center py-3">
       {ITEMS.map(({ key, icon: Icon, label }) => {
@@ -34,13 +33,6 @@ export default function ActivityBar({ view, onChange, onSettings }: Props) {
         )
       })}
       <div className="flex-1" />
-      <button
-        onClick={onSettings}
-        title="设置"
-        className="w-10 h-10 flex items-center justify-center rounded-2xl icon-btn transition-all"
-      >
-        <Settings size={20} strokeWidth={1.6} />
-      </button>
     </nav>
   )
 }
