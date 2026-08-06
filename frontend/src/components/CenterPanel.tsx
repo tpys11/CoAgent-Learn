@@ -530,13 +530,8 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
           ) : (
             <>
           <div className="w-full max-w-xl flex flex-col gap-2"
-            onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={handleDropFile}
-            style={{ outline: dragOver ? '2px dashed #1a1a1a' : 'none', borderRadius: 12 }}>
-            {dragOver && (
-              <div className="text-[11px] text-center text-[#1a1a1a] bg-[#f0f0f0]/60 py-2 rounded-lg mb-1">📥 松开鼠标上传文件（支持图片/文本/PDF/Word/PPT）</div>
-            )}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={handleDropFile}>
             {attachments.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {attachments.map(a => (
@@ -558,6 +553,8 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
             </button>
             <textarea
               value={input}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={handleDropFile}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }

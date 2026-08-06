@@ -188,10 +188,14 @@ function App() {
     setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'user', content: text }] }))
     setIsLoading(true)
     setFlowVisible(true); setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = []
+    // 超时保护：120s 无响应自动中止，避免一直转圈
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 120000)
     try {
       const res = await fetch('/api/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text.trim(), session_id: sessionId.current, dialogue_id: currentDialogueId, project_id: currentProjectId, api_key: localStorage.getItem('coagent-apikey') || undefined, settings: settings || {}, mode: (settings && settings.chatMode) || 'kb', image: (settings && settings.image) || undefined }),
+        signal: ctrl.signal,
       })
       const reader = res.body!.getReader(); const decoder = new TextDecoder()
       let finalReply = ''; const steps: any[] = []
@@ -234,7 +238,7 @@ function App() {
       }catch(_ex){}
     } catch {
       setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'assistant', content: '抱歉，请求失败。' }] }))
-    } finally { setIsLoading(false) }
+    } finally { clearTimeout(timer); setIsLoading(false) }
   }, [currentDialogueId])
   const handleSaveAgent = useCallback((updated: AgentConfig) => {
     setAgents(prev => prev.map(a => a.id === updated.id ? updated : a))

@@ -27,7 +27,7 @@ def describe_image(image_data: str, prompt: str = "请描述这张图片的内�
                 {"type": "text", "text": prompt},
                 {"type": "image_url", "image_url": {"url": url}}
             ]}]},
-            headers={"Authorization": "Bearer " + key}, timeout=60)
+            headers={"Authorization": "Bearer " + key}, timeout=30)
         d = resp.json()
         if "choices" in d:
             return d["choices"][0]["message"]["content"] or ""
