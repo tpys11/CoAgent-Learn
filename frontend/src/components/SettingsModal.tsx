@@ -58,23 +58,22 @@ export default function SettingsModal({ onClose }: Props) {
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">页面主题</label>
             <div className="flex gap-2">
               {[
-                { value: 'light', icon: Sun, swatch: 'bg-white border border-gray-300', ring: 'ring-gray-300' },
-                { value: 'dark', icon: Moon, swatch: 'bg-gray-900 border border-gray-700', ring: 'ring-gray-700' },
-                { value: 'warm', icon: LampDesk, swatch: 'bg-[#fdf6e9] border border-amber-200', ring: 'ring-amber-300' },
-                { value: 'system', icon: Monitor, swatch: 'bg-gradient-to-r from-white to-gray-900 border border-gray-300', ring: 'ring-gray-400' },
-              ].map(({ value, icon: Icon, swatch, ring }) => (
+                { value: 'light', icon: Sun, swatch: 'bg-white border border-gray-300', iconColor: 'text-gray-700' },
+                { value: 'dark', icon: Moon, swatch: 'bg-gray-900 border border-gray-700', iconColor: 'text-gray-200' },
+                { value: 'warm', icon: LampDesk, swatch: 'bg-[#fdf3e3] border border-amber-200', iconColor: 'text-amber-700' },
+                { value: 'system', icon: Monitor, swatch: 'bg-gradient-to-r from-white via-gray-400 to-gray-900 border border-gray-300', iconColor: 'text-gray-700' },
+              ].map(({ value, icon: Icon, swatch, iconColor }) => (
                 <button
                   key={value}
                   onClick={() => setTheme(value as ThemePref)}
                   title={value}
-                  className={`flex-1 flex flex-col items-center gap-1.5 py-2.5 rounded-lg transition-colors ${
+                  className={`flex-1 flex items-center justify-center aspect-[4/3] rounded-xl transition-all ${swatch} ${
                     theme === value
-                      ? 'bg-[#f0f0f0] ring-1 ring-[#1a1a1a]/40'
-                      : 'bg-gray-50 border border-gray-200 hover:bg-gray-100'
+                      ? 'ring-2 ring-[#1a1a1a]/50 shadow-sm'
+                      : 'hover:brightness-95'
                   }`}
                 >
-                  <span className={`w-9 h-6 rounded-md ${swatch} ${theme === value ? ring : ''}`} />
-                  <Icon size={15} className="text-gray-500" />
+                  <Icon size={18} strokeWidth={theme === value ? 2.2 : 1.8} className={iconColor} />
                 </button>
               ))}
             </div>
