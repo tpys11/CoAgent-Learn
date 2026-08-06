@@ -263,7 +263,7 @@ function App() {
       {/* 最左侧细轨：三界面切换 */}
       <ActivityBar view={view} onChange={setView} onMemory={() => setShowMemory(true)} onKnowledge={() => handleProjectKB(currentProjectId || 'default')} onAgentSettings={() => setShowAgentSettings(true)} />
       {sidebarCollapsed && (
-        <button onClick={() => setSidebarCollapsed(false)} className="flex-shrink-0 w-6 h-full flex items-center justify-center text-dim hover:text-[#1a1a1a] hover:bg-[#f0f0f0] transition-colors" title="展开侧栏">
+        <button onClick={() => setSidebarCollapsed(false)} className="flex-shrink-0 w-7 h-7 mt-3 ml-1.5 flex items-center justify-center rounded-lg icon-btn" title="展开侧栏">
           <PanelLeftOpen size={15} />
         </button>
       )}
@@ -308,7 +308,7 @@ function App() {
       />
       {/* 右侧栏 */}
       {rightCollapsed && (
-        <button onClick={() => setRightCollapsed(false)} className="flex-shrink-0 w-6 h-full flex items-center justify-center text-dim hover:text-[#1a1a1a] hover:bg-[#f0f0f0] transition-colors" title="展开侧栏">
+        <button onClick={() => setRightCollapsed(false)} className="flex-shrink-0 w-7 h-7 mt-3 mr-1.5 flex items-center justify-center rounded-lg icon-btn" title="展开侧栏">
           <PanelRightOpen size={15} />
         </button>
       )}
