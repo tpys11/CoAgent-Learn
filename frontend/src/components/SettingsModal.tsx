@@ -9,7 +9,6 @@ interface Props {
 export default function SettingsModal({ onClose }: Props) {
   const [fontSize, setFontSize] = useState(() => parseInt(localStorage.getItem('coagent-fontSize') || '15'))
   const [theme, setTheme] = useState<ThemePref>(() => getThemePref())
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('coagent-apikey') || '')
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
@@ -21,11 +20,6 @@ export default function SettingsModal({ onClose }: Props) {
     setThemePref(theme)
   }, [theme])
 
-  const handleApiKeySave = () => {
-    localStorage.setItem('coagent-apikey', apiKey)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
-  }
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
@@ -79,30 +73,6 @@ export default function SettingsModal({ onClose }: Props) {
             </div>
           </div>
 
-          {/* API Key */}
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1.5 mb-2">
-              <Key size={14} /> API Key
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                onMouseDown={(e) => e.stopPropagation()}
-                placeholder="输入 DEEPSEEK_API_KEY"
-                className="flex-1 px-3 py-2 border border-[#c4beb6] rounded-lg text-sm outline-none focus:border-[#1a1a1a] bg-[#faf8f5]"
-              />
-              <button
-                onClick={handleApiKeySave}
-                className="px-4 py-2 bg-[#1a1a1a] text-white text-sm font-semibold rounded-lg hover:bg-[#333333]"
-              >
-                保存
-              </button>
-              {saved && <span className="text-xs text-green-600 font-medium ml-2">✓ 已保存</span>}
-            </div>
-            <p className="text-[10px] text-gray-400 mt-1.5">API Key 仅保存在浏览器本地，不会上传到服务器。</p>
-          </div>
         </div>
       </div>
     </div>

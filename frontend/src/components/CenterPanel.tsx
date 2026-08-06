@@ -109,6 +109,9 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   const [depth, setDepth] = useState(1)
   const [thinkingCollapsed, setThinkingCollapsed] = useState(true)
   const [showSearch, setShowSearch] = useState(false)
+  const [showModelModal, setShowModelModal] = useState(false)
+  const [modelApiKey, setModelApiKey] = useState(() => localStorage.getItem('coagent-apikey') || '')
+  const [modelName, setModelName] = useState('deepseek-chat')
   const searchRef = useRef<HTMLDivElement>(null)
   const [showInputOpt, setShowInputOpt] = useState(false)
   const inputOptRef = useRef<HTMLDivElement>(null)
@@ -528,8 +531,9 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
               <span className="w-px h-4 bg-[#e5e5e5] mx-1" />
               <span className="flex-1" />
               <button
+                onClick={() => setShowModelModal(true)}
                 className="h-9 px-3 rounded-xl input-surface text-[11px] flex items-center gap-1.5 hover:opacity-90 transition-colors"
-                title="选择模型（暂未开放）">
+                title="模型设置">
                 <Cpu size={14} /> 模型
               </button>
               <button
@@ -547,6 +551,42 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
         </div>
       </div>
 
+      {/* 模型设置弹窗 */}
+      {showModelModal && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50"
+          onMouseDown={(e) => { if (e.target === e.currentTarget) setShowModelModal(false) }}>
+          <div className="card-lift w-80 p-5" onMouseDown={(e) => e.stopPropagation()}>
+            <h3 className="font-display text-lg mb-4">模型设置</h3>
+            <label className="text-xs font-semibold text-dim uppercase tracking-wider mb-1.5 block">选择模型</label>
+            <div className="flex gap-2 mb-4">
+              {['deepseek-chat', 'deepseek-reasoner'].map(m => (
+                <button key={m}
+                  onClick={() => setModelName(m)}
+                  className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-medium ${modelName === m ? 'btn-primary' : 'row-hover'}`}>
+                  {m}
+                </button>
+              ))}
+            </div>
+            <label className="text-xs font-semibold text-dim uppercase tracking-wider mb-1.5 block">API Key</label>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                value={modelApiKey}
+                onChange={(e) => setModelApiKey(e.target.value)}
+                onMouseDown={(e) => e.stopPropagation()}
+                placeholder="输入 DEEPSEEK_API_KEY"
+                className="flex-1 px-3 py-2 input-surface rounded-lg text-sm outline-none"
+              />
+              <button
+                onClick={() => { localStorage.setItem('coagent-apikey', modelApiKey.trim()); setShowModelModal(false) }}
+                className="px-4 py-2 btn-primary text-sm font-semibold rounded-lg">
+                保存
+              </button>
+            </div>
+            <p className="text-[10px] text-dim mt-3">模型与 API Key 保存在浏览器本地，仅用于调用 DeepSeek 接口。</p>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
