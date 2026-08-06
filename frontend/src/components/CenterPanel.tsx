@@ -191,21 +191,14 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
     const NL = String.fromCharCode(10)
     const imgAtts = attachments.filter(a => a.isImage)
     const txtAtts = attachments.filter(a => !a.isImage)
-    // 图片附件先识图
-    let imgDesc = ''
-    if (imgAtts.length > 0) {
-      try {
-        const r = await fetch('/api/vision', { method: 'POST', headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({ image: imgAtts[0].content, prompt: '请描述这张图片的内容' }) })
-        const d = await r.json()
-        imgDesc = d.description || ''
-      } catch (e) { imgDesc = '(图片识别失败)' }
-    }
     const parts: string[] = []
     txtAtts.forEach(a => parts.push('【用户上传文件: ' + a.name + '】' + NL + a.content))
-    if (imgAtts.length > 0) parts.push('【用户上传图片: ' + imgAtts[0].name + '】' + NL + '图片内容描述：' + imgDesc)
+    if (imgAtts.length > 0) parts.push('【用户上传图片: ' + imgAtts[0].name + '】')
     if (parts.length > 0) full = text ? text + NL + NL + parts.join(NL + NL) : parts.join(NL + NL)
-    onSendMessage(full, {
+    // 图片 base64 单独传给后端（AI 回答时调用视觉分析）
+    const imgB64 = imgAtts.length > 0 ? imgAtts[0].content : ''
+    if (imgB64) onSendMessage(full, { chatMode: chatMode, image: imgB64, searchMode: searchLabels[searchMode], outputFormat: outputFormat === 0 ? '低结构化' : '高结构化', outputStyle: outputStyle === 0 ? 'MD文档' : '对话形式', thinking: thinking ? '开' : '关', outputVolume: ['精简', '适中', '拓展'][outputVolume], depth: ['浅', '中', '深'][depth], inputOptMode: inputOptLabels[inputOptMode], webSearchMode: webSearchMode === 0 ? '默认' : '增强' })
+    else onSendMessage(full, {
       chatMode: chatMode,
       searchMode: searchLabels[searchMode],
       outputFormat: outputFormat === 0 ? '低结构化' : '高结构化',

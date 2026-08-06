@@ -14,6 +14,7 @@ from skills.registry import registry
 class AgentState(TypedDict):
     user_input: str
     mode: str
+    image: str
     project_id: str
     dialogue_id: str
     session_id: str
@@ -176,6 +177,15 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
     def generate_node(state: AgentState) -> AgentState:
         state.setdefault("steps", []).append({"agent": "信息整理与生成", "status": "running"})
         context = f"用户问题: {state['user_input']}" + chr(10)
+        # AI 回答时调用视觉分析（用户上传了图片）
+        if state.get("image"):
+            try:
+                from core.vision_service import describe_image
+                img_desc = describe_image(state["image"], "请详细描述这张图片的内容，包括其中的文字、物体、图表等")
+                context += "【用户上传的图片内容（已调用视觉分析）】" + chr(10) + img_desc + chr(10)
+                state["mindchain"].append({"agent": "视觉分析", "content": "已调用 glm-4v-flash 分析用户图片：" + img_desc[:150]})
+            except Exception as e:
+                context += "【用户上传了图片，但视觉分析失败：%s】" + chr(10) % str(e)[:100]
         mode = state.get("mode", "kb")
         if mode == "kb":
             context += "【输出模式】知识库模式：请优先基于知识库内容回答；若知识库没有相关内容，回答第一句必须明确告知：⚠️ 未在知识库中检索到相关内容，以下为模型通识回答。" + chr(10)

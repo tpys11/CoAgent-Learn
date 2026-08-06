@@ -535,6 +535,7 @@ class ChatRequest(BaseModel):
     api_key: str | None = None
     settings: dict | None = None
     mode: str | None = None
+    image: str | None = None
 
 class ChatStep(BaseModel):
     agent: str
@@ -573,7 +574,7 @@ async def chat(req: ChatRequest):
                         _pg.execute("INSERT INTO messages(dialogue_id,role,content) VALUES(%s,%s,%s)",(_did,"user",req.message))
                     except Exception as _e:
                         print("[存储]",_e)
-                    result = wf.invoke({"user_input": req.message, "project_id": pid, "dialogue_id": _did, "session_id": req.session_id or "default", "mode": req.mode or "kb", "steps": [], "mindchain": []})
+                    result = wf.invoke({"user_input": req.message, "project_id": pid, "dialogue_id": _did, "session_id": req.session_id or "default", "mode": req.mode or "kb", "image": req.image or "", "steps": [], "mindchain": []})
                     # invoke 后存 AI 回复
                     try:
                         from core.postgres_client import pg_client as _pg
