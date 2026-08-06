@@ -37,7 +37,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
       .then(d => setStats(d))
       .catch(() => {})
   }, [currentProject])
-  const [attachments, setAttachments] = useState<Array<{name: string; content: string}>>([])
+  const [attachments, setAttachments] = useState<Array<{name: string; content: string; isImage?: boolean}>>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const handleFileSelect = function(e: React.ChangeEvent<HTMLInputElement>) {
@@ -54,6 +54,13 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
         setAttachments(prev => [...prev, { name: f.name, content: text }])
       }
       reader.readAsText(f)
+    } else if (['png','jpg','jpeg','gif','webp'].includes(ext)) {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const b64 = String(reader.result || '').split(',')[1] || ''
+        setAttachments(prev => [...prev, { name: f.name, content: b64, isImage: true }])
+      }
+      reader.readAsDataURL(f)
     } else if (['pdf','docx','pptx'].includes(ext)) {
       // 二进制文件：先发后端解析成文本
       const fd = new FormData()
@@ -135,15 +142,27 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
     return html
   }
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const text = input.trim()
     if (!text && attachments.length === 0) return
     let full = text
-    if (attachments.length > 0) {
-      const NL = String.fromCharCode(10)
-      const parts = attachments.map(a => '【用户上传文件: ' + a.name + '】' + NL + a.content)
-      full = text ? text + NL + NL + parts.join(NL + NL) : parts.join(NL + NL)
+    const NL = String.fromCharCode(10)
+    const imgAtts = attachments.filter(a => a.isImage)
+    const txtAtts = attachments.filter(a => !a.isImage)
+    // 图片附件先识图
+    let imgDesc = ''
+    if (imgAtts.length > 0) {
+      try {
+        const r = await fetch('/api/vision', { method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ image: imgAtts[0].content, prompt: '请描述这张图片的内容' }) })
+        const d = await r.json()
+        imgDesc = d.description || ''
+      } catch (e) { imgDesc = '(图片识别失败)' }
     }
+    const parts: string[] = []
+    txtAtts.forEach(a => parts.push('【用户上传文件: ' + a.name + '】' + NL + a.content))
+    if (imgAtts.length > 0) parts.push('【用户上传图片: ' + imgAtts[0].name + '】' + NL + '图片内容描述：' + imgDesc)
+    if (parts.length > 0) full = text ? text + NL + NL + parts.join(NL + NL) : parts.join(NL + NL)
     onSendMessage(full, {
       chatMode: chatMode,
       searchMode: searchLabels[searchMode],
@@ -481,7 +500,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
                 {attachments.map(a => (
                   <span key={a.name} className="inline-flex items-center gap-1.5 bg-white border border-[#d0d0d0] rounded-lg px-2.5 py-1.5 text-xs text-gray-700 shadow-sm">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    {a.name}
+                    {a.isImage ? '🖼 ' : '📄 '}{a.name}
                     <button onClick={() => removeAttachment(a.name)} className="text-gray-400 hover:text-red-500 transition-colors ml-1" title="删除">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     </button>
@@ -490,7 +509,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
               </div>
             )}
             <div className="w-full flex gap-2 items-end">
-            <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept=".txt,.md,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml,.pdf,.docx,.pptx" />
+            <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept=".txt,.md,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml,.pdf,.docx,.pptx,.png,.jpg,.jpeg,.gif,.webp" />
             <button onClick={() => fileInputRef.current && fileInputRef.current.click()} title="上传文件"
               className="px-2.5 py-3 border border-[#d0d0d0] rounded-xl bg-white text-gray-400 hover:text-[#1a1a1a] hover:border-[#1a1a1a]/40 transition-colors flex-shrink-0">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>

@@ -144,6 +144,15 @@ async def file_to_text(file: UploadFile = File(...)):
     return {"status": "ok", "text": text[:50000], "chars": len(text)}
 
 
+@app.post("/api/vision")
+async def vision_understand(req: dict):
+    from core.vision_service import describe_image
+    image = req.get("image", "")
+    prompt = req.get("prompt", "请描述这张图片的内容")
+    desc = describe_image(image, prompt)
+    return {"status": "ok", "description": desc}
+
+
 @app.get("/api/graph")
 async def get_graph(project_id: str = "default"):
     from fastapi.responses import JSONResponse
