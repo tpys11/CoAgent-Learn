@@ -40,6 +40,48 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
   const [attachments, setAttachments] = useState<Array<{name: string; content: string; isImage?: boolean}>>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // 处理单个文件（拖拽/点击共用）
+  const processFile = function(f: File) {
+    if (!f) return
+    if (f.size > 2 * 1024 * 1024) { alert('文件过大（>2MB），请裁剪后上传'); return }
+    const ext = (f.name.split('.').pop() || '').toLowerCase()
+    const textExts = ['txt','md','py','js','ts','json','csv','html','css','log','yaml','yml']
+    if (textExts.includes(ext)) {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const text = (reader.result as string) || ''
+        setAttachments(prev => [...prev, { name: f.name, content: text }])
+      }
+      reader.readAsText(f)
+    } else if (['png','jpg','jpeg','gif','webp'].includes(ext)) {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const b64 = String(reader.result || '').split(',')[1] || ''
+        setAttachments(prev => [...prev, { name: f.name, content: b64, isImage: true }])
+      }
+      reader.readAsDataURL(f)
+    } else if (['pdf','docx','pptx'].includes(ext)) {
+      const fd = new FormData()
+      fd.append('file', f)
+      fetch('/api/file-to-text', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(d => {
+          if (d.status === 'ok') setAttachments(prev => [...prev, { name: f.name, content: d.text || '' }])
+          else alert('无法解析文件：' + (d.msg || '未知'))
+        })
+        .catch(() => alert('文件解析失败'))
+    } else {
+      alert('不支持的格式：' + f.name)
+    }
+  }
+
+  const [dragOver, setDragOver] = useState(false)
+  const handleDropFile = function(e: React.DragEvent) {
+    e.preventDefault(); setDragOver(false)
+    const fs = e.dataTransfer.files ? Array.from(e.dataTransfer.files) : []
+    fs.forEach(processFile)
+  }
+
   const handleFileSelect = function(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files && e.target.files[0]
     e.target.value = ''
@@ -494,7 +536,14 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
             </div>
           ) : (
             <>
-          <div className="w-full max-w-xl flex flex-col gap-2">
+          <div className="w-full max-w-xl flex flex-col gap-2"
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={handleDropFile}
+            style={{ outline: dragOver ? '2px dashed #1a1a1a' : 'none', borderRadius: 12 }}>
+            {dragOver && (
+              <div className="text-[11px] text-center text-[#1a1a1a] bg-[#f0f0f0]/60 py-2 rounded-lg mb-1">📥 松开鼠标上传文件（支持图片/文本/PDF/Word/PPT）</div>
+            )}
             {attachments.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {attachments.map(a => (
