@@ -58,22 +58,23 @@ export default function SettingsModal({ onClose }: Props) {
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">页面主题</label>
             <div className="flex gap-2">
               {[
-                { value: 'light', icon: Sun, label: '日间' },
-                { value: 'dark', icon: Moon, label: '夜间' },
-                { value: 'warm', icon: LampDesk, label: '均衡' },
-                { value: 'system', icon: Monitor, label: '跟随系统' },
-              ].map(({ value, icon: Icon, label }) => (
+                { value: 'light', icon: Sun, swatch: 'bg-white border border-gray-300', ring: 'ring-gray-300' },
+                { value: 'dark', icon: Moon, swatch: 'bg-gray-900 border border-gray-700', ring: 'ring-gray-700' },
+                { value: 'warm', icon: LampDesk, swatch: 'bg-[#fdf6e9] border border-amber-200', ring: 'ring-amber-300' },
+                { value: 'system', icon: Monitor, swatch: 'bg-gradient-to-r from-white to-gray-900 border border-gray-300', ring: 'ring-gray-400' },
+              ].map(({ value, icon: Icon, swatch, ring }) => (
                 <button
                   key={value}
                   onClick={() => setTheme(value as ThemePref)}
-                  className={`flex-1 flex flex-col items-center gap-1 py-3 rounded-lg text-xs font-medium transition-colors ${
+                  title={value}
+                  className={`flex-1 flex flex-col items-center gap-1.5 py-2.5 rounded-lg transition-colors ${
                     theme === value
-                      ? 'bg-[#f0f0f0] text-[#1a1a1a] border border-[#1a1a1a]/30'
-                      : 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100'
+                      ? 'bg-[#f0f0f0] ring-1 ring-[#1a1a1a]/40'
+                      : 'bg-gray-50 border border-gray-200 hover:bg-gray-100'
                   }`}
                 >
-                  <Icon size={18} />
-                  {label}
+                  <span className={`w-9 h-6 rounded-md ${swatch} ${theme === value ? ring : ''}`} />
+                  <Icon size={15} className="text-gray-500" />
                 </button>
               ))}
             </div>
