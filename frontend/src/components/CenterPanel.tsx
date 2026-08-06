@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Send, Bot, Brain, Settings, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Globe, Cpu, SlidersHorizontal, Check, AlertTriangle, Search, FileText } from 'lucide-react'
+import { Send, Bot, Settings, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Cpu, SlidersHorizontal, Check, AlertTriangle, Search, FileText } from 'lucide-react'
 import type { Message, Project } from '../types'
 import AgentFlow from './AgentFlow'
 
@@ -97,7 +97,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   }
   const [flowCollapsed, setFlowCollapsed] = useState(false)
   const [time, setTime] = useState(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }))
-  const [searchMode, setSearchMode] = useState(0)
+  const [searchMode, setSearchMode] = useState(1)
   const [showFormat, setShowFormat] = useState(false)
   const [showContent, setShowContent] = useState(false)
   const formatRef = useRef<HTMLDivElement>(null)
@@ -121,8 +121,8 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   const timeRangeRef = useRef<HTMLDivElement>(null)
   const timeLabels = ['本次', '今天', '本周', '本月', '今年', '总']
 
-  const searchLabels = ['默认', '增强', '私有']
-  const searchDescs = ['大模型自己决定', '优质信息·多轮搜索·自我检测', '纯粹检索上传的信息']
+  const searchLabels = ['自由', '知识库']
+  const searchDescs = ['大模型自己决定', '优先从知识库检索']
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -422,7 +422,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                   <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 240 }}>
                     <div className="text-[10px] text-dim mb-1">知识库检索：</div>
                     {searchLabels.map((label, i) => (
-                      <button key={label} onClick={() => { setSearchMode(i) }}
+                      <button key={label} onClick={() => { setSearchMode(i); setChatMode(i === 1 ? 'kb' : 'free') }}
                         className={`text-[11px] px-2 py-1 rounded-lg w-full text-left ${i === searchMode ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
                         <span className="font-medium">{label}</span>
                         <span className="text-[10px] text-dim ml-1">— {searchDescs[i]}</span>
@@ -430,7 +430,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                     ))}
                     <div className="text-[10px] text-dim mb-1 mt-2">联网搜索：</div>
                     {[
-                      ['默认', 'AI自己决定是否搜索'],
+                      ['自由', 'AI自己决定是否搜索'],
                       ['增强', '寻找优质信息源'],
                     ].map(([label, desc], i) => (
                       <button key={label} onClick={() => setWebSearchMode(i)}
@@ -526,16 +526,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                 )}
               </div>
               <span className="w-px h-4 bg-[#e5e5e5] mx-1" />
-              {/* 模式切换 */}
-              <button onClick={() => setChatMode('kb')}
-                className={`h-8 px-2.5 rounded-full text-[11px] transition-all flex items-center gap-1 ${chatMode === 'kb' ? 'btn-primary' : 'icon-btn'}`}>
-                <Brain size={12} /> 知识库
-              </button>
-              <button onClick={() => setChatMode('free')}
-                className={`h-8 px-2.5 rounded-full text-[11px] transition-all flex items-center gap-1 ${chatMode === 'free' ? 'btn-primary' : 'icon-btn'}`}>
-                <Globe size={12} /> 自由
-              </button>
-              <button className="h-8 px-2 rounded-xl icon-btn text-[11px] flex items-center gap-1" title="选择模型（暂未开放）">
+<button className="h-8 px-2 rounded-xl icon-btn text-[11px] flex items-center gap-1" title="选择模型（暂未开放）">
                 <Cpu size={13} />
               </button>
               <span className="flex-1" />
