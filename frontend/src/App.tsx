@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-react'
 
 // 模块级 session：页面刷新(JS重载)时重新生成一次；组件重挂载不改变
 const SESSION_ID = (() => {
@@ -251,11 +252,23 @@ function App() {
     <div ref={appRef} className="flex flex-col h-screen w-screen bg-[#ffffff] text-[#1a1a1a] overflow-hidden">
       {/* 顶栏：wordmark + 当前项目 + 设置 */}
       <header className="h-12 flex-shrink-0 flex items-center gap-3 px-4">
+        <button
+          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+          className="w-7 h-7 flex items-center justify-center rounded-lg text-dim hover:text-[#1a1a1a] hover:bg-[#f0f0f0] transition-colors"
+          title={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}>
+          {sidebarCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+        </button>
         <span className="font-display text-[17px] tracking-wide select-none">CoAgent-Learn</span>
         {currentProject && view === 'chat' && (
           <span className="text-xs text-dim truncate">/ {currentProject.name}</span>
         )}
         <span className="flex-1" />
+        <button
+          onClick={() => setRightCollapsed(!rightCollapsed)}
+          className="w-7 h-7 flex items-center justify-center rounded-lg text-dim hover:text-[#1a1a1a] hover:bg-[#f0f0f0] transition-colors"
+          title={rightCollapsed ? '展开侧栏' : '收起侧栏'}>
+          {rightCollapsed ? <PanelRightOpen size={16} /> : <PanelRightClose size={16} />}
+        </button>
         <button onClick={() => setShowSettings(true)} className="w-9 h-9 flex items-center justify-center rounded-xl icon-btn" title="设置">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
@@ -266,11 +279,6 @@ function App() {
       {view === 'tutorial' && <TutorialView />}
       {view === 'resources' && <ResourceView projectId={currentProjectId} />}
       {view === 'chat' && (<>
-      {/* 左侧栏折叠后展开按钮 */}
-      {sidebarCollapsed && (
-        <button onClick={() => setSidebarCollapsed(false)}
-          className="flex-shrink-0 w-5 h-full flex items-center justify-center icon-btn rounded">▶</button>
-      )}
       {/* 左侧栏（tonal 面板） */}
       {!sidebarCollapsed && (
         <>
@@ -292,11 +300,7 @@ function App() {
           className="w-2 h-full cursor-col-resize flex-shrink-0 group flex items-center justify-center" >
           <span className="w-1 h-10 rounded-full bg-[#d0d0d0] opacity-0 group-hover:opacity-100 transition-opacity" />
         </div>
-          {/* 折叠按钮 */}
-          <button onClick={() => setSidebarCollapsed(true)}
-            className="w-6 h-6 flex items-center justify-center rounded-full card-surface text-dim hover:text-[#1a1a1a] text-[10px] flex-shrink-0 self-start mt-3 -ml-1"
-            title="收起侧栏">◀</button>
-        </>
+</>
       )}
       {/* 中间 */}
       <CenterPanel
@@ -314,11 +318,7 @@ function App() {
       {/* 右侧栏 */}
       {!rightCollapsed && (
         <>
-          {/* 折叠按钮 */}
-          <button onClick={() => setRightCollapsed(true)}
-            className="w-6 h-6 flex items-center justify-center rounded-full card-surface text-dim hover:text-[#1a1a1a] text-[10px] flex-shrink-0 self-start mt-3 -mr-1 z-10"
-            title="收起右侧栏">▶</button>
-          {/* 右侧拖拽手柄 */}
+{/* 右侧拖拽手柄 */}
           <div onMouseDown={() => { dragging.current = 'right'; document.body.style.userSelect = 'none' }}
             className="w-2 h-full cursor-col-resize flex-shrink-0 group flex items-center justify-center">
             <span className="w-1 h-10 rounded-full bg-[#d0d0d0] opacity-0 group-hover:opacity-100 transition-opacity" />
@@ -327,11 +327,6 @@ function App() {
             <RightPanel messageCount={currentMessages.filter(m => m.role === 'assistant').length} projectId={currentProjectId} />
           </div>
         </>
-      )}
-      {/* 右侧折叠后展开按钮 */}
-      {rightCollapsed && (
-        <button onClick={() => setRightCollapsed(false)}
-          className="flex-shrink-0 w-5 h-full flex items-center justify-center icon-btn rounded">◀</button>
       )}
       </>)}
       </div>
