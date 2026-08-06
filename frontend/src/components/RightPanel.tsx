@@ -133,10 +133,10 @@ export default function RightPanel({ messageCount, projectId, onCollapse }: Prop
       {/* 知识图谱卡片 */}
       <div className="card-surface flex-shrink-0 flex flex-col overflow-hidden" style={{ height: "34%", minHeight: 140 }}>
         <div className="flex items-center justify-between px-4 pt-3 pb-2">
-          <span className="text-[11px] font-semibold text-dim uppercase tracking-widest flex items-center gap-1.5"><Map size={13} /> 知识图谱</span>
           <button onClick={onCollapse} className="w-6 h-6 flex items-center justify-center rounded-lg icon-btn" title="收起侧栏">
             <PanelRightClose size={14} />
           </button>
+          <span className="text-[11px] font-semibold text-dim uppercase tracking-widest flex items-center gap-1.5"><Map size={13} /> 知识图谱</span>
         </div>
         <div className="flex-1 w-full relative overflow-hidden">
           {graphEmpty && (

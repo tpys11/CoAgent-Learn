@@ -65,18 +65,18 @@ export default function Sidebar({
       <div className="px-4 pt-4 pb-2 flex items-center flex-shrink-0">
         <span className="text-[11px] font-semibold text-dim uppercase tracking-widest flex-1">项目</span>
         <button
-          onClick={onCollapse}
-          className="w-7 h-7 flex items-center justify-center rounded-xl icon-btn"
-          title="收起侧栏"
-        >
-          <PanelLeftClose size={15} />
-        </button>
-        <button
           onClick={() => setShowCreate(true)}
           className="w-7 h-7 flex items-center justify-center rounded-xl icon-btn"
           title="新建项目"
         >
           <Plus size={15} />
+        </button>
+        <button
+          onClick={onCollapse}
+          className="w-7 h-7 flex items-center justify-center rounded-xl icon-btn"
+          title="收起侧栏"
+        >
+          <PanelLeftClose size={15} />
         </button>
       </div>
 
