@@ -448,7 +448,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                   onClick={() => { setShowFormat(!showFormat); setShowContent(false) }}
                   className="h-8 px-2 rounded-xl icon-btn text-[11px] flex items-center gap-1"
                 >
-                  形式 <ChevronDown size={9} />
+                  输出形式 <ChevronDown size={9} />
                 </button>
                 {showFormat && (
                   <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 260 }}>
@@ -483,7 +483,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                   onClick={() => { setShowContent(!showContent); setShowFormat(false) }}
                   className="h-8 px-2 rounded-xl icon-btn text-[11px] flex items-center gap-1"
                 >
-                  内容 <ChevronDown size={9} />
+                  输出内容 <ChevronDown size={9} />
                 </button>
                 {showContent && (
                   <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 260 }}>
