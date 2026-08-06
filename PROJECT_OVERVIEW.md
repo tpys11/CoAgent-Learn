@@ -1,7 +1,7 @@
 # CoAgent-Learn 项目全景文档
 
 > 本文档供新开发者/AI 快速理解整个项目。请先通读本文，再深入具体文件。
-> 最近更新：2026-08-06（P0 全局修复完成：schema 迁移、SSE 契约对齐、死代码清理）
+> 最近更新：2026-08-06（三服务轻量架构改造完成：PostgreSQL+Redis+Chroma → SQLite(sqlite-vec)）
 
 ---
 
@@ -13,7 +13,7 @@
 
 **一句话流程**：输入问题 → 信息输入处理 → 调度 Agent 决定调用哪些子 Agent → 信息整理与生成 → 三个审核 Agent 交叉验证 + 仲裁 → 输出。
 
-**项目定位**：前端由 React 搭建，后端由 FastAPI + LangGraph 驱动多智能体工作流，数据库使用 SQLite(sqlite-vec) + Neo4j（三服务轻量架构）。
+**项目定位**：前端由 React 搭建，后端由 FastAPI + LangGraph 驱动多智能体工作流，数据层使用 **SQLite(sqlite-vec) 单文件 + Neo4j**（三服务轻量架构）。
 
 ---
 
@@ -27,13 +27,14 @@
 | 后端 | FastAPI + uvicorn | REST API + SSE 流式 |
 | 智能体编排 | LangGraph (StateGraph) | 9 节点有向图工作流 |
 | LLM | DeepSeek (langchain-deepseek / OpenAI 兼容) | chat + streaming |
-| 文本数据库 | SQLite (sqlite-vec) | 业务表+向量表统一单文件 app.db |
-| 向量库 | sqlite-vec (SQLite内嵌) | 知识库/记忆向量存储，bge-small-zh 中文embedding |
-| 向量检索 | 混合检索(向量+BM25+RRF+bge重排) | P1上下文前缀+P3精排 |
-| 向量检索 | 混合检索(向量+BM25+RRF+bge重排) | P1上下文前缀+P3精排 |
+| 业务数据 | SQLite | 12 张业务表（对话/项目/画像/统计） |
+| 向量存储 | sqlite-vec（SQLite 内嵌扩展） | 知识库/记忆向量，HNSW 索引 |
+| 中文 embedding | bge-small-zh-v1.5 (sentence-transformers) | 512 维，hf-mirror 下载 |
+| 混合检索 | 向量 + BM25 → RRF 融合 → bge-reranker P3 精排 | P1 上下文前缀增强 |
+| 图数据库 | Neo4j | 实体关系知识图谱 |
 | 技能框架 | 自研 Skill 注册中心（MCP 前身思想） | 功能模块插件化 |
 
-> ✅ 2026-08-06 已实施：PostgreSQL+Redis+Chroma → SQLite(sqlite-vec) 单文件，6 容器精简为 3 服务（frontend/backend/neo4j）。
+> ✅ 2026-08-06 已实施：PostgreSQL+Redis+Chroma → SQLite(sqlite-vec) 单文件 app.db，6 容器精简为 3 服务（frontend/backend/neo4j）。
 
 ---
 
@@ -49,15 +50,16 @@ D:\desktop\coAgent-Learn\
 │   ├── requirements.txt
 │   ├── Dockerfile
 │   └── core/                # 核心服务层
-│       ├── config.py        # 环境变量配置
+│       ├── config.py        # 环境变量配置（SQLITE_DIR / NEO4J_* / API key）
 │       ├── base_llm.py      # DeepSeekLLM 统一封装（流式）
-│       ├── postgres_client.py   # Postgres 单例 + 12张表初始化
-│       ├── neo4j_client.py      # Neo4j 单例
-│       ├── memory_store.py      # 三层记忆存储（文本/向量/图）
-│       ├── knowledge_service.py # 知识库：切块/向量/混合检索
-│       ├── graph_service.py     # 实体关系抽取→Neo4j
-│       ├── evaluator.py         # 三指标评估引擎
-│       ├── file_parser.py       # PDF/DOCX/PPTX/文本解析
+│       ├── sqlite_client.py # ✅ SQLite 统一数据层（14张表 + sqlite-vec 向量表）
+│       ├── postgres_client.py  # 兼容层（pg_client = get_db()，业务代码零改动）
+│       ├── neo4j_client.py  # Neo4j 单例
+│       ├── memory_store.py  # 三层记忆存储（文本/向量/图）
+│       ├── knowledge_service.py # 知识库：切块/向量化/混合检索
+│       ├── graph_service.py # 实体关系抽取→Neo4j
+│       ├── evaluator.py     # 三指标评估引擎
+│       ├── file_parser.py   # PDF/DOCX/PPTX/文本解析
 │       └── memory_analysis.py   # 后台记忆提炼线程
 ├── frontend/
 │   └── src/
@@ -78,14 +80,13 @@ D:\desktop\coAgent-Learn\
 │           └── DragDropInput.tsx     # 拖拽上传+文本输入组件
 ├── skills/                  # Skill 插件目录（MCP 风格）
 │   ├── registry.py          # 自动发现 + 注册 + execute
-│   ├── knowledge_retrieval/ # 知识库检索（真实实现）
+│   ├── knowledge_retrieval/ # 知识库检索（✅真实，调 sqlite-vec）
 │   ├── memory_ops/          # 记忆读写（✅已修复：改查 messages 表）
 │   ├── user_diagnosis/      # 学情诊断（模拟占位）
 │   └── web_search/          # 联网搜索（模拟占位）
 ├── deploy/
-│   └── docker-compose.yml   # 6 服务编排
-├── data/                    # 运行时数据（上传文件/缓存）
-├── chroma_db/               # Chroma 本地持久化
+│   └── docker-compose.yml   # 3 服务编排（frontend/backend/neo4j）
+├── data/                    # 运行时数据（app.db 单文件 + 上传文件）
 ├── docs（已开发内容记录）/   # 开发文档（gitignore，本地）
 ├── .env                     # 环境变量（不提交 git）
 └── start.bat / start-backend.bat / start-frontend.bat  # 启动脚本
@@ -102,7 +103,7 @@ D:\desktop\coAgent-Learn\
 | 输入信息处理 Agent | 识别输入格式并统一成结构化文本（PDF→opendataloader，非PDF→markitdown，文本→原样） | `{"processed", "format"}` |
 | 调度 Agent | 编排工作流，判断调哪个子 Agent 或结束 | `{"action": call_agent/enough, "agent", "query"}` |
 | 学情诊断 Agent | 分析用户知识水平 | `{"level", "strengths", "gaps", "suggestion"}` |
-| 知识库管理 Agent | 从 Chroma 检索相关知识 | `{"results", "summary"}` |
+| 知识库管理 Agent | 从知识库（sqlite-vec 向量检索）检索相关知识 | `{"results", "summary"}` |
 | 搜索 Agent | 联网搜索（优质信息四条件） | `{"results", "summary"}` |
 | 记忆管理 Agent | 三层记忆读写（L1事件/L2事实/L3画像） | `{"action": read/write, "data"}` |
 | 信息整理与生成 Agent | 生成三形态资源：定制讲义+实操指南+分阶测试题(3道,带答案+溯源) | `{"讲义", "实操指南", "测试题", "溯源"}` |
@@ -129,7 +130,7 @@ input → dispatch ──路由──→ diagnose / kb / search / memory（完�
 ### 4.3 前端画布展示（AgentFlow.tsx）
 
 - React Flow 实现，8 个静态节点，按阶段渐显
-- ✅ 已对齐：后端 SSE 现在下发 `step` 事件（每个 Agent 首次出现时），画布节点可动态点亮
+- ✅ 已对齐：后端 SSE 下发 `step` 事件（每个 Agent 首次出现时），画布节点可动态点亮
 - 当前活跃 Agent 节点放大高亮，名称缩至左上角
 - 画布可拖动/缩放/最小化/刷新
 
@@ -139,15 +140,15 @@ input → dispatch ──路由──→ diagnose / kb / search / memory（完�
 
 ### 5.1 核心对话
 - **`POST /api/chat`**（L542）：SSE 流式。请求体含 `{message, project_id, dialogue_id, mode, settings, api_key}`。后台线程跑 LangGraph，`on_token` 回调塞 queue，主协程 yield。事件 5 种：
-  - `start` / `step`（✅新增，agent 节点激活）/ `thought_token`（agent+chunk，前端拼思考链）/ `done`（✅现携带 reply+steps+mindchain）/ `error`
-- 对话前后直接写 Postgres `messages` 表；结束后台线程跑 `update_memories` 提炼记忆
+  - `start` / `step`（agent 节点激活）/ `thought_token`（agent+chunk，前端拼思考链）/ `done`（携带 reply+steps+mindchain）/ `error`
+- 对话前后直接写 SQLite `messages` 表；结束后台线程跑 `update_memories` 提炼记忆
 
 ### 5.2 知识库
 - `POST /api/knowledge/upload`（文本入库，后台线程）、`POST /api/knowledge/upload-file`（文件上传）、`GET /api/knowledge/list`、`DELETE /api/knowledge/delete`、`POST /api/file-to-text`（文件解析）
 - `GET /api/graph`（知识图谱节点连线）、`GET /api/graph/node`（节点详情）、`GET /api/knowledge/query`（检索）
 
 ### 5.3 画像与评估
-- `GET /api/global-profile`（✅已修复：schema 迁移后不再 500）、`GET /api/project-memory/{project_id}`
+- `GET /api/global-profile`、`GET /api/project-memory/{project_id}`
 - `POST/GET /api/projects/{pid}/profile`、`POST/GET /api/dialogues/{did}/profile`
 - `POST /api/feedback`（太难/太简单→自动调整对话画像水平）
 - `POST /api/evaluate`（幻觉率/适配率/覆盖率三指标）
@@ -162,8 +163,8 @@ input → dispatch ──路由──→ diagnose / kb / search / memory（完�
 - **API key 存前端 localStorage**（`coagent-apikey`），随请求体 `api_key` 字段传给后端；**没有后端 settings 接口**
 - 前端设置（检索模式/输出形式/输出内容/输入优化/时间范围）组装成 `settings` 对象随请求发送，graph.py 拼进各 Agent Prompt
 - 数据库初始化：模块导入时 `init_tables()` 自动建表 + lifespan 创建默认项目
-- **Postgres 12 张表**：projects, dialogues, messages, dialogue_memories, project_memories, global_profile, user_profiles, feedback, stats, resources, entities, relations（含 pgvector extension）
-- ✅ schema 迁移：`global_profile`/`project_memories` 表幂等 ALTER 补 `session_id` 列 + 索引
+- **SQLite 14 张表**：12 张业务表（projects, dialogues, messages, dialogue_memories, project_memories, global_profile, user_profiles, feedback, stats, resources, entities, relations）+ 2 张 sqlite-vec 向量表（kb_vectors, memory_vectors）
+- ✅ schema 迁移：`global_profile`/`project_memories` 表含 `session_id` 列（兼容旧查询）
 
 ---
 
@@ -174,7 +175,7 @@ input → dispatch ──路由──→ diagnose / kb / search / memory（完�
 | 层 | 存储 | 内容 |
 |----|------|------|
 | L1 文本层 | SQLite (MemoryStore) | 结构化文本记忆，带 created_at/updated_at 时间戳 |
-| L2 向量层 | Chroma | 语义检索，Agent 回答前检索相关记忆 |
+| L2 向量层 | sqlite-vec (memory_vectors 表) | 语义检索，Agent 回答前检索相关记忆 |
 | L3 图层 | Neo4j 三元组 | (主体, 谓词, 客体) 实体关系，驱动右侧知识图谱 |
 
 **作用域**：全局记忆（global，个人画像/学习偏好）vs 项目记忆（project:<id>，项目上下文）。
@@ -185,8 +186,8 @@ input → dispatch ──路由──→ diagnose / kb / search / memory（完�
 
 ## 七、知识库系统
 
-- **入库**：文本或文件 → 段落切块（400字）→ LLM 生成上下文前缀 → Chroma 存储（按项目 collection `kb_<id>`）
-- **检索**：混合检索 = 向量 + BM25 → RRF 融合 → bge-reranker 重排
+- **入库**：文本或文件 → 段落切块（400字）→ LLM 生成上下文前缀（P1）→ bge-small-zh 向量化 → SQLite kb_vectors 表（按 project_id 隔离）
+- **检索**：混合检索 = 向量 + BM25 → RRF 融合 → bge-reranker 重排（P3）
 - **图谱**：LLM 抽取实体关系三元组 → Neo4j MERGE 入库 → 前端 echarts 力导向图展示，节点可点击看详情（relations + kb_refs）
 
 ---
@@ -198,11 +199,10 @@ input → dispatch ──路由──→ diagnose / kb / search / memory（完�
 - `skills/registry.py`：单例注册中心，启动时 `_auto_discover()` 自动扫描子目录注册
 - 接口：`register / unregister / list_all / list_for_llm / execute`
 - 实际生效 4 个 Skill：
-  - `knowledge_retrieval` ✅ 真实（调 Chroma）
-  - `memory_ops` ✅ 已修复（读写 Postgres user_profiles + messages JOIN dialogues）
+  - `knowledge_retrieval` ✅ 真实（调 sqlite-vec 混合检索）
+  - `memory_ops` ✅ 已修复（读写 SQLite user_profiles + messages JOIN dialogues）
   - `user_diagnosis` ⚠️ 纯模拟（固定返回 intermediate）
   - `web_search` ⚠️ 纯模拟（SearXNG 未接入）
-- ~~builtins.py~~ ✅ 已删除（死代码，无人导入）
 - 前端 AgentSettingsModal 可从 `/api/skills` 勾选绑定 Skills 到单个 Agent
 
 ---
@@ -236,7 +236,8 @@ docker compose up -d --build
 | frontend | 5173 | Vite dev，挂载 src 热更新 |
 | backend | 8000 | uvicorn，挂载 backend/agents/skills/data |
 | neo4j | 7474/7687 | neo4j/neo4j123 |
-（PostgreSQL/Redis/Chroma 已移除：业务+向量统一 SQLite app.db）
+
+（PostgreSQL/Redis/Chroma 已移除：业务+向量统一 SQLite app.db，位于 data/ 目录）
 
 ### 本地直跑
 ```bash
@@ -245,26 +246,26 @@ cd frontend && npm run dev         # 前端
 ```
 
 ### 环境变量（.env）
-`DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` / `POSTGRES_*` / `NEO4J_*` / `REDIS_*` / `CHROMA_PERSIST_DIRECTORY` / `UPLOAD_DIR` / `LLM_MAX_CONCURRENCY` / `LLM_REQUEST_TIMEOUT`
+`DEEPSEEK_API_KEY` / `DEEPSEEK_BASE_URL` / `SQLITE_DIR` / `NEO4J_URI` / `NEO4J_USER` / `NEO4J_PASSWORD` / `UPLOAD_DIR` / `LLM_MAX_CONCURRENCY` / `LLM_REQUEST_TIMEOUT`
 
-> ⚠️ Docker 内数据库主机名用服务名（postgres/neo4j/guashuai-chroma），不是 localhost。
+> ⚠️ Docker 内 Neo4j 主机名用服务名 `neo4j`，不是 localhost。
 
 ---
 
-## 十一、⚠️ 已知问题与缺陷（2026-08-06 P0 修复后状态）
+## 十一、⚠️ 已知问题与缺陷（2026-08-06 三服务改造后状态）
 
 ### ✅ 已修复
-1. ~~schema 漂移~~ → `global_profile`/`project_memories` 已幂等 ALTER 补 `session_id` 列+索引，`/api/global-profile` 不再 500
+1. ~~schema 漂移~~ → `global_profile`/`project_memories` 含 `session_id` 列，记忆接口不再 500
 2. ~~SSE 事件前后端不一致~~ → 后端新增 `step` 事件下发，`done` 携带 `steps`+`mindchain`
 3. ~~builtins.py 死代码~~ → 已删除
 4. ~~memory_ops 查不存在的 conversations 表~~ → 改为 `messages JOIN dialogues` 查询
+5. ~~PostgreSQL+Redis+Chroma 三服务冗余~~ → SQLite(sqlite-vec) 单文件，6 容器精简为 3 服务
 
 ### ⚠️ 仍存在（待处理）
-5. **web_search / user_diagnosis 是模拟占位**：SearXNG 未接入，比赛演示搜索为假数据
-6. **Redis 配置了但无任何代码使用**（可删）
-7. **ChromaL 连接硬编码容器名** `guashuai-chroma`，不走 config
-8. **思考链展示**：靠拼接 thought_token 流式还原，可能卡顿
-9. **Docker 依赖重装慢**：sentence-transformers 拖 torch，容器重建需重新安装
+6. **web_search / user_diagnosis 是模拟占位**：SearXNG 未接入，比赛演示搜索为假数据
+7. **思考链展示**：靠拼接 thought_token 流式还原，可能卡顿
+8. **Docker 依赖重装慢**：sentence-transformers 拖 torch，容器重建需重新安装（建议依赖卷挂载）
+9. **embedding 模型首次下载**：bge-small-zh-v1.5 约 100MB，需网络；无网时降级为哈希伪向量
 10. **审核重试是白生成**：route_review 回 generate 重试时未携带审核意见
 11. **子 Agent 串行执行**：diagnose/kb/search/memory 逐个跑，可改并行（LangGraph Send）
 12. **工作流不可回放**：steps/mindchain 未持久化
