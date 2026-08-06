@@ -253,27 +253,20 @@ function App() {
     <div ref={appRef} className="flex flex-col h-screen w-screen bg-[#ffffff] text-[#1a1a1a] overflow-hidden">
       {/* 顶栏：wordmark + 当前项目 + 设置 */}
       <header className="h-12 flex-shrink-0 flex items-center gap-3 px-4">
-        <button
-          onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          className="w-7 h-7 flex items-center justify-center rounded-lg text-dim hover:text-[#1a1a1a] hover:bg-[#f0f0f0] transition-colors"
-          title={sidebarCollapsed ? '展开侧栏' : '收起侧栏'}>
-          {sidebarCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
-        </button>
         <span className="font-display text-[17px] tracking-wide select-none">CoAgent-Learn</span>
         {currentProject && view === 'chat' && (
           <span className="text-xs text-dim truncate">/ {currentProject.name}</span>
         )}
         <span className="flex-1" />
-        <button
-          onClick={() => setRightCollapsed(!rightCollapsed)}
-          className="w-7 h-7 flex items-center justify-center rounded-lg text-dim hover:text-[#1a1a1a] hover:bg-[#f0f0f0] transition-colors"
-          title={rightCollapsed ? '展开侧栏' : '收起侧栏'}>
-          {rightCollapsed ? <PanelRightOpen size={16} /> : <PanelRightClose size={16} />}
-        </button>
 </header>
       <div className="flex-1 flex min-h-0 pb-3 pr-3">
       {/* 最左侧细轨：三界面切换 */}
       <ActivityBar view={view} onChange={setView} onMemory={() => setShowMemory(true)} onKnowledge={() => handleProjectKB(currentProjectId || 'default')} onAgentSettings={() => setShowAgentSettings(true)} />
+      {sidebarCollapsed && (
+        <button onClick={() => setSidebarCollapsed(false)} className="flex-shrink-0 w-6 h-full flex items-center justify-center text-dim hover:text-[#1a1a1a] hover:bg-[#f0f0f0] transition-colors" title="展开侧栏">
+          <PanelLeftOpen size={15} />
+        </button>
+      )}
       {view === 'tutorial' && <TutorialView />}
       {view === 'resources' && <ResourceView projectId={currentProjectId} />}
       {view === 'chat' && (<>
@@ -291,6 +284,7 @@ function App() {
             onRenameProject={handleRenameProject}
             onProjectKnowledge={handleProjectKB}
             onSettings={() => setShowSettings(true)}
+            onCollapse={() => setSidebarCollapsed(true)}
           />
         </div>
         {/* 左侧拖拽手柄 */}
@@ -313,6 +307,11 @@ function App() {
         projectInitialized={currentProject?.initialized !== false}
       />
       {/* 右侧栏 */}
+      {rightCollapsed && (
+        <button onClick={() => setRightCollapsed(false)} className="flex-shrink-0 w-6 h-full flex items-center justify-center text-dim hover:text-[#1a1a1a] hover:bg-[#f0f0f0] transition-colors" title="展开侧栏">
+          <PanelRightOpen size={15} />
+        </button>
+      )}
       {!rightCollapsed && (
         <>
 {/* 右侧拖拽手柄 */}
@@ -321,7 +320,7 @@ function App() {
             <span className="w-1 h-10 rounded-full bg-[#d0d0d0] opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
           <div style={{ width: rightPanelWidth, minWidth: 260 }} className="h-full flex-shrink-0 relative panel rounded-3xl overflow-hidden">
-            <RightPanel messageCount={currentMessages.filter(m => m.role === 'assistant').length} projectId={currentProjectId} />
+            <RightPanel messageCount={currentMessages.filter(m => m.role === 'assistant').length} projectId={currentProjectId}  onCollapse={() => setRightCollapsed(true)} />
           </div>
         </>
       )}

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { PanelLeftClose } from 'lucide-react'
 import {
   Plus, Folder, Trash2, MessageSquare,
   Archive, ChevronDown, ChevronRight, Edit3, Settings, MoreHorizontal,
@@ -20,6 +21,7 @@ interface SidebarProps {
   onRenameProject: (id: string, name: string) => void
   onProjectKnowledge?: (projectId: string) => void
   onSettings: () => void
+  onCollapse: () => void
 }
 
 export default function Sidebar({
@@ -29,6 +31,7 @@ export default function Sidebar({
   onRenameProject,
   onProjectKnowledge,
   onSettings,
+  onCollapse,
 }: SidebarProps) {
   const [showCreate, setShowCreate] = useState(false)
   const [newName, setNewName] = useState('')
@@ -61,6 +64,13 @@ export default function Sidebar({
       {/* 面板头：标题 + 新建 */}
       <div className="px-4 pt-4 pb-2 flex items-center flex-shrink-0">
         <span className="text-[11px] font-semibold text-dim uppercase tracking-widest flex-1">项目</span>
+        <button
+          onClick={onCollapse}
+          className="w-7 h-7 flex items-center justify-center rounded-xl icon-btn"
+          title="收起侧栏"
+        >
+          <PanelLeftClose size={15} />
+        </button>
         <button
           onClick={() => setShowCreate(true)}
           className="w-7 h-7 flex items-center justify-center rounded-xl icon-btn"

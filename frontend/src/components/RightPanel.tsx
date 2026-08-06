@@ -1,13 +1,14 @@
-import { Map, Search, Send, MessagesSquare } from 'lucide-react'
+import { Map, Search, Send, MessagesSquare, PanelRightClose } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import * as echarts from 'echarts'
 
 interface Props {
   messageCount: number
   projectId?: string | null
+  onCollapse: () => void
 }
 
-export default function RightPanel({ messageCount, projectId }: Props) {
+export default function RightPanel({ messageCount, projectId, onCollapse }: Props) {
   const [graphEmpty, setGraphEmpty] = useState(true)
   const [graphErr, setGraphErr] = useState('')
   const chartRef = useRef<HTMLDivElement>(null)
@@ -133,6 +134,9 @@ export default function RightPanel({ messageCount, projectId }: Props) {
       <div className="card-surface flex-shrink-0 flex flex-col overflow-hidden" style={{ height: "34%", minHeight: 140 }}>
         <div className="flex items-center justify-between px-4 pt-3 pb-2">
           <span className="text-[11px] font-semibold text-dim uppercase tracking-widest flex items-center gap-1.5"><Map size={13} /> 知识图谱</span>
+          <button onClick={onCollapse} className="w-6 h-6 flex items-center justify-center rounded-lg icon-btn" title="收起侧栏">
+            <PanelRightClose size={14} />
+          </button>
         </div>
         <div className="flex-1 w-full relative overflow-hidden">
           {graphEmpty && (
