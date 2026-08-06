@@ -25,12 +25,12 @@ export default function ActivityBar({ view, onChange, onSettings }: Props) {
             key={key}
             onClick={() => onChange(key)}
             title={label}
-            className={`relative w-10 h-10 mb-1 flex items-center justify-center rounded-lg transition-colors ${
-              active ? 'bg-[#f0f0f0] text-[#1a1a1a]' : 'text-gray-400 hover:bg-[#ededed] hover:text-[#1a1a1a]'
+            className={`relative w-10 h-10 mb-1 flex items-center justify-center rounded-xl transition-all ${
+              active ? 'bg-[#f0f0f0] text-[#1a1a1a] shadow-soft' : 'text-gray-400 hover:bg-[#ededed] hover:text-[#1a1a1a]'
             }`}
           >
-            {active && <span className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded bg-[#1a1a1a]" />}
-            <Icon size={20} />
+            {active && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-[#1a1a1a]" />}
+            <Icon size={19} strokeWidth={active ? 2 : 1.75} />
           </button>
         )
       })}
@@ -38,9 +38,9 @@ export default function ActivityBar({ view, onChange, onSettings }: Props) {
       <button
         onClick={onSettings}
         title="设置"
-        className="w-10 h-10 flex items-center justify-center rounded-lg text-gray-400 hover:bg-[#ededed] hover:text-[#1a1a1a] transition-colors"
+        className="w-10 h-10 flex items-center justify-center rounded-xl text-gray-400 hover:bg-[#ededed] hover:text-[#1a1a1a] transition-all"
       >
-        <Settings size={20} />
+        <Settings size={19} strokeWidth={1.75} />
       </button>
     </nav>
   )

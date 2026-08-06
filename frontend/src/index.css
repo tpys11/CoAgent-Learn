@@ -4,87 +4,118 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body, #root { width: 100vw; height: 100vh; overflow: hidden; }
-body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; }
 
-/* ============ 主题系统（日间/夜间/均衡，跟随系统由 JS 解析为 light/dark） ============ */
+/* ============ 设计令牌：三主题（日间/夜间/均衡） ============ */
 
-/* 日间：白色为主、黑色为辅 */
+/* 日间：纸感白，黑为辅 */
 :root, [data-theme="light"] {
-  --bg-root: #ffffff;
-  --bg-sidebar: #f5f5f5;
+  --bg-root: #f7f7f5;
+  --bg-sidebar: #f1f1ef;
   --bg-panel: #ffffff;
-  --bg-hover: #ededed;
-  --bg-active: #f0f0f0;
-  --border-color: #e5e5e5;
-  --border-strong: #d0d0d0;
-  --bg-input: #fafafa;
+  --bg-hover: #ececea;
+  --bg-active: #e7e7e4;
+  --border-color: #e6e6e2;
+  --border-strong: #d8d8d3;
+  --bg-input: #fbfbfb;
   --bg-modal: #ffffff;
-  --accent: #1a1a1a;
-  --accent-hover: #333333;
-  --text-muted: #888888;
+  --accent: #18181b;
+  --accent-hover: #3f3f46;
+  --text: #1c1c1e;
+  --text-muted: #71717a;
+  --shadow-soft: 0 1px 2px rgba(20,20,20,0.04), 0 4px 16px rgba(20,20,20,0.05);
+  --shadow-lift: 0 2px 6px rgba(20,20,20,0.06), 0 12px 32px rgba(20,20,20,0.09);
 }
 
-/* 夜间：黑色为主、深蓝色为辅 */
+/* 夜间：墨黑为主，深蓝为辅 */
 [data-theme="dark"] {
-  --bg-root: #0f1218;
-  --bg-sidebar: #151a23;
-  --bg-panel: #1a2030;
-  --bg-hover: #232b3d;
-  --bg-active: #2a3450;
-  --border-color: #2b3550;
-  --border-strong: #3a4666;
-  --bg-input: #161c29;
-  --bg-modal: #1a2030;
-  --accent: #4f8cff;
-  --accent-hover: #3b74d9;
-  --text-muted: #8a94ab;
+  --bg-root: #0c0f16;
+  --bg-sidebar: #11151f;
+  --bg-panel: #171d2b;
+  --bg-hover: #1f2637;
+  --bg-active: #28324a;
+  --border-color: #232c42;
+  --border-strong: #31405e;
+  --bg-input: #121826;
+  --bg-modal: #171d2b;
+  --accent: #5b8def;
+  --accent-hover: #4a7bd9;
+  --text: #dfe5f2;
+  --text-muted: #8892a9;
+  --shadow-soft: 0 1px 2px rgba(0,0,0,0.3), 0 4px 16px rgba(0,0,0,0.35);
+  --shadow-lift: 0 2px 8px rgba(0,0,0,0.4), 0 12px 36px rgba(0,0,0,0.45);
 }
 
-/* 均衡：浅黄色族系为主，减少纯白强刺激 */
+/* 均衡：浅黄族系，去纯白强刺激 */
 [data-theme="warm"] {
-  --bg-root: #f6f1e6;
-  --bg-sidebar: #efe8d8;
-  --bg-panel: #fbf8f0;
-  --bg-hover: #e9e0cd;
-  --bg-active: #f5ecd9;
-  --border-color: #ddd3bd;
-  --border-strong: #c9bda2;
-  --bg-input: #faf5ea;
-  --bg-modal: #fbf8f0;
-  --accent: #c75f1a;
-  --accent-hover: #a84a10;
-  --text-muted: #8a8272;
+  --bg-root: #f3efe7;
+  --bg-sidebar: #ece6d9;
+  --bg-panel: #faf7f0;
+  --bg-hover: #e6ddcc;
+  --bg-active: #efe7d6;
+  --border-color: #ded4c0;
+  --border-strong: #cbbfa6;
+  --bg-input: #f8f4ea;
+  --bg-modal: #faf7f0;
+  --accent: #b25e12;
+  --accent-hover: #964d0c;
+  --text: #2c2824;
+  --text-muted: #8a8172;
+  --shadow-soft: 0 1px 2px rgba(80,60,20,0.05), 0 4px 16px rgba(80,60,20,0.06);
+  --shadow-lift: 0 2px 6px rgba(80,60,20,0.07), 0 12px 32px rgba(80,60,20,0.10);
 }
 
-/* ============ 主题覆盖（对组件内硬编码 Tailwind 类做主题适配） ============ */
+/* ============ 全局基础 ============ */
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  font-size: 15px;
+  color: var(--text);
+  background: var(--bg-root);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
 
-/* 夜间：黑底深蓝 */
-[data-theme=dark] body,[data-theme=dark] #root{color:#dbe2f0;background:#0f1218}
-[data-theme=dark] .bg-\[\#1a1a1a\]{background-color:#4f8cff!important}
-[data-theme=dark] .bg-\[\#333333\]{background-color:#3b74d9!important}
-[data-theme=dark] .bg-\[\#f5f5f5\]{background-color:#151a23!important}
-[data-theme=dark] .bg-\[\#f0f0f0\]{background-color:#2a3450!important}
-[data-theme=dark] .bg-\[\#ffffff\]{background-color:#1a2030!important}
-[data-theme=dark] .bg-\[\#fafafa\]{background-color:#161c29!important}
-[data-theme=dark] .bg-\[\#ededed\]{background-color:#232b3d!important}
-[data-theme=dark] .hover\:bg-\[\#ededed\]:hover{background-color:#232b3d!important}
-[data-theme=dark] .hover\:bg-\[\#333333\]:hover{background-color:#3b74d9!important}
-[data-theme=dark] .border-\[\#e5e5e5\]{border-color:#2b3550!important}
-[data-theme=dark] .border-\[\#d0d0d0\]{border-color:#3a4666!important}
-[data-theme=dark] .text-\[\#1a1a1a\]{color:#dbe2f0!important}
-[data-theme=dark] input,[data-theme=dark] textarea{background-color:#161c29!important;color:#dbe2f0!important}
+/* 细滚动条 */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 8px; border: 2px solid transparent; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); border: 2px solid transparent; background-clip: content-box; }
 
-/* 均衡：浅黄去纯白 */
-[data-theme=warm] .bg-\[\#1a1a1a\]{background-color:#c75f1a!important}
-[data-theme=warm] .bg-\[\#333333\]{background-color:#a84a10!important}
-[data-theme=warm] .bg-\[\#f5f5f5\]{background-color:#efe8d8!important}
-[data-theme=warm] .bg-\[\#f0f0f0\]{background-color:#f5ecd9!important}
-[data-theme=warm] .bg-\[\#ffffff\]{background-color:#fbf8f0!important}
-[data-theme=warm] .bg-\[\#fafafa\]{background-color:#faf5ea!important}
-[data-theme=warm] .bg-\[\#ededed\]{background-color:#e9e0cd!important}
-[data-theme=warm] .hover\:bg-\[\#ededed\]:hover{background-color:#e9e0cd!important}
-[data-theme=warm] .border-\[\#e5e5e5\]{border-color:#ddd3bd!important}
-[data-theme=warm] .border-\[\#d0d0d0\]{border-color:#c9bda2!important}
-[data-theme=warm] .text-\[\#1a1a1a\]{color:#c75f1a!important}
-[data-theme=warm] .hover\:bg-\[\#333333\]:hover{background-color:#a84a10!important}
-[data-theme=warm] input,[data-theme=warm] textarea{background-color:#faf5ea!important}
+/* 动效 */
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slideInLeft { from { opacity: 0; transform: translateX(-16px); } to { opacity: 1; transform: translateX(0); } }
+button { transition-property: color, background-color, border-color, box-shadow, transform; transition-duration: 150ms; transition-timing-function: ease; }
+button:active { transform: scale(0.98); }
+
+/* ============ 主题覆盖（组件内硬编码 Tailwind 类的主题适配） ============ */
+
+/* 夜间 */
+[data-theme=dark] body,[data-theme=dark] #root{color:#dfe5f2;background:#0c0f16}
+[data-theme=dark] .bg-\[\#1a1a1a\]{background-color:#5b8def!important}
+[data-theme=dark] .bg-\[\#333333\]{background-color:#4a7bd9!important}
+[data-theme=dark] .bg-\[\#f5f5f5\]{background-color:#11151f!important}
+[data-theme=dark] .bg-\[\#f0f0f0\]{background-color:#28324a!important}
+[data-theme=dark] .bg-\[\#ffffff\]{background-color:#171d2b!important}
+[data-theme=dark] .bg-\[\#fafafa\]{background-color:#121826!important}
+[data-theme=dark] .bg-\[\#ededed\]{background-color:#1f2637!important}
+[data-theme=dark] .hover\:bg-\[\#ededed\]:hover{background-color:#1f2637!important}
+[data-theme=dark] .hover\:bg-\[\#333333\]:hover{background-color:#4a7bd9!important}
+[data-theme=dark] .border-\[\#e5e5e5\]{border-color:#232c42!important}
+[data-theme=dark] .border-\[\#d0d0d0\]{border-color:#31405e!important}
+[data-theme=dark] .text-\[\#1a1a1a\]{color:#dfe5f2!important}
+[data-theme=dark] .shadow-sm,[data-theme=dark] .shadow-xl,[data-theme=dark] .shadow-lg{box-shadow:0 1px 2px rgba(0,0,0,0.3),0 6px 20px rgba(0,0,0,0.35)!important}
+[data-theme=dark] input,[data-theme=dark] textarea{background-color:#121826!important;color:#dfe5f2!important}
+
+/* 均衡 */
+[data-theme=warm] .bg-\[\#1a1a1a\]{background-color:#b25e12!important}
+[data-theme=warm] .bg-\[\#333333\]{background-color:#964d0c!important}
+[data-theme=warm] .bg-\[\#f5f5f5\]{background-color:#ece6d9!important}
+[data-theme=warm] .bg-\[\#f0f0f0\]{background-color:#efe7d6!important}
+[data-theme=warm] .bg-\[\#ffffff\]{background-color:#faf7f0!important}
+[data-theme=warm] .bg-\[\#fafafa\]{background-color:#f8f4ea!important}
+[data-theme=warm] .bg-\[\#ededed\]{background-color:#e6ddcc!important}
+[data-theme=warm] .hover\:bg-\[\#ededed\]:hover{background-color:#e6ddcc!important}
+[data-theme=warm] .border-\[\#e5e5e5\]{border-color:#ded4c0!important}
+[data-theme=warm] .border-\[\#d0d0d0\]{border-color:#cbbfa6!important}
+[data-theme=warm] .text-\[\#1a1a1a\]{color:#b25e12!important}
+[data-theme=warm] .hover\:bg-\[\#333333\]:hover{background-color:#964d0c!important}
+[data-theme=warm] input,[data-theme=warm] textarea{background-color:#f8f4ea!important}

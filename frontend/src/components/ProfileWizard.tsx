@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ClipboardList, PenLine } from 'lucide-react'
 
 interface Props {
   mode: 'project' | 'dialogue'
@@ -32,8 +33,8 @@ export default function ProfileWizard({ mode, projectName, inheritedProfile, onC
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60]" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
-        <h2 className="text-base font-bold mb-1">{isProject ? '📋 项目画像向导' : '📝 对话画像向导'}</h2>
+      <div className="bg-white rounded-2xl shadow-lift w-full max-w-md mx-4 p-6">
+        <h2 className="font-display text-lg mb-1 flex items-center gap-2">{isProject ? <><ClipboardList size={17} /> 项目画像向导</> : <><PenLine size={17} /> 对话画像向导</>}</h2>
         <p className="text-[11px] text-gray-400 mb-4">
           {isProject ? `为项目「${projectName || ''}」建立学情画像，AI 将据此调整学习内容` : '补充本次学习画像（已继承项目画像）'}
         </p>

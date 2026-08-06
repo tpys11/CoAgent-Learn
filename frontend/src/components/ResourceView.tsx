@@ -101,7 +101,7 @@ export default function ResourceView({ projectId }: { projectId: string | null }
                 key={item.id}
                 onClick={() => setSelectedId(item.id)}
                 className={`group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
-                  active ? 'bg-[#f0f0f0] text-[#1a1a1a]' : 'text-gray-600 hover:bg-[#ededed]'
+                  active ? 'bg-[#f0f0f0] text-[#1a1a1a] shadow-soft' : 'text-gray-600 hover:bg-[#ededed]'
                 }`}
               >
                 <Icon size={14} className="flex-shrink-0" />
@@ -127,7 +127,7 @@ export default function ResourceView({ projectId }: { projectId: string | null }
       <div className="flex-1 overflow-y-auto px-8 py-6">
         {selected ? (
           <div className="max-w-2xl mx-auto">
-            <h2 className="text-lg font-bold mb-1">{selected.title}</h2>
+            <h2 className="font-display text-xl mb-1">{selected.title}</h2>
             <p className="text-[11px] text-gray-400 mb-4">{selected.sub}</p>
             <div className="text-sm leading-relaxed whitespace-pre-wrap text-gray-700">{selected.body}</div>
           </div>

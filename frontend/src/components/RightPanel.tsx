@@ -160,7 +160,7 @@ export default function RightPanel({ messageCount, projectId }: Props) {
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-semibold flex items-center gap-1"><Map size={14} /> 知识图谱</span>
         </div>
-        <div className="flex-1 w-full border border-dashed border-[#1a1a1a]/30 bg-white rounded-lg relative overflow-hidden">
+        <div className="flex-1 w-full border border-[#e5e5e5] bg-white rounded-xl shadow-soft relative overflow-hidden">
           {graphEmpty && (
             <div className="absolute inset-0 flex items-center justify-center z-10 px-2">
               <span className="text-xs text-gray-400 text-center">{graphErr ? ('图谱加载失败: ' + graphErr) : '暂无知识图谱（上传文档后自动生成）'}</span>
@@ -175,8 +175,8 @@ export default function RightPanel({ messageCount, projectId }: Props) {
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs font-semibold">第二对话窗口</span>
             <div className="flex gap-1 text-[10px]">
-              <button onClick={() => setSideMode('free')} className={`px-2 py-0.5 rounded border ${sideMode === 'free' ? 'bg-[#1a1a1a] text-white' : 'bg-white text-gray-500 border-gray-200'}`}>模型自由回答</button>
-              <button onClick={() => setSideMode('kb')} className={`px-2 py-0.5 rounded border ${sideMode === 'kb' ? 'bg-[#1a1a1a] text-white' : 'bg-white text-gray-500 border-gray-200'}`}>参考知识库</button>
+              <button onClick={() => setSideMode('free')} className={`px-2.5 py-0.5 rounded-full border transition-all ${sideMode === 'free' ? 'bg-[#1a1a1a] text-white border-transparent shadow-soft' : 'bg-white text-gray-500 border-[#e5e5e5]'}`}>模型自由回答</button>
+              <button onClick={() => setSideMode('kb')} className={`px-2.5 py-0.5 rounded-full border transition-all ${sideMode === 'kb' ? 'bg-[#1a1a1a] text-white border-transparent shadow-soft' : 'bg-white text-gray-500 border-[#e5e5e5]'}`}>参考知识库</button>
             </div>
           </div>
           <p className="text-[10px] text-gray-400 leading-relaxed">遇到不懂的概念可在这里单独提问，不影响主对话。</p>
@@ -186,7 +186,7 @@ export default function RightPanel({ messageCount, projectId }: Props) {
             <p className="text-[11px] text-gray-400 text-center py-4">遇到不懂的概念可在这里单独提问，不影响主对话</p>
           ) : (
             sideMessages.map((m, i) => (
-              <div key={i} className={`max-w-[90%] rounded-xl rounded-bl-sm px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap ${m.role === 'user' ? 'self-end bg-[#1a1a1a] text-white' : 'self-start bg-white border border-[#e5e5e5] text-gray-700'}`}>
+              <div key={i} className={`max-w-[90%] rounded-2xl rounded-bl-md px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap ${m.role === 'user' ? 'self-end bg-[#1a1a1a] text-white shadow-soft rounded-bl-2xl rounded-br-md' : 'self-start bg-white border border-[#e5e5e5] shadow-soft text-gray-700'}`}>
                 {m.content}
               </div>
             ))
@@ -200,17 +200,17 @@ export default function RightPanel({ messageCount, projectId }: Props) {
         <div className="flex gap-1.5 items-end">
           <textarea placeholder="在此提问..." rows={1} value={sideInput}
             onChange={e => setSideInput(e.target.value)}
-            className="flex-1 px-3 py-1.5 border border-[#d0d0d0] rounded-lg bg-white text-xs outline-none resize-none focus:border-[#1a1a1a]"
+            className="flex-1 px-3 py-1.5 border border-[#e5e5e5] rounded-xl bg-white text-xs outline-none resize-none focus:border-[#1a1a1a]/50 shadow-soft transition-shadow"
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendSide() } }} />
-          <button onClick={sendSide} disabled={sideLoading} className="px-3 py-1.5 bg-[#1a1a1a] text-white rounded-lg hover:bg-[#333333] transition-colors flex-shrink-0 disabled:opacity-50">
+          <button onClick={sendSide} disabled={sideLoading} className="px-3 py-1.5 bg-[#1a1a1a] text-white rounded-xl hover:bg-[#333333] shadow-soft transition-all flex-shrink-0 disabled:opacity-50">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
           </button>
         </div>
       </div>
       {nodeDetail && (
-        <div className="fixed right-6 top-1/2 -translate-y-1/2 bg-white border border-[#e5e5e5] rounded-2xl shadow-xl w-72 p-4 z-50 max-h-[70vh] overflow-y-auto">
+        <div className="fixed right-6 top-1/2 -translate-y-1/2 bg-white border border-[#e5e5e5] rounded-2xl shadow-lift w-72 p-4 z-50 max-h-[70vh] overflow-y-auto">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-bold">🔍 {nodeDetail.name}</span>
+            <span className="text-sm font-bold flex items-center gap-1.5"><Search size={14} /> {nodeDetail.name}</span>
             <button onClick={() => setNodeDetail(null)} className="text-gray-400 hover:text-gray-600">✕</button>
           </div>
           <div className="mb-3">

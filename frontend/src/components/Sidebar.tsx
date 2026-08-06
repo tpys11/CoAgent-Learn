@@ -80,15 +80,15 @@ export default function Sidebar({
 
   /** 顶部：品牌 + 新建 */
   const renderHeader = () => (
-    <div className="p-3 flex items-center gap-2 border-b border-[#e5e5e5]">
-      <Bot size={20} className="text-[#1a1a1a]" />
-      <span className="text-sm font-bold flex-1">CoAgent-Learn</span>
+    <div className="px-4 py-3.5 flex items-center gap-2 border-b border-[#e5e5e5]">
+      <Bot size={19} className="text-[#1a1a1a]" strokeWidth={1.75} />
+      <span className="font-display text-[15px] tracking-wide flex-1">CoAgent-Learn</span>
       <button
         onClick={() => setShowCreate(true)}
-        className="p-1 rounded hover:bg-[#ededed] text-gray-400 hover:text-[#1a1a1a]"
+        className="p-1.5 rounded-lg hover:bg-[#ededed] text-gray-400 hover:text-[#1a1a1a]"
         title="新建项目"
       >
-        <Plus size={16} />
+        <Plus size={15} />
       </button>
     </div>
   )
@@ -118,8 +118,8 @@ export default function Sidebar({
           <div key={project.id}>
             {/* 项目行 */}
             <div
-              className={`flex items-center gap-1 px-3 py-1.5 cursor-pointer text-sm transition-colors ${
-                isActive ? 'bg-[#f0f0f0] text-[#1a1a1a]' : 'hover:bg-[#ededed]'
+              className={`flex items-center gap-1 mx-1.5 px-2 py-1.5 cursor-pointer text-sm transition-colors rounded-lg ${
+                isActive ? 'bg-[#f0f0f0] text-[#1a1a1a] shadow-soft' : 'hover:bg-[#ededed]'
               } group`}
             >
               <span className="flex-shrink-0" onClick={() => { onSelectProject(project.id); toggleExpand(project.id) }}>
@@ -173,9 +173,9 @@ export default function Sidebar({
                   <div
                     key={d.id}
                     onClick={() => onSelectDialogue(d.id)}
-                    className={`flex items-center gap-1.5 px-3 py-1 cursor-pointer text-xs transition-colors ${
+                    className={`flex items-center gap-1.5 mx-1.5 px-2 py-1 cursor-pointer text-xs transition-colors rounded-md ${
                       d.id === currentDialogueId
-                        ? 'bg-[#f0f0f0] text-[#1a1a1a] font-medium'
+                        ? 'bg-[#f0f0f0] text-[#1a1a1a] font-medium shadow-soft'
                         : 'hover:bg-[#ededed] text-gray-600'
                     }`}
                   >
@@ -235,13 +235,13 @@ export default function Sidebar({
             </div>
           ))}
           <button onClick={() => setShowSaveResource(true)} className="flex items-center gap-1 px-3 py-1 text-xs text-gray-400 hover:text-[#1a1a1a]">
-            ＋ 保存资料
+            <Plus size={11} /> 保存资料
           </button>
         </div>
       )}
       {showSaveResource && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60]" onMouseDown={e => { if (e.target === e.currentTarget) setShowSaveResource(false) }}>
-          <div className="bg-white rounded-2xl shadow-xl w-80 p-4" onMouseDown={e => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl shadow-lift w-80 p-4" onMouseDown={e => e.stopPropagation()}>
             <h3 className="text-sm font-bold mb-2">保存资料</h3>
             <input value={resName} onChange={e => setResName(e.target.value)} placeholder="资料名称" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm mb-2 outline-none" />
             <textarea value={resContent} onChange={e => setResContent(e.target.value)} placeholder="粘贴资料内容" rows={5} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none resize-none mb-2" />
@@ -271,7 +271,7 @@ export default function Sidebar({
       </div>
       {confirmMsg && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => { setConfirmMsg(""); setConfirmAction(null) }}>
-          <div className="bg-white rounded-xl shadow-lg p-4 mx-4 text-sm" onClick={e => e.stopPropagation()}>
+          <div className="bg-white rounded-2xl shadow-lift p-4 mx-4 text-sm" onClick={e => e.stopPropagation()}>
             <p className="mb-3 text-gray-700">{confirmMsg}</p>
             <div className="flex gap-2 justify-end">
               <button onClick={() => { setConfirmMsg(""); setConfirmAction(null) }} className="px-3 py-1.5 text-xs text-gray-500 hover:bg-gray-100 rounded-lg">取消</button>

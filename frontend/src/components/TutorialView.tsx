@@ -29,7 +29,7 @@ function BasicTutorial() {
   return (
     <div className="flex flex-col gap-2">
       {steps.map(s => (
-        <div key={s.n} className="flex items-center gap-4 px-4 py-3 bg-[#fafafa] border border-[#e5e5e5] rounded-xl">
+        <div key={s.n} className="flex items-center gap-4 px-4 py-3 bg-[#fafafa] border border-[#e5e5e5] rounded-xl shadow-soft">
           <span className="text-lg font-bold text-gray-300 w-8 flex-shrink-0">{s.n}</span>
           <div className="min-w-0">
             <p className="text-sm font-semibold">{s.title}</p>
@@ -72,7 +72,7 @@ function DesignPhilosophy() {
   return (
     <div className="flex flex-col gap-3">
       {points.map((p, i) => (
-        <div key={i} className="px-4 py-3 bg-[#fafafa] border border-[#e5e5e5] rounded-xl">
+        <div key={i} className="px-4 py-3 bg-[#fafafa] border border-[#e5e5e5] rounded-xl shadow-soft">
           <p className="text-sm font-semibold mb-1">{p.title}</p>
           <p className="text-xs text-gray-400 leading-relaxed">{p.text}</p>
         </div>
@@ -93,7 +93,7 @@ export default function TutorialView() {
           <button
             key={key}
             onClick={() => setSection(key)}
-            className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-left transition-colors ${
+            className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all ${
               section === key ? 'bg-[#f0f0f0] text-[#1a1a1a]' : 'text-gray-500 hover:bg-[#ededed]'
             }`}
           >
@@ -108,7 +108,7 @@ export default function TutorialView() {
       {/* 内容区 */}
       <div className="flex-1 overflow-y-auto px-8 py-6">
         <div className="max-w-2xl mx-auto">
-          <h2 className="text-lg font-bold mb-4">{SECTIONS.find(s => s.key === section)?.label}</h2>
+          <h2 className="font-display text-xl mb-5">{SECTIONS.find(s => s.key === section)?.label}</h2>
           {section === 'basic' && <BasicTutorial />}
           {section === 'detail' && <DetailTutorial />}
           {section === 'philosophy' && <DesignPhilosophy />}

@@ -29,9 +29,9 @@ export default function SettingsModal({ onClose }: Props) {
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl shadow-lift w-full max-w-md mx-4" onMouseDown={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#dad4cd]">
-          <h2 className="text-base font-bold">设置</h2>
+          <h2 className="font-display text-lg">设置</h2>
           <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
         </div>
 
@@ -121,8 +121,8 @@ export function ApiKeyPrompt({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
-        <h2 className="text-lg font-bold mb-2">配置 API Key</h2>
+      <div className="bg-white rounded-2xl shadow-lift w-full max-w-md mx-4 p-6">
+        <h2 className="font-display text-lg mb-2">配置 API Key</h2>
         <p className="text-sm text-gray-500 mb-4">请输入 DeepSeek API Key 以启用 Agent 功能。后续可在设置中修改。</p>
         <input
           autoFocus
