@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Send, Bot, Brain, Settings, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Globe, Cpu, SlidersHorizontal, Check, AlertTriangle, Search, FileText } from 'lucide-react'
 import type { Message, Project } from '../types'
-import { MemoryModal } from './InfoModals'
 import AgentFlow from './AgentFlow'
 
 
@@ -17,12 +16,11 @@ interface CenterPanelProps {
   flowAgents: string[]
   flowActiveAgent: string | null
   flowMindchain: Array<{agent: string; content: string}>
-  onAgentSettings?: () => void
   onOpenGuide?: () => void
   projectInitialized?: boolean
 }
 
-export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, statsCollapsed, onToggleStats, showAgentFlow, flowAgents, flowActiveAgent, flowMindchain, onAgentSettings, onOpenGuide, projectInitialized }: CenterPanelProps) {
+export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, statsCollapsed, onToggleStats, showAgentFlow, flowAgents, flowActiveAgent, flowMindchain, onOpenGuide, projectInitialized }: CenterPanelProps) {
   const [input, setInput] = useState('')
   const [chatMode, setChatMode] = useState<'kb'|'free'>('kb')
   // 上次会话保存的三条追问（进入对话时展示，抢占注意力）
@@ -109,7 +107,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   const [thinking, setThinking] = useState(false)
   const [outputVolume, setOutputVolume] = useState(1)
   const [depth, setDepth] = useState(1)
-  const [showMemory, setShowMemory] = useState(false)
   const [thinkingCollapsed, setThinkingCollapsed] = useState(true)
   const [showSearch, setShowSearch] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
@@ -229,13 +226,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
             </>
           )}
           <span className="flex-1" />
-          <button onClick={() => onAgentSettings?.()} className="text-[11px] px-2 py-1 rounded-lg row-hover transition-colors flex items-center gap-1" title="Agent 设置">
-            <Settings size={12} /> Agent
-          </button>
-          <button onClick={() => setShowMemory(true)} className="text-[11px] px-2 py-1 rounded-lg row-hover transition-colors flex items-center gap-1" title="记忆系统">
-            <Brain size={12} /> 记忆
-          </button>
-          <button onClick={onToggleStats} className="w-6 h-6 flex items-center justify-center rounded-lg row-hover text-[10px]" title="收起">▲</button>
+<button onClick={onToggleStats} className="w-6 h-6 flex items-center justify-center rounded-lg row-hover text-[10px]" title="收起">▲</button>
         </div>
       </div>
       {statsCollapsed && (
@@ -563,7 +554,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
         </div>
       </div>
 
-      {showMemory && <MemoryModal onClose={() => setShowMemory(false)} />}
     </main>
   )
 }

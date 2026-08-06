@@ -13,7 +13,7 @@ import RightPanel from './components/RightPanel'
 import DiagnosisModal from './components/DiagnosisModal'
 import AgentSettingsModal from './components/AgentSettingsModal'
 import SettingsModal, { ApiKeyPrompt } from './components/SettingsModal'
-import { ProjectKnowledgeModal } from './components/InfoModals'
+import { ProjectKnowledgeModal, MemoryModal } from './components/InfoModals'
 import ProfileWizard from './components/ProfileWizard'
 import GuideModal from './components/GuideModal'
 import ActivityBar, { type ViewKey } from './components/ActivityBar'
@@ -47,6 +47,7 @@ function App() {
   const [agents, setAgents] = useState<AgentConfig[]>(DEFAULT_AGENTS)
   const [showSettings, setShowSettings] = useState(false)
   const [showAgentSettings, setShowAgentSettings] = useState(false)
+  const [showMemory, setShowMemory] = useState(false)
   const [showProjectKB, setShowProjectKB] = useState(false)
   const [projectKBId, setProjectKBId] = useState<string | null>(null)
   const [wizard, setWizard] = useState<{mode: 'project'|'dialogue'; id: string; name?: string} | null>(null)
@@ -272,7 +273,7 @@ function App() {
 </header>
       <div className="flex-1 flex min-h-0 pb-3 pr-3">
       {/* 最左侧细轨：三界面切换 */}
-      <ActivityBar view={view} onChange={setView} />
+      <ActivityBar view={view} onChange={setView} onMemory={() => setShowMemory(true)} onKnowledge={() => handleProjectKB(currentProjectId || 'default')} onAgentSettings={() => setShowAgentSettings(true)} />
       {view === 'tutorial' && <TutorialView />}
       {view === 'resources' && <ResourceView projectId={currentProjectId} />}
       {view === 'chat' && (<>
@@ -308,7 +309,6 @@ function App() {
         showAgentFlow={flowVisible}
         flowAgents={flowAgents} flowActiveAgent={flowActiveAgent}
         flowMindchain={flowMindchain}
-        onAgentSettings={() => setShowAgentSettings(true)}
           onOpenGuide={() => setShowGuide(true)}
         projectInitialized={currentProject?.initialized !== false}
       />
@@ -331,6 +331,7 @@ function App() {
 
       {showDiagnosis && <DiagnosisModal onClose={() => setShowDiagnosis(false)} />}
       {showAgentSettings && <AgentSettingsModal agents={agents} onSave={handleSaveAgent} onClose={() => setShowAgentSettings(false)} />}
+      {showMemory && <MemoryModal onClose={() => setShowMemory(false)} />}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {showProjectKB && <ProjectKnowledgeModal projectId={projectKBId || undefined} onClose={() => setShowProjectKB(false)} />}
       {showGuide && <GuideModal onClose={() => setShowGuide(false)} />}
