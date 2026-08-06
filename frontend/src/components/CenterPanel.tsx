@@ -528,7 +528,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
               <span className="w-px h-4 bg-[#e5e5e5] mx-1" />
               <span className="flex-1" />
               <button
-                className="h-9 px-3 rounded-xl bg-gray-50 border border-gray-200 text-[11px] flex items-center gap-1.5 hover:bg-gray-100 transition-colors"
+                className="h-9 px-3 rounded-xl input-surface text-[11px] flex items-center gap-1.5 hover:opacity-90 transition-colors"
                 title="选择模型（暂未开放）">
                 <Cpu size={14} /> 模型
               </button>
