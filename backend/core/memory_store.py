@@ -24,17 +24,7 @@ class MemoryRecord(Base):
     created_at = Column(Float)
     updated_at = Column(Float)
 
-# ── Chroma 向量层 ──
-try:
-    import chromadb
-    from chromadb.config import Settings as ChromaSettings
-    _chroma_client = chromadb.Client(ChromaSettings(
-        chroma_db_impl="duckdb+parquet", persist_directory="./data/chroma"
-    ))
-    _vector_collection = _chroma_client.get_or_create_collection("memory_vectors")
-except ImportError:
-    _chroma_client = None
-    _vector_collection = None
+# ── 向量层：sqlite-vec（见 add_vector / search_vectors）──
 
 class MemoryStore:
     """三层记忆存储管理器"""
@@ -95,27 +85,23 @@ class MemoryStore:
 
     # ── 向量层 ──
     def add_vector(self, scope: str, content: str, embedding: list[float], metadata: dict | None = None):
-        if not _vector_collection:
+        try:
+            from core.sqlite_client import get_db
+            get_db().upsert_memory_vector(scope, content, embedding)
+            return f"vec-{int(time.time() * 1000)}"
+        except Exception:
             return None
-        record_id = f"vec-{int(time.time() * 1000)}"
-        _vector_collection.add(
-            ids=[record_id], embeddings=[embedding],
-            documents=[content], metadatas=[{"scope": scope, **(metadata or {})}]
-        )
-        return record_id
 
     def search_vectors(self, query_embedding: list[float], scope: str = "global", top_k: int = 5) -> list[dict]:
-        if not _vector_collection:
+        try:
+            from core.sqlite_client import get_db
+            rows = get_db().search_memory_vectors(scope, query_embedding, k=top_k)
+            return [
+                {"id": f"vec-{r['rowid']}", "document": r["content"], "distance": r["distance"]}
+                for r in rows
+            ]
+        except Exception:
             return []
-        results = _vector_collection.query(
-            query_embeddings=[query_embedding], n_results=top_k,
-            where={"scope": scope}
-        )
-        return [
-            {"id": ids[0], "document": docs[0], "distance": dists[0]}
-            for ids, docs, dists in zip(results["ids"], results["documents"], results["distances"])
-            if ids
-        ]
 
     # ── 图层 ──
     def add_graph_relation(self, scope: str, subject: str, predicate: str, obj: str):

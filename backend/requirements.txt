@@ -3,14 +3,11 @@ uvicorn[standard]>=0.34.0
 langgraph>=0.2.60
 langchain>=0.3.14
 langchain-deepseek>=0.1.2
-chromadb>=0.5.23
-redis>=5.2.1
 python-dotenv>=1.0.1
 pydantic>=2.10.4
 httpx>=0.28.1
 
 # 数据库连接
-psycopg2-binary>=2.9.9
 neo4j>=5.23.0
 rank_bm25>=0.2.2
 jieba>=0.42.1
@@ -19,3 +16,4 @@ pypdf>=6.0.0
 python-docx>=1.1.0
 python-pptx>=1.0.0
 python-multipart>=0.0.9
+sqlite-vec>=0.1.6

@@ -442,16 +442,11 @@ async def delete_project(pid: str):
         pg_client.execute("DELETE FROM projects WHERE id=%s", (pid,))
     except Exception as e:
         return {"status": "error", "msg": str(e)}
-    # 删知识库（Chroma）
+    # 删知识库（SQLite 向量表）
     kb_deleted = 0
     try:
-        import chromadb
-        client = chromadb.HttpClient(host="guashuai-chroma", port=8000)
-        try:
-            client.delete_collection("kb_" + pid)
-            kb_deleted = 1
-        except Exception:
-            pass
+        from core.knowledge_service import delete_project_kb
+        kb_deleted = delete_project_kb(pid)
     except Exception:
         pass
     # 删图谱（Neo4j）
