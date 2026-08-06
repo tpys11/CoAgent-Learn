@@ -547,7 +547,12 @@ async def chat(req: ChatRequest):
             import queue, threading, asyncio
             token_queue = queue.Queue()
 
+            _seen_agents = set()
+
             def on_token(agent_name: str, chunk: str):
+                if agent_name not in _seen_agents:
+                    _seen_agents.add(agent_name)
+                    token_queue.put(("step", agent_name))
                 token_queue.put(("token", agent_name, chunk))
 
             def run_workflow():
@@ -597,12 +602,14 @@ async def chat(req: ChatRequest):
                 except queue.Empty:
                     await asyncio.sleep(0.05)
                     continue
-                if msg[0] == "token":
+                if msg[0] == "step":
+                    yield f"data: {json.dumps({'type': 'step', 'agent': msg[1]})}\n\n"
+                elif msg[0] == "token":
                     _, agent, chunk = msg
                     yield f"data: {json.dumps({'type': 'thought_token', 'agent': agent, 'chunk': chunk})}\n\n"
                 elif msg[0] == "done":
                     result = msg[1]
-                    yield f"data: {json.dumps({'type': 'done', 'reply': result.get('final_reply', '处理完成')})}\n\n"
+                    yield f"data: {json.dumps({'type': 'done', 'reply': result.get('final_reply', '处理完成'), 'steps': result.get('steps', []), 'mindchain': result.get('mindchain', [])})}\n\n"
                     break
                 elif msg[0] == "error":
                     yield f"data: {json.dumps({'type': 'error', 'message': msg[1]})}\n\n"

@@ -113,6 +113,11 @@ class PostgresClient:
             CREATE INDEX IF NOT EXISTS idx_messages_dialogue
             ON messages (dialogue_id, created_at)
         """)
+                # 兼容迁移：旧库无 session_id 列时补充
+        self.execute("ALTER TABLE global_profile ADD COLUMN IF NOT EXISTS session_id VARCHAR(255) NOT NULL DEFAULT 'default'")
+        self.execute("ALTER TABLE project_memories ADD COLUMN IF NOT EXISTS session_id VARCHAR(255) NOT NULL DEFAULT 'default'")
+        self.execute("CREATE INDEX IF NOT EXISTS idx_global_profile_session ON global_profile (session_id)")
+        self.execute("CREATE INDEX IF NOT EXISTS idx_project_memories_session ON project_memories (session_id)")
         self.execute("""
             CREATE TABLE IF NOT EXISTS global_profile (
                 id INTEGER PRIMARY KEY DEFAULT 1,

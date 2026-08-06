@@ -1,6 +1,7 @@
 # CoAgent-Learn 项目全景文档
 
 > 本文档供新开发者/AI 快速理解整个项目。请先通读本文，再深入具体文件。
+> 最近更新：2026-08-06（P0 全局修复完成：schema 迁移、SSE 契约对齐、死代码清理）
 
 ---
 
@@ -31,6 +32,8 @@
 | 图数据库 | Neo4j | 实体关系知识图谱 |
 | 缓存 | Redis | 已配置未使用（占位） |
 | 技能框架 | 自研 Skill 注册中心（MCP 前身思想） | 功能模块插件化 |
+
+> 💡 架构演进方向（已分析，待决策）：PostgreSQL→SQLite(+sqlite-vec)、删 Redis、Chroma 可并入 SQLite——从 6 容器降到 3 容器。
 
 ---
 
@@ -72,12 +75,11 @@ D:\desktop\coAgent-Learn\
 │           ├── ProfileWizard.tsx     # 画像向导
 │           ├── GuideModal.tsx        # 使用指南
 │           ├── DiagnosisModal.tsx    # 学情诊断问卷
-│           ├── DragDropInput.tsx     # 拖拽上传+文本输入组件
+│           └── DragDropInput.tsx     # 拖拽上传+文本输入组件
 ├── skills/                  # Skill 插件目录（MCP 风格）
 │   ├── registry.py          # 自动发现 + 注册 + execute
-│   ├── builtins.py          # ⚠️ 死代码（无人导入）
 │   ├── knowledge_retrieval/ # 知识库检索（真实实现）
-│   ├── memory_ops/          # 记忆读写（半真实）
+│   ├── memory_ops/          # 记忆读写（✅已修复：改查 messages 表）
 │   ├── user_diagnosis/      # 学情诊断（模拟占位）
 │   └── web_search/          # 联网搜索（模拟占位）
 ├── deploy/
@@ -86,8 +88,7 @@ D:\desktop\coAgent-Learn\
 ├── chroma_db/               # Chroma 本地持久化
 ├── docs（已开发内容记录）/   # 开发文档（gitignore，本地）
 ├── .env                     # 环境变量（不提交 git）
-├── start.bat / start-backend.bat / start-frontend.bat  # 启动脚本
-└── run.py                   # 本地直跑入口
+└── start.bat / start-backend.bat / start-frontend.bat  # 启动脚本
 ```
 
 ---
@@ -128,16 +129,17 @@ input → dispatch ──路由──→ diagnose / kb / search / memory（完�
 ### 4.3 前端画布展示（AgentFlow.tsx）
 
 - React Flow 实现，8 个静态节点，按阶段渐显
+- ✅ 已对齐：后端 SSE 现在下发 `step` 事件（每个 Agent 首次出现时），画布节点可动态点亮
 - 当前活跃 Agent 节点放大高亮，名称缩至左上角
-- 画布可拖动/缩放/最小化/刷新，无文字标注仅节点+连线
+- 画布可拖动/缩放/最小化/刷新
 
 ---
 
 ## 五、后端 API 全景（backend/main.py）
 
 ### 5.1 核心对话
-- **`POST /api/chat`**（L542）：SSE 流式。请求体含 `{message, project_id, dialogue_id, mode, settings, api_key}`。后台线程跑 LangGraph，`on_token` 回调塞 queue，主协程 yield。事件仅 4 种：
-  - `start` / `thought_token`（agent+chunk，前端拼思考链）/ `done`（reply）/ `error`
+- **`POST /api/chat`**（L542）：SSE 流式。请求体含 `{message, project_id, dialogue_id, mode, settings, api_key}`。后台线程跑 LangGraph，`on_token` 回调塞 queue，主协程 yield。事件 5 种：
+  - `start` / `step`（✅新增，agent 节点激活）/ `thought_token`（agent+chunk，前端拼思考链）/ `done`（✅现携带 reply+steps+mindchain）/ `error`
 - 对话前后直接写 Postgres `messages` 表；结束后台线程跑 `update_memories` 提炼记忆
 
 ### 5.2 知识库
@@ -145,7 +147,7 @@ input → dispatch ──路由──→ diagnose / kb / search / memory（完�
 - `GET /api/graph`（知识图谱节点连线）、`GET /api/graph/node`（节点详情）、`GET /api/knowledge/query`（检索）
 
 ### 5.3 画像与评估
-- `GET /api/global-profile`、`GET /api/project-memory/{project_id}`
+- `GET /api/global-profile`（✅已修复：schema 迁移后不再 500）、`GET /api/project-memory/{project_id}`
 - `POST/GET /api/projects/{pid}/profile`、`POST/GET /api/dialogues/{did}/profile`
 - `POST /api/feedback`（太难/太简单→自动调整对话画像水平）
 - `POST /api/evaluate`（幻觉率/适配率/覆盖率三指标）
@@ -161,6 +163,7 @@ input → dispatch ──路由──→ diagnose / kb / search / memory（完�
 - 前端设置（检索模式/输出形式/输出内容/输入优化/时间范围）组装成 `settings` 对象随请求发送，graph.py 拼进各 Agent Prompt
 - 数据库初始化：模块导入时 `init_tables()` 自动建表 + lifespan 创建默认项目
 - **Postgres 12 张表**：projects, dialogues, messages, dialogue_memories, project_memories, global_profile, user_profiles, feedback, stats, resources, entities, relations（含 pgvector extension）
+- ✅ schema 迁移：`global_profile`/`project_memories` 表幂等 ALTER 补 `session_id` 列 + 索引
 
 ---
 
@@ -196,9 +199,10 @@ input → dispatch ──路由──→ diagnose / kb / search / memory（完�
 - 接口：`register / unregister / list_all / list_for_llm / execute`
 - 实际生效 4 个 Skill：
   - `knowledge_retrieval` ✅ 真实（调 Chroma）
-  - `memory_ops` ⚠️ 半真实（读写 Postgres user_profiles，但查询的表已不存在，会失败返回空）
+  - `memory_ops` ✅ 已修复（读写 Postgres user_profiles + messages JOIN dialogues）
   - `user_diagnosis` ⚠️ 纯模拟（固定返回 intermediate）
   - `web_search` ⚠️ 纯模拟（SearXNG 未接入）
+- ~~builtins.py~~ ✅ 已删除（死代码，无人导入）
 - 前端 AgentSettingsModal 可从 `/api/skills` 勾选绑定 Skills 到单个 Agent
 
 ---
@@ -249,17 +253,23 @@ cd frontend && npm run dev         # 前端
 
 ---
 
-## 十一、⚠️ 已知问题与缺陷（新开发者必读）
+## 十一、⚠️ 已知问题与缺陷（2026-08-06 P0 修复后状态）
 
-1. **schema 漂移**：`global_profile`/`project_memories` 表没有 `session_id` 列，但 main.py 与 memory_analysis.py 按 session_id 查询 → `/api/global-profile` 会 500，记忆提炼被 try/except 吞掉
-2. **SSE 事件前后端不一致**：前端处理 `step` 事件和 `done.steps` 字段，后端从不发送
-3. **builtins.py 是死代码**：定义了 4 个 Skill 但无人导入
-4. **web_search / user_diagnosis 是模拟占位**：SearXNG 未接入
-5. **memory_ops Skill 查不存在的 conversations 表**：会失败返回空
-6. **Redis 配置了但无任何代码使用**
+### ✅ 已修复
+1. ~~schema 漂移~~ → `global_profile`/`project_memories` 已幂等 ALTER 补 `session_id` 列+索引，`/api/global-profile` 不再 500
+2. ~~SSE 事件前后端不一致~~ → 后端新增 `step` 事件下发，`done` 携带 `steps`+`mindchain`
+3. ~~builtins.py 死代码~~ → 已删除
+4. ~~memory_ops 查不存在的 conversations 表~~ → 改为 `messages JOIN dialogues` 查询
+
+### ⚠️ 仍存在（待处理）
+5. **web_search / user_diagnosis 是模拟占位**：SearXNG 未接入，比赛演示搜索为假数据
+6. **Redis 配置了但无任何代码使用**（可删）
 7. **ChromaL 连接硬编码容器名** `guashuai-chroma`，不走 config
-8. **思考链展示**：靠拼接 thought_token 流式还原，不是完整原生思考输出
-9. **Docker 依赖重装慢**：sentence-transformers 拖 torch，容器重建需重新安装（建议依赖卷挂载或拆基础镜像）
+8. **思考链展示**：靠拼接 thought_token 流式还原，可能卡顿
+9. **Docker 依赖重装慢**：sentence-transformers 拖 torch，容器重建需重新安装
+10. **审核重试是白生成**：route_review 回 generate 重试时未携带审核意见
+11. **子 Agent 串行执行**：diagnose/kb/search/memory 逐个跑，可改并行（LangGraph Send）
+12. **工作流不可回放**：steps/mindchain 未持久化
 
 ---
 

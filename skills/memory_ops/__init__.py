@@ -20,8 +20,9 @@ class MemoryOps(Skill):
     def _read(self, layer: str, project_id: str) -> dict:
         if layer == "L1":
             rows = pg_client.execute(
-                """SELECT role, content FROM conversations
-                   WHERE project_id = %s ORDER BY created_at ASC LIMIT 30""",
+                """SELECT m.role, m.content FROM messages m
+                   JOIN dialogues d ON m.dialogue_id = d.id
+                   WHERE d.project_id = %s ORDER BY m.created_at ASC LIMIT 30""",
                 (project_id,)
             )
             return {"memory": {"L1": [{"role": r["role"], "content": r["content"]} for r in rows]}}
