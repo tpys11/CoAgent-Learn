@@ -32,9 +32,9 @@ class AgentState(TypedDict):
     mindchain: list  # [{agent, content}]
 
 
-def create_workflow(api_key: str | None = None, settings: dict | None = None, on_token=None):
+def create_workflow(api_key: str | None = None, settings: dict | None = None, on_token=None, model: str | None = None, base_url: str | None = None):
     settings = settings or {}
-    llm_raw = DeepSeekLLM(api_key=api_key)
+    llm_raw = DeepSeekLLM(api_key=api_key, model=model, base_url=base_url)
 
     import re
 

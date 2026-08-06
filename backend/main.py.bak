@@ -219,60 +219,6 @@ async def delete_resource(rid: str):
     return {"status": "ok"}
 
 
-@app.get("/api/dialogues/{did}/followups")
-async def get_followups(did: str):
-    from core.postgres_client import pg_client
-    import json as _json
-    rows = pg_client.execute("SELECT questions, updated_at FROM followups WHERE dialogue_id=%s", (did,))
-    if not rows:
-        return {"questions": []}
-    try:
-        qs = _json.loads(rows[0]["questions"] or "[]")
-    except Exception:
-        qs = []
-    return {"questions": qs, "updated_at": rows[0].get("updated_at")}
-
-
-@app.get("/api/artifacts")
-async def list_artifacts(project_id: str = "default"):
-    """扫描项目对话消息，解析生成物（定制讲义/实操指南/分阶测试题）"""
-    import re
-    from core.postgres_client import pg_client
-    dialogs = pg_client.execute("SELECT id, name FROM dialogues WHERE project_id=%s", (project_id,))
-    if not dialogs:
-        return {"artifacts": []}
-    d_ids = [d["id"] for d in dialogs]
-    d_names = {d["id"]: d["name"] for d in dialogs}
-    ph = ",".join(["%s"] * len(d_ids))
-    msgs = pg_client.execute(
-        "SELECT dialogue_id, content, created_at FROM messages WHERE role='assistant' AND dialogue_id IN (" + ph + ") ORDER BY created_at",
-        tuple(d_ids))
-    # 生成物小节标题（graph.py 输出格式：## 📘 定制讲义 / ## 🛠 实操指南 / ## 📝 分阶测试题）
-    section_re = re.compile(r"^##\s*(?:📘|🛠|📝|🔍)?\s*(定制讲义|讲义|实操指南|分阶测试题|测试题|溯源)\s*$", re.M)
-    artifacts = []
-    for m in msgs:
-        content = str(m["content"] or "")
-        marks = list(section_re.finditer(content))
-        for i, mk in enumerate(marks):
-            title = mk.group(1)
-            if title == "溯源":
-                continue
-            end = marks[i + 1].start() if i + 1 < len(marks) else len(content)
-            body = content[mk.end():end].strip()
-            if not body:
-                continue
-            artifacts.append({
-                "id": str(m["dialogue_id"]) + "-" + str(mk.start()),
-                "dialogue_id": m["dialogue_id"],
-                "dialogue_name": d_names.get(m["dialogue_id"], ""),
-                "type": title,
-                "title": title,
-                "content": body,
-                "created_at": m["created_at"],
-            })
-    return {"artifacts": artifacts}
-
-
 # ---------- 反馈/统计 API ----------
 
 class FeedbackReq(BaseModel):
@@ -578,8 +524,6 @@ class ChatRequest(BaseModel):
     dialogue_id: str | None = None
     project_id: str | None = None
     api_key: str | None = None
-    model: str | None = None
-    base_url: str | None = None
     settings: dict | None = None
     mode: str | None = None
 
@@ -608,7 +552,7 @@ async def chat(req: ChatRequest):
 
             def run_workflow():
                 try:
-                    wf = create_workflow(req.api_key, req.settings, on_token, model=req.model, base_url=req.base_url)
+                    wf = create_workflow(req.api_key, req.settings, on_token)
                     pid = req.project_id or "default"
                     _did = req.dialogue_id or "default"
                     # 先存用户消息（invoke 时 generate_node 才能读到）
@@ -630,7 +574,7 @@ async def chat(req: ChatRequest):
                     except Exception as _e:
                         print("[存储]",_e)
                     token_queue.put(("done", result))
-                    # 后台异步分析记忆 + 生成追问
+                    # 后台异步分析记忆
                     try:
                         reply = result.get("final_reply", "")
                         import sys as _s
@@ -640,8 +584,6 @@ async def chat(req: ChatRequest):
                             from core.postgres_client import pg_client
                             import threading
                             threading.Thread(target=update_memories, args=(req.api_key, pid, _did, pg_client, req.session_id or "default"), daemon=True).start()
-                            from core.followups import generate_followups
-                            threading.Thread(target=generate_followups, args=(req.api_key, pid, _did, pg_client), daemon=True).start()
                     except Exception as e:
                         print("[记忆] err:", e)
                 except Exception as e:

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Send, Bot, Settings, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Cpu, SlidersHorizontal, Check, AlertTriangle, Search, FileText } from 'lucide-react'
+import { Send, Bot, Settings, X, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Cpu, SlidersHorizontal, Check, AlertTriangle, Search, FileText } from 'lucide-react'
 import type { Message, Project } from '../types'
 import AgentFlow from './AgentFlow'
 
@@ -110,8 +110,21 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   const [thinkingCollapsed, setThinkingCollapsed] = useState(true)
   const [showSearch, setShowSearch] = useState(false)
   const [showModelModal, setShowModelModal] = useState(false)
-  const [modelApiKey, setModelApiKey] = useState(() => localStorage.getItem('coagent-apikey') || '')
-  const [modelName, setModelName] = useState('deepseek-chat')
+  // 模型厂家配置
+  const MODEL_PROVIDERS = [
+    { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', models: ['deepseek-chat', 'deepseek-reasoner'] },
+    { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1-mini'] },
+    { id: 'qwen', name: '通义千问', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', models: ['qwen-plus', 'qwen-max', 'qwen-turbo'] },
+    { id: 'zhipu', name: '智谱GLM', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', models: ['glm-4-plus', 'glm-4-flash'] },
+    { id: 'moonshot', name: 'Kimi', baseUrl: 'https://api.moonshot.cn/v1', models: ['moonshot-v1-8k', 'moonshot-v1-32k'] },
+    { id: 'doubao', name: '豆包', baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', models: ['doubao-pro-32k', 'doubao-lite-32k'] },
+  ]
+  const [selectedProvider, setSelectedProvider] = useState(() => localStorage.getItem('coagent-provider') || 'deepseek')
+  const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('coagent-model') || 'deepseek-chat')
+  const [providerKeys, setProviderKeys] = useState<Record<string, string>>(() => {
+    try { return JSON.parse(localStorage.getItem('coagent-provider-keys') || '{}') } catch { return {} }
+  })
+  const [modelKeyInput, setModelKeyInput] = useState(() => (JSON.parse(localStorage.getItem('coagent-provider-keys') || '{}') || {})['deepseek'] || '')
   const searchRef = useRef<HTMLDivElement>(null)
   const [showInputOpt, setShowInputOpt] = useState(false)
   const inputOptRef = useRef<HTMLDivElement>(null)
@@ -551,39 +564,52 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
         </div>
       </div>
 
-      {/* 模型设置弹窗 */}
+      {/* 模型设置弹窗：按厂家分组 */}
       {showModelModal && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50"
           onMouseDown={(e) => { if (e.target === e.currentTarget) setShowModelModal(false) }}>
-          <div className="card-lift w-80 p-5" onMouseDown={(e) => e.stopPropagation()}>
-            <h3 className="font-display text-lg mb-4">模型设置</h3>
-            <label className="text-xs font-semibold text-dim uppercase tracking-wider mb-1.5 block">选择模型</label>
-            <div className="flex gap-2 mb-4">
-              {['deepseek-chat', 'deepseek-reasoner'].map(m => (
-                <button key={m}
-                  onClick={() => setModelName(m)}
-                  className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-medium ${modelName === m ? 'btn-primary' : 'row-hover'}`}>
-                  {m}
-                </button>
+          <div className="card-lift w-[420px] max-h-[85vh] flex flex-col" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#e5e5e5] flex-shrink-0">
+              <h3 className="font-display text-lg">模型设置</h3>
+              <button onClick={() => setShowModelModal(false)} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
+            </div>
+            <div className="p-4 overflow-y-auto flex flex-col gap-3">
+              {MODEL_PROVIDERS.map(p => (
+                <div key={p.id} className={`border rounded-xl p-3 transition-colors ${selectedProvider === p.id ? 'border-[#1a1a1a]/40 bg-[#fafafa]' : 'border-[#e5e5e5]'}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs font-bold">{p.name}</span>
+                    <span className="text-[10px] text-dim">{p.baseUrl}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {p.models.map(m => (
+                      <button key={m}
+                        onClick={() => { setSelectedProvider(p.id); setSelectedModel(m); localStorage.setItem('coagent-provider', p.id); localStorage.setItem('coagent-model', m) }}
+                        className={`px-2 py-1 rounded-lg text-[10px] font-medium ${selectedProvider === p.id && selectedModel === m ? 'btn-primary' : 'row-hover'}`}>
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex gap-1.5">
+                    <input
+                      type="password"
+                      value={providerKeys[p.id] || ''}
+                      onChange={(e) => { const next = { ...providerKeys, [p.id]: e.target.value }; setProviderKeys(next); localStorage.setItem('coagent-provider-keys', JSON.stringify(next)) }}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      placeholder={`${p.name} API Key`}
+                      className="flex-1 px-2.5 py-1.5 input-surface rounded-lg text-xs outline-none"
+                    />
+                    {selectedProvider === p.id && (
+                      <button
+                        onClick={() => setShowModelModal(false)}
+                        className="px-3 py-1.5 btn-primary text-xs font-semibold rounded-lg flex-shrink-0">
+                        使用此模型
+                      </button>
+                    )}
+                  </div>
+                </div>
               ))}
             </div>
-            <label className="text-xs font-semibold text-dim uppercase tracking-wider mb-1.5 block">API Key</label>
-            <div className="flex gap-2">
-              <input
-                type="password"
-                value={modelApiKey}
-                onChange={(e) => setModelApiKey(e.target.value)}
-                onMouseDown={(e) => e.stopPropagation()}
-                placeholder="输入 DEEPSEEK_API_KEY"
-                className="flex-1 px-3 py-2 input-surface rounded-lg text-sm outline-none"
-              />
-              <button
-                onClick={() => { localStorage.setItem('coagent-apikey', modelApiKey.trim()); setShowModelModal(false) }}
-                className="px-4 py-2 btn-primary text-sm font-semibold rounded-lg">
-                保存
-              </button>
-            </div>
-            <p className="text-[10px] text-dim mt-3">模型与 API Key 保存在浏览器本地，仅用于调用 DeepSeek 接口。</p>
+            <p className="text-[10px] text-dim px-4 pb-3 flex-shrink-0">各厂家 API Key 分别保存在浏览器本地；选择模型后发送消息即使用对应厂家接口。</p>
           </div>
         </div>
       )}

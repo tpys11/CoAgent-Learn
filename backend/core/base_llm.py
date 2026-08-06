@@ -138,16 +138,17 @@ class BaseLLM:
         raise RuntimeError(f"chat_stream 全部{self.max_retries}次重试均失败")
 
 class DeepSeekLLM(BaseLLM):
-    """DeepSeek 实现"""
+    """OpenAI 兼容协议实现（DeepSeek/OpenAI/通义/GLM/Kimi/豆包等）"""
 
-    def __init__(self, api_key: str | None = None):
-        self.model_name = "deepseek-chat"
+    def __init__(self, api_key: str | None = None, model: str | None = None, base_url: str | None = None):
+        self.model_name = model or "deepseek-chat"
         self._api_key = api_key
+        self._base_url = base_url
         super().__init__()
 
     def _create_client(self) -> OpenAI:
         return OpenAI(
             api_key=self._api_key or config.DEEPSEEK_API_KEY,
-            base_url=config.DEEPSEEK_BASE_URL,
+            base_url=self._base_url or config.DEEPSEEK_BASE_URL,
             timeout=120,
         )
