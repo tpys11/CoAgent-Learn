@@ -156,11 +156,7 @@ export default function RightPanel({ messageCount, projectId, onCollapse }: Prop
         <div className="px-4 pt-3 pb-2 flex-shrink-0">
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[11px] font-semibold text-dim uppercase tracking-widest flex items-center gap-1.5"><MessagesSquare size={13} /> 第二对话</span>
-            <div className="flex gap-1 text-[10px]">
-              <button onClick={() => setSideMode('free')} className={`px-2.5 py-0.5 rounded-full transition-all ${sideMode === 'free' ? 'btn-primary' : 'icon-btn'}`}>自由</button>
-              <button onClick={() => setSideMode('kb')} className={`px-2.5 py-0.5 rounded-full transition-all ${sideMode === 'kb' ? 'btn-primary' : 'icon-btn'}`}>知识库</button>
-            </div>
-          </div>
+</div>
           <p className="text-[10px] text-dim leading-relaxed">遇到不懂的概念可在这里单独提问，不影响主对话。</p>
         </div>
         <div className="flex-1 overflow-y-auto px-3 flex flex-col gap-2 pb-2">
