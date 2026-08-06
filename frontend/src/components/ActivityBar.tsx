@@ -14,10 +14,10 @@ const ITEMS: Array<{ key: ViewKey; icon: any; label: string }> = [
   { key: 'resources', icon: Library, label: '资源' },
 ]
 
-/** 最左侧窄图标栏（VSCode Activity Bar 风格）：切换三个主界面 */
+/** 最左侧细轨（无边框，融入底色）：切换三个主界面 */
 export default function ActivityBar({ view, onChange, onSettings }: Props) {
   return (
-    <nav className="w-12 h-full flex-shrink-0 flex flex-col items-center py-2 bg-[#f5f5f5] border-r border-[#e5e5e5] rounded-lg overflow-hidden">
+    <nav className="w-[52px] h-full flex-shrink-0 flex flex-col items-center py-3">
       {ITEMS.map(({ key, icon: Icon, label }) => {
         const active = view === key
         return (
@@ -25,12 +25,11 @@ export default function ActivityBar({ view, onChange, onSettings }: Props) {
             key={key}
             onClick={() => onChange(key)}
             title={label}
-            className={`relative w-10 h-10 mb-1 flex items-center justify-center rounded-xl transition-all ${
-              active ? 'bg-[#f0f0f0] text-[#1a1a1a] shadow-soft' : 'text-gray-400 hover:bg-[#ededed] hover:text-[#1a1a1a]'
+            className={`w-10 h-10 mb-2 flex items-center justify-center rounded-2xl transition-all ${
+              active ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'
             }`}
           >
-            {active && <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-full bg-[#1a1a1a]" />}
-            <Icon size={19} strokeWidth={active ? 2 : 1.75} />
+            <Icon size={20} strokeWidth={active ? 2 : 1.6} />
           </button>
         )
       })}
@@ -38,9 +37,9 @@ export default function ActivityBar({ view, onChange, onSettings }: Props) {
       <button
         onClick={onSettings}
         title="设置"
-        className="w-10 h-10 flex items-center justify-center rounded-xl text-gray-400 hover:bg-[#ededed] hover:text-[#1a1a1a] transition-all"
+        className="w-10 h-10 flex items-center justify-center rounded-2xl icon-btn transition-all"
       >
-        <Settings size={19} strokeWidth={1.75} />
+        <Settings size={20} strokeWidth={1.6} />
       </button>
     </nav>
   )

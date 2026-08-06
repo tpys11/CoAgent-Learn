@@ -10,6 +10,7 @@ services:
       - ../frontend/src:/app/src
       - ../frontend/tailwind.config.js:/app/tailwind.config.js
       - ../frontend/postcss.config.js:/app/postcss.config.js
+      - ../frontend/vite.config.ts:/app/vite.config.ts
       - ../frontend/index.html:/app/index.html
     depends_on:
       - backend

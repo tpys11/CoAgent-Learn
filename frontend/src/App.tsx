@@ -248,8 +248,20 @@ function App() {
   }, [])
 
   return (
-    <div ref={appRef} className="flex h-screen w-screen bg-[#ffffff] text-[#1a1a1a] p-2 gap-2">
-      {/* 最左侧：三界面切换（VSCode Activity Bar 风格） */}
+    <div ref={appRef} className="flex flex-col h-screen w-screen bg-[#ffffff] text-[#1a1a1a] overflow-hidden">
+      {/* 顶栏：wordmark + 当前项目 + 设置 */}
+      <header className="h-12 flex-shrink-0 flex items-center gap-3 px-4">
+        <span className="font-display text-[17px] tracking-wide select-none">CoAgent-Learn</span>
+        {currentProject && view === 'chat' && (
+          <span className="text-xs text-dim truncate">/ {currentProject.name}</span>
+        )}
+        <span className="flex-1" />
+        <button onClick={() => setShowSettings(true)} className="w-9 h-9 flex items-center justify-center rounded-xl icon-btn" title="设置">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+      </header>
+      <div className="flex-1 flex min-h-0 pb-3 pr-3">
+      {/* 最左侧细轨：三界面切换 */}
       <ActivityBar view={view} onChange={setView} onSettings={() => setShowSettings(true)} />
       {view === 'tutorial' && <TutorialView />}
       {view === 'resources' && <ResourceView projectId={currentProjectId} />}
@@ -257,12 +269,12 @@ function App() {
       {/* 左侧栏折叠后展开按钮 */}
       {sidebarCollapsed && (
         <button onClick={() => setSidebarCollapsed(false)}
-          className="flex-shrink-0 w-5 h-full flex items-center justify-center hover:bg-[#ededed] rounded text-gray-400">▶</button>
+          className="flex-shrink-0 w-5 h-full flex items-center justify-center icon-btn rounded">▶</button>
       )}
-      {/* 左侧栏 */}
+      {/* 左侧栏（tonal 面板） */}
       {!sidebarCollapsed && (
         <>
-          <div style={{ width: sidebarWidth, minWidth: 180 }} className="h-full flex-shrink-0 relative">
+          <div style={{ width: sidebarWidth, minWidth: 200 }} className="h-full flex-shrink-0 relative panel rounded-3xl overflow-hidden">
           <Sidebar
             projects={projects} dialogues={dialogues}
             currentProjectId={currentProjectId} currentDialogueId={currentDialogueId}
@@ -277,10 +289,12 @@ function App() {
         </div>
         {/* 左侧拖拽手柄 */}
         <div onMouseDown={() => { dragging.current = 'left'; document.body.style.userSelect = 'none' }}
-          className="w-1.5 h-full cursor-col-resize hover:bg-[#1a1a1a]/30 flex-shrink-0 transition-colors" />
-          {/* 折叠按钮：右侧 */}
+          className="w-2 h-full cursor-col-resize flex-shrink-0 group flex items-center justify-center" >
+          <span className="w-1 h-10 rounded-full bg-[#d0d0d0] opacity-0 group-hover:opacity-100 transition-opacity" />
+        </div>
+          {/* 折叠按钮 */}
           <button onClick={() => setSidebarCollapsed(true)}
-            className="w-5 h-5 flex items-center justify-center rounded bg-white border border-[#e5e5e5] text-gray-400 hover:text-[#1a1a1a] text-xs shadow-sm flex-shrink-0 self-start mt-2"
+            className="w-6 h-6 flex items-center justify-center rounded-full card-surface text-dim hover:text-[#1a1a1a] text-[10px] flex-shrink-0 self-start mt-3 -ml-1"
             title="收起侧栏">◀</button>
         </>
       )}
@@ -300,14 +314,16 @@ function App() {
       {/* 右侧栏 */}
       {!rightCollapsed && (
         <>
-          {/* 折叠按钮：左侧 */}
+          {/* 折叠按钮 */}
           <button onClick={() => setRightCollapsed(true)}
-            className="w-5 h-5 flex items-center justify-center rounded bg-white border border-[#e5e5e5] text-gray-400 hover:text-[#1a1a1a] text-xs shadow-sm flex-shrink-0 self-start mt-2"
+            className="w-6 h-6 flex items-center justify-center rounded-full card-surface text-dim hover:text-[#1a1a1a] text-[10px] flex-shrink-0 self-start mt-3 -mr-1 z-10"
             title="收起右侧栏">▶</button>
           {/* 右侧拖拽手柄 */}
           <div onMouseDown={() => { dragging.current = 'right'; document.body.style.userSelect = 'none' }}
-            className="w-1.5 h-full cursor-col-resize hover:bg-[#1a1a1a]/30 flex-shrink-0 transition-colors" />
-          <div style={{ width: rightPanelWidth, minWidth: 180 }} className="h-full flex-shrink-0 relative">
+            className="w-2 h-full cursor-col-resize flex-shrink-0 group flex items-center justify-center">
+            <span className="w-1 h-10 rounded-full bg-[#d0d0d0] opacity-0 group-hover:opacity-100 transition-opacity" />
+          </div>
+          <div style={{ width: rightPanelWidth, minWidth: 260 }} className="h-full flex-shrink-0 relative panel rounded-3xl overflow-hidden">
             <RightPanel messageCount={currentMessages.filter(m => m.role === 'assistant').length} projectId={currentProjectId} />
           </div>
         </>
@@ -315,9 +331,11 @@ function App() {
       {/* 右侧折叠后展开按钮 */}
       {rightCollapsed && (
         <button onClick={() => setRightCollapsed(false)}
-          className="flex-shrink-0 w-5 h-full flex items-center justify-center hover:bg-[#ededed] rounded text-gray-400">◀</button>
+          className="flex-shrink-0 w-5 h-full flex items-center justify-center icon-btn rounded">◀</button>
       )}
       </>)}
+      </div>
+
 
       {showDiagnosis && <DiagnosisModal onClose={() => setShowDiagnosis(false)} />}
       {showAgentSettings && <AgentSettingsModal agents={agents} onSave={handleSaveAgent} onClose={() => setShowAgentSettings(false)} />}

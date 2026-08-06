@@ -65,7 +65,7 @@ export default function ResourceView({ projectId }: { projectId: string | null }
   const selected = list.find(i => i.id === selectedId) || null
 
   return (
-    <div className="flex-1 h-full min-w-0 flex bg-[#ffffff] border border-[#e5e5e5] rounded-lg overflow-hidden">
+    <div className="flex-1 h-full min-w-0 flex panel rounded-3xl overflow-hidden">
       {/* 左：分类 + 列表 */}
       <div className="w-72 flex-shrink-0 border-r border-[#e5e5e5] bg-[#f5f5f5] flex flex-col">
         <div className="p-2 flex gap-1 border-b border-[#e5e5e5]">

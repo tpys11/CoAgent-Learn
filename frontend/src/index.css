@@ -9,14 +9,15 @@ html, body, #root { width: 100vw; height: 100vh; overflow: hidden; }
 
 /* 日间：纸感白，黑为辅 */
 :root, [data-theme="light"] {
-  --bg-root: #f7f7f5;
-  --bg-sidebar: #f1f1ef;
+  --bg-root: #ffffff;
+  --bg-tonal: #f1f4f8;
+  --bg-sidebar: #f1f4f8;
   --bg-panel: #ffffff;
-  --bg-hover: #ececea;
-  --bg-active: #e7e7e4;
-  --border-color: #e6e6e2;
-  --border-strong: #d8d8d3;
-  --bg-input: #fbfbfb;
+  --bg-hover: #e6ebf2;
+  --bg-active: #e2e8f0;
+  --border-color: #e3e8ef;
+  --border-strong: #d3dae4;
+  --bg-input: #f7f9fc;
   --bg-modal: #ffffff;
   --accent: #18181b;
   --accent-hover: #3f3f46;
@@ -29,7 +30,8 @@ html, body, #root { width: 100vw; height: 100vh; overflow: hidden; }
 /* 夜间：墨黑为主，深蓝为辅 */
 [data-theme="dark"] {
   --bg-root: #0c0f16;
-  --bg-sidebar: #11151f;
+  --bg-tonal: #141a28;
+  --bg-sidebar: #141a28;
   --bg-panel: #171d2b;
   --bg-hover: #1f2637;
   --bg-active: #28324a;
@@ -48,7 +50,8 @@ html, body, #root { width: 100vw; height: 100vh; overflow: hidden; }
 /* 均衡：浅黄族系，去纯白强刺激 */
 [data-theme="warm"] {
   --bg-root: #f3efe7;
-  --bg-sidebar: #ece6d9;
+  --bg-tonal: #eae2d0;
+  --bg-sidebar: #eae2d0;
   --bg-panel: #faf7f0;
   --bg-hover: #e6ddcc;
   --bg-active: #efe7d6;
@@ -85,6 +88,22 @@ body {
 @keyframes slideInLeft { from { opacity: 0; transform: translateX(-16px); } to { opacity: 1; transform: translateX(0); } }
 button { transition-property: color, background-color, border-color, box-shadow, transform; transition-duration: 150ms; transition-timing-function: ease; }
 button:active { transform: scale(0.98); }
+
+/* ============ 语义类层（直接绑定主题变量，新结构组件使用） ============ */
+.panel          { background: var(--bg-tonal); }
+.card-surface   { background: var(--bg-panel); border-radius: 18px; box-shadow: var(--shadow-soft); }
+.card-lift      { background: var(--bg-panel); border-radius: 18px; box-shadow: var(--shadow-lift); }
+.text-dim       { color: var(--text-muted); }
+.hairline       { border-color: var(--border-color); }
+.row-hover:hover{ background: var(--bg-hover); }
+.row-active     { background: var(--bg-active); }
+.input-surface  { background: var(--bg-input); border: 1px solid var(--border-color); }
+.btn-primary    { background: var(--accent); color: #fff; border-radius: 999px; box-shadow: var(--shadow-soft); }
+.btn-primary:hover { background: var(--accent-hover); box-shadow: var(--shadow-lift); }
+.chip           { background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 999px; box-shadow: var(--shadow-soft); }
+.chip:hover     { border-color: var(--accent); box-shadow: var(--shadow-lift); }
+.icon-btn       { border-radius: 12px; color: var(--text-muted); }
+.icon-btn:hover { background: var(--bg-hover); color: var(--text); }
 
 /* ============ 主题覆盖（组件内硬编码 Tailwind 类的主题适配） ============ */
 

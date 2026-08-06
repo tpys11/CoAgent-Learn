@@ -85,7 +85,7 @@ function DesignPhilosophy() {
 export default function TutorialView() {
   const [section, setSection] = useState<Section>('basic')
   return (
-    <div className="flex-1 h-full min-w-0 flex bg-[#ffffff] border border-[#e5e5e5] rounded-lg overflow-hidden">
+    <div className="flex-1 h-full min-w-0 flex panel rounded-3xl overflow-hidden">
       {/* 节导航 */}
       <div className="w-52 flex-shrink-0 border-r border-[#e5e5e5] bg-[#f5f5f5] py-3 px-2 flex flex-col gap-1">
         <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider px-2 mb-2">教程与设计思想</p>
