@@ -77,7 +77,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
 
   const [dragOver, setDragOver] = useState(false)
   const handleDropFile = function(e: React.DragEvent) {
-    e.preventDefault(); setDragOver(false)
+    e.preventDefault(); e.stopPropagation(); setDragOver(false)
     const fs = e.dataTransfer.files ? Array.from(e.dataTransfer.files) : []
     fs.forEach(processFile)
   }
@@ -530,8 +530,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, onSen
           ) : (
             <>
           <div className="w-full max-w-xl flex flex-col gap-2"
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={handleDropFile}>
+            onDragOver={(e) => e.preventDefault()}>
             {attachments.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {attachments.map(a => (
