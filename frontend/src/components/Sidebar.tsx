@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { PanelLeftClose } from 'lucide-react'
 import {
   Plus, Folder, Trash2, MessageSquare,
-  Archive, ChevronDown, ChevronRight, Edit3, Settings, MoreHorizontal,
+  Archive, ChevronDown, ChevronRight, Edit3, MoreHorizontal,
 } from 'lucide-react'
 import type { Project, Dialogue } from '../types'
 
@@ -20,7 +20,6 @@ interface SidebarProps {
   onRenameDialogue: (id: string, name: string) => void
   onRenameProject: (id: string, name: string) => void
   onProjectKnowledge?: (projectId: string) => void
-  onSettings: () => void
   onCollapse: () => void
 }
 
@@ -30,7 +29,6 @@ export default function Sidebar({
   onCreateDialogue, onSelectDialogue, onArchiveDialogue, onRenameDialogue,
   onRenameProject,
   onProjectKnowledge,
-  onSettings,
   onCollapse,
 }: SidebarProps) {
   const [showCreate, setShowCreate] = useState(false)
@@ -200,13 +198,6 @@ export default function Sidebar({
             </div>
           )
         })}
-      </div>
-
-      {/* 底部设置（最左下角） */}
-      <div className="px-3 py-2 flex flex-shrink-0">
-        <button onClick={onSettings} className="w-8 h-8 flex items-center justify-center rounded-xl icon-btn" title="设置">
-          <Settings size={15} />
-        </button>
       </div>
 
       {/* 确认弹窗 */}

@@ -275,7 +275,7 @@ function App() {
 </header>
       <div className="flex-1 flex min-h-0 pb-3 pr-3">
       {/* 最左侧细轨：三界面切换 */}
-      <ActivityBar view={view} onChange={setView} />
+      <ActivityBar view={view} onChange={setView} onSettings={() => setShowSettings(true)} />
       {sidebarCollapsed && (
         <button onClick={() => setSidebarCollapsed(false)} className="flex-shrink-0 w-7 h-7 mt-3 ml-1.5 flex items-center justify-center rounded-lg icon-btn" title="展开侧栏">
           <PanelLeftOpen size={15} />
@@ -300,7 +300,6 @@ function App() {
             onRenameDialogue={handleRenameDialogue}
             onRenameProject={handleRenameProject}
             onProjectKnowledge={handleProjectKB}
-            onSettings={() => setShowSettings(true)}
             onCollapse={() => setSidebarCollapsed(true)}
           />
         </div>
