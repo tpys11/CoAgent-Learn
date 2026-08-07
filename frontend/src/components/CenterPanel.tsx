@@ -128,7 +128,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   const inputOptRef = useRef<HTMLDivElement>(null)
   const [inputOptMode, setInputOptMode] = useState(0) // 0=默认,1=详尽,2=不询问
   const inputOptLabels = ['默认模式', '详尽模式', '不询问模式']
-  const inputOptDescs = ['问1-3个问题', 'AI判断足够了才停止', '直接生成不询问']
   const [webSearchMode, setWebSearchMode] = useState(0) // 0=默认,1=增强
   const [timeRange, setTimeRange] = useState('今天')
   const [showTimeRange, setShowTimeRange] = useState(false)
@@ -136,7 +135,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   const timeLabels = ['本次', '今天', '本周', '本月', '今年', '总']
 
   const searchLabels = ['自由', '知识库']
-  const searchDescs = ['大模型自己决定', '优先从知识库检索']
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -402,7 +400,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                       <button key={label} onClick={() => { setInputOptMode(i) }}
                         className={`text-[11px] px-2 py-1 rounded-lg w-full text-left ${i === inputOptMode ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
                         <span className="font-medium">{label}</span>
-                        <span className="text-[10px] text-dim ml-1.5">— {inputOptDescs[i]}</span>
+              
                       </button>
                     ))}
                   </div>
@@ -423,7 +421,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                       <button key={label} onClick={() => { setSearchMode(i); setChatMode(i === 1 ? 'kb' : 'free') }}
                         className={`text-[11px] px-2 py-1 rounded-lg w-full text-left ${i === searchMode ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
                         <span className="font-medium">{label}</span>
-                        <span className="text-[10px] text-dim ml-1">— {searchDescs[i]}</span>
+              
                       </button>
                     ))}
                     <div className="text-[10px] text-dim mb-1 mt-2">联网搜索：</div>
@@ -434,7 +432,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                       <button key={label} onClick={() => setWebSearchMode(i)}
                         className={`text-[11px] px-2 py-1 rounded-lg w-full text-left ${i === webSearchMode ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
                         <span className="font-medium">{label}</span>
-                        <span className="text-[10px] text-dim ml-1.5">— {desc}</span>
                       </button>
                     ))}
                   </div>
@@ -458,7 +455,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                       <button key={s} onClick={() => setOutputFormat(i)}
                         className={`text-[11px] px-2 py-1 rounded-lg w-full text-left ${i === outputFormat ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
                         <span className="font-medium">{s}</span>
-                        <span className="text-[10px] text-dim ml-1.5">— {desc}</span>
                       </button>
                     ))}
                     <div className="text-[10px] text-dim mb-1 mt-2">输出格式：</div>
@@ -469,7 +465,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                       <button key={s} onClick={() => setOutputStyle(i)}
                         className={`text-[11px] px-2 py-1 rounded-lg w-full text-left ${i === outputStyle ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
                         <span className="font-medium">{s}</span>
-                        <span className="text-[10px] text-dim ml-1.5">— {desc}</span>
                       </button>
                     ))}
                   </div>
@@ -493,7 +488,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                       <button key={s} onClick={() => setThinking(i === 1)}
                         className={`text-[11px] px-2 py-1 rounded-lg w-full text-left ${(i === 1) === thinking ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
                         <span className="font-medium">{s}</span>
-                        <span className="text-[10px] text-dim ml-1.5">— {desc}</span>
                       </button>
                     ))}
                     <div className="text-[10px] text-dim mb-1 mt-2">输出量：</div>
@@ -505,7 +499,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                       <button key={s} onClick={() => setOutputVolume(i)}
                         className={`text-[11px] px-2 py-1 rounded-lg w-full text-left ${i === outputVolume ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
                         <span className="font-medium">{s}</span>
-                        <span className="text-[10px] text-dim ml-1.5">— {desc}</span>
                       </button>
                     ))}
                     <div className="text-[10px] text-dim mb-1 mt-2">学习深度：</div>
@@ -517,7 +510,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                       <button key={s} onClick={() => setDepth(i)}
                         className={`text-[11px] px-2 py-1 rounded-lg w-full text-left ${i === depth ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
                         <span className="font-medium">{s}</span>
-                        <span className="text-[10px] text-dim ml-1.5">— {desc}</span>
                       </button>
                     ))}
                   </div>

@@ -41,11 +41,21 @@ function BasicTutorial() {
   )
 }
 
-/** 详细教程：左侧列表展开，选择条目后右侧展示对应介绍（骨架，文案待填） */
+/** 详细教程：左侧列表展开，选择条目后右侧展示对应介绍 */
 function DetailTutorial() {
   const [active, setActive] = useState(0)
-  const blocks = [
-    { title: '主对话界面', text: '（待补充：控制栏 / 输入优化 / 检索模式 / 输出形式与内容 的逐项说明）' },
+  const blocks: Array<{ title: string; text?: string; filled?: boolean; sections?: Array<{ name: string; desc: string }> }> = [
+    {
+      title: '主对话界面',
+      filled: true,
+      sections: [
+        { name: '界面概览', desc: '主对话界面是完成学习提问的主要场所：顶部为统计信息条，中部为对话消息流与思考链，底部为输入框。左侧项目树用于切换项目与对话，右侧栏提供多智能体协作流程、知识图谱与第二对话窗口。' },
+        { name: '输入框 · 输入优化', desc: '控制模型提问策略：默认模式由模型自行判断是否需要追问（通常问 1-3 个问题）；详尽模式会继续追问直到信息足够；不询问模式直接按已有信息生成，适合快速提问。' },
+        { name: '输入框 · 检索与搜索', desc: '知识库检索控制回答的知识来源：自由模式由模型自行决定，知识库模式优先从知识库检索；联网搜索在需要补充外部资料时启用，增强模式会寻找权威信息源。' },
+        { name: '输入框 · 输出形式', desc: '结构化程度决定内容排版：低结构化以段落为主，高结构化增加列表与表格；输出格式可选完整 Markdown 文档，或以对话消息形式直接输出。' },
+        { name: '输入框 · 输出内容', desc: '可控制是否展示大模型的思考链（关 / 开）；输出量决定篇幅——精简只输出核心观点、适中附带论证过程、拓展补充延伸内容；学习深度决定讲解层次——浅为基础概念、中为概念加原理、深为原理加推导与前沿。' },
+      ],
+    },
     { title: '多智能体工作流', text: '（待补充：Agent 画布、思考链、审核机制的说明）' },
     { title: '记忆系统', text: '（待补充：三层记忆、自动管理开关的说明）' },
     { title: '知识库与知识图谱', text: '（待补充：上传、检索、图谱交互的说明）' },
@@ -70,7 +80,18 @@ function DetailTutorial() {
       {/* 右：对应介绍 */}
       <div className="flex-1 p-5">
         <h3 className="text-sm font-bold mb-3">{blocks[active].title}</h3>
-        <Placeholder hint={blocks[active].text} />
+        {blocks[active].filled && blocks[active].sections ? (
+          <div className="flex flex-col gap-4">
+            {blocks[active].sections.map(sec => (
+              <div key={sec.name}>
+                <h4 className="text-xs font-bold mb-1">{sec.name}</h4>
+                <p className="text-xs text-gray-600 leading-relaxed">{sec.desc}</p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <Placeholder hint={blocks[active].text || ''} />
+        )}
       </div>
     </div>
   )
