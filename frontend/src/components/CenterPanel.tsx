@@ -381,14 +381,14 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
             <div className="flex items-center gap-0.5">
               <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept=".txt,.md,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml,.pdf,.docx,.pptx" />
               <button onClick={() => fileInputRef.current && fileInputRef.current.click()} title="上传文件"
-                className="w-8 h-8 flex items-center justify-center rounded-xl icon-btn">
+                className="w-8 h-8 flex items-center justify-center rounded-xl icon-btn border border-[var(--border-color)]">
                 <Upload size={15} />
               </button>
               {/* 输入信息优化 */}
               <div className="relative" ref={inputOptRef}>
                 <button
                   onClick={() => { setShowInputOpt(!showInputOpt); setShowSearch(false); setShowFormat(false); setShowContent(false) }}
-                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1"
+                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-color)]"
                 >
                   <SlidersHorizontal size={13} /> <ChevronDown size={9} />
                 </button>
@@ -408,7 +408,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
               <div className="relative" ref={searchRef}>
                 <button
                   onClick={() => { setShowSearch(!showSearch); setShowFormat(false); setShowContent(false) }}
-                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1"
+                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-color)]"
                 >
                   <Search size={13} /> <ChevronDown size={9} />
                 </button>
@@ -439,7 +439,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
               <div className="relative" ref={formatRef}>
                 <button
                   onClick={() => { setShowFormat(!showFormat); setShowContent(false) }}
-                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1"
+                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-color)]"
                 >
                   输出形式 <ChevronDown size={9} />
                 </button>
@@ -472,7 +472,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
               <div className="relative" ref={contentRef}>
                 <button
                   onClick={() => { setShowContent(!showContent); setShowFormat(false) }}
-                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1"
+                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-color)]"
                 >
                   输出内容 <ChevronDown size={9} />
                 </button>
