@@ -557,12 +557,28 @@ async def list_dialogues(pid: str):
 
 @app.delete("/api/dialogues/{did}")
 async def delete_dialogue(did: str):
-    """级联删除对话：消息+对话画像"""
+    """级联删除对话：消息+对话画像；并作为一次事件更新项目记忆（移除该对话概要）"""
+    import json as _json
     from core.postgres_client import pg_client
+    # 先查对话所属项目
+    rows = pg_client.execute("SELECT project_id FROM dialogues WHERE id=%s", (did,))
+    pid = rows[0]["project_id"] if rows else None
     pg_client.execute("DELETE FROM messages WHERE dialogue_id=%s", (did,))
     pg_client.execute("DELETE FROM dialogue_memories WHERE dialogue_id=%s", (did,))
     pg_client.execute("DELETE FROM dialogues WHERE id=%s", (did,))
-    return {"status": "ok"}
+    # 更新项目记忆：从"对话概要"移除该对话（把删除当作一次事件）
+    if pid:
+        try:
+            proj_rows = pg_client.execute("SELECT data FROM project_memories WHERE project_id=%s", (pid,))
+            if proj_rows and proj_rows[0]["data"]:
+                proj = _as_dict(proj_rows[0]["data"])
+                dlist = proj.get("对话概要", [])
+                proj["对话概要"] = [d for d in dlist if d.get("dialogue_id") != did]
+                pg_client.execute("UPDATE project_memories SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE project_id=%s",
+                                  (_json.dumps(proj, ensure_ascii=False), pid))
+        except Exception:
+            pass
+    return {"status": "ok", "project_id": pid}
 
 
 # 启动时确保有默认项目
