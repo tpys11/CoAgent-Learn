@@ -46,3 +46,6 @@ deploy/data/
 *.bak3
 .workbuddy/
 *.tsbuildinfo
+
+# 开发进程记录（不入库）
+docs（已开发内容记录）/
