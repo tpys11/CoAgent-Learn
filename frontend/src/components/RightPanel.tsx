@@ -46,8 +46,8 @@ function Pane({ title, icon: Icon, collapsed, height, flex, onToggle, children }
           {collapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
         </span>
       </div>
-      {/* 折叠时内容高度为 0 但仍渲染（保留 echarts / ReactFlow 实例，展开后自动复原） */}
-      <div className="min-h-0" style={{ height: collapsed ? 0 : undefined, overflow: 'hidden' }}>
+      {/* 内容区占满窗口剩余高度（折叠时高度 0 并禁止伸缩） */}
+      <div className="min-h-0" style={collapsed ? { height: 0, flex: '0 0 0', overflow: 'hidden' } : { flex: 1, minHeight: 0, overflow: 'hidden' }}>
         {children}
       </div>
     </div>
