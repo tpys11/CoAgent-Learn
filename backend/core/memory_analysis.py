@@ -33,7 +33,7 @@ def update_memories(api_key, project_id, dialogue_id, db, session_id="default"):
         h = {"Authorization": "Bearer " + (api_key or _cfg.DEEPSEEK_API_KEY), "Content-Type": "application/json"}
         try:
             resp = _req.post(_cfg.DEEPSEEK_BASE_URL + "/chat/completions",
-                json={"model": "deepseek-chat", "messages": [{"role": "user", "content": prompt}]},
+                json={"model": "deepseek-flash", "messages": [{"role": "user", "content": prompt}]},
                 headers=h, timeout=60)
             _s.stderr.write("[call] status=" + str(resp.status_code) + " len=" + str(len(resp.text)) + NL); _s.stderr.flush()
             if resp.status_code == 200:

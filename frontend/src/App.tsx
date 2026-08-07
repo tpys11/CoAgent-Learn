@@ -199,7 +199,10 @@ function App() {
       // 读取所选模型厂家配置
       const provKeys = (() => { try { return JSON.parse(localStorage.getItem('coagent-provider-keys') || '{}') } catch { return {} } })()
       const provider = localStorage.getItem('coagent-provider') || 'deepseek'
-      const model = localStorage.getItem('coagent-model') || 'deepseek-chat'
+      const model = (() => {
+        const m = localStorage.getItem('coagent-model') || 'deepseek-pro'
+        return (m === 'deepseek-chat' || m === 'deepseek-reasoner') ? 'deepseek-pro' : m
+      })()
       const providerBaseUrls: Record<string, string> = {
         deepseek: 'https://api.deepseek.com/v1',
         openai: 'https://api.openai.com/v1',

@@ -108,7 +108,7 @@ def _gen_context(chunk: str, full_text: str, api_key: str = "") -> str:
         )
         h = {"Authorization": "Bearer " + (api_key or _cfg.DEEPSEEK_API_KEY), "Content-Type": "application/json"}
         resp = _req.post(_cfg.DEEPSEEK_BASE_URL + "/chat/completions",
-            json={"model": "deepseek-chat", "messages": [{"role": "user", "content": prompt}], "max_tokens": 80},
+            json={"model": "deepseek-flash", "messages": [{"role": "user", "content": prompt}], "max_tokens": 80},
             headers=h, timeout=30)
         if resp.status_code == 200:
             txt = (resp.json()["choices"][0]["message"]["content"] or "").strip()

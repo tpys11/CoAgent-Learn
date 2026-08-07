@@ -112,7 +112,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   const [showModelModal, setShowModelModal] = useState(false)
   // 模型厂家配置
   const MODEL_PROVIDERS = [
-    { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', models: ['deepseek-chat', 'deepseek-reasoner'] },
+    { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', models: ['deepseek-pro', 'deepseek-flash'] },
     { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1-mini'] },
     { id: 'qwen', name: '通义千问', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', models: ['qwen-plus', 'qwen-max', 'qwen-turbo'] },
     { id: 'zhipu', name: '智谱GLM', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', models: ['glm-4-plus', 'glm-4-flash'] },
@@ -120,7 +120,10 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
     { id: 'doubao', name: '豆包', baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', models: ['doubao-pro-32k', 'doubao-lite-32k'] },
   ]
   const [selectedProvider, setSelectedProvider] = useState(() => localStorage.getItem('coagent-provider') || 'deepseek')
-  const [selectedModel, setSelectedModel] = useState(() => localStorage.getItem('coagent-model') || 'deepseek-chat')
+  const [selectedModel, setSelectedModel] = useState(() => {
+    const m = localStorage.getItem('coagent-model') || 'deepseek-pro'
+    return (m === 'deepseek-chat' || m === 'deepseek-reasoner') ? 'deepseek-pro' : m
+  })
   const [providerKeys, setProviderKeys] = useState<Record<string, string>>(() => {
     try { return JSON.parse(localStorage.getItem('coagent-provider-keys') || '{}') } catch { return {} }
   })

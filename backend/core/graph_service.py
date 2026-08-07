@@ -40,7 +40,7 @@ def extract_relations(text: str, api_key: str = "") -> list:
         )
         h = {"Authorization": "Bearer " + (api_key or _cfg.DEEPSEEK_API_KEY), "Content-Type": "application/json"}
         resp = _req.post(_cfg.DEEPSEEK_BASE_URL + "/chat/completions",
-            json={"model": "deepseek-chat", "messages": [{"role": "user", "content": prompt}], "max_tokens": 800},
+            json={"model": "deepseek-flash", "messages": [{"role": "user", "content": prompt}], "max_tokens": 800},
             headers=h, timeout=60)
         if resp.status_code == 200:
             content = resp.json()["choices"][0]["message"]["content"] or ""
