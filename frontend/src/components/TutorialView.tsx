@@ -6,7 +6,7 @@ type Section = 'basic' | 'detail' | 'philosophy'
 const SECTIONS: Array<{ key: Section; icon: any; label: string; desc: string }> = [
   { key: 'basic', icon: Zap, label: '基础教程', desc: '最短上手路径' },
   { key: 'detail', icon: BookOpen, label: '详细教程', desc: '功能逐项展开' },
-  { key: 'philosophy', icon: Compass, label: '设计哲学', desc: '设计思想要点' },
+  { key: 'philosophy', icon: Compass, label: '设计思想', desc: '核心设计要点' },
 ]
 
 /** 占位条目：等用户提供正式文案后替换 */
