@@ -124,24 +124,18 @@ export default function Sidebar({
                     onClick={(e) => e.stopPropagation()}
                   />
                 ) : (
-                  <span className="flex-1 truncate text-xs font-medium" onClick={() => { onSelectProject(project.id); toggleExpand(project.id) }}>{project.name}</span>
+                  <span className="flex-1 truncate text-xs font-medium" onClick={() => { onSelectProject(project.id); toggleExpand(project.id) }}
+                    onDoubleClick={(e) => { e.stopPropagation(); setEditingProject(project.id); setProjectEditName(project.name) }}
+                    title="双击重命名">{project.name}</span>
                 )}
                 {/* 三点菜单 → 项目配置 */}
                 <button onClick={(e) => { e.stopPropagation(); onProjectKnowledge?.(project.id) }}
                   className="opacity-0 group-hover:opacity-100 p-1 rounded-lg icon-btn flex-shrink-0" title="项目配置">
                   <MoreHorizontal size={13} />
                 </button>
-                <button onClick={(e) => { e.stopPropagation(); setEditingProject(project.id); setProjectEditName(project.name) }}
-                  className="opacity-0 group-hover:opacity-100 p-1 rounded-lg icon-btn flex-shrink-0" title="重命名">
-                  <Edit3 size={11} />
-                </button>
                 <button onClick={(e) => { e.stopPropagation(); { setConfirmMsg('确定删除此项目及其所有对话？'); setConfirmAction(() => () => onDeleteProject(project.id)) } }}
                   className="opacity-0 group-hover:opacity-100 p-1 rounded-lg hover:text-red-500 flex-shrink-0" title="删除">
                   <Trash2 size={11} />
-                </button>
-                <button onClick={(e) => { e.stopPropagation(); onSelectProject(project.id); onCreateDialogue(project.id) }}
-                  className="opacity-0 group-hover:opacity-100 p-1 rounded-lg icon-btn flex-shrink-0" title="新建对话">
-                  <Plus size={12} />
                 </button>
               </div>
 
@@ -193,6 +187,14 @@ export default function Sidebar({
                       </button>
                     </div>
                   ))}
+                  {/* 新建对话入口 */}
+                  <button
+                    onClick={() => { onSelectProject(project.id); onCreateDialogue(project.id) }}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-dim row-hover rounded-xl"
+                    title="新建对话"
+                  >
+                    <Plus size={11} /> 新建对话
+                  </button>
                 </div>
               )}
             </div>

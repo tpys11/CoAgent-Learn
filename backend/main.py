@@ -597,6 +597,8 @@ async def chat(req: ChatRequest):
             from agents.graph import create_workflow
             import queue, threading, asyncio
             token_queue = queue.Queue()
+            import sys as _s
+            _s.stderr.write(f"[chat-dbg] api_key_len={len(req.api_key or '')} model={req.model} base_url={req.base_url}\n"); _s.stderr.flush()
 
             _seen_agents = set()
 
