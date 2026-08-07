@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { Database, Clock } from 'lucide-react'
+import { Database, Clock, X } from 'lucide-react'
 import DragDropInput from './DragDropInput'
 
-/** 项目配置（知识库 + 项目记忆）：完整界面（替代原弹窗），最左侧栏「知识库」打开 */
-export default function KnowledgeView({ projectId }: { projectId: string | null }) {
+/** 项目配置（知识库 + 项目记忆）：居中显示、占主区域 90%，右上角可关闭 */
+export default function KnowledgeView({ projectId, onClose }: { projectId: string | null; onClose: () => void }) {
   const [tab, setTab] = useState<'knowledge' | 'memory'>('knowledge')
   const [kbInput, setKbInput] = useState('')
   const [showGuide, setShowGuide] = useState(false)
@@ -13,10 +13,16 @@ export default function KnowledgeView({ projectId }: { projectId: string | null 
   const [selectedResources, setSelectedResources] = useState<Set<string>>(new Set(['书籍', '官方文档']))
 
   return (
-    <div className="flex-1 h-full min-w-0 flex flex-col panel rounded-3xl overflow-hidden">
+    <div className="flex-1 h-full min-w-0 flex items-center justify-center p-8">
+      <div className="w-[90%] h-[90%] flex flex-col panel rounded-3xl overflow-hidden">
       <div className="flex items-center justify-between px-5 py-3 border-b border-[#e5e5e5] flex-shrink-0">
         <h2 className="text-base font-bold flex items-center gap-2"><Database size={18} className="text-green-500" /> 项目配置</h2>
-        <span className="text-[10px] text-gray-400">{projectId ? `项目 ID: ${projectId}` : '未选择项目'}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] text-gray-400">{projectId ? `项目 ID: ${projectId}` : '未选择项目'}</span>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-[#ededed] text-gray-400 hover:text-[#1a1a1a] transition-colors" title="关闭">
+            <X size={16} />
+          </button>
+        </div>
       </div>
       <div className="flex border-b border-[#e5e5e5] flex-shrink-0">
         {(['knowledge','memory'] as const).map(t => (
@@ -78,6 +84,7 @@ export default function KnowledgeView({ projectId }: { projectId: string | null 
             </div>
           </div>
         )}
+      </div>
       </div>
     </div>
   )

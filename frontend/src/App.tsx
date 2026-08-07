@@ -284,7 +284,7 @@ function App() {
       {view === 'tutorial' && <TutorialView />}
       {view === 'resources' && <ResourceView projectId={currentProjectId} />}
       {view === 'memory' && <MemoryView />}
-      {view === 'knowledge' && <KnowledgeView projectId={projectKBId ?? currentProjectId} />}
+      {view === 'knowledge' && <KnowledgeView projectId={projectKBId ?? currentProjectId} onClose={() => setView('chat')} />}
       {view === 'agents' && <AgentsView agents={agents} onSave={handleSaveAgent} />}
       {view === 'chat' && (<>
       {/* 左侧栏（tonal 面板） */}
