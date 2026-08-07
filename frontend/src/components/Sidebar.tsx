@@ -202,8 +202,8 @@ export default function Sidebar({
         })}
       </div>
 
-      {/* 底部设置 */}
-      <div className="px-3 py-2 flex justify-end flex-shrink-0">
+      {/* 底部设置（最左下角） */}
+      <div className="px-3 py-2 flex flex-shrink-0">
         <button onClick={onSettings} className="w-8 h-8 flex items-center justify-center rounded-xl icon-btn" title="设置">
           <Settings size={15} />
         </button>
