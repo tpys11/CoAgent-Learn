@@ -218,7 +218,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
               <div className="absolute top-full left-0 mt-1 card-lift p-1 z-50 w-20">
                 {timeLabels.map(label => (
                   <button key={label} onClick={() => { setTimeRange(label); setShowTimeRange(false) }}
-                    className={`text-[11px] px-2 py-1 rounded-lg w-full text-left ${label === timeRange ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
+                    className={`text-[11px] px-2 py-1 rounded-lg text-left ${label === timeRange ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
                     {label}
                   </button>
                 ))}
@@ -328,7 +328,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
 
       {/* 底部：追问 chips + 浮动输入坞 */}
       <div className="flex-shrink-0 px-6 pb-5">
-        <div className="max-w-3xl mx-auto flex flex-col gap-2.5">
+        <div className="flex flex-col gap-2.5">
           {/* 上次会话保存的三条追问：胶囊抢占注意力 */}
           {followups.length > 0 && !isLoading && messages.length > 0 && (
             <div className="flex flex-col gap-1.5 items-start animate-[fadeIn_0.3s_ease]">
@@ -381,14 +381,14 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
             <div className="flex items-center gap-0.5">
               <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept=".txt,.md,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml,.pdf,.docx,.pptx" />
               <button onClick={() => fileInputRef.current && fileInputRef.current.click()} title="上传文件"
-                className="w-8 h-8 flex items-center justify-center rounded-xl icon-btn border border-[var(--border-color)]">
+                className="w-8 h-8 flex items-center justify-center rounded-xl icon-btn border border-[var(--border-strong)] bg-[var(--bg-input)]">
                 <Upload size={15} />
               </button>
               {/* 输入信息优化 */}
               <div className="relative" ref={inputOptRef}>
                 <button
                   onClick={() => { setShowInputOpt(!showInputOpt); setShowSearch(false); setShowFormat(false); setShowContent(false) }}
-                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-color)]"
+                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)]"
                 >
                   <SlidersHorizontal size={13} /> <ChevronDown size={9} />
                 </button>
@@ -396,7 +396,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                   <div className="absolute bottom-full left-0 mb-1 card-lift p-1.5 z-10" style={{ width: 190 }}>
                     {inputOptLabels.map((label, i) => (
                       <button key={label} onClick={() => { setInputOptMode(i) }}
-                        className={`text-[11px] px-2 py-1 rounded-lg w-full text-left ${i === inputOptMode ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
+                        className={`text-[11px] px-2 py-1 rounded-lg text-left ${i === inputOptMode ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
                         <span className="font-medium">{label}</span>
               
                       </button>
@@ -408,7 +408,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
               <div className="relative" ref={searchRef}>
                 <button
                   onClick={() => { setShowSearch(!showSearch); setShowFormat(false); setShowContent(false) }}
-                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-color)]"
+                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)]"
                 >
                   <Search size={13} /> <ChevronDown size={9} />
                 </button>
@@ -417,7 +417,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                     <div className="text-[10px] text-dim mb-1">知识库检索：</div>
                     {searchLabels.map((label, i) => (
                       <button key={label} onClick={() => { setSearchMode(i); setChatMode(i === 1 ? 'kb' : 'free') }}
-                        className={`text-[11px] px-2 py-1 rounded-lg w-full text-left ${i === searchMode ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
+                        className={`text-[11px] px-2 py-1 rounded-lg text-left ${i === searchMode ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
                         <span className="font-medium">{label}</span>
               
                       </button>
@@ -428,7 +428,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                       ['增强', '寻找优质信息源'],
                     ].map(([label, desc], i) => (
                       <button key={label} onClick={() => setWebSearchMode(i)}
-                        className={`text-[11px] px-2 py-1 rounded-lg w-full text-left ${i === webSearchMode ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
+                        className={`text-[11px] px-2 py-1 rounded-lg text-left ${i === webSearchMode ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
                         <span className="font-medium">{label}</span>
                       </button>
                     ))}
@@ -439,7 +439,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
               <div className="relative" ref={formatRef}>
                 <button
                   onClick={() => { setShowFormat(!showFormat); setShowContent(false) }}
-                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-color)]"
+                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)]"
                 >
                   输出形式 <ChevronDown size={9} />
                 </button>
@@ -451,7 +451,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                       ['高结构化', '增加有序/无序列表和表格'],
                     ] as const).map(([s, desc], i) => (
                       <button key={s} onClick={() => setOutputFormat(i)}
-                        className={`text-[11px] px-2 py-1 rounded-lg w-full text-left ${i === outputFormat ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
+                        className={`text-[11px] px-2 py-1 rounded-lg text-left ${i === outputFormat ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
                         <span className="font-medium">{s}</span>
                       </button>
                     ))}
@@ -461,7 +461,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                       ['对话形式', '以对话消息形式直接输出'],
                     ] as const).map(([s, desc], i) => (
                       <button key={s} onClick={() => setOutputStyle(i)}
-                        className={`text-[11px] px-2 py-1 rounded-lg w-full text-left ${i === outputStyle ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
+                        className={`text-[11px] px-2 py-1 rounded-lg text-left ${i === outputStyle ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
                         <span className="font-medium">{s}</span>
                       </button>
                     ))}
@@ -472,7 +472,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
               <div className="relative" ref={contentRef}>
                 <button
                   onClick={() => { setShowContent(!showContent); setShowFormat(false) }}
-                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-color)]"
+                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)]"
                 >
                   输出内容 <ChevronDown size={9} />
                 </button>
@@ -484,7 +484,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                       ['开', '大模型思考时展示'],
                     ] as const).map(([s, desc], i) => (
                       <button key={s} onClick={() => setThinking(i === 1)}
-                        className={`text-[11px] px-2 py-1 rounded-lg w-full text-left ${(i === 1) === thinking ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
+                        className={`text-[11px] px-2 py-1 rounded-lg text-left ${(i === 1) === thinking ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
                         <span className="font-medium">{s}</span>
                       </button>
                     ))}
@@ -495,7 +495,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                       ['拓展', '补充拓展性相关内容'],
                     ] as const).map(([s, desc], i) => (
                       <button key={s} onClick={() => setOutputVolume(i)}
-                        className={`text-[11px] px-2 py-1 rounded-lg w-full text-left ${i === outputVolume ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
+                        className={`text-[11px] px-2 py-1 rounded-lg text-left ${i === outputVolume ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
                         <span className="font-medium">{s}</span>
                       </button>
                     ))}
@@ -506,7 +506,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                       ['深', '原理+推导+前沿'],
                     ] as const).map(([s, desc], i) => (
                       <button key={s} onClick={() => setDepth(i)}
-                        className={`text-[11px] px-2 py-1 rounded-lg w-full text-left ${i === depth ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
+                        className={`text-[11px] px-2 py-1 rounded-lg text-left ${i === depth ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
                         <span className="font-medium">{s}</span>
                       </button>
                     ))}
