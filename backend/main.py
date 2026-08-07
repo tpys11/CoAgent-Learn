@@ -357,10 +357,20 @@ class ProfileData(BaseModel):
 async def save_project_profile(pid: str, req: ProfileData):
     import json
     from core.postgres_client import pg_client
-    # 项目画像存 project_memories（session 用 project 维度）
-    has = pg_client.execute("SELECT project_id FROM project_memories WHERE project_id=%s", (pid,))
-    data = json.dumps(req.profile, ensure_ascii=False)
-    if has:
+    # 项目画像写入 project_memories：合并（不覆盖对话生成的记忆），字段映射成前端可显示键
+    rows = pg_client.execute("SELECT session_id, data FROM project_memories WHERE project_id=%s", (pid,))
+    if rows:
+        proj = _as_dict(rows[0]["data"]) if rows[0]["data"] else {}
+    else:
+        proj = {}
+    p = req.profile
+    if isinstance(p, dict):
+        if p.get("domain"): proj["领域"] = p["domain"]
+        if p.get("background"): proj["背景"] = p["background"]
+        if p.get("prefer"): proj["偏好"] = p["prefer"]
+        if p.get("goal"): proj["学习目标"] = p["goal"]
+    data = json.dumps(proj, ensure_ascii=False)
+    if rows:
         pg_client.execute("UPDATE project_memories SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE project_id=%s", (data, pid))
     else:
         pg_client.execute("INSERT INTO project_memories (session_id, project_id, data) VALUES (%s,%s,%s)", ("project", pid, data))

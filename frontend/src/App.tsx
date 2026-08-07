@@ -132,10 +132,7 @@ function App() {
         const id = d.id
         setProjects(prev => [...prev, { id, name, simple: false }])
         setCurrentProjectId(id)
-        const dId = generateId()
-        setDialogues(prev => [...prev, { id: dId, name: '新对话', projectId: id, createdAt: new Date().toISOString(), archived: false }])
-        setCurrentDialogueId(dId)
-        setAllMessages(prev => ({ ...prev, [dId]: [] }))
+        // 不默认建对话（避免无对话画像向导的对话）；由用户手动新建
         // 弹项目画像向导：用户选"保存画像"或"跳过"
         setWizard({ mode: 'project', id, name })
       })

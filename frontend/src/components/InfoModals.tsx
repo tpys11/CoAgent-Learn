@@ -178,10 +178,13 @@ export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectI
           if(d.memory.项目概述)txt+='项目概述: '+d.memory.项目概述+NL
           if(d.memory.当前进度)txt+='当前进度: '+d.memory.当前进度+NL
           if(d.memory.领域)txt+='领域: '+d.memory.领域+NL
+          if(d.memory.背景)txt+='背景: '+d.memory.背景+NL
           if(d.memory.水平)txt+='水平: '+d.memory.水平+NL
+          if(d.memory.学习目标)txt+='学习目标: '+d.memory.学习目标+NL
+          if(d.memory.偏好&&d.memory.偏好.length)txt+='偏好: '+d.memory.偏好.join(', ')+NL
+          else if(d.memory.偏好&&typeof d.memory.偏好==='string')txt+='偏好: '+d.memory.偏好+NL
           if(d.memory.薄弱点&&d.memory.薄弱点.length)txt+='薄弱点: '+d.memory.薄弱点.join(', ')+NL
           if(d.memory.兴趣&&d.memory.兴趣.length)txt+='兴趣: '+d.memory.兴趣.join(', ')+NL
-          if(d.memory.偏好&&d.memory.偏好.length)txt+='偏好: '+d.memory.偏好.join(', ')+NL
           if(txt)setEpisodicMemory(txt.trim())
           var txt2=''
           if(d.memory.知识点&&d.memory.知识点.length)txt2+='知识点: '+d.memory.知识点.join(', ')+NL
@@ -414,7 +417,7 @@ export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectI
           {tab === 'memory' && (
             <div className="flex flex-col gap-5">
               <div className="border border-indigo-200 rounded-xl p-4 bg-indigo-50/20">
-                <h3 className="text-sm font-bold flex items-center gap-1.5 text-indigo-700 mb-2"><Clock size={14} /> 情景记忆</h3>
+                <h3 className="text-sm font-bold flex items-center gap-1.5 text-indigo-700 mb-2"><Clock size={14} /> 项目记忆</h3>
                 <p className="text-[10px] text-gray-400 mb-2">基于用户与AI对话内容的简要概述（≤1000字）。</p>
                 <textarea value={episodicMemory} onChange={e => setEpisodicMemory(e.target.value)}
                   placeholder="例：用户询问了LangGraph的状态管理机制……"
