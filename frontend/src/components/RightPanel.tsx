@@ -23,12 +23,15 @@ const DEFAULT_HEIGHTS: Record<WinKey, number> = { flow: 200, graph: 190, chat: 2
 const MIN_H = 56
 const MAX_H = 800
 
-/** 可折叠窗口：header 常驻（点击展开/收起），内容区高度可被拖拽调整 */
-function Pane({ title, icon: Icon, collapsed, height, onToggle, children }: {
-  title: string; icon: any; collapsed: boolean; height: number; onToggle: () => void; children: React.ReactNode
+/** 可折叠窗口：header 常驻（点击展开/收起），内容区高度可被拖拽调整；flex 模式自动填满剩余空间 */
+function Pane({ title, icon: Icon, collapsed, height, flex, onToggle, children }: {
+  title: string; icon: any; collapsed: boolean; height: number; flex?: boolean; onToggle: () => void; children: React.ReactNode
 }) {
   return (
-    <div className="card-surface flex flex-col overflow-hidden flex-shrink-0" style={{ height: collapsed ? 32 : height }}>
+    <div
+      className="card-surface flex flex-col overflow-hidden flex-shrink-0"
+      style={collapsed ? { height: 32 } : flex ? { flex: 1, minHeight: 56 } : { height }}
+    >
       <div
         onClick={onToggle}
         className="flex items-center justify-between px-4 py-1.5 flex-shrink-0 cursor-pointer select-none"
@@ -75,15 +78,20 @@ export default function RightPanel({ messageCount, projectId, onCollapse, flowAg
     document.body.style.userSelect = 'none'
   }
 
-  // 拖拽调整相邻窗口高度
+  // 拖拽调整相邻窗口高度（第二对话为 flex 自动填充，手柄只调其上方窗口）
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       const d = dragRef.current
       if (!d) return
       const delta = e.clientY - d.startY
-      const a = Math.max(MIN_H, Math.min(MAX_H, d.startH[0] + delta))
-      const b = Math.max(MIN_H, Math.min(MAX_H, d.startH[1] - delta))
-      setHeights(prev => ({ ...prev, [d.pair[0]]: a, [d.pair[1]]: b }))
+      if (d.pair[1] === 'chat') {
+        const a = Math.max(MIN_H, Math.min(MAX_H, d.startH[0] + delta))
+        setHeights(prev => ({ ...prev, [d.pair[0]]: a }))
+      } else {
+        const a = Math.max(MIN_H, Math.min(MAX_H, d.startH[0] + delta))
+        const b = Math.max(MIN_H, Math.min(MAX_H, d.startH[1] - delta))
+        setHeights(prev => ({ ...prev, [d.pair[0]]: a, [d.pair[1]]: b }))
+      }
     }
     const onUp = () => { dragRef.current = null; document.body.style.userSelect = '' }
     window.addEventListener('mousemove', onMove)
@@ -239,8 +247,8 @@ export default function RightPanel({ messageCount, projectId, onCollapse, flowAg
       </Pane>
       <DragHandle onDown={startDrag(['graph', 'chat'])} />
 
-      {/* 窗口3：第二对话 */}
-      <Pane title="第二对话" icon={MessagesSquare} collapsed={collapsed.chat} height={heights.chat} onToggle={() => toggle('chat')}>
+      {/* 窗口3：第二对话（flex 自动填满剩余空间，贴底） */}
+      <Pane title="第二对话" icon={MessagesSquare} collapsed={collapsed.chat} height={heights.chat} flex onToggle={() => toggle('chat')}>
         <div className="w-full h-full flex flex-col">
           <p className="px-4 pb-2 text-[10px] text-dim leading-relaxed flex-shrink-0">遇到不懂的概念可在这里单独提问，不影响主对话。</p>
           <div className="flex-1 overflow-y-auto px-3 flex flex-col gap-2 pb-2 min-h-0">
