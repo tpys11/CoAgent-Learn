@@ -12,7 +12,7 @@ export default function SettingsModal({ onClose }: Props) {
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
-    document.documentElement.style.fontSize = `${fontSize}px`
+    document.documentElement.style.setProperty('--ui-font', `${fontSize}px`)
     localStorage.setItem('coagent-fontSize', String(fontSize))
   }, [fontSize])
 
@@ -23,33 +23,33 @@ export default function SettingsModal({ onClose }: Props) {
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="bg-white rounded-2xl shadow-lift w-full max-w-md mx-4" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#dad4cd]">
+      <div className="card-lift w-full max-w-md mx-4" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b hairline">
           <h2 className="font-display text-lg">设置</h2>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
+          <button onClick={onClose} className="p-1 rounded-lg row-hover text-dim"><X size={18} /></button>
         </div>
 
         <div className="p-5 flex flex-col gap-5">
           {/* 字体大小 */}
           <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1.5 mb-2">
+            <label className="text-xs font-semibold text-dim uppercase tracking-wider flex items-center gap-1.5 mb-2">
               <Type size={14} /> 字体大小
             </label>
             <div className="flex items-center gap-3">
-              <span className="text-xs text-gray-400">12</span>
+              <span className="text-xs text-dim">12</span>
               <input
                 type="range" min="12" max="20" value={fontSize}
                 onChange={(e) => setFontSize(Number(e.target.value))}
-                className="flex-1 accent-[#1a1a1a]"
+                className="flex-1 accent-[var(--accent)]"
               />
-              <span className="text-xs text-gray-400">20</span>
-              <span className="text-xs font-semibold text-[#1a1a1a] w-8 text-right">{fontSize}px</span>
+              <span className="text-xs text-dim">20</span>
+              <span className="text-xs font-semibold text-[var(--text)] w-8 text-right">{fontSize}px</span>
             </div>
           </div>
 
           {/* 主题 */}
           <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">页面主题</label>
+            <label className="text-xs font-semibold text-dim uppercase tracking-wider mb-2 block">页面主题</label>
             <div className="flex gap-2">
               {[
                 { value: 'light', icon: Sun, swatch: 'bg-white border border-gray-300', iconColor: 'text-gray-700' },
@@ -63,7 +63,7 @@ export default function SettingsModal({ onClose }: Props) {
                   title={value}
                   className={`flex-1 flex items-center justify-center aspect-[4/3] rounded-xl transition-all ${swatch} ${
                     theme === value
-                      ? 'ring-2 ring-[#1a1a1a]/50 shadow-sm'
+                      ? 'ring-2 ring-[var(--accent)] shadow-sm'
                       : 'hover:brightness-95'
                   }`}
                 >
@@ -91,9 +91,9 @@ export function ApiKeyPrompt({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl shadow-lift w-full max-w-md mx-4 p-6">
+      <div className="card-lift w-full max-w-md mx-4 p-6">
         <h2 className="font-display text-lg mb-2">配置 API Key</h2>
-        <p className="text-sm text-gray-500 mb-4">请输入 DeepSeek API Key 以启用 Agent 功能。后续可在设置中修改。</p>
+        <p className="text-sm text-dim mb-4">请输入 DeepSeek API Key 以启用 Agent 功能。后续可在设置中修改。</p>
         <input
           autoFocus
           type="password"
@@ -101,11 +101,11 @@ export function ApiKeyPrompt({ onClose }: { onClose: () => void }) {
           onChange={(e) => setKey(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSave()}
           placeholder="sk-..."
-          className="w-full px-3 py-2.5 border border-[#c4beb6] rounded-lg text-sm outline-none focus:border-[#1a1a1a] mb-4"
+          className="w-full px-3 py-2.5 input-surface rounded-lg text-sm outline-none focus:border-[var(--accent)] mb-4"
         />
         <div className="flex gap-2 justify-end">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-500 hover:bg-gray-100 rounded-lg">跳过</button>
-          <button onClick={handleSave} className="px-4 py-2 bg-[#1a1a1a] text-white text-sm font-semibold rounded-lg hover:bg-[#333333]">确认</button>
+          <button onClick={onClose} className="px-4 py-2 text-sm text-dim row-hover rounded-lg">跳过</button>
+          <button onClick={handleSave} className="px-4 py-2 btn-primary text-sm font-semibold">确认</button>
         </div>
       </div>
     </div>

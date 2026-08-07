@@ -138,3 +138,22 @@ button:active { transform: scale(0.98); }
 [data-theme=warm] .text-\[\#1a1a1a\]{color:#b25e12!important}
 [data-theme=warm] .hover\:bg-\[\#333333\]:hover{background-color:#964d0c!important}
 [data-theme=warm] input,[data-theme=warm] textarea{background-color:#f8f4ea!important}
+
+/* ============ 字体大小调节：只影响文字，不影响布局 ============
+   布局尺寸（间距/宽高）基于固定 html rem（16px）；文字类基于 --ui-font 变量，
+   调节字体大小时仅文字按比例缩放，边框/布局保持稳定。 */
+:root { --ui-font: 15px; }
+body { font-size: var(--ui-font); }
+.text-\[9px\]{font-size:calc(var(--ui-font)*0.6)!important}
+.text-\[10px\]{font-size:calc(var(--ui-font)*0.667)!important}
+.text-\[11px\]{font-size:calc(var(--ui-font)*0.733)!important}
+.text-\[13px\]{font-size:calc(var(--ui-font)*0.867)!important}
+.text-\[15px\]{font-size:calc(var(--ui-font)*1)!important}
+.text-\[17px\]{font-size:calc(var(--ui-font)*1.133)!important}
+.text-xs{font-size:calc(var(--ui-font)*0.8)!important}
+.text-sm{font-size:calc(var(--ui-font)*0.933)!important}
+.text-base{font-size:calc(var(--ui-font)*1.067)!important}
+.text-lg{font-size:calc(var(--ui-font)*1.2)!important}
+.text-xl{font-size:calc(var(--ui-font)*1.333)!important}
+.text-2xl{font-size:calc(var(--ui-font)*1.6)!important}
+.text-3xl{font-size:calc(var(--ui-font)*2)!important}

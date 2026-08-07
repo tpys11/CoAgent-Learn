@@ -56,7 +56,7 @@ function App() {
   // 启动时应用保存的字体大小与主题（system 模式自动解析亮暗）
   useEffect(() => {
     const saved = localStorage.getItem('coagent-fontSize')
-    if (saved) document.documentElement.style.fontSize = saved + 'px'
+    if (saved) document.documentElement.style.setProperty('--ui-font', saved + 'px')
     initTheme()
   }, [])
 
