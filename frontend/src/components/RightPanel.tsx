@@ -250,7 +250,6 @@ export default function RightPanel({ messageCount, projectId, onCollapse, flowAg
       {/* 窗口3：第二对话（flex 自动填满剩余空间，贴底） */}
       <Pane title="第二对话" icon={MessagesSquare} collapsed={collapsed.chat} height={heights.chat} flex onToggle={() => toggle('chat')}>
         <div className="w-full h-full flex flex-col">
-          <p className="px-4 pb-2 text-[10px] text-dim leading-relaxed flex-shrink-0">遇到不懂的概念可在这里单独提问，不影响主对话。</p>
           <div className="flex-1 overflow-y-auto px-3 flex flex-col gap-2 pb-2 min-h-0">
             {sideMessages.length === 0 ? (
               <p className="text-[11px] text-dim text-center py-4">暂无对话</p>

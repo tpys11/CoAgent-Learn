@@ -257,9 +257,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                 <Bot size={26} className="text-dim" strokeWidth={1.5} />
               </div>
               <h1 className="font-display text-3xl tracking-wide">CoAgent-Learn</h1>
-              <p className="text-xs text-dim">
-                {currentProject ? `当前项目: ${currentProject.name} — 输入问题，多智能体将为你生成定制讲义、实操指南与测试题` : '选择或新建一个项目开始学习'}
-              </p>
+              {!currentProject && <p className="text-xs text-dim">选择或新建一个项目开始学习</p>}
             </div>
           )}
 
