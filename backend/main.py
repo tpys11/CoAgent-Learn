@@ -49,17 +49,32 @@ app.add_middleware(
 async def health_check():
     return {"status": "ok", "version": "0.3.0"}
 
+def _as_dict(data):
+    """SQLite 存的 JSON 字符串转 dict"""
+    import json as _json
+    if isinstance(data, dict):
+        return data
+    if isinstance(data, str):
+        try:
+            return _json.loads(data)
+        except Exception:
+            return {}
+    return {}
+
+
 @app.get("/api/global-profile")
 async def get_global_profile(session_id: str = "default"):
     from core.postgres_client import pg_client
-    rows = pg_client.execute("SELECT data FROM global_profile WHERE session_id = %s", (session_id,))
-    return {"profile": rows[0]["data"] if rows else {}}
+    # 记忆永久化：不按 session 过滤，取最新一条（刷新后保留）
+    rows = pg_client.execute("SELECT data FROM global_profile ORDER BY updated_at DESC LIMIT 1")
+    return {"profile": _as_dict(rows[0]["data"]) if rows else {}}
 
 @app.get("/api/project-memory/{project_id}")
 async def get_project_memory(project_id: str, session_id: str = "default"):
     from core.postgres_client import pg_client
-    rows = pg_client.execute("SELECT data FROM project_memories WHERE session_id = %s AND project_id = %s", (session_id, project_id))
-    return {"memory": rows[0]["data"] if rows else {}}
+    # 记忆永久化：按项目取最新一条（不按 session，刷新后保留）
+    rows = pg_client.execute("SELECT data FROM project_memories WHERE project_id = %s ORDER BY updated_at DESC LIMIT 1", (project_id,))
+    return {"memory": _as_dict(rows[0]["data"]) if rows else {}}
 
 
 

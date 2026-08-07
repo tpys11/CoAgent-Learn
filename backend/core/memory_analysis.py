@@ -70,6 +70,8 @@ def update_memories(api_key, project_id, dialogue_id, db, session_id="default"):
         p += "{\"项目概述\":\"本项目学习内容概括\",\"当前进度\":\"学到哪了\",\"领域\":\"学科领域\",\"水平\":\"beginner/intermediate/advanced\",\"兴趣\":[\"话题\"],\"偏好\":[\"方式\"],\"知识点\":[\"概念\"],\"薄弱点\":[\"难点\"],\"学习建议\":\"建议\",\"摘要\":\"一句话总结\"}"
         r = _call_llm(p)
         data = _extract_json(r)
+        if not isinstance(data, dict):
+            data = {}
         if not data:
             _s.stderr.write("[um] 情景JSON解析空" + NL); _s.stderr.flush()
         else:
@@ -114,6 +116,8 @@ def update_memories(api_key, project_id, dialogue_id, db, session_id="default"):
         p2 += "{\"用户背景\":\"身份专业\",\"偏好提问方式\":[\"方式\"],\"偏好学习方式\":[\"方式\"],\"偏好_输出\":[\"格式\"],\"学习时长\":\"\",\"学习内容\":[\"学科\"],\"项目摘要\":{\"项目名\":{\"领域\":\"\",\"水平\":\"\",\"薄弱点\":[\"\"],\"兴趣\":[\"\"],\"偏好\":[\"\"]}}}"
         r2 = _call_llm(p2)
         gd = _extract_json(r2)
+        if not isinstance(gd, dict):
+            gd = {}
         if not gd:
             _s.stderr.write("[um] 个人JSON解析空" + NL); _s.stderr.flush()
         else:
