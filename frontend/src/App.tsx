@@ -11,14 +11,15 @@ import Sidebar from './components/Sidebar'
 import CenterPanel from './components/CenterPanel'
 import RightPanel from './components/RightPanel'
 import DiagnosisModal from './components/DiagnosisModal'
-import AgentSettingsModal from './components/AgentSettingsModal'
 import SettingsModal, { ApiKeyPrompt } from './components/SettingsModal'
-import { ProjectKnowledgeModal, MemoryModal } from './components/InfoModals'
 import ProfileWizard from './components/ProfileWizard'
 import GuideModal from './components/GuideModal'
 import ActivityBar, { type ViewKey } from './components/ActivityBar'
 import TutorialView from './components/TutorialView'
 import ResourceView from './components/ResourceView'
+import MemoryView from './components/MemoryView'
+import KnowledgeView from './components/KnowledgeView'
+import AgentsView from './components/AgentsView'
 import IntroPanel from './components/IntroPanel'
 import { initTheme } from './theme'
 import type { Project, Dialogue, AgentConfig, Message } from './types'
@@ -46,9 +47,6 @@ function App() {
   const [showDiagnosis, setShowDiagnosis] = useState(false)
   const [agents, setAgents] = useState<AgentConfig[]>(DEFAULT_AGENTS)
   const [showSettings, setShowSettings] = useState(false)
-  const [showAgentSettings, setShowAgentSettings] = useState(false)
-  const [showMemory, setShowMemory] = useState(false)
-  const [showProjectKB, setShowProjectKB] = useState(false)
   const [projectKBId, setProjectKBId] = useState<string | null>(null)
   const [wizard, setWizard] = useState<{mode: 'project'|'dialogue'; id: string; name?: string} | null>(null)
   const [showGuide, setShowGuide] = useState(false)
@@ -160,7 +158,7 @@ function App() {
 
   const handleProjectKB = useCallback((id: string) => {
     setProjectKBId(id)
-    setShowProjectKB(true)
+    setView('knowledge')
   }, [])
 
   const handleCreateDialogue = useCallback((projectId: string) => {
@@ -274,7 +272,7 @@ function App() {
 </header>
       <div className="flex-1 flex min-h-0 pb-3 pr-3">
       {/* 最左侧细轨：三界面切换 */}
-      <ActivityBar view={view} onChange={setView} onMemory={() => setShowMemory(true)} onKnowledge={() => handleProjectKB(currentProjectId || 'default')} onAgentSettings={() => setShowAgentSettings(true)} />
+      <ActivityBar view={view} onChange={setView} />
       {sidebarCollapsed && (
         <button onClick={() => setSidebarCollapsed(false)} className="flex-shrink-0 w-7 h-7 mt-3 ml-1.5 flex items-center justify-center rounded-lg icon-btn" title="展开侧栏">
           <PanelLeftOpen size={15} />
@@ -282,6 +280,9 @@ function App() {
       )}
       {view === 'tutorial' && <TutorialView />}
       {view === 'resources' && <ResourceView projectId={currentProjectId} />}
+      {view === 'memory' && <MemoryView />}
+      {view === 'knowledge' && <KnowledgeView projectId={projectKBId ?? currentProjectId} />}
+      {view === 'agents' && <AgentsView agents={agents} onSave={handleSaveAgent} />}
       {view === 'chat' && (<>
       {/* 左侧栏（tonal 面板） */}
       {!sidebarCollapsed && (
@@ -342,10 +343,7 @@ function App() {
 
 
       {showDiagnosis && <DiagnosisModal onClose={() => setShowDiagnosis(false)} />}
-      {showAgentSettings && <AgentSettingsModal agents={agents} onSave={handleSaveAgent} onClose={() => setShowAgentSettings(false)} />}
-      {showMemory && <MemoryModal onClose={() => setShowMemory(false)} />}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
-      {showProjectKB && <ProjectKnowledgeModal projectId={projectKBId || undefined} onClose={() => setShowProjectKB(false)} />}
       {showGuide && <GuideModal onClose={() => setShowGuide(false)} />}
       {wizard && <ProfileWizard mode={wizard.mode} projectName={wizard.name} onClose={() => setWizard(null)}
         onSave={(profile) => {
