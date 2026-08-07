@@ -165,6 +165,7 @@ export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectI
   const [kbInput, setKbInput] = useState('')
   const [showGuide, setShowGuide] = useState(false)
   const [projectMemory, setProjectMemory] = useState('')
+  const [dialogueSummaries, setDialogueSummaries] = useState<Array<{dialogue_id?: string; name?: string; 概要?: any}>>([])
   useEffect(function(){
     if(!projectId)return
     var S=sessionStorage.getItem('coagent-s')||''
@@ -192,13 +193,7 @@ export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectI
             }
           }
           // 对话概要：本项目各对话的记忆，区分显示（挂项目记忆下）
-          if(d.memory.对话概要&&d.memory.对话概要.length){
-            txt2+='对话概要:'+NL
-            for(var i=0;i<d.memory.对话概要.length;i++){
-              var ds=d.memory.对话概要[i]
-              txt2+='  '+(i+1)+'. '+(ds.name||'对话')+'：'+(ds.概要&&ds.概要.topic||'')+'（'+(ds.概要&&ds.概要.selfLevel||'')+'）'+NL
-            }
-          }
+          setDialogueSummaries(d.memory.对话概要||[])
           if(txt2)setProjectMemory(txt2.trim())
         }
       }).catch(function(){})
@@ -432,6 +427,30 @@ export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectI
                   placeholder="例：本项目聚焦多智能体系统开发……"
                   rows={4}
                   className="w-full px-3 py-2 border border-[#d0d0d0] rounded-lg text-xs outline-none resize-none focus:border-[#1a1a1a] bg-[#fafafa]" />
+              </div>
+              {/* 对话记忆：每个对话一条，区分显示在下方 */}
+              <div className="border border-[#e5e5e5] rounded-xl p-4">
+                <h3 className="text-sm font-bold mb-2">对话记忆（{dialogueSummaries.length}）</h3>
+                {dialogueSummaries.length === 0 ? (
+                  <p className="text-xs text-gray-400">暂无对话记忆，新建对话并填写对话画像后生成</p>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {dialogueSummaries.map((ds, i) => (
+                      <div key={i} className="border border-[#e5e5e5] rounded-lg p-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-semibold">💬 {ds.name || '对话'}</span>
+                        </div>
+                        {ds.概要 && (
+                          <div className="text-[11px] text-gray-600 flex flex-col gap-0.5">
+                            {ds.概要.topic && <span>主题：{ds.概要.topic}</span>}
+                            {ds.概要.selfLevel && <span>水平：{ds.概要.selfLevel}</span>}
+                            {ds.概要.target && <span>目标：{ds.概要.target}</span>}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}
