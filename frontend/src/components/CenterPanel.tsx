@@ -393,7 +393,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                   <SlidersHorizontal size={13} /> <ChevronDown size={9} />
                 </button>
                 {showInputOpt && (
-                  <div className="absolute bottom-full left-0 mb-1 card-lift p-1.5 z-10" style={{ width: 220 }}>
+                  <div className="absolute bottom-full left-0 mb-1 card-lift p-1.5 z-10" style={{ width: 190 }}>
                     {inputOptLabels.map((label, i) => (
                       <button key={label} onClick={() => { setInputOptMode(i) }}
                         className={`text-[11px] px-2 py-1 rounded-lg w-full text-left ${i === inputOptMode ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
@@ -413,7 +413,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                   <Search size={13} /> <ChevronDown size={9} />
                 </button>
                 {showSearch && (
-                  <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 240 }}>
+                  <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 205 }}>
                     <div className="text-[10px] text-dim mb-1">知识库检索：</div>
                     {searchLabels.map((label, i) => (
                       <button key={label} onClick={() => { setSearchMode(i); setChatMode(i === 1 ? 'kb' : 'free') }}
@@ -444,7 +444,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                   输出形式 <ChevronDown size={9} />
                 </button>
                 {showFormat && (
-                  <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 260 }}>
+                  <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 220 }}>
                     <div className="text-[10px] text-dim mb-1">结构化程度：</div>
                     {([
                       ['低结构化', '减少列表和表格，以段落为主'],
@@ -477,7 +477,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                   输出内容 <ChevronDown size={9} />
                 </button>
                 {showContent && (
-                  <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 260 }}>
+                  <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 220 }}>
                     <div className="text-[10px] text-dim mb-1">思考链展示：</div>
                     {([
                       ['关', '不展示思考链'],
