@@ -98,7 +98,6 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [statsCollapsed, setStatsCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
-  const [flowVisible, setFlowVisible] = useState(false)
   const [flowAgents, setFlowAgents] = useState<string[]>([])
   const [flowActiveAgent, setFlowActiveAgent] = useState<string | null>(null)
   const [flowMindchain, setFlowMindchain] = useState<Array<{agent: string; content: string}>>([])
@@ -169,7 +168,7 @@ function App() {
     setAllMessages(prev => ({ ...prev, [d.id]: [] }))
     setWizard({ mode: 'dialogue', id: d.id, name: d.name })
   }, [dialogues])
-  const handleSelectDialogue = useCallback((id: string) => { setCurrentDialogueId(id); setFlowVisible(false); setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = [] }, [])
+  const handleSelectDialogue = useCallback((id: string) => { setCurrentDialogueId(id); setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = [] }, [])
   const handleArchiveDialogue = useCallback((id: string) => {
     if (!window.confirm('确定删除该对话？')) return
     fetch('/api/dialogues/' + id, { method: 'DELETE' })
@@ -194,7 +193,7 @@ function App() {
     if (!did) return
     setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'user', content: text }] }))
     setIsLoading(true)
-    setFlowVisible(true); setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = []
+    setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = []
     try {
       // 读取所选模型厂家配置
       const provKeys = (() => { try { return JSON.parse(localStorage.getItem('coagent-provider-keys') || '{}') } catch { return {} } })()
@@ -316,8 +315,6 @@ function App() {
         dialogueId={currentDialogueId}
         onSendMessage={handleSendMessage}
         statsCollapsed={statsCollapsed} onToggleStats={() => setStatsCollapsed(!statsCollapsed)}
-        showAgentFlow={flowVisible}
-        flowAgents={flowAgents} flowActiveAgent={flowActiveAgent}
         flowMindchain={flowMindchain}
           onOpenGuide={() => setShowGuide(true)}
         projectInitialized={currentProject?.initialized !== false}
@@ -336,7 +333,7 @@ function App() {
             <span className="w-1 h-10 rounded-full bg-[#d0d0d0] opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
           <div style={{ width: rightPanelWidth, minWidth: 260 }} className="h-full flex-shrink-0 relative panel rounded-3xl overflow-hidden">
-            <RightPanel messageCount={currentMessages.filter(m => m.role === 'assistant').length} projectId={currentProjectId}  onCollapse={() => setRightCollapsed(true)} />
+            <RightPanel messageCount={currentMessages.filter(m => m.role === 'assistant').length} projectId={currentProjectId} flowAgents={flowAgents} flowActiveAgent={flowActiveAgent} onCollapse={() => setRightCollapsed(true)} />
           </div>
         </>
       )}

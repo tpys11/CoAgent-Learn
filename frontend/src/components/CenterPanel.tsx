@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Send, Bot, Settings, X, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Cpu, SlidersHorizontal, Check, AlertTriangle, Search, FileText } from 'lucide-react'
 import type { Message, Project } from '../types'
-import AgentFlow from './AgentFlow'
 
 
 interface CenterPanelProps {
@@ -12,15 +11,12 @@ interface CenterPanelProps {
   onSendMessage: (text: string, settings?: Record<string, any>) => void
   statsCollapsed: boolean
   onToggleStats: () => void
-  showAgentFlow: boolean
-  flowAgents: string[]
-  flowActiveAgent: string | null
   flowMindchain: Array<{agent: string; content: string}>
   onOpenGuide?: () => void
   projectInitialized?: boolean
 }
 
-export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, statsCollapsed, onToggleStats, showAgentFlow, flowAgents, flowActiveAgent, flowMindchain, onOpenGuide, projectInitialized }: CenterPanelProps) {
+export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, statsCollapsed, onToggleStats, flowMindchain, onOpenGuide, projectInitialized }: CenterPanelProps) {
   const [input, setInput] = useState('')
   const [chatMode, setChatMode] = useState<'kb'|'free'>('kb')
   // 上次会话保存的三条追问（进入对话时展示，抢占注意力）
@@ -95,7 +91,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   const removeAttachment = function(name: string) {
     setAttachments(prev => prev.filter(a => a.name !== name))
   }
-  const [flowCollapsed, setFlowCollapsed] = useState(false)
   const [time, setTime] = useState(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }))
   const [searchMode, setSearchMode] = useState(1)
   const [showFormat, setShowFormat] = useState(false)
@@ -257,22 +252,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
       {/* 消息流：内容限宽居中 */}
       <div ref={msgScrollRef} className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-6 py-6 flex flex-col gap-6">
-          {/* Agent 执行流程 */}
-          {showAgentFlow && !flowCollapsed && (
-            <div className="card-surface overflow-hidden flex-shrink-0" style={{ height: '28vh', minHeight: 150 }}>
-              <div className="flex items-center justify-between px-4 py-1.5 border-b hairline border-b">
-                <span className="text-[11px] text-dim font-medium">Agent 执行流程</span>
-                <button onClick={() => setFlowCollapsed(true)} className="text-[11px] text-dim hover:text-[#1a1a1a]">▲ 收起</button>
-              </div>
-              <AgentFlow visible={true} agents={flowAgents} activeAgent={flowActiveAgent} />
-            </div>
-          )}
-          {showAgentFlow && flowCollapsed && (
-            <div className="flex justify-center">
-              <button onClick={() => setFlowCollapsed(false)} className="chip text-[11px] text-dim px-3 py-1">▾ Agent 流程</button>
-            </div>
-          )}
-
           {/* 欢迎屏 */}
           {messages.length === 0 && (
             <div className="flex flex-col items-center gap-4 py-16 animate-[fadeIn_0.4s_ease]">
