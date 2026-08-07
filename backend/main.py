@@ -49,17 +49,33 @@ app.add_middleware(
 async def health_check():
     return {"status": "ok", "version": "0.3.0"}
 
+
+def _as_dict(data):
+    """SQLite 存的 JSON 字符串转 dict"""
+    import json as _json
+    if isinstance(data, dict):
+        return data
+    if isinstance(data, str):
+        try:
+            return _json.loads(data)
+        except Exception:
+            return {}
+    return {}
+
+
 @app.get("/api/global-profile")
 async def get_global_profile(session_id: str = "default"):
     from core.postgres_client import pg_client
-    rows = pg_client.execute("SELECT data FROM global_profile WHERE session_id = %s", (session_id,))
-    return {"profile": rows[0]["data"] if rows else {}}
+    # 记忆永久化：不按 session 过滤，取最新一条（刷新后保留）
+    rows = pg_client.execute("SELECT data FROM global_profile ORDER BY updated_at DESC LIMIT 1")
+    return {"profile": _as_dict(rows[0]["data"]) if rows else {}}
 
 @app.get("/api/project-memory/{project_id}")
 async def get_project_memory(project_id: str, session_id: str = "default"):
     from core.postgres_client import pg_client
-    rows = pg_client.execute("SELECT data FROM project_memories WHERE session_id = %s AND project_id = %s", (session_id, project_id))
-    return {"memory": rows[0]["data"] if rows else {}}
+    # 记忆永久化：按项目取最新一条（不按 session，刷新后保留）
+    rows = pg_client.execute("SELECT data FROM project_memories WHERE project_id = %s ORDER BY updated_at DESC LIMIT 1", (project_id,))
+    return {"memory": _as_dict(rows[0]["data"]) if rows else {}}
 
 
 
@@ -345,10 +361,17 @@ class ProfileData(BaseModel):
 async def save_project_profile(pid: str, req: ProfileData):
     import json
     from core.postgres_client import pg_client
-    # 项目画像存 project_memories（session 用 project 维度）
-    has = pg_client.execute("SELECT project_id FROM project_memories WHERE project_id=%s", (pid,))
-    data = json.dumps(req.profile, ensure_ascii=False)
-    if has:
+    # 项目画像写入 project_memories：合并（不覆盖对话生成的记忆），字段映射成前端可显示键
+    rows = pg_client.execute("SELECT session_id, data FROM project_memories WHERE project_id=%s", (pid,))
+    proj = _as_dict(rows[0]["data"]) if rows and rows[0]["data"] else {}
+    p = req.profile
+    if isinstance(p, dict):
+        if p.get("domain"): proj["领域"] = p["domain"]
+        if p.get("background"): proj["背景"] = p["background"]
+        if p.get("prefer"): proj["偏好"] = p["prefer"]
+        if p.get("goal"): proj["学习目标"] = p["goal"]
+    data = json.dumps(proj, ensure_ascii=False)
+    if rows:
         pg_client.execute("UPDATE project_memories SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE project_id=%s", (data, pid))
     else:
         pg_client.execute("INSERT INTO project_memories (session_id, project_id, data) VALUES (%s,%s,%s)", ("project", pid, data))
@@ -374,19 +397,34 @@ async def save_dialogue_profile(did: str, req: ProfileData):
         pg_client.execute("UPDATE dialogue_memories SET profile_data=%s, updated_at=CURRENT_TIMESTAMP WHERE dialogue_id=%s", (data, did))
     else:
         pg_client.execute("INSERT INTO dialogue_memories (dialogue_id, project_id, profile_data) VALUES (%s,%s,%s)", (did, pid, data))
-    # 汇总对话画像进项目画像
+    # 汇总对话画像进项目画像：以"对话概要"形式挂项目下，不污染项目字段
     try:
         rows = pg_client.execute("SELECT data FROM project_memories WHERE project_id=%s", (pid,))
-        proj = dict(rows[0]["data"]) if rows and rows[0]["data"] else {}
-        for k, v in req.profile.items():
-            if v and k not in proj:
-                proj[k] = v
-        # 记录该项目下有哪些对话
-        dlist = proj.get("dialogues", [])
-        if did not in dlist:
-            dlist.append(did)
-        proj["dialogues"] = dlist
-        proj["topic_summary"] = req.profile.get("topic", proj.get("topic_summary", ""))
+        proj = _as_dict(rows[0]["data"]) if rows and rows[0]["data"] else {}
+        # 对话名
+        dname = "对话"
+        try:
+            nrow = pg_client.execute("SELECT name FROM dialogues WHERE id=%s", (did,))
+            if nrow and nrow[0].get("name"):
+                dname = nrow[0]["name"]
+        except Exception:
+            pass
+        # 概要：对话画像的核心字段
+        summary = {
+            "topic": req.profile.get("topic", ""),
+            "selfLevel": req.profile.get("selfLevel", ""),
+            "target": req.profile.get("target", ""),
+        }
+        dlist = proj.get("对话概要", [])
+        updated = False
+        for i, d in enumerate(dlist):
+            if d.get("dialogue_id") == did:
+                dlist[i] = {"dialogue_id": did, "name": dname, "概要": summary}
+                updated = True
+                break
+        if not updated:
+            dlist.append({"dialogue_id": did, "name": dname, "概要": summary})
+        proj["对话概要"] = dlist
         pg_client.execute("UPDATE project_memories SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE project_id=%s",
                           (json.dumps(proj, ensure_ascii=False), pid))
     except Exception:
@@ -530,12 +568,28 @@ async def list_dialogues(pid: str):
 
 @app.delete("/api/dialogues/{did}")
 async def delete_dialogue(did: str):
-    """级联删除对话：消息+对话画像"""
+    """级联删除对话：消息+对话画像；并作为一次事件更新项目记忆（移除该对话概要）"""
+    import json as _json
     from core.postgres_client import pg_client
+    # 先查对话所属项目
+    rows = pg_client.execute("SELECT project_id FROM dialogues WHERE id=%s", (did,))
+    pid = rows[0]["project_id"] if rows else None
     pg_client.execute("DELETE FROM messages WHERE dialogue_id=%s", (did,))
     pg_client.execute("DELETE FROM dialogue_memories WHERE dialogue_id=%s", (did,))
     pg_client.execute("DELETE FROM dialogues WHERE id=%s", (did,))
-    return {"status": "ok"}
+    # 更新项目记忆：从"对话概要"移除该对话（把删除当作一次事件）
+    if pid:
+        try:
+            proj_rows = pg_client.execute("SELECT data FROM project_memories WHERE project_id=%s", (pid,))
+            if proj_rows and proj_rows[0]["data"]:
+                proj = _as_dict(proj_rows[0]["data"])
+                dlist = proj.get("对话概要", [])
+                proj["对话概要"] = [d for d in dlist if d.get("dialogue_id") != did]
+                pg_client.execute("UPDATE project_memories SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE project_id=%s",
+                                  (_json.dumps(proj, ensure_ascii=False), pid))
+        except Exception:
+            pass
+    return {"status": "ok", "project_id": pid}
 
 
 # 启动时确保有默认项目

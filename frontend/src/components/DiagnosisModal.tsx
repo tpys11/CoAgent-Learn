@@ -130,7 +130,10 @@ export default function DiagnosisModal({ onClose }: Props) {
                 </button>
               </div>
             )}
-            <button onClick={() => setStage(3)} className="text-xs text-gray-400 hover:text-gray-600 self-end">退出评估</button>
+            <div className="flex items-center justify-between self-end">
+              <button onClick={onClose} className="text-xs text-gray-400 hover:text-gray-600">跳过（不保存）</button>
+              <button onClick={() => setStage(3)} className="text-xs text-gray-400 hover:text-gray-600 ml-3">完成诊断</button>
+            </div>
           </div>
         )}
 
