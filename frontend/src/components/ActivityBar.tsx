@@ -1,4 +1,4 @@
-import { MessageSquare, GraduationCap, Library, Brain, BookOpen, Bot } from 'lucide-react'
+import { MessageSquare, GraduationCap, Library, Brain, Bot } from 'lucide-react'
 
 export type ViewKey = 'chat' | 'tutorial' | 'resources' | 'memory' | 'knowledge' | 'agents'
 
@@ -12,7 +12,6 @@ const ITEMS: Array<{ key: ViewKey; icon: any; label: string }> = [
   { key: 'tutorial', icon: GraduationCap, label: '教程' },
   { key: 'resources', icon: Library, label: '资源' },
   { key: 'memory', icon: Brain, label: '记忆' },
-  { key: 'knowledge', icon: BookOpen, label: '知识库' },
   { key: 'agents', icon: Bot, label: 'Agent' },
 ]
 
