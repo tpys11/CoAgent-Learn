@@ -1,5 +1,5 @@
-import { Map, Search, Send, MessagesSquare, PanelRightClose, Workflow, ChevronUp, ChevronDown } from 'lucide-react'
-import { useState, useEffect, useRef } from 'react'
+import { Map, Search, Send, MessagesSquare, PanelRightClose, Workflow, ChevronUp, ChevronDown, SlidersHorizontal, FileText } from 'lucide-react'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import * as echarts from 'echarts'
 import AgentFlow from './AgentFlow'
 
@@ -11,17 +11,19 @@ interface Props {
   flowActiveAgent: string | null
 }
 
-type WinKey = 'flow' | 'graph' | 'chat'
+type WinKey = 'flow' | 'graph' | 'chat' | 'report'
 
 const WINDOWS: Array<{ key: WinKey; title: string; icon: any }> = [
   { key: 'flow', title: '多智能体协作流程', icon: Workflow },
   { key: 'graph', title: '知识图谱', icon: Map },
   { key: 'chat', title: '第二对话', icon: MessagesSquare },
+  { key: 'report', title: '报告', icon: FileText },
 ]
 
-const DEFAULT_HEIGHTS: Record<WinKey, number> = { flow: 200, graph: 190, chat: 240 }
+const DEFAULT_HEIGHTS: Record<WinKey, number> = { flow: 200, graph: 190, chat: 240, report: 180 }
 const MIN_H = 56
 const MAX_H = 800
+const WINDOWS_KEY = 'coagent-rp-windows'
 
 /** 可折叠窗口：header 常驻（点击展开/收起），内容区高度可被拖拽调整；flex 模式自动填满剩余空间 */
 function Pane({ title, icon: Icon, collapsed, height, flex, onToggle, children }: {
@@ -64,33 +66,70 @@ function DragHandle({ onDown }: { onDown: (e: React.MouseEvent) => void }) {
   )
 }
 
+/** 报告窗口：汇总最近对话生成的讲义/实操指南/测试题 */
+function ReportPane({ projectId }: { projectId?: string | null }) {
+  const [items, setItems] = useState<Array<{ id: string; title: string; type: string }>>([])
+  useEffect(() => {
+    if (!projectId) return
+    fetch('/api/artifacts?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' })
+      .then(r => r.json()).then(d => setItems(d.artifacts || [])).catch(() => {})
+  }, [projectId])
+  return (
+    <div className="w-full h-full overflow-y-auto p-3 flex flex-col gap-1.5">
+      {items.length === 0 ? (
+        <p className="text-[11px] text-dim text-center py-6">暂无报告（对话生成讲义/指南/测试题后会汇总于此）</p>
+      ) : (
+        items.map(it => (
+          <div key={it.id} className="chip px-2.5 py-1.5 text-[11px]">
+            <b>{it.title}</b> <span className="text-dim">· {it.type}</span>
+          </div>
+        ))
+      )}
+    </div>
+  )
+}
+
 export default function RightPanel({ messageCount, projectId, onCollapse, flowAgents, flowActiveAgent }: Props) {
   // 三个窗口高度（px）与折叠状态
   const [heights, setHeights] = useState<Record<WinKey, number>>({ ...DEFAULT_HEIGHTS })
-  const [collapsed, setCollapsed] = useState<Record<WinKey, boolean>>({ flow: false, graph: false, chat: false })
-  const dragRef = useRef<{ pair: [WinKey, WinKey]; startY: number; startH: [number, number] } | null>(null)
+  const [collapsed, setCollapsed] = useState<Record<WinKey, boolean>>({ flow: false, graph: false, chat: false, report: false })
+  // 右侧栏展示设置（可勾选要显示的窗口，持久化）
+  const [visible, setVisible] = useState<Record<WinKey, boolean>>(() => {
+    try {
+      const s = JSON.parse(localStorage.getItem(WINDOWS_KEY) || '')
+      return { flow: true, graph: true, chat: true, report: false, ...s }
+    } catch { return { flow: true, graph: true, chat: true, report: false } }
+  })
+  const [showWinSettings, setShowWinSettings] = useState(false)
+  const dragRef = useRef<{ a: WinKey; b: WinKey; isLast: boolean; startY: number; startHa: number; startHb: number } | null>(null)
 
   const toggle = (k: WinKey) => setCollapsed(prev => ({ ...prev, [k]: !prev[k] }))
+  const toggleWin = (k: WinKey) => {
+    setVisible(prev => {
+      const next = { ...prev, [k]: !prev[k] }
+      localStorage.setItem(WINDOWS_KEY, JSON.stringify(next))
+      return next
+    })
+  }
+  const shown = WINDOWS.filter(w => visible[w.key])
 
-  const startDrag = (pair: [WinKey, WinKey]) => (e: React.MouseEvent) => {
+  const startDrag = (a: WinKey, b: WinKey) => (e: React.MouseEvent) => {
     e.preventDefault()
-    dragRef.current = { pair, startY: e.clientY, startH: [heights[pair[0]], heights[pair[1]]] }
+    dragRef.current = { a, b, isLast: shown[shown.length - 1].key === b, startY: e.clientY, startHa: heights[a], startHb: heights[b] }
     document.body.style.userSelect = 'none'
   }
 
-  // 拖拽调整相邻窗口高度（第二对话为 flex 自动填充，手柄只调其上方窗口）
+  // 拖拽调整相邻窗口高度（最后一个窗口 flex 自动填充，手柄只调其上方固定窗口）
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       const d = dragRef.current
       if (!d) return
       const delta = e.clientY - d.startY
-      if (d.pair[1] === 'chat') {
-        const a = Math.max(MIN_H, Math.min(MAX_H, d.startH[0] + delta))
-        setHeights(prev => ({ ...prev, [d.pair[0]]: a }))
-      } else {
-        const a = Math.max(MIN_H, Math.min(MAX_H, d.startH[0] + delta))
-        const b = Math.max(MIN_H, Math.min(MAX_H, d.startH[1] - delta))
-        setHeights(prev => ({ ...prev, [d.pair[0]]: a, [d.pair[1]]: b }))
+      const na = Math.max(MIN_H, Math.min(MAX_H, d.startHa + delta))
+      setHeights(prev => ({ ...prev, [d.a]: na }))
+      if (!d.isLast) {
+        const nb = Math.max(MIN_H, Math.min(MAX_H, d.startHb - delta))
+        setHeights(prev => ({ ...prev, [d.b]: nb }))
       }
     }
     const onUp = () => { dragRef.current = null; document.body.style.userSelect = '' }
@@ -156,7 +195,12 @@ export default function RightPanel({ messageCount, projectId, onCollapse, flowAg
     const nodesRaw = d.nodes || []
     const empty = nodesRaw.length === 0
     setGraphEmpty(empty)
-    if (!chartRef.current || empty) return
+    // 图谱窗口被隐藏时清理实例，避免挂载到已卸载的 DOM
+    if (!chartRef.current) {
+      if (chartInst.current) { chartInst.current.dispose(); chartInst.current = null }
+      return
+    }
+    if (empty) return
     if (!chartInst.current) chartInst.current = echarts.init(chartRef.current)
     const nodes = nodesRaw.map((n: any) => ({
       id: n.id, name: n.name, symbolSize: 26,
@@ -219,63 +263,84 @@ export default function RightPanel({ messageCount, projectId, onCollapse, flowAg
 
   return (
     <aside className="w-full h-full flex flex-col overflow-hidden px-2.5 py-3 gap-1">
-      {/* 右栏顶部：折叠按钮（左上角） */}
-      <div className="flex items-center justify-start flex-shrink-0 h-6 mb-1">
+      {/* 右栏顶部：折叠按钮 + 展示设置 */}
+      <div className="flex items-center justify-between flex-shrink-0 h-6 mb-1">
         <button onClick={onCollapse} className="w-6 h-6 flex items-center justify-center rounded-lg icon-btn" title="收起侧栏">
           <PanelRightClose size={14} />
         </button>
-      </div>
-
-      {/* 窗口1：多智能体协作流程 */}
-      <Pane title="多智能体协作流程" icon={Workflow} collapsed={collapsed.flow} height={heights.flow} onToggle={() => toggle('flow')}>
-        <div className="w-full h-full">
-          <AgentFlow visible={true} agents={flowAgents} activeAgent={flowActiveAgent} />
-        </div>
-      </Pane>
-      <DragHandle onDown={startDrag(['flow', 'graph'])} />
-
-      {/* 窗口2：知识图谱 */}
-      <Pane title="知识图谱" icon={Map} collapsed={collapsed.graph} height={heights.graph} onToggle={() => toggle('graph')}>
-        <div className="w-full h-full relative">
-          {graphEmpty && (
-            <div className="absolute inset-0 flex items-center justify-center z-10 px-3">
-              <span className="text-[11px] text-dim text-center leading-relaxed">{graphErr ? ('图谱加载失败: ' + graphErr) : '暂无知识图谱（上传文档后自动生成）'}</span>
+        <div className="relative">
+          <button onClick={() => setShowWinSettings(!showWinSettings)} className="w-6 h-6 flex items-center justify-center rounded-lg icon-btn" title="右侧栏展示设置">
+            <SlidersHorizontal size={13} />
+          </button>
+          {showWinSettings && (
+            <div className="absolute right-0 top-full mt-1 card-lift p-2 z-30 w-48">
+              <p className="text-[10px] font-semibold text-dim uppercase tracking-wider px-2 mb-1">在此处展示</p>
+              {WINDOWS.map(w => (
+                <label key={w.key} className="flex items-center gap-2 px-2 py-1.5 rounded-lg row-hover cursor-pointer">
+                  <input
+                    type="checkbox" checked={visible[w.key]} onChange={() => toggleWin(w.key)}
+                    className="w-3.5 h-3.5 accent-[var(--accent)]"
+                  />
+                  <span className="text-[11px]">{w.title}</span>
+                </label>
+              ))}
             </div>
           )}
-          <div ref={chartRef} className="w-full h-full" />
         </div>
-      </Pane>
-      <DragHandle onDown={startDrag(['graph', 'chat'])} />
+      </div>
 
-      {/* 窗口3：第二对话（flex 自动填满剩余空间，贴底） */}
-      <Pane title="第二对话" icon={MessagesSquare} collapsed={collapsed.chat} height={heights.chat} flex onToggle={() => toggle('chat')}>
-        <div className="w-full h-full flex flex-col">
-          <div className="flex-1 overflow-y-auto px-3 flex flex-col gap-2 pb-2 min-h-0">
-            {sideMessages.length === 0 ? (
-              <p className="text-[11px] text-dim text-center py-4">暂无对话</p>
-            ) : (
-              sideMessages.map((m, i) => (
-                <div key={i} className={`max-w-[90%] px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap ${m.role === 'user' ? 'self-end btn-primary' : 'self-start chip'}`} style={{ borderRadius: m.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px' }}>
-                  {m.content}
-                </div>
-              ))
+      {/* 动态窗口：按展示设置过滤，最后一个窗口 flex 填满，相邻窗口间有拖拽手柄 */}
+      {shown.map((w, i) => (
+        <Fragment key={w.key}>
+          {i > 0 && <DragHandle onDown={startDrag(shown[i - 1].key, w.key)} />}
+          <Pane title={w.title} icon={w.icon} collapsed={collapsed[w.key]} height={heights[w.key]} flex={i === shown.length - 1} onToggle={() => toggle(w.key)}>
+            {w.key === 'flow' && (
+              <div className="w-full h-full">
+                <AgentFlow visible={true} agents={flowAgents} activeAgent={flowActiveAgent} />
+              </div>
             )}
-            {sideLoading && <p className="text-[10px] text-dim text-center">思考中…</p>}
-          </div>
-          <div className="p-2.5 flex-shrink-0">
-            <div className="chip flex items-center gap-1.5 px-2 py-1">
-              <textarea placeholder="在此提问..." rows={1} value={sideInput}
-                onChange={e => setSideInput(e.target.value)}
-                className="flex-1 px-1.5 py-1 bg-transparent text-xs outline-none resize-none"
-                style={{ background: 'transparent' }}
-                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendSide() } }} />
-              <button onClick={sendSide} disabled={sideLoading} className="w-7 h-7 btn-primary flex items-center justify-center flex-shrink-0 disabled:opacity-50">
-                <Send size={12} />
-              </button>
-            </div>
-          </div>
-        </div>
-      </Pane>
+            {w.key === 'graph' && (
+              <div className="w-full h-full relative">
+                {graphEmpty && (
+                  <div className="absolute inset-0 flex items-center justify-center z-10 px-3">
+                    <span className="text-[11px] text-dim text-center leading-relaxed">{graphErr ? ('图谱加载失败: ' + graphErr) : '暂无知识图谱（上传文档后自动生成）'}</span>
+                  </div>
+                )}
+                <div ref={chartRef} className="w-full h-full" />
+              </div>
+            )}
+            {w.key === 'chat' && (
+              <div className="w-full h-full flex flex-col">
+                <div className="flex-1 overflow-y-auto px-3 flex flex-col gap-2 pb-2 min-h-0">
+                  {sideMessages.length === 0 ? (
+                    <p className="text-[11px] text-dim text-center py-4">暂无对话</p>
+                  ) : (
+                    sideMessages.map((m, i) => (
+                      <div key={i} className={`max-w-[90%] px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap ${m.role === 'user' ? 'self-end btn-primary' : 'self-start chip'}`} style={{ borderRadius: m.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px' }}>
+                        {m.content}
+                      </div>
+                    ))
+                  )}
+                  {sideLoading && <p className="text-[10px] text-dim text-center">思考中…</p>}
+                </div>
+                <div className="p-2.5 flex-shrink-0">
+                  <div className="chip flex items-center gap-1.5 px-2 py-1">
+                    <textarea placeholder="在此提问..." rows={1} value={sideInput}
+                      onChange={e => setSideInput(e.target.value)}
+                      className="flex-1 px-1.5 py-1 bg-transparent text-xs outline-none resize-none"
+                      style={{ background: 'transparent' }}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendSide() } }} />
+                    <button onClick={sendSide} disabled={sideLoading} className="w-7 h-7 btn-primary flex items-center justify-center flex-shrink-0 disabled:opacity-50">
+                      <Send size={12} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {w.key === 'report' && <ReportPane projectId={projectId} />}
+          </Pane>
+        </Fragment>
+      ))}
 
       {/* 图谱节点详情 */}
       {nodeDetail && (
