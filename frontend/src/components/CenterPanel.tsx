@@ -388,7 +388,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
               <div className="relative" ref={inputOptRef}>
                 <button
                   onClick={() => { setShowInputOpt(!showInputOpt); setShowSearch(false); setShowFormat(false); setShowContent(false) }}
-                  className="h-8 px-2 rounded-xl icon-btn text-[11px] flex items-center gap-1"
+                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1"
                 >
                   <SlidersHorizontal size={13} /> <ChevronDown size={9} />
                 </button>
@@ -408,7 +408,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
               <div className="relative" ref={searchRef}>
                 <button
                   onClick={() => { setShowSearch(!showSearch); setShowFormat(false); setShowContent(false) }}
-                  className="h-8 px-2 rounded-xl icon-btn text-[11px] flex items-center gap-1"
+                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1"
                 >
                   <Search size={13} /> <ChevronDown size={9} />
                 </button>
@@ -439,7 +439,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
               <div className="relative" ref={formatRef}>
                 <button
                   onClick={() => { setShowFormat(!showFormat); setShowContent(false) }}
-                  className="h-8 px-2 rounded-xl icon-btn text-[11px] flex items-center gap-1"
+                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1"
                 >
                   输出形式 <ChevronDown size={9} />
                 </button>
@@ -472,7 +472,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
               <div className="relative" ref={contentRef}>
                 <button
                   onClick={() => { setShowContent(!showContent); setShowFormat(false) }}
-                  className="h-8 px-2 rounded-xl icon-btn text-[11px] flex items-center gap-1"
+                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1"
                 >
                   输出内容 <ChevronDown size={9} />
                 </button>
