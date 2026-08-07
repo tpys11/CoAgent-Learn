@@ -22,10 +22,6 @@ async def lifespan(app: FastAPI):
     missing = [v for v in required if not os.getenv(v)]
     if missing:
         warnings.warn(f"缺少环境变量: {', '.join(missing)}。Agent 功能不可用。")
-    try:
-        _ensure_default_project()
-    except Exception:
-        pass
     yield
 
 
@@ -390,19 +386,34 @@ async def save_dialogue_profile(did: str, req: ProfileData):
         pg_client.execute("UPDATE dialogue_memories SET profile_data=%s, updated_at=CURRENT_TIMESTAMP WHERE dialogue_id=%s", (data, did))
     else:
         pg_client.execute("INSERT INTO dialogue_memories (dialogue_id, project_id, profile_data) VALUES (%s,%s,%s)", (did, pid, data))
-    # 汇总对话画像进项目画像
+    # 汇总对话画像进项目画像：以"对话概要"形式挂项目下，不污染项目字段
     try:
         rows = pg_client.execute("SELECT data FROM project_memories WHERE project_id=%s", (pid,))
-        proj = dict(rows[0]["data"]) if rows and rows[0]["data"] else {}
-        for k, v in req.profile.items():
-            if v and k not in proj:
-                proj[k] = v
-        # 记录该项目下有哪些对话
-        dlist = proj.get("dialogues", [])
-        if did not in dlist:
-            dlist.append(did)
-        proj["dialogues"] = dlist
-        proj["topic_summary"] = req.profile.get("topic", proj.get("topic_summary", ""))
+        proj = _as_dict(rows[0]["data"]) if rows and rows[0]["data"] else {}
+        # 对话名
+        dname = "对话"
+        try:
+            nrow = pg_client.execute("SELECT name FROM dialogues WHERE id=%s", (did,))
+            if nrow and nrow[0].get("name"):
+                dname = nrow[0]["name"]
+        except Exception:
+            pass
+        # 概要：对话画像的核心字段
+        summary = {
+            "topic": req.profile.get("topic", ""),
+            "selfLevel": req.profile.get("selfLevel", ""),
+            "target": req.profile.get("target", ""),
+        }
+        dlist = proj.get("对话概要", [])
+        updated = False
+        for i, d in enumerate(dlist):
+            if d.get("dialogue_id") == did:
+                dlist[i] = {"dialogue_id": did, "name": dname, "概要": summary}
+                updated = True
+                break
+        if not updated:
+            dlist.append({"dialogue_id": did, "name": dname, "概要": summary})
+        proj["对话概要"] = dlist
         pg_client.execute("UPDATE project_memories SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE project_id=%s",
                           (json.dumps(proj, ensure_ascii=False), pid))
     except Exception:
@@ -470,12 +481,13 @@ async def run_evaluate(project_id: str = "default", api_key: str = ""):
 class ProjectCreate(BaseModel):
     name: str = "新项目"
     domain: str = ""
+    simple: bool = False
 
 
 @app.get("/api/projects")
 async def list_projects():
     from core.postgres_client import pg_client
-    rows = pg_client.execute("SELECT id, name, is_default, domain, created_at FROM projects WHERE archived = FALSE ORDER BY created_at")
+    rows = pg_client.execute("SELECT id, name, is_default, simple, domain, created_at FROM projects WHERE archived = FALSE ORDER BY created_at")
     return {"projects": rows}
 
 
@@ -484,15 +496,15 @@ async def create_project(req: ProjectCreate):
     import time
     from core.postgres_client import pg_client
     pid = time.strftime("%Y%m%d%H%M%S") + str(int(time.time() * 1000))[-4:]
-    pg_client.execute("INSERT INTO projects (id, name, is_default, domain) VALUES (%s,%s,%s,%s)",
-                      (pid, req.name, False, req.domain))
-    return {"id": pid, "name": req.name, "is_default": False, "domain": req.domain}
+    pg_client.execute("INSERT INTO projects (id, name, is_default, simple, domain) VALUES (%s,%s,%s,%s,%s)",
+                      (pid, req.name, False, req.simple, req.domain))
+    return {"id": pid, "name": req.name, "is_default": False, "simple": req.simple, "domain": req.domain}
 
 
 @app.patch("/api/projects/{pid}")
 async def update_project(pid: str, req: ProjectCreate):
     from core.postgres_client import pg_client
-    pg_client.execute("UPDATE projects SET name=%s, domain=%s WHERE id=%s", (req.name, req.domain, pid))
+    pg_client.execute("UPDATE projects SET name=%s, domain=%s, simple=%s WHERE id=%s", (req.name, req.domain, req.simple, pid))
     return {"status": "ok"}
 
 

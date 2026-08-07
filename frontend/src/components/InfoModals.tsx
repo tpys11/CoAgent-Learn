@@ -191,6 +191,14 @@ export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectI
               txt2+='  '+(i+1)+'. '+(d.memory.对话摘要[i].摘要||'')+NL
             }
           }
+          // 对话概要：本项目各对话的记忆，区分显示（挂项目记忆下）
+          if(d.memory.对话概要&&d.memory.对话概要.length){
+            txt2+='对话概要:'+NL
+            for(var i=0;i<d.memory.对话概要.length;i++){
+              var ds=d.memory.对话概要[i]
+              txt2+='  '+(i+1)+'. '+(ds.name||'对话')+'：'+(ds.概要&&ds.概要.topic||'')+'（'+(ds.概要&&ds.概要.selfLevel||'')+'）'+NL
+            }
+          }
           if(txt2)setProjectMemory(txt2.trim())
         }
       }).catch(function(){})

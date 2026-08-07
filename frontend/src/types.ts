@@ -1,6 +1,7 @@
 export interface Project {
   id: string
   name: string
+  simple?: boolean
   initialized?: boolean
 }
 

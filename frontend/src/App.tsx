@@ -130,12 +130,13 @@ function App() {
       .then(r => r.json())
       .then((d) => {
         const id = d.id
-        setProjects(prev => [...prev, { id, name }])
+        setProjects(prev => [...prev, { id, name, simple: false }])
         setCurrentProjectId(id)
         const dId = generateId()
         setDialogues(prev => [...prev, { id: dId, name: '新对话', projectId: id, createdAt: new Date().toISOString(), archived: false }])
         setCurrentDialogueId(dId)
         setAllMessages(prev => ({ ...prev, [dId]: [] }))
+        // 弹项目画像向导：用户选"保存画像"或"跳过"
         setWizard({ mode: 'project', id, name })
       })
   }, [])
@@ -169,8 +170,12 @@ function App() {
     setDialogues(prev => [...prev, d])
     setCurrentDialogueId(d.id)
     setAllMessages(prev => ({ ...prev, [d.id]: [] }))
-    setWizard({ mode: 'dialogue', id: d.id, name: d.name })
-  }, [dialogues])
+    // 无画像（[简]）项目：不弹对话画像向导
+    const proj = projects.find(p => p.id === projectId)
+    if (!(proj && proj.simple)) {
+      setWizard({ mode: 'dialogue', id: d.id, name: d.name })
+    }
+  }, [dialogues, projects])
   const handleSelectDialogue = useCallback((id: string) => { setCurrentDialogueId(id); setFlowVisible(false); setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = [] }, [])
   const handleArchiveDialogue = useCallback((id: string) => {
     if (!window.confirm('确定删除该对话？')) return
@@ -351,7 +356,16 @@ function App() {
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {showProjectKB && <ProjectKnowledgeModal projectId={projectKBId || undefined} onClose={() => setShowProjectKB(false)} />}
       {showGuide && <GuideModal onClose={() => setShowGuide(false)} />}
-      {wizard && <ProfileWizard mode={wizard.mode} projectName={wizard.name} onClose={() => setWizard(null)}
+      {wizard && <ProfileWizard mode={wizard.mode} projectName={wizard.name}
+        onClose={() => {
+          // 跳过：项目标记为无画像（simple），名字加 [简]，后续对话不弹向导
+          if (wizard.mode === 'project') {
+            fetch('/api/projects/' + wizard.id + '/profile', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ profile: {} }) })
+            fetch('/api/projects/' + wizard.id, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name: '[简] ' + (wizard.name || ''), simple: true }) })
+            setProjects(prev => prev.map(p => p.id === wizard.id ? { ...p, name: '[简] ' + p.name, simple: true } : p))
+          }
+          setWizard(null)
+        }}
         onSave={(profile) => {
           const url = wizard.mode === 'project' ? '/api/projects/' + wizard.id + '/profile' : '/api/dialogues/' + wizard.id + '/profile'
           fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ profile }) })

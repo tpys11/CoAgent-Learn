@@ -150,6 +150,7 @@ class SQLiteClient:
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL DEFAULT '新项目',
                 is_default INTEGER DEFAULT 0,
+                simple INTEGER DEFAULT 0,
                 domain TEXT DEFAULT '',
                 created_at TEXT DEFAULT (datetime('now')),
                 archived INTEGER DEFAULT 0
