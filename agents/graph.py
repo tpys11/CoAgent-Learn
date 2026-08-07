@@ -26,6 +26,7 @@ FAST_MODEL_BY_BASE = {
 class AgentState(TypedDict):
     user_input: str
     mode: str
+    image: str
     project_id: str
     dialogue_id: str
     session_id: str
@@ -172,6 +173,15 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         state.setdefault("steps", []).append({"agent": "主Agent", "status": "running", "detail": "生成输出"})
         NL = chr(10)
         context = f"用户问题: {state['user_input']}" + NL
+        # AI 回答时调用视觉分析（用户上传了图片）
+        if state.get("image"):
+            try:
+                from core.vision_service import describe_image
+                img_desc = describe_image(state["image"], "请详细描述这张图片的内容，包括其中的文字、物体、图表等")
+                context += "【用户上传的图片内容（已调用视觉分析）】" + NL + img_desc + NL
+                state.setdefault("mindchain", []).append({"agent": "视觉分析", "content": "已调用 glm-4v-flash 分析用户图片：" + img_desc[:150]})
+            except Exception as e:
+                context += "【用户上传了图片，但视觉分析失败：" + str(e)[:100] + "】" + NL
         mode = state.get("mode", "kb")
         if mode == "kb":
             context += "【输出模式】知识库模式：请优先基于知识库内容回答；若知识库没有相关内容，回答第一句必须明确告知：⚠️ 未在知识库中检索到相关内容，以下为模型通识回答。" + NL

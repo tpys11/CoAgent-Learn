@@ -150,11 +150,16 @@ class SQLiteClient:
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL DEFAULT '新项目',
                 is_default INTEGER DEFAULT 0,
+                simple INTEGER DEFAULT 0,
                 domain TEXT DEFAULT '',
                 created_at TEXT DEFAULT (datetime('now')),
                 archived INTEGER DEFAULT 0
             )
         """)
+        try:
+            self.execute("ALTER TABLE projects ADD COLUMN simple INTEGER DEFAULT 0")
+        except Exception:
+            pass
         self.execute("""
             CREATE TABLE IF NOT EXISTS dialogue_memories (
                 dialogue_id TEXT PRIMARY KEY,

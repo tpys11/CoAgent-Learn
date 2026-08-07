@@ -134,6 +134,14 @@ async def knowledge_delete(project_id: str = "default", source: str = ""):
     return {"status": "ok", "deleted": n, "graph_relations": graph_n}
 
 
+@app.post("/api/vision")
+async def vision_understand(req: dict):
+    from core.vision_service import describe_image
+    image = req.get("image", "")
+    prompt = req.get("prompt", "请描述这张图片的内容")
+    desc = describe_image(image, prompt)
+    return {"status": "ok", "description": desc}
+
 @app.post("/api/file-to-text")
 async def file_to_text(file: UploadFile = File(...)):
     from core.file_parser import parse_file
@@ -446,12 +454,13 @@ async def run_evaluate(project_id: str = "default", api_key: str = ""):
 class ProjectCreate(BaseModel):
     name: str = "新项目"
     domain: str = ""
+    simple: bool = False
 
 
 @app.get("/api/projects")
 async def list_projects():
     from core.postgres_client import pg_client
-    rows = pg_client.execute("SELECT id, name, is_default, domain, created_at FROM projects WHERE archived = FALSE ORDER BY created_at")
+    rows = pg_client.execute("SELECT id, name, is_default, simple, domain, created_at FROM projects WHERE archived = FALSE ORDER BY created_at")
     return {"projects": rows}
 
 
@@ -460,15 +469,15 @@ async def create_project(req: ProjectCreate):
     import time
     from core.postgres_client import pg_client
     pid = time.strftime("%Y%m%d%H%M%S") + str(int(time.time() * 1000))[-4:]
-    pg_client.execute("INSERT INTO projects (id, name, is_default, domain) VALUES (%s,%s,%s,%s)",
-                      (pid, req.name, False, req.domain))
-    return {"id": pid, "name": req.name, "is_default": False, "domain": req.domain}
+    pg_client.execute("INSERT INTO projects (id, name, is_default, simple, domain) VALUES (%s,%s,%s,%s,%s)",
+                      (pid, req.name, False, req.simple, req.domain))
+    return {"id": pid, "name": req.name, "is_default": False, "simple": req.simple, "domain": req.domain}
 
 
 @app.patch("/api/projects/{pid}")
 async def update_project(pid: str, req: ProjectCreate):
     from core.postgres_client import pg_client
-    pg_client.execute("UPDATE projects SET name=%s, domain=%s WHERE id=%s", (req.name, req.domain, pid))
+    pg_client.execute("UPDATE projects SET name=%s, domain=%s, simple=%s WHERE id=%s", (req.name, req.domain, req.simple, pid))
     return {"status": "ok"}
 
 
@@ -582,6 +591,7 @@ class ChatRequest(BaseModel):
     base_url: str | None = None
     settings: dict | None = None
     mode: str | None = None
+    image: str | None = None
 
 class ChatStep(BaseModel):
     agent: str
@@ -622,7 +632,7 @@ async def chat(req: ChatRequest):
                         _pg.execute("INSERT INTO messages(dialogue_id,role,content) VALUES(%s,%s,%s)",(_did,"user",req.message))
                     except Exception as _e:
                         print("[存储]",_e)
-                    result = wf.invoke({"user_input": req.message, "project_id": pid, "dialogue_id": _did, "session_id": req.session_id or "default", "mode": req.mode or "kb", "steps": [], "mindchain": []})
+                    result = wf.invoke({"user_input": req.message, "project_id": pid, "dialogue_id": _did, "session_id": req.session_id or "default", "mode": req.mode or "kb", "image": req.image or "", "steps": [], "mindchain": []})
                     # invoke 后存 AI 回复
                     try:
                         from core.postgres_client import pg_client as _pg

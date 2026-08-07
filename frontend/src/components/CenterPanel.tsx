@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Send, Bot, Settings, X, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Cpu, SlidersHorizontal, Check, AlertTriangle, Search, FileText } from 'lucide-react'
+import { Send, Bot, Settings, X, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Cpu, SlidersHorizontal, Check, AlertTriangle, Search, FileText, Image as ImageIcon } from 'lucide-react'
 import type { Message, Project } from '../types'
 
 
@@ -53,12 +53,17 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
       .then(d => setStats(d))
       .catch(() => {})
   }, [currentProject])
-  const [attachments, setAttachments] = useState<Array<{name: string; content: string}>>([])
+  const [attachments, setAttachments] = useState<Array<{name: string; content: string; isImage?: boolean}>>([])
+  const [dragOver, setDragOver] = useState(false)
+  const handleDropFile = function(e: React.DragEvent) {
+    e.preventDefault(); e.stopPropagation(); setDragOver(false)
+    const fs = e.dataTransfer.files ? Array.from(e.dataTransfer.files) : []
+    fs.forEach(processFile)
+  }
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const imgB64Ref = useRef('')
 
-  const handleFileSelect = function(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files && e.target.files[0]
-    e.target.value = ''
+  const processFile = function(f: File) {
     if (!f) return
     if (f.size > 2 * 1024 * 1024) { alert('文件过大（>2MB），请裁剪后上传'); return }
     const ext = (f.name.split('.').pop() || '').toLowerCase()
@@ -70,6 +75,13 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
         setAttachments(prev => [...prev, { name: f.name, content: text }])
       }
       reader.readAsText(f)
+    } else if (['png','jpg','jpeg','gif','webp'].includes(ext)) {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const b64 = String(reader.result || '').split(',')[1] || ''
+        setAttachments(prev => [...prev, { name: f.name, content: b64, isImage: true }])
+      }
+      reader.readAsDataURL(f)
     } else if (['pdf','docx','pptx'].includes(ext)) {
       const fd = new FormData()
       fd.append('file', f)
@@ -86,6 +98,12 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
     } else {
       alert('不支持的格式：' + f.name)
     }
+  }
+
+  const handleFileSelect = function(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files && e.target.files[0]
+    e.target.value = ''
+    if (f) processFile(f)
   }
 
   const removeAttachment = function(name: string) {
@@ -169,12 +187,19 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
     const text = input.trim()
     if (!text && attachments.length === 0) return
     let full = text
+    let image: string | undefined
     if (attachments.length > 0) {
       const NL = String.fromCharCode(10)
-      const parts = attachments.map(a => '【用户上传文件: ' + a.name + '】' + NL + a.content)
+      const imgAtts = attachments.filter(a => a.isImage)
+      const txtAtts = attachments.filter(a => !a.isImage)
+      const parts: string[] = []
+      txtAtts.forEach(a => parts.push('【用户上传文件: ' + a.name + '】' + NL + a.content))
+      if (imgAtts.length > 0) parts.push('【用户上传图片: ' + imgAtts[0].name + '】')
       full = text ? text + NL + NL + parts.join(NL + NL) : parts.join(NL + NL)
+      image = imgAtts.length > 0 ? imgAtts[0].content : undefined
     }
     onSendMessage(full, {
+      image: image,
       chatMode: chatMode,
       searchMode: searchLabels[searchMode],
       outputFormat: outputFormat === 0 ? '低结构化' : '高结构化',
@@ -187,6 +212,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
     })
     setInput('')
     setAttachments([])
+    imgB64Ref.current = ''
   }
 
   const sendFollowup = (q: string) => {
@@ -356,7 +382,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
             <div className="flex flex-wrap gap-2">
               {attachments.map(a => (
                 <span key={a.name} className="chip inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-dim">
-                  <FileText size={11} />
+                  {a.isImage ? <ImageIcon size={11} /> : <FileText size={11} />}
                   {a.name}
                   <button onClick={() => removeAttachment(a.name)} className="hover:text-red-500 transition-colors ml-0.5" title="删除">✕</button>
                 </span>
@@ -369,10 +395,13 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={handleDropFile}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend() }
               }}
-              placeholder="输入你的问题..."
+              placeholder={dragOver ? '松开以上传文件/图片' : '输入你的问题...'}
               rows={2}
               className="w-full px-2 py-1 bg-transparent text-sm outline-none resize-none"
               style={{ background: 'transparent' }}

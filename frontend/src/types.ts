@@ -2,6 +2,7 @@ export interface Project {
   id: string
   name: string
   initialized?: boolean
+  simple?: boolean
 }
 
 export interface Dialogue {
