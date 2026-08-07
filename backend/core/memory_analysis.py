@@ -1,6 +1,18 @@
 import json
 
 
+def _as_dict(data):
+    """SQLite 存的 JSON 字符串转 dict"""
+    if isinstance(data, dict):
+        return data
+    if isinstance(data, str):
+        try:
+            return json.loads(data)
+        except Exception:
+            return {}
+    return {}
+
+
 def _extract_json(text):
     """从 AI 返回文本中提取 JSON 对象"""
     if not text:
@@ -75,23 +87,24 @@ def update_memories(api_key, project_id, dialogue_id, db, session_id="default"):
         if not data:
             _s.stderr.write("[um] 情景JSON解析空" + NL); _s.stderr.flush()
         else:
-            rows = db.execute("SELECT data FROM project_memories WHERE session_id=%s AND project_id=%s", (session_id, project_id))
+            # 一个项目只保留一条 project_memories：按 project_id 查（忽略 session）
+            rows = db.execute("SELECT session_id, data FROM project_memories WHERE project_id=%s", (project_id,))
             if rows:
-                old = dict(rows[0]["data"]) if rows[0]["data"] else {}
+                old = _as_dict(rows[0]["data"]) if rows[0]["data"] else {}
                 for k in ["项目概述","当前进度","学习建议","领域","水平","兴趣","偏好"]:
                     if k in data and data[k]: old[k] = data[k]
                 for ak in ["知识点","难点","薄弱点"]:
                     if data.get(ak):
-                        arr = old.get(ak, [])
+                        arr = old.get(ak, []) if isinstance(old.get(ak), list) else []
                         for item in data[ak]:
                             if item not in arr: arr.append(item)
                         old[ak] = arr
                 if data.get("摘要"):
                     old["摘要"] = data["摘要"]
-                    ss = old.get("对话摘要", [])
+                    ss = old.get("对话摘要", []) if isinstance(old.get("对话摘要"), list) else []
                     ss.append({"摘要": data["摘要"][:200]})
                     old["对话摘要"] = ss[-10:]
-                db.execute("UPDATE project_memories SET data=%s,updated_at=CURRENT_TIMESTAMP WHERE session_id=%s AND project_id=%s", (json.dumps(old, ensure_ascii=False), session_id, project_id))
+                db.execute("UPDATE project_memories SET data=%s,updated_at=CURRENT_TIMESTAMP WHERE project_id=%s", (json.dumps(old, ensure_ascii=False), project_id))
             else:
                 db.execute("INSERT INTO project_memories (session_id,project_id,data) VALUES (%s,%s,%s)", (session_id, project_id, json.dumps(data, ensure_ascii=False)))
             _s.stderr.write("[um] 情景写入完成" + NL); _s.stderr.flush()
@@ -123,7 +136,7 @@ def update_memories(api_key, project_id, dialogue_id, db, session_id="default"):
             _s.stderr.write("[um] 个人JSON解析空" + NL); _s.stderr.flush()
         else:
             old_rows = db.execute("SELECT data FROM global_profile WHERE session_id=%s", (session_id,))
-            old = dict(old_rows[0]["data"]) if old_rows and old_rows[0]["data"] else {}
+            old = _as_dict(old_rows[0]["data"]) if old_rows and old_rows[0]["data"] else {}
             for k in ["用户背景","偏好提问方式","偏好学习方式","偏好_输出","学习时长","学习内容"]:
                 if k in gd and gd[k]: old[k] = gd[k]
             if gd.get("项目摘要"):
