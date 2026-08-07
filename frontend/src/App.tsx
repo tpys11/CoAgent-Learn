@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen } from 'lucide-react'
 
 // 模块级 session：页面刷新(JS重载)时重新生成一次；组件重挂载不改变
 const SESSION_ID = (() => {
@@ -12,9 +13,14 @@ import RightPanel from './components/RightPanel'
 import DiagnosisModal from './components/DiagnosisModal'
 import AgentSettingsModal from './components/AgentSettingsModal'
 import SettingsModal, { ApiKeyPrompt } from './components/SettingsModal'
-import { ProjectKnowledgeModal } from './components/InfoModals'
+import { ProjectKnowledgeModal, MemoryModal } from './components/InfoModals'
 import ProfileWizard from './components/ProfileWizard'
 import GuideModal from './components/GuideModal'
+import ActivityBar, { type ViewKey } from './components/ActivityBar'
+import TutorialView from './components/TutorialView'
+import ResourceView from './components/ResourceView'
+import IntroPanel from './components/IntroPanel'
+import { initTheme } from './theme'
 import type { Project, Dialogue, AgentConfig, Message } from './types'
 import { DEFAULT_AGENTS } from './types'
 
@@ -41,16 +47,19 @@ function App() {
   const [agents, setAgents] = useState<AgentConfig[]>(DEFAULT_AGENTS)
   const [showSettings, setShowSettings] = useState(false)
   const [showAgentSettings, setShowAgentSettings] = useState(false)
+  const [showMemory, setShowMemory] = useState(false)
   const [showProjectKB, setShowProjectKB] = useState(false)
   const [projectKBId, setProjectKBId] = useState<string | null>(null)
   const [wizard, setWizard] = useState<{mode: 'project'|'dialogue'; id: string; name?: string} | null>(null)
   const [showGuide, setShowGuide] = useState(false)
-  // 启动时应用保存的字体大小
+  const [view, setView] = useState<ViewKey>('chat')
+  // 首次进入：弹出项目介绍面板（localStorage 标记，只弹一次）
+  const [showIntro, setShowIntro] = useState(() => !localStorage.getItem('coagent-intro-seen'))
+  // 启动时应用保存的字体大小与主题（system 模式自动解析亮暗）
   useEffect(() => {
     const saved = localStorage.getItem('coagent-fontSize')
     if (saved) document.documentElement.style.fontSize = saved + 'px'
-    const theme = localStorage.getItem('coagent-theme') || 'warm'
-    document.documentElement.setAttribute('data-theme', theme)
+    initTheme()
   }, [])
 
   // 从后端加载项目/对话（持久化）
@@ -102,7 +111,7 @@ function App() {
 
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
-      if (dragging.current === 'left') setSidebarWidth(Math.max(180, Math.min(400, e.clientX - 8)))
+      if (dragging.current === 'left') setSidebarWidth(Math.max(180, Math.min(400, e.clientX - 64)))
       if (dragging.current === 'right') setRightPanelWidth(Math.max(180, Math.min(400, window.innerWidth - e.clientX - 8)))
     }
     const onMouseUp = () => {
@@ -192,9 +201,22 @@ function App() {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), 120000)
     try {
+      // 读取所选模型厂家配置
+      const provKeys = (() => { try { return JSON.parse(localStorage.getItem('coagent-provider-keys') || '{}') } catch { return {} } })()
+      const provider = localStorage.getItem('coagent-provider') || 'deepseek'
+      const model = localStorage.getItem('coagent-model') || 'deepseek-chat'
+      const providerBaseUrls: Record<string, string> = {
+        deepseek: 'https://api.deepseek.com/v1',
+        openai: 'https://api.openai.com/v1',
+        qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+        zhipu: 'https://open.bigmodel.cn/api/paas/v4',
+        moonshot: 'https://api.moonshot.cn/v1',
+        doubao: 'https://ark.cn-beijing.volces.com/api/v3',
+      }
+      const apiKey = provKeys[provider] || localStorage.getItem('coagent-apikey') || undefined
       const res = await fetch('/api/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text.trim(), session_id: sessionId.current, dialogue_id: currentDialogueId, project_id: currentProjectId, api_key: localStorage.getItem('coagent-apikey') || undefined, settings: settings || {}, mode: (settings && settings.chatMode) || 'kb', image: (settings && settings.image) || undefined }),
+        body: JSON.stringify({ message: text.trim(), session_id: sessionId.current, dialogue_id: currentDialogueId, project_id: currentProjectId, api_key: apiKey || localStorage.getItem('coagent-apikey') || undefined, model: model, base_url: providerBaseUrls[provider], settings: settings || {}, mode: (settings && settings.chatMode) || 'kb', image: (settings && settings.image) || undefined }),
         signal: ctrl.signal,
       })
       const reader = res.body!.getReader(); const decoder = new TextDecoder()
@@ -245,16 +267,30 @@ function App() {
   }, [])
 
   return (
-    <div ref={appRef} className="flex h-screen w-screen bg-[#ffffff] text-[#1a1a1a] p-2 gap-0">
-      {/* 左侧栏折叠后展开按钮 */}
+    <div ref={appRef} className="flex flex-col h-screen w-screen bg-[#ffffff] text-[#1a1a1a] overflow-hidden">
+      {/* 顶栏：wordmark + 当前项目 + 设置 */}
+      <header className="h-12 flex-shrink-0 flex items-center gap-3 px-4">
+        <span className="font-display text-[17px] tracking-wide select-none">CoAgent-Learn</span>
+        {currentProject && view === 'chat' && (
+          <span className="text-xs text-dim truncate">/ {currentProject.name}</span>
+        )}
+        <span className="flex-1" />
+</header>
+      <div className="flex-1 flex min-h-0 pb-3 pr-3">
+      {/* 最左侧细轨：三界面切换 */}
+      <ActivityBar view={view} onChange={setView} onMemory={() => setShowMemory(true)} onKnowledge={() => handleProjectKB(currentProjectId || 'default')} onAgentSettings={() => setShowAgentSettings(true)} />
       {sidebarCollapsed && (
-        <button onClick={() => setSidebarCollapsed(false)}
-          className="flex-shrink-0 w-5 h-full flex items-center justify-center hover:bg-[#ededed] rounded text-gray-400">▶</button>
+        <button onClick={() => setSidebarCollapsed(false)} className="flex-shrink-0 w-7 h-7 mt-3 ml-1.5 flex items-center justify-center rounded-lg icon-btn" title="展开侧栏">
+          <PanelLeftOpen size={15} />
+        </button>
       )}
-      {/* 左侧栏 */}
+      {view === 'tutorial' && <TutorialView />}
+      {view === 'resources' && <ResourceView projectId={currentProjectId} />}
+      {view === 'chat' && (<>
+      {/* 左侧栏（tonal 面板） */}
       {!sidebarCollapsed && (
         <>
-          <div style={{ width: sidebarWidth, minWidth: 180 }} className="h-full flex-shrink-0 relative">
+          <div style={{ width: sidebarWidth, minWidth: 200 }} className="h-full flex-shrink-0 relative panel rounded-3xl overflow-hidden">
           <Sidebar
             projects={projects} dialogues={dialogues}
             currentProjectId={currentProjectId} currentDialogueId={currentDialogueId}
@@ -265,52 +301,53 @@ function App() {
             onRenameProject={handleRenameProject}
             onProjectKnowledge={handleProjectKB}
             onSettings={() => setShowSettings(true)}
+            onCollapse={() => setSidebarCollapsed(true)}
           />
         </div>
         {/* 左侧拖拽手柄 */}
         <div onMouseDown={() => { dragging.current = 'left'; document.body.style.userSelect = 'none' }}
-          className="w-1.5 h-full cursor-col-resize hover:bg-[#1a1a1a]/30 flex-shrink-0 transition-colors" />
-          {/* 折叠按钮：右侧 */}
-          <button onClick={() => setSidebarCollapsed(true)}
-            className="w-5 h-5 flex items-center justify-center rounded bg-white border border-[#e5e5e5] text-gray-400 hover:text-[#1a1a1a] text-xs shadow-sm flex-shrink-0 self-start mt-2"
-            title="收起侧栏">◀</button>
-        </>
+          className="w-2 h-full cursor-col-resize flex-shrink-0 group flex items-center justify-center" >
+          <span className="w-1 h-10 rounded-full bg-[#d0d0d0] opacity-0 group-hover:opacity-100 transition-opacity" />
+        </div>
+</>
       )}
       {/* 中间 */}
       <CenterPanel
         messages={currentMessages} isLoading={isLoading} currentProject={currentProject}
+        dialogueId={currentDialogueId}
         onSendMessage={handleSendMessage}
         statsCollapsed={statsCollapsed} onToggleStats={() => setStatsCollapsed(!statsCollapsed)}
         showAgentFlow={flowVisible}
         flowAgents={flowAgents} flowActiveAgent={flowActiveAgent}
         flowMindchain={flowMindchain}
-        onAgentSettings={() => setShowAgentSettings(true)}
           onOpenGuide={() => setShowGuide(true)}
         projectInitialized={currentProject?.initialized !== false}
       />
       {/* 右侧栏 */}
+      {rightCollapsed && (
+        <button onClick={() => setRightCollapsed(false)} className="flex-shrink-0 w-7 h-7 mt-3 mr-1.5 flex items-center justify-center rounded-lg icon-btn" title="展开侧栏">
+          <PanelRightOpen size={15} />
+        </button>
+      )}
       {!rightCollapsed && (
         <>
-          {/* 折叠按钮：左侧 */}
-          <button onClick={() => setRightCollapsed(true)}
-            className="w-5 h-5 flex items-center justify-center rounded bg-white border border-[#e5e5e5] text-gray-400 hover:text-[#1a1a1a] text-xs shadow-sm flex-shrink-0 self-start mt-2"
-            title="收起右侧栏">▶</button>
-          {/* 右侧拖拽手柄 */}
+{/* 右侧拖拽手柄 */}
           <div onMouseDown={() => { dragging.current = 'right'; document.body.style.userSelect = 'none' }}
-            className="w-1.5 h-full cursor-col-resize hover:bg-[#1a1a1a]/30 flex-shrink-0 transition-colors" />
-          <div style={{ width: rightPanelWidth, minWidth: 180 }} className="h-full flex-shrink-0 relative">
-            <RightPanel messageCount={currentMessages.filter(m => m.role === 'assistant').length} projectId={currentProjectId} />
+            className="w-2 h-full cursor-col-resize flex-shrink-0 group flex items-center justify-center">
+            <span className="w-1 h-10 rounded-full bg-[#d0d0d0] opacity-0 group-hover:opacity-100 transition-opacity" />
+          </div>
+          <div style={{ width: rightPanelWidth, minWidth: 260 }} className="h-full flex-shrink-0 relative panel rounded-3xl overflow-hidden">
+            <RightPanel messageCount={currentMessages.filter(m => m.role === 'assistant').length} projectId={currentProjectId}  onCollapse={() => setRightCollapsed(true)} />
           </div>
         </>
       )}
-      {/* 右侧折叠后展开按钮 */}
-      {rightCollapsed && (
-        <button onClick={() => setRightCollapsed(false)}
-          className="flex-shrink-0 w-5 h-full flex items-center justify-center hover:bg-[#ededed] rounded text-gray-400">◀</button>
-      )}
+      </>)}
+      </div>
+
 
       {showDiagnosis && <DiagnosisModal onClose={() => setShowDiagnosis(false)} />}
       {showAgentSettings && <AgentSettingsModal agents={agents} onSave={handleSaveAgent} onClose={() => setShowAgentSettings(false)} />}
+      {showMemory && <MemoryModal onClose={() => setShowMemory(false)} />}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {showProjectKB && <ProjectKnowledgeModal projectId={projectKBId || undefined} onClose={() => setShowProjectKB(false)} />}
       {showGuide && <GuideModal onClose={() => setShowGuide(false)} />}
@@ -321,6 +358,7 @@ function App() {
           setWizard(null)
         }} />}
       {showApiKeyPrompt && <ApiKeyPrompt onClose={() => { setShowApiKeyPrompt(false); localStorage.setItem('coagent-apikey-skipped', '1') }} />}
+      {showIntro && <IntroPanel onClose={() => { setShowIntro(false); localStorage.setItem('coagent-intro-seen', '1') }} />}
     </div>
   )
 }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ReactFlow, Background, Controls, Handle, Position, type Edge } from '@xyflow/react'
+import { FileInput, Workflow, Brain, Search, Database, Globe, Sparkles, Scale } from 'lucide-react'
 import '@xyflow/react/dist/style.css'
 
 interface Props { visible: boolean; agents?: string[]; activeAgent?: string | null }
@@ -14,7 +15,7 @@ function AgentNode({ data }: any) {
         minWidth: 120, transition: 'all 0.5s ease',
       }}>
         <div style={{ fontSize: 10, fontWeight: 600, color: '#333333', display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'center' }}>
-          <span>{data.icon}</span><span>{data.label}</span>
+          {data.icon ? <data.icon size={11} strokeWidth={2} /> : null}<span>{data.label}</span>
         </div>
         <Handle type="target" position={Position.Top} style={{ background: '#666666', width: 6, height: 6, border: 'none' }} />
         <Handle type="source" position={Position.Top} style={{ background: '#666666', width: 6, height: 6, border: 'none' }} />
@@ -31,18 +32,18 @@ function AgentNode({ data }: any) {
 
 const nodeTypes = { agentNode: AgentNode }
 
-const N = (id: string, x: number, y: number, label: string, icon: string, phase: number, detail: string) =>
+const N = (id: string, x: number, y: number, label: string, icon: any, phase: number, detail: string) =>
   ({ id, type: 'agentNode', position: { x, y }, data: { label, icon, phase, active: false, detail } })
 
 const allNodes = [
-  N('input', 20, 180, '信息输入处理', '📥', 1, '识别格式→统一文本'),
-  N('dispatch', 200, 180, '调度 Agent', '🎯', 1, '判断→分配子Agent'),
-  N('memory', 400, 20, '记忆管理', '🧠', 2, 'L1/L2/L3三层记忆'),
-  N('diagnose', 400, 100, '学情诊断', '🔍', 2, '分析知识水平'),
-  N('kb', 400, 180, '知识库管理', '📚', 2, '检索+切片+向量'),
-  N('search', 400, 260, '搜索', '🔎', 2, 'SearXNG联网'),
-  N('generate', 600, 140, '信息整理与生成', '📤', 3, '整理多源信息→生成'),
-  N('review', 790, 140, '审核裁判', '⚖️', 3, '校验→重试/通过'),
+  N('input', 20, 180, '信息输入处理', FileInput, 1, '识别格式→统一文本'),
+  N('dispatch', 200, 180, '调度 Agent', Workflow, 1, '判断→分配子Agent'),
+  N('memory', 400, 20, '记忆管理', Brain, 2, 'L1/L2/L3三层记忆'),
+  N('diagnose', 400, 100, '学情诊断', Search, 2, '分析知识水平'),
+  N('kb', 400, 180, '知识库管理', Database, 2, '检索+切片+向量'),
+  N('search', 400, 260, '搜索', Globe, 2, 'SearXNG联网'),
+  N('generate', 600, 140, '信息整理与生成', Sparkles, 3, '整理多源信息→生成'),
+  N('review', 790, 140, '审核裁判', Scale, 3, '校验→重试/通过'),
 ]
 
 const allEdges: Edge[] = [

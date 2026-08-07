@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { X, Sun, Moon, Monitor, Type, Key, Palette } from 'lucide-react'
+import { X, Sun, Moon, Monitor, Type, Key, LampDesk } from 'lucide-react'
+import { getThemePref, setThemePref, type ThemePref } from '../theme'
 
 interface Props {
   onClose: () => void
@@ -7,8 +8,7 @@ interface Props {
 
 export default function SettingsModal({ onClose }: Props) {
   const [fontSize, setFontSize] = useState(() => parseInt(localStorage.getItem('coagent-fontSize') || '15'))
-  const [theme, setTheme] = useState(() => localStorage.getItem('coagent-theme') || 'warm')
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('coagent-apikey') || '')
+  const [theme, setTheme] = useState<ThemePref>(() => getThemePref())
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
@@ -17,21 +17,15 @@ export default function SettingsModal({ onClose }: Props) {
   }, [fontSize])
 
   useEffect(() => {
-    localStorage.setItem('coagent-theme', theme)
-    document.documentElement.setAttribute('data-theme', theme)
+    setThemePref(theme)
   }, [theme])
 
-  const handleApiKeySave = () => {
-    localStorage.setItem('coagent-apikey', apiKey)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
-  }
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl shadow-lift w-full max-w-md mx-4" onMouseDown={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#dad4cd]">
-          <h2 className="text-base font-bold">设置</h2>
+          <h2 className="font-display text-lg">设置</h2>
           <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
         </div>
 
@@ -58,51 +52,27 @@ export default function SettingsModal({ onClose }: Props) {
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">页面主题</label>
             <div className="flex gap-2">
               {[
-                { value: 'light', icon: Sun, label: '默认' },
-                { value: 'dark', icon: Moon, label: '夜间' },
-                { value: 'warm', icon: Palette, label: '柔和' },
-                { value: 'system', icon: Monitor, label: '跟随系统' },
-              ].map(({ value, icon: Icon, label }) => (
+                { value: 'light', icon: Sun, swatch: 'bg-white border border-gray-300', iconColor: 'text-gray-700' },
+                { value: 'dark', icon: Moon, swatch: 'bg-gray-900 border border-gray-700', iconColor: 'text-gray-200' },
+                { value: 'warm', icon: LampDesk, swatch: 'bg-[#fdf3e3] border border-amber-200', iconColor: 'text-amber-700' },
+                { value: 'system', icon: Monitor, swatch: 'bg-gradient-to-r from-white via-gray-400 to-gray-900 border border-gray-300', iconColor: 'text-gray-700' },
+              ].map(({ value, icon: Icon, swatch, iconColor }) => (
                 <button
                   key={value}
-                  onClick={() => setTheme(value)}
-                  className={`flex-1 flex flex-col items-center gap-1 py-3 rounded-lg text-xs font-medium transition-colors ${
+                  onClick={() => setTheme(value as ThemePref)}
+                  title={value}
+                  className={`flex-1 flex items-center justify-center aspect-[4/3] rounded-xl transition-all ${swatch} ${
                     theme === value
-                      ? 'bg-[#f0f0f0] text-[#1a1a1a] border border-[#1a1a1a]/30'
-                      : 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100'
+                      ? 'ring-2 ring-[#1a1a1a]/50 shadow-sm'
+                      : 'hover:brightness-95'
                   }`}
                 >
-                  <Icon size={18} />
-                  {label}
+                  <Icon size={18} strokeWidth={theme === value ? 2.2 : 1.8} className={iconColor} />
                 </button>
               ))}
             </div>
           </div>
 
-          {/* API Key */}
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider flex items-center gap-1.5 mb-2">
-              <Key size={14} /> API Key
-            </label>
-            <div className="flex gap-2">
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                onMouseDown={(e) => e.stopPropagation()}
-                placeholder="输入 DEEPSEEK_API_KEY"
-                className="flex-1 px-3 py-2 border border-[#c4beb6] rounded-lg text-sm outline-none focus:border-[#1a1a1a] bg-[#faf8f5]"
-              />
-              <button
-                onClick={handleApiKeySave}
-                className="px-4 py-2 bg-[#1a1a1a] text-white text-sm font-semibold rounded-lg hover:bg-[#333333]"
-              >
-                保存
-              </button>
-              {saved && <span className="text-xs text-green-600 font-medium ml-2">✓ 已保存</span>}
-            </div>
-            <p className="text-[10px] text-gray-400 mt-1.5">API Key 仅保存在浏览器本地，不会上传到服务器。</p>
-          </div>
         </div>
       </div>
     </div>
@@ -121,8 +91,8 @@ export function ApiKeyPrompt({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md mx-4 p-6">
-        <h2 className="text-lg font-bold mb-2">配置 API Key</h2>
+      <div className="bg-white rounded-2xl shadow-lift w-full max-w-md mx-4 p-6">
+        <h2 className="font-display text-lg mb-2">配置 API Key</h2>
         <p className="text-sm text-gray-500 mb-4">请输入 DeepSeek API Key 以启用 Agent 功能。后续可在设置中修改。</p>
         <input
           autoFocus

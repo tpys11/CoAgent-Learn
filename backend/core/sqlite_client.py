@@ -249,6 +249,14 @@ class SQLiteClient:
             )
         """)
         self.execute("""
+            CREATE TABLE IF NOT EXISTS followups (
+                dialogue_id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL DEFAULT 'default',
+                questions TEXT DEFAULT '[]',
+                updated_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        self.execute("""
             CREATE TABLE IF NOT EXISTS relations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 project_id TEXT NOT NULL DEFAULT 'default',

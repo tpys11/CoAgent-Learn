@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Brain, Database, Plus, Trash2, Clock } from 'lucide-react'
+import { X, Brain, Database, Plus, Trash2, Clock, User, Wrench, PenLine, Lightbulb, FolderOpen } from 'lucide-react'
 import DragDropInput from './DragDropInput'
 
 interface Props { onClose: () => void }
@@ -113,7 +113,7 @@ export function MemoryModal({ onClose }: Props) {
           <div className="border border-blue-300 rounded-xl p-4 bg-blue-50/30">
             <div className="flex items-center justify-between mb-2">
               <div>
-                <h3 className="text-sm font-bold flex items-center gap-1.5 text-blue-700">👤 个人画像记忆</h3>
+                <h3 className="text-sm font-bold flex items-center gap-1.5 text-blue-700"><User size={14} /> 个人画像记忆</h3>
                 <p className="text-[10px] text-gray-400 mt-0.5">基于所有项目记忆提炼的用户基础画像（≤500字）。</p>
               </div>
               <ToggleBtn on={autoPersona} setOn={setAutoPersona} />
@@ -125,7 +125,7 @@ export function MemoryModal({ onClose }: Props) {
           </div>
           <div className="border border-blue-200 rounded-xl p-4 bg-blue-50/20">
             <div className="flex items-center justify-between mb-3">
-              <div><h3 className="text-sm font-bold text-blue-700">🧠 学习偏好</h3><p className="text-[10px] text-gray-400 mt-0.5">几乎不变的底层学习风格。</p></div>
+              <div><h3 className="text-sm font-bold text-blue-700 flex items-center gap-1.5"><Brain size={13} /> 学习偏好</h3><p className="text-[10px] text-gray-400 mt-0.5">几乎不变的底层学习风格。</p></div>
             </div>
             <OptionList items={[...purposePresets, ...customPurpose]} active={activePurpose}
               onToggle={v => setActivePurpose(prev => { const n = new Set(prev); n.has(v) ? n.delete(v) : n.add(v); return n })}
@@ -135,7 +135,7 @@ export function MemoryModal({ onClose }: Props) {
           </div>
           <div className="border border-purple-200 rounded-xl p-4 bg-purple-50/20">
             <div className="flex items-center justify-between mb-3">
-              <div><h3 className="text-sm font-bold text-purple-700">🔧 资源配置</h3><p className="text-[10px] text-gray-400 mt-0.5">较大困难时可更换。</p></div>
+              <div><h3 className="text-sm font-bold text-purple-700 flex items-center gap-1.5"><Wrench size={13} /> 资源配置</h3><p className="text-[10px] text-gray-400 mt-0.5">较大困难时可更换。</p></div>
             </div>
             <OptionList items={[...methodPresets, ...customMethod]} active={activeMethod}
               onToggle={v => setActiveMethod(prev => { const n = new Set(prev); n.has(v) ? n.delete(v) : n.add(v); return n })}
@@ -145,7 +145,7 @@ export function MemoryModal({ onClose }: Props) {
           </div>
           <div className="border border-green-200 rounded-xl p-4 bg-green-50/20">
             <div className="flex items-center justify-between mb-3">
-              <div><h3 className="text-sm font-bold text-green-700">📝 本次要求</h3><p className="text-[10px] text-gray-400 mt-0.5">每次对话前可灵活调整。</p></div>
+              <div><h3 className="text-sm font-bold text-green-700 flex items-center gap-1.5"><PenLine size={13} /> 本次要求</h3><p className="text-[10px] text-gray-400 mt-0.5">每次对话前可灵活调整。</p></div>
             </div>
             <OptionList items={[...constraintPresets, ...customConstraint]} active={activeConstraint}
               onToggle={v => setActiveConstraint(prev => { const n = new Set(prev); n.has(v) ? n.delete(v) : n.add(v); return n })}
@@ -161,7 +161,7 @@ export function MemoryModal({ onClose }: Props) {
 
 // ==================== 项目配置窗口 ====================
 export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectId?: string }) {
-  const [tab, setTab] = useState<'knowledge' | 'memory'>('knowledge')
+  const [tab, setTab] = useState<'knowledge' | 'memory' | 'evaluate'>('knowledge')
   const [kbInput, setKbInput] = useState('')
   const [showGuide, setShowGuide] = useState(false)
   const [projectMemory, setProjectMemory] = useState('')
@@ -321,8 +321,8 @@ export function ProjectKnowledgeModal({ onClose, projectId }: Props & { projectI
                 <h3 className="text-sm font-bold mb-3">输入内容</h3>
                 <DragDropInput value={kbInput} onChange={setKbInput} placeholder="输入知识库内容，或拖拽文件上传" rows={5} />
                 <div className="flex items-center gap-3 mt-3">
-                  <p className="text-[11px] text-gray-400 cursor-pointer hover:text-[#1a1a1a]" onClick={() => setShowGuide(!showGuide)}>💡 我需要引导</p>
-                  <button onClick={openResPick} className="text-[11px] px-3 py-1.5 bg-white border border-gray-200 text-gray-600 rounded-lg hover:border-[#1a1a1a]/40 transition-colors">📁 从资源选择</button>
+                  <p className="text-[11px] text-gray-400 cursor-pointer hover:text-[#1a1a1a] flex items-center gap-1" onClick={() => setShowGuide(!showGuide)}><Lightbulb size={11} /> 我需要引导</p>
+                  <button onClick={openResPick} className="text-[11px] px-3 py-1.5 bg-white border border-gray-200 text-gray-600 rounded-lg hover:border-[#1a1a1a]/40 transition-colors flex items-center gap-1"><FolderOpen size={11} /> 从资源选择</button>
                   <button onClick={saveKb} className="text-[11px] px-3 py-1.5 bg-[#1a1a1a] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors">保存到知识库</button>
                 </div>
                 {showResPick && (
