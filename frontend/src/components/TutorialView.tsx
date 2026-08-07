@@ -41,8 +41,9 @@ function BasicTutorial() {
   )
 }
 
-/** 详细教程：分节展开（骨架，文案待填） */
+/** 详细教程：左侧列表展开，选择条目后右侧展示对应介绍（骨架，文案待填） */
 function DetailTutorial() {
+  const [active, setActive] = useState(0)
   const blocks = [
     { title: '主对话界面', text: '（待补充：控制栏 / 输入优化 / 检索模式 / 输出形式与内容 的逐项说明）' },
     { title: '多智能体工作流', text: '（待补充：Agent 画布、思考链、审核机制的说明）' },
@@ -51,13 +52,26 @@ function DetailTutorial() {
     { title: '资源界面', text: '（待补充：资料与生成物管理的说明）' },
   ]
   return (
-    <div className="flex flex-col gap-4">
-      {blocks.map(b => (
-        <section key={b.title}>
-          <h3 className="text-sm font-bold mb-1.5">{b.title}</h3>
-          <Placeholder hint={b.text} />
-        </section>
-      ))}
+    <div className="flex border border-[#e5e5e5] rounded-xl overflow-hidden min-h-[320px]">
+      {/* 左：条目列表 */}
+      <div className="w-44 flex-shrink-0 border-r border-[#e5e5e5] bg-[#f5f5f5] p-2 flex flex-col gap-1">
+        {blocks.map((b, i) => (
+          <button
+            key={b.title}
+            onClick={() => setActive(i)}
+            className={`px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-colors ${
+              active === i ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-gray-500 hover:bg-[#ededed]'
+            }`}
+          >
+            {b.title}
+          </button>
+        ))}
+      </div>
+      {/* 右：对应介绍 */}
+      <div className="flex-1 p-5">
+        <h3 className="text-sm font-bold mb-3">{blocks[active].title}</h3>
+        <Placeholder hint={blocks[active].text} />
+      </div>
     </div>
   )
 }
