@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { BookOpen, Sparkles, Upload, FileText, Trash2, Wrench, PenLine, ExternalLink, Plus } from 'lucide-react'
+import { BookOpen, Sparkles, Upload, FileText, Trash2, Wrench, PenLine, ExternalLink, Plus, X } from 'lucide-react'
 
 interface Artifact {
   id: string
@@ -33,6 +33,12 @@ interface Tutorial {
 
 type Tab = 'tutorials' | 'generated' | 'uploads'
 
+type ListItem = {
+  id: string; title: string; sub: string; body: string; icon: any
+  kind: 'tutorial' | 'artifact' | 'resource' | 'kb'; url?: string
+  deletable: boolean
+}
+
 const TYPE_ICONS: Record<string, any> = {
   '定制讲义': BookOpen, '讲义': BookOpen,
   '实操指南': Wrench,
@@ -49,7 +55,13 @@ const PRESET_TUTORIALS: Tutorial[] = [
 
 const TUTORIALS_KEY = 'coagent-tutorials'
 
-/** 资源界面：第三方教程 / 我的生成 / 我的上传 三类资源仓库 */
+const NAV: Array<{ key: Tab; icon: any; label: string; desc: string }> = [
+  { key: 'tutorials', icon: BookOpen, label: '第三方教程', desc: '外部学习资料：预置 + 手动添加' },
+  { key: 'generated', icon: Sparkles, label: '我的生成', desc: 'AI 生成的讲义 / 实操指南 / 测试题' },
+  { key: 'uploads', icon: Upload, label: '我的上传', desc: '知识库文档与保存的资料' },
+]
+
+/** 资源界面：左侧分类导航 + 右侧卡片流（借鉴 hyper.ai 风格） */
 export default function ResourceView({ projectId }: { projectId: string | null }) {
   const [tab, setTab] = useState<Tab>('tutorials')
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
@@ -58,8 +70,8 @@ export default function ResourceView({ projectId }: { projectId: string | null }
   const [tutorials, setTutorials] = useState<Tutorial[]>(() => {
     try { return JSON.parse(localStorage.getItem(TUTORIALS_KEY) || '[]') } catch { return [] }
   })
-  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [detail, setDetail] = useState<ListItem | null>(null)
   // 添加教程表单
   const [showAddTutorial, setShowAddTutorial] = useState(false)
   const [tTitle, setTTitle] = useState('')
@@ -78,7 +90,7 @@ export default function ResourceView({ projectId }: { projectId: string | null }
       .finally(() => setLoading(false))
   }, [projectId])
 
-  useEffect(() => { setSelectedId(null); load() }, [load])
+  useEffect(() => { setDetail(null); load() }, [load])
 
   // ---------- 第三方教程 ----------
   const allTutorials = [...PRESET_TUTORIALS, ...tutorials]
@@ -92,159 +104,190 @@ export default function ResourceView({ projectId }: { projectId: string | null }
     saveTutorials([...tutorials, { id: 't-' + Date.now(), title: tTitle.trim(), url, desc: tDesc.trim() }])
     setTTitle(''); setTUrl(''); setTDesc(''); setShowAddTutorial(false)
   }
-  const removeTutorial = (id: string) => saveTutorials(tutorials.filter(t => t.id !== id))
+  const removeTutorial = (id: string) => {
+    setDetail(null)
+    saveTutorials(tutorials.filter(t => t.id !== id))
+  }
 
-  // ---------- 我的上传（知识库文档 + 手动保存文本） ----------
+  // ---------- 我的上传 ----------
   const deleteResource = (id: string) => {
     if (!window.confirm('确定删除该资料？')) return
     fetch('/api/resources/' + id, { method: 'DELETE' }).then(() => {
       setResources(prev => prev.filter(r => r.id !== id))
-      if (selectedId === id) setSelectedId(null)
+      setDetail(null)
     })
   }
   const deleteKbDoc = (source: string) => {
     if (!window.confirm(`确定删除知识库文档「${source}」？`)) return
-    const key = 'kb:' + source
     fetch('/api/knowledge/delete?project_id=' + encodeURIComponent(projectId || 'default') + '&source=' + encodeURIComponent(source), { method: 'DELETE' })
       .then(() => {
         setKbDocs(prev => prev.filter(d => d.source !== source))
-        if (selectedId === key) setSelectedId(null)
+        setDetail(null)
       })
   }
 
   // ---------- 列表组装 ----------
-  type ListItem = { id: string; title: string; sub: string; body: string; icon: any; kind: 'tutorial' | 'artifact' | 'resource' | 'kb'; url?: string }
   let list: ListItem[] = []
   if (tab === 'tutorials') {
-    list = allTutorials.map(t => ({ id: t.id, title: t.title, sub: t.preset ? '预置教程' : '手动添加', body: t.desc || '暂无简介', icon: BookOpen, kind: 'tutorial' as const, url: t.url }))
+    list = allTutorials.map(t => ({
+      id: t.id, title: t.title,
+      sub: t.preset ? '预置教程' : '手动添加',
+      body: t.desc || '暂无简介', icon: BookOpen,
+      kind: 'tutorial' as const, url: t.url,
+      deletable: !t.id.startsWith('preset-'),
+    }))
   } else if (tab === 'generated') {
-    list = artifacts.map(a => ({ id: a.id, title: a.title, sub: a.dialogue_name || a.created_at || '', body: a.content, icon: TYPE_ICONS[a.type] || FileText, kind: 'artifact' as const }))
+    list = artifacts.map(a => ({
+      id: a.id, title: a.title, sub: a.dialogue_name || a.created_at || '',
+      body: a.content, icon: TYPE_ICONS[a.type] || FileText,
+      kind: 'artifact' as const, deletable: false,
+    }))
   } else {
     list = [
-      ...kbDocs.map(d => ({ id: 'kb:' + d.source, title: d.source, sub: `知识库文档 · ${d.chunks} 块`, body: d.preview || '（无预览内容）', icon: Upload, kind: 'kb' as const })),
-      ...resources.map(r => ({ id: r.id, title: r.name, sub: '保存的资料', body: r.content || '', icon: FileText, kind: 'resource' as const })),
+      ...kbDocs.map(d => ({ id: 'kb:' + d.source, title: d.source, sub: `知识库文档 · ${d.chunks} 块`, body: d.preview || '（无预览内容）', icon: Upload, kind: 'kb' as const, deletable: true })),
+      ...resources.map(r => ({ id: r.id, title: r.name, sub: '保存的资料', body: r.content || '', icon: FileText, kind: 'resource' as const, deletable: true })),
     ]
   }
 
-  const selected = list.find(i => i.id === selectedId) || null
+  const activeNav = NAV.find(n => n.key === tab)!
+
+  const removeItem = (item: ListItem) => {
+    if (item.kind === 'tutorial') removeTutorial(item.id)
+    else if (item.kind === 'resource') deleteResource(item.id)
+    else if (item.kind === 'kb') deleteKbDoc(item.title)
+  }
 
   return (
     <div className="flex-1 h-full min-w-0 flex panel rounded-3xl overflow-hidden">
-      {/* 左：分类 + 列表 */}
-      <div className="w-72 flex-shrink-0 border-r border-[#e5e5e5] bg-[#f5f5f5] flex flex-col">
-        <div className="p-2 flex flex-col gap-1 border-b border-[#e5e5e5]">
-          {([
-            { key: 'tutorials', icon: BookOpen, label: '第三方教程' },
-            { key: 'generated', icon: Sparkles, label: '我的生成' },
-            { key: 'uploads', icon: Upload, label: '我的上传' },
-          ] as Array<{ key: Tab; icon: any; label: string }>).map(({ key, icon: Icon, label }) => (
-            <button
-              key={key}
-              onClick={() => { setTab(key); setSelectedId(null) }}
-              className={`flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                tab === key ? 'bg-[#1a1a1a] text-white' : 'text-gray-500 hover:bg-[#ededed]'
-              }`}
-            >
-              <Icon size={13} /> {label}
-            </button>
-          ))}
-        </div>
-        <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1">
-          {tab === 'tutorials' && (
-            <button
-              onClick={() => setShowAddTutorial(true)}
-              className="flex items-center justify-center gap-1.5 px-2 py-2 mb-1 rounded-lg text-xs font-semibold border border-dashed border-[#d0d0d0] text-gray-500 hover:bg-[#ededed] transition-colors"
-            >
-              <Plus size={13} /> 添加教程
-            </button>
-          )}
+      {/* 左侧分类导航 */}
+      <div className="w-44 flex-shrink-0 border-r border-[#e5e5e5] bg-[#f5f5f5] p-2 flex flex-col gap-1">
+        {NAV.map(({ key, icon: Icon, label }) => (
+          <button
+            key={key}
+            onClick={() => { setTab(key); setDetail(null) }}
+            className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-colors ${
+              tab === key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-gray-500 hover:bg-[#ededed]'
+            }`}
+          >
+            <Icon size={14} /> {label}
+          </button>
+        ))}
+      </div>
+
+      {/* 右侧卡片流 */}
+      <div className="flex-1 overflow-y-auto p-6">
+        <div className="max-w-4xl mx-auto">
+          {/* 分类头 */}
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-lg font-bold flex items-center gap-2">
+                <activeNav.icon size={18} /> {activeNav.label}
+              </h2>
+              <p className="text-[11px] text-gray-400 mt-0.5">{activeNav.desc}</p>
+            </div>
+            {tab === 'tutorials' && !showAddTutorial && (
+              <button
+                onClick={() => setShowAddTutorial(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333] transition-colors"
+              >
+                <Plus size={13} /> 添加教程
+              </button>
+            )}
+          </div>
+
+          {/* 添加教程表单 */}
           {showAddTutorial && (
-            <div className="border border-[#d0d0d0] rounded-xl p-2 mb-1 flex flex-col gap-1.5 bg-white">
+            <div className="border border-[#d0d0d0] rounded-2xl p-3 mb-5 flex flex-col gap-2 bg-white shadow-soft">
               <input autoFocus value={tTitle} onChange={e => setTTitle(e.target.value)} placeholder="教程标题"
-                className="px-2 py-1 text-[11px] input-surface rounded-lg outline-none" />
+                className="px-3 py-2 text-xs input-surface rounded-xl outline-none" />
               <input value={tUrl} onChange={e => setTUrl(e.target.value)} placeholder="链接 URL"
-                className="px-2 py-1 text-[11px] input-surface rounded-lg outline-none" />
+                className="px-3 py-2 text-xs input-surface rounded-xl outline-none" />
               <input value={tDesc} onChange={e => setTDesc(e.target.value)} placeholder="简介（可选）"
-                className="px-2 py-1 text-[11px] input-surface rounded-lg outline-none" />
-              <div className="flex gap-1.5 justify-end">
-                <button onClick={() => setShowAddTutorial(false)} className="px-2.5 py-1 text-[10px] text-gray-500 rounded-lg row-hover">取消</button>
-                <button onClick={addTutorial} className="px-2.5 py-1 text-[10px] btn-primary font-semibold rounded-lg">保存</button>
+                className="px-3 py-2 text-xs input-surface rounded-xl outline-none" />
+              <div className="flex gap-2 justify-end">
+                <button onClick={() => setShowAddTutorial(false)} className="px-3 py-1.5 text-[11px] text-gray-500 rounded-xl row-hover">取消</button>
+                <button onClick={addTutorial} className="px-3 py-1.5 text-[11px] bg-[#1a1a1a] text-white font-semibold rounded-xl">保存</button>
               </div>
             </div>
           )}
-          {loading && <p className="text-[11px] text-gray-400 text-center py-4">加载中…</p>}
+
+          {/* 卡片网格 */}
+          {loading && <p className="text-xs text-gray-400 text-center py-10">加载中…</p>}
           {!loading && list.length === 0 && (
-            <p className="text-[11px] text-gray-400 text-center py-6">
-              {tab === 'tutorials' ? '暂无教程，点击上方"添加教程"' : tab === 'generated' ? '暂无生成物（对话生成讲义/指南/测试题后自动收录）' : '暂无上传内容'}
-            </p>
+            <div className="border border-dashed border-[#d0d0d0] rounded-2xl py-14 text-center">
+              <p className="text-xs text-gray-400">
+                {tab === 'tutorials' ? '暂无教程，点击右上角"添加教程"' : tab === 'generated' ? '暂无生成物（对话生成讲义/指南/测试题后自动收录）' : '暂无上传内容'}
+              </p>
+            </div>
           )}
-          {list.map(item => {
-            const Icon = item.icon
-            const active = item.id === selectedId
-            return (
-              <div
-                key={item.id}
-                onClick={() => setSelectedId(item.id)}
-                className={`group flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
-                  active ? 'bg-[#f0f0f0] text-[#1a1a1a] shadow-soft' : 'text-gray-600 hover:bg-[#ededed]'
-                }`}
-              >
-                <Icon size={14} className="flex-shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium truncate">{item.title}</p>
-                  <p className="text-[10px] text-gray-400 truncate">{item.sub}</p>
-                </div>
-                {item.kind === 'tutorial' && !(item.id.startsWith('preset-')) && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); removeTutorial(item.id) }}
-                    className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-red-500 flex-shrink-0" title="删除教程"
+          {!loading && list.length > 0 && (
+            <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
+              {list.map(item => {
+                const Icon = item.icon
+                return (
+                  <div
+                    key={item.id}
+                    onClick={() => setDetail(item)}
+                    className="card-surface rounded-2xl p-4 flex flex-col gap-2.5 cursor-pointer transition-all hover:shadow-soft hover:-translate-y-0.5"
                   >
-                    <Trash2 size={12} />
-                  </button>
-                )}
-                {item.kind === 'resource' && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); deleteResource(item.id) }}
-                    className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-red-500 flex-shrink-0" title="删除"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                )}
-                {item.kind === 'kb' && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); deleteKbDoc(item.title) }}
-                    className="opacity-0 group-hover:opacity-100 p-0.5 hover:text-red-500 flex-shrink-0" title="删除知识库文档"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                )}
-              </div>
-            )
-          })}
+                    <div className="flex items-start justify-between">
+                      <span className="w-9 h-9 rounded-xl bg-[#f0f0f0] flex items-center justify-center text-[#1a1a1a]">
+                        <Icon size={16} />
+                      </span>
+                      {item.deletable && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); removeItem(item) }}
+                          className="p-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors" title="删除"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[13px] font-semibold truncate">{item.title}</p>
+                    <p className="text-[11px] text-gray-400 line-clamp-2 min-h-[2em]">{item.body}</p>
+                    <div className="flex items-center justify-between mt-auto pt-1">
+                      <span className="text-[10px] text-gray-400 truncate">{item.sub}</span>
+                      {item.kind === 'tutorial' && item.url && <ExternalLink size={12} className="text-gray-300 flex-shrink-0" />}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       </div>
-      {/* 右：预览 */}
-      <div className="flex-1 overflow-y-auto px-8 py-6">
-        {selected ? (
-          <div className="max-w-2xl mx-auto">
-            <h2 className="font-display text-xl mb-1">{selected.title}</h2>
-            <p className="text-[11px] text-gray-400 mb-4">{selected.sub}</p>
-            {selected.kind === 'tutorial' && selected.url && (
-              <a
-                href={selected.url} target="_blank" rel="noreferrer"
-                className="inline-flex items-center gap-1.5 px-4 py-2 mb-5 bg-[#1a1a1a] text-white text-sm font-semibold rounded-xl hover:bg-[#333] transition-colors"
-              >
-                <ExternalLink size={14} /> 打开教程
-              </a>
-            )}
-            <div className="text-sm leading-relaxed whitespace-pre-wrap text-gray-700">{selected.body}</div>
+
+      {/* 详情模态 */}
+      {detail && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setDetail(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#e5e5e5] flex-shrink-0">
+              <h3 className="text-base font-bold flex items-center gap-2">
+                <detail.icon size={16} /> {detail.title}
+              </h3>
+              <button onClick={() => setDetail(null)} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5">
+              <p className="text-[11px] text-gray-400 mb-3">{detail.sub}</p>
+              <div className="text-sm leading-relaxed whitespace-pre-wrap text-gray-700">{detail.body}</div>
+            </div>
+            <div className="flex gap-2 justify-between items-center px-5 py-3 border-t border-[#e5e5e5] flex-shrink-0">
+              {detail.kind === 'tutorial' && detail.url ? (
+                <a href={detail.url} target="_blank" rel="noreferrer"
+                  className="flex items-center gap-1.5 px-4 py-2 bg-[#1a1a1a] text-white text-sm font-semibold rounded-xl hover:bg-[#333] transition-colors">
+                  <ExternalLink size={14} /> 打开教程
+                </a>
+              ) : <span />}
+              {detail.deletable && (
+                <button onClick={() => removeItem(detail)}
+                  className="flex items-center gap-1.5 px-3.5 py-2 text-sm text-red-500 hover:bg-red-50 rounded-xl transition-colors">
+                  <Trash2 size={14} /> 删除
+                </button>
+              )}
+            </div>
           </div>
-        ) : (
-          <div className="h-full flex items-center justify-center">
-            <p className="text-xs text-gray-400">选择左侧条目查看内容</p>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
