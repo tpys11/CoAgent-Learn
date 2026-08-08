@@ -89,6 +89,23 @@ const SKILL_TABS: Array<{ key: string; label: string }> = [
   { key: 'dev', label: '开发者' },
 ]
 
+/** Skill 分类（已安装视图左侧栏） */
+const SKILL_CATS = [
+  { key: 'all', label: '全部' },
+  { key: '检索', label: '检索与信息' },
+  { key: '记忆', label: '记忆与画像' },
+  { key: '视觉', label: '视觉理解' },
+  { key: '计算', label: '计算与执行' },
+  { key: '文档', label: '文档处理' },
+]
+const SKILL_CAT_MAP: Record<string, string> = {
+  knowledge_retrieval: '检索', web_search: '检索', fetch_web: '检索',
+  memory_ops: '记忆', user_diagnosis: '记忆',
+  vision: '视觉',
+  calculator: '计算', execute_code: '计算',
+  pdf_parse: '文档', doc_parse: '文档',
+}
+
 const BLOCKS: Array<{ key: Block; icon: any; label: string }> = [
   { key: 'agents', icon: Settings, label: 'Agent 管理' },
   { key: 'skills', icon: Layers, label: 'Skill 管理' },
@@ -132,6 +149,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   const [saveTplName, setSaveTplName] = useState('')
   // Skill 管理四区
   const [skillTab, setSkillTab] = useState('installed')
+  const [skillCat, setSkillCat] = useState('all')
   const [mcpStep, setMcpStep] = useState(1)
   const [mcpName, setMcpName] = useState('')
   const [mcpType, setMcpType] = useState<'stdio' | 'http' | 'sse'>('http')
@@ -421,57 +439,81 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
               ))}
             </div>
 
-            {/* 已安装：当前注册的 Skill 列表 */}
+            {/* 已安装：分类栏 + 卡片网格（点击展开详情，无启用开关） */}
             {skillTab === 'installed' && (
-              <div className="flex flex-col gap-2">
-                {allSkills.map(s => {
-                  const enabled = skillEnabled[s.name] !== false
-                  return (
-                    <div key={s.name} className="card-surface rounded-xl p-3.5">
-                      <div className="flex items-center gap-3">
-                        <span className="w-8 h-8 rounded-lg bg-[var(--bg-hover)] flex items-center justify-center flex-shrink-0"><Wrench size={14} className="text-dim" /></span>
-                        <button className="flex-1 text-left" onClick={() => setExpandedSkill(expandedSkill === s.name ? null : s.name)}>
-                          <span className="block text-xs font-semibold">{s.name}</span>
-                          <span className="block text-[10px] text-dim truncate">{s.description}</span>
-                        </button>
-                        <span className="text-[10px] text-dim font-mono flex-shrink-0">{s.folder}</span>
-                        <Toggle checked={enabled} onChange={() => toggleSkillEnabled(s.name)} />
+              <div className="flex min-h-0">
+                <div className="w-36 flex-shrink-0 border-r hairline p-2 flex flex-col gap-1 overflow-y-auto">
+                  {SKILL_CATS.map(c => (
+                    <button key={c.key} onClick={() => setSkillCat(c.key)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-left transition-colors ${
+                        skillCat === c.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
+                      }`}>
+                      <Wrench size={13} /> {c.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex-1">
+                  {(() => {
+                    const filtered = skillCat === 'all' ? allSkills : allSkills.filter(s => (SKILL_CAT_MAP[s.name] || '其他') === skillCat)
+                    if (filtered.length === 0) return <p className="text-xs text-dim text-center py-10">该分类暂无 Skill</p>
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                        {filtered.map(s => {
+                          const open = expandedSkill === s.name
+                          return (
+                            <div key={s.name} onClick={() => setExpandedSkill(open ? null : s.name)}
+                              className="card-surface rounded-2xl p-5 flex flex-col gap-3 cursor-pointer transition-all hover:shadow-lg hover:-translate-y-1">
+                              <div className="flex items-start justify-between">
+                                <span className="w-10 h-10 rounded-xl bg-[#1a1a1a] text-white flex items-center justify-center"><Wrench size={17} /></span>
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--bg-hover)] text-dim">{SKILL_CAT_MAP[s.name] || '其他'}</span>
+                              </div>
+                              <p className="text-sm font-semibold truncate">{s.name}</p>
+                              <p className="text-[11px] text-dim truncate">{s.description}</p>
+                              {open && (
+                                <div className="mt-1 pt-3 border-t hairline flex flex-col gap-1.5">
+                                  <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">{s.description}</p>
+                                  <p className="text-[10px] text-dim font-mono">目录：{s.folder}</p>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
                       </div>
-                      {expandedSkill === s.name && (
-                        <div className="mt-2.5 pt-2.5 border-t hairline">
-                          <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">{s.description}</p>
-                          <p className="text-[10px] text-dim mt-1">目录：{s.folder}</p>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
-                {allSkills.length === 0 && <p className="text-xs text-dim text-center py-8">暂无已注册 Skill</p>}
+                    )
+                  })()}
+                </div>
               </div>
             )}
 
-            {/* 推荐市场：内置常用 Skill，一键启用 */}
+            {/* 推荐市场：卡片网格（点击展开详情，无启用开关） */}
             {skillTab === 'market' && (
               <div className="flex flex-col gap-2">
-                <p className="text-[11px] text-dim">预置常用 Skill，点击开关「启用」后即可在 Agent 的 Skill 卡片中勾选使用（无需联网）。</p>
-                {MARKET_SKILLS.map(s => {
-                  const installed = allSkills.some(x => x.name === s.name)
-                  const enabled = skillEnabled[s.name] !== false
-                  return (
-                    <div key={s.name} className="card-surface rounded-xl p-3.5 flex items-center gap-3">
-                      <span className="w-8 h-8 rounded-lg bg-[var(--bg-hover)] flex items-center justify-center flex-shrink-0"><Store size={14} className="text-dim" /></span>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-semibold">{s.name}</span>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-dim flex-shrink-0">{s.category}</span>
-                          {installed && <span className="text-[10px] text-green-600 flex-shrink-0">已安装</span>}
+                <p className="text-[11px] text-dim">预置常用 Skill，点击卡片查看详情；已注册即可在 Agent 的 Skill 卡片中勾选。</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {MARKET_SKILLS.map(s => {
+                    const installed = allSkills.some(x => x.name === s.name)
+                    const open = expandedSkill === 'm:' + s.name
+                    return (
+                      <div key={s.name} onClick={() => setExpandedSkill(open ? null : 'm:' + s.name)}
+                        className="card-surface rounded-2xl p-5 flex flex-col gap-3 cursor-pointer transition-all hover:shadow-lg hover:-translate-y-1">
+                        <div className="flex items-start justify-between">
+                          <span className="w-10 h-10 rounded-xl bg-[#1a1a1a] text-white flex items-center justify-center"><Store size={17} /></span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--bg-hover)] text-dim">{s.category}</span>
+                            {installed && <span className="text-[10px] text-green-600">已安装</span>}
+                          </div>
                         </div>
-                        <p className="text-[10px] text-dim truncate mt-0.5">{s.desc}</p>
+                        <p className="text-sm font-semibold truncate">{s.name}</p>
+                        <p className="text-[11px] text-dim truncate">{s.desc}</p>
+                        {open && (
+                          <div className="mt-1 pt-3 border-t hairline">
+                            <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">{s.desc}</p>
+                          </div>
+                        )}
                       </div>
-                      <Toggle checked={enabled} onChange={() => toggleSkillEnabled(s.name)} />
-                    </div>
-                  )
-                })}
+                    )
+                  })}
+                </div>
               </div>
             )}
 
