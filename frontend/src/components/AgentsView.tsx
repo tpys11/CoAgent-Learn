@@ -322,13 +322,8 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   // 模板与编排：当前自定义 Agent + 保存
   const tplAgent = agents.find(a => a.id === templateAgentId) || agents[0]
   const commitTpl = (patch: Partial<AgentConfig>) => { if (tplAgent) onSave({ ...tplAgent, ...patch }) }
-  // 模板与编排：模板集合（预设 + 自定义）、应用、保存自定义
+  // 模板与编排：模板集合（预设 + 自定义）、保存自定义
   const allTemplates = [...PRESET_TEMPLATES, ...customTemplates]
-  const applyTemplate = (t: { name: string; agents: AgentConfig[] }) => {
-    if (window.confirm(`应用模板「${t.name}」？将覆盖当前全部 Agent 配置。`)) {
-      onReplace(t.agents); setSelectedId(t.agents[0]?.id || ''); setTemplateAgentId(t.agents[0]?.id || '')
-    }
-  }
   const saveCustomTemplate = () => {
     const name = saveTplName.trim()
     if (!name) return
@@ -667,24 +662,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                   <Plus size={13} /> 新建模板
                 </button>
               </div>
-              {(() => { const t = allTemplates.find(x => x.name === selectedTpl); if (!t) return null; return (
-                <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm font-bold">{t.name}</p>
-                    <span className="text-[11px] text-dim">{t.desc}</span>
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => applyTemplate(t)}
-                      className="px-3.5 py-2 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors">
-                      应用此模板
-                    </button>
-                    <button onClick={() => { applyTemplate(t); setSelectedTpl(t.name) }}
-                      className="px-3.5 py-2 text-xs border hairline text-dim hover:bg-[var(--bg-hover)] rounded-xl transition-colors">
-                      以此为基础自定义
-                    </button>
-                  </div>
-                </div>
-              ) })()}
             </div>
 
             {/* 编排框架设定（节点图内点击 Agent，右侧独立栏展开设定） */}
