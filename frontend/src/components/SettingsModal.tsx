@@ -22,6 +22,30 @@ interface McpServer { id: string; name: string; type: 'stdio' | 'http' | 'sse'; 
 const get = (k: string, d: string) => { try { return localStorage.getItem(k) || d } catch { return d } }
 const getJSON = <T,>(k: string, d: T): T => { try { return JSON.parse(localStorage.getItem(k) || 'null') ?? d } catch { return d } }
 
+/** 设置分区（Claude 风格左侧栏） */
+const GROUPS: Array<{ label: string; items: Array<{ key: string; label: string; icon: any }> }> = [
+  { label: '外观', items: [{ key: 'font', label: '字体大小', icon: Type }, { key: 'theme', label: '页面主题', icon: Monitor }] },
+  {
+    label: '对话',
+    items: [
+      { key: 'defaults', label: '默认对话参数', icon: Sliders },
+      { key: 'actions', label: '生成后动作', icon: Zap },
+      { key: 'context', label: '流式与上下文', icon: MessageSquare },
+      { key: 'cleanup', label: '对话自动清理', icon: Trash2 },
+    ],
+  },
+  {
+    label: '模型与 API',
+    items: [
+      { key: 'keys', label: '模型与 API Key', icon: Key },
+      { key: 'timeout', label: '请求超时', icon: Timer },
+    ],
+  },
+  { label: '数据', items: [{ key: 'data', label: '数据管理', icon: Database }, { key: 'reset', label: '恢复默认设置', icon: Database }] },
+  { label: '高级', items: [{ key: 'mcp', label: 'MCP 配置', icon: Plug }, { key: 'debug', label: '调试模式', icon: Bug }] },
+  { label: '其他', items: [{ key: 'about', label: '关于', icon: LampDesk }] },
+]
+
 function Section({ icon: Icon, title, desc, children }: { icon: any; title: string; desc?: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-2.5">
@@ -74,6 +98,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
   const [fontSize, setFontSize] = useState(() => parseInt(get('coagent-fontSize', '15')))
   const [theme, setTheme] = useState<ThemePref>(() => getThemePref())
   const [feedback, setFeedback] = useState('')
+  const [settingsTab, setSettingsTab] = useState('font')
 
   // 默认对话参数
   const [defSettings, setDefSettings] = useState<Record<string, string>>(() => getJSON('coagent-default-settings', { chatMode: 'kb', outputFormat: '高结构化', outputVolume: '适中', depth: '中' }))
@@ -175,223 +200,268 @@ export default function SettingsModal({ onClose, projectId }: Props) {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-6">
-          {/* 字体大小 */}
-          <Section icon={Type} title="字体大小">
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-dim">12</span>
-              <input type="range" min="12" max="20" value={fontSize}
-                onChange={(e) => setFontSize(Number(e.target.value))}
-                className="flex-1 accent-[var(--accent)]" />
-              <span className="text-xs text-dim">20</span>
-              <span className="text-xs font-semibold text-[var(--text)] w-8 text-right">{fontSize}px</span>
-            </div>
-          </Section>
-
-          {/* 页面主题 */}
-          <Section icon={Monitor} title="页面主题">
-            <div className="flex gap-2">
-              {[
-                { value: 'light', icon: Sun, swatch: 'bg-white border border-gray-300', iconColor: 'text-gray-700' },
-                { value: 'dark', icon: Moon, swatch: 'bg-gray-900 border border-gray-700', iconColor: 'text-gray-200' },
-                { value: 'warm', icon: LampDesk, swatch: 'bg-[#fdf3e3] border border-amber-200', iconColor: 'text-amber-700' },
-                { value: 'system', icon: Monitor, swatch: 'bg-gradient-to-r from-white via-gray-400 to-gray-900 border border-gray-300', iconColor: 'text-gray-700' },
-              ].map(({ value, icon: Icon, swatch, iconColor }) => (
-                <button key={value} onClick={() => setTheme(value as ThemePref)} title={value}
-                  className={`flex-1 flex items-center justify-center aspect-[4/3] rounded-xl transition-all ${swatch} ${
-                    theme === value ? 'ring-2 ring-[var(--accent)] shadow-sm' : 'hover:brightness-95'
-                  }`}>
-                  <Icon size={18} strokeWidth={theme === value ? 2.2 : 1.8} className={iconColor} />
-                </button>
-              ))}
-            </div>
-          </Section>
-
-          {/* 默认对话参数 */}
-          <Section icon={Sliders} title="默认对话参数" desc="新对话自动套用；输入框内仍可逐次调整">
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] text-dim w-16 flex-shrink-0">模式</span>
-                <PillGroup options={['kb', '默认']} value={defSettings.chatMode}
-                  onChange={v => setDefSettings({ ...defSettings, chatMode: v })} />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] text-dim w-16 flex-shrink-0">结构化</span>
-                <PillGroup options={['高结构化', '自然']} value={defSettings.outputFormat}
-                  onChange={v => setDefSettings({ ...defSettings, outputFormat: v })} />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] text-dim w-16 flex-shrink-0">输出量</span>
-                <PillGroup options={['精简', '适中', '拓展']} value={defSettings.outputVolume}
-                  onChange={v => setDefSettings({ ...defSettings, outputVolume: v })} />
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] text-dim w-16 flex-shrink-0">深度</span>
-                <PillGroup options={['浅', '中', '深']} value={defSettings.depth}
-                  onChange={v => setDefSettings({ ...defSettings, depth: v })} />
-              </div>
-            </div>
-          </Section>
-
-          {/* 生成后动作 */}
-          <Section icon={Zap} title="生成后动作">
-            <div className="flex flex-col gap-2">
-              <SwitchRow label="自动保存生成物到「我的上传」" desc="对话结束后将回复存入资料列表" checked={postActions.autoSaveResource}
-                onChange={v => setPostActions({ ...postActions, autoSaveResource: v })} />
-              <SwitchRow label="自动生成追问" desc="对话结束后生成推荐追问（右侧栏展示）" checked={postActions.autoFollowups}
-                onChange={v => setPostActions({ ...postActions, autoFollowups: v })} />
-            </div>
-          </Section>
-
-          {/* 流式与上下文 */}
-          <Section icon={MessageSquare} title="流式输出与上下文策略">
-            <div className="flex flex-col gap-2">
-              <SwitchRow label="打字机渲染效果" desc="回复逐字显示；关闭则整段一次显示" checked={context.typing}
-                onChange={v => setContext({ ...context, typing: v })} />
-              <div className="flex flex-col gap-1.5 border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold">历史消息条数</span>
-                  <span className="text-[11px] text-dim">{context.historyLimit} 条</span>
-                </div>
-                <input type="range" min="4" max="30" value={context.historyLimit}
-                  onChange={e => setContext({ ...context, historyLimit: Number(e.target.value) })}
-                  className="flex-1 accent-[var(--accent)]" />
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold">记忆注入深度</span>
-                  <PillGroup options={['L1', 'L2', 'L3']} value={context.memoryLayer}
-                    onChange={v => setContext({ ...context, memoryLayer: v })} />
-                </div>
-              </div>
-            </div>
-          </Section>
-
-          {/* 模型与 API Key */}
-          <Section icon={Key} title="模型与 API Key" desc="与模型卡共用同一份配置（localStorage）">
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] text-dim w-20 flex-shrink-0">默认厂家</span>
-                <select value={provider} onChange={e => setProvider(e.target.value)} className={inputCls}>
-                  {PROVIDERS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </select>
-              </div>
-              <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
-                {PROVIDERS.map(p => (
-                  <div key={p.id} className="flex items-center gap-2">
-                    <span className="text-[11px] text-dim w-20 flex-shrink-0">{p.name}</span>
-                    <input type="password" value={provKeys[p.id] || ''} placeholder={p.id === 'deepseek' ? 'sk-...' : '可选'}
-                      onChange={e => setProvKeys({ ...provKeys, [p.id]: e.target.value })}
-                      className={inputCls} />
-                    {(provKeys[p.id] || '').length > 8 && <span className="text-[10px] text-green-600 flex-shrink-0">✓ 已配置</span>}
-                  </div>
+        {/* 左侧分类栏 + 右侧内容（Claude 风格） */}
+        <div className="flex-1 flex min-h-0">
+          <div className="w-44 flex-shrink-0 border-r hairline bg-[var(--bg-sidebar)] p-2.5 overflow-y-auto">
+            {GROUPS.map(g => (
+              <div key={g.label}>
+                <p className="text-[10px] font-bold text-dim uppercase tracking-wider px-2.5 mt-3 mb-1">{g.label}</p>
+                {g.items.map(it => (
+                  <button key={it.key} onClick={() => setSettingsTab(it.key)}
+                    className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium text-left transition-colors ${
+                      settingsTab === it.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
+                    }`}>
+                    <it.icon size={13} /> {it.label}
+                  </button>
                 ))}
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] text-dim w-20 flex-shrink-0">主 Key</span>
-                <input type="password" value={mainKey} placeholder="coagent-apikey（兼容旧配置）"
-                  onChange={e => setMainKey(e.target.value)} className={inputCls} />
-              </div>
-            </div>
-          </Section>
+            ))}
+          </div>
 
-          {/* 请求超时 */}
-          <Section icon={Timer} title="请求超时" desc="发送消息后无响应自动中止，避免一直转圈">
-            <div className="flex items-center gap-3 border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
-              <span className="text-xs text-dim">30s</span>
-              <input type="range" min="30" max="300" step="10" value={timeoutSec}
-                onChange={e => setTimeoutSec(Number(e.target.value))}
-                className="flex-1 accent-[var(--accent)]" />
-              <span className="text-xs text-dim">300s</span>
-              <span className="text-xs font-semibold w-12 text-right">{timeoutSec}s</span>
-            </div>
-          </Section>
+          <div className="flex-1 overflow-y-auto p-6">
+            {/* 字体大小 */}
+            {settingsTab === 'font' && (
+              <Section icon={Type} title="字体大小">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-dim">12</span>
+                  <input type="range" min="12" max="20" value={fontSize}
+                    onChange={(e) => setFontSize(Number(e.target.value))}
+                    className="flex-1 accent-[var(--accent)]" />
+                  <span className="text-xs text-dim">20</span>
+                  <span className="text-xs font-semibold text-[var(--text)] w-8 text-right">{fontSize}px</span>
+                </div>
+              </Section>
+            )}
 
-          {/* 数据管理 */}
-          <Section icon={Database} title="数据管理">
-            <div className="flex gap-2">
-              <button onClick={doClearDialogues} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[11px] border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">
-                <Trash2 size={12} /> 清空对话
-              </button>
-              <button onClick={doClearMemories} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[11px] border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">
-                <Trash2 size={12} /> 清空记忆
-              </button>
-              <button onClick={doExport} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[11px] border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">
-                <Download size={12} /> 导出数据
-              </button>
-            </div>
-          </Section>
-
-          {/* MCP 配置 */}
-          <Section icon={Plug} title="MCP 配置" desc="连接配置已保存；实际连接与工具调用能力正在开发中">
-            <div className="flex flex-col gap-2">
-              {mcpServers.length > 0 && (
-                <div className="flex flex-col gap-1.5">
-                  {mcpServers.map(s => (
-                    <div key={s.id} className="flex items-center gap-2 border hairline rounded-lg px-3 py-2 bg-[var(--bg-panel)]">
-                      <span className="text-[11px] font-semibold flex-shrink-0">{s.name}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-dim flex-shrink-0">{s.type}</span>
-                      <span className="text-[10px] text-dim truncate flex-1 font-mono">{s.target}</span>
-                      <button onClick={() => removeMcp(s.id)} className="p-1 text-gray-300 hover:text-red-500"><Trash2 size={12} /></button>
-                    </div>
+            {/* 页面主题 */}
+            {settingsTab === 'theme' && (
+              <Section icon={Monitor} title="页面主题">
+                <div className="flex gap-2">
+                  {[
+                    { value: 'light', icon: Sun, swatch: 'bg-white border border-gray-300', iconColor: 'text-gray-700' },
+                    { value: 'dark', icon: Moon, swatch: 'bg-gray-900 border border-gray-700', iconColor: 'text-gray-200' },
+                    { value: 'warm', icon: LampDesk, swatch: 'bg-[#fdf3e3] border border-amber-200', iconColor: 'text-amber-700' },
+                    { value: 'system', icon: Monitor, swatch: 'bg-gradient-to-r from-white via-gray-400 to-gray-900 border border-gray-300', iconColor: 'text-gray-700' },
+                  ].map(({ value, icon: Icon, swatch, iconColor }) => (
+                    <button key={value} onClick={() => setTheme(value as ThemePref)} title={value}
+                      className={`flex-1 flex items-center justify-center aspect-[4/3] rounded-xl transition-all ${swatch} ${
+                        theme === value ? 'ring-2 ring-[var(--accent)] shadow-sm' : 'hover:brightness-95'
+                      }`}>
+                      <Icon size={18} strokeWidth={theme === value ? 2.2 : 1.8} className={iconColor} />
+                    </button>
                   ))}
                 </div>
-              )}
-              {mcpShow ? (
-                <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
-                  <input autoFocus value={mcpName} onChange={e => setMcpName(e.target.value)} placeholder="名称（如 my-tools）" className={inputCls} />
-                  <div className="flex gap-1.5">
-                    {(['stdio', 'http', 'sse'] as const).map(t => (
-                      <button key={t} onClick={() => setMcpType(t)}
-                        className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${mcpType === t ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-hover)] text-dim'}`}>{t.toUpperCase()}</button>
-                    ))}
+              </Section>
+            )}
+
+            {/* 默认对话参数 */}
+            {settingsTab === 'defaults' && (
+              <Section icon={Sliders} title="默认对话参数" desc="新对话自动套用；输入框内仍可逐次调整">
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-dim w-16 flex-shrink-0">模式</span>
+                    <PillGroup options={['kb', '默认']} value={defSettings.chatMode}
+                      onChange={v => setDefSettings({ ...defSettings, chatMode: v })} />
                   </div>
-                  <input value={mcpTarget} onChange={e => setMcpTarget(e.target.value)} placeholder={mcpType === 'stdio' ? '命令（如 npx @modelcontextprotocol/server-xxx）' : 'URL（如 http://localhost:8080/mcp）'} className={inputCls} />
-                  <div className="flex gap-2 justify-end">
-                    <button onClick={() => setMcpShow(false)} className="px-3 py-1.5 text-[11px] text-dim row-hover rounded-lg">取消</button>
-                    <button onClick={addMcp} className="px-3 py-1.5 text-[11px] bg-[#1a1a1a] text-white rounded-lg font-semibold">保存</button>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-dim w-16 flex-shrink-0">结构化</span>
+                    <PillGroup options={['高结构化', '自然']} value={defSettings.outputFormat}
+                      onChange={v => setDefSettings({ ...defSettings, outputFormat: v })} />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-dim w-16 flex-shrink-0">输出量</span>
+                    <PillGroup options={['精简', '适中', '拓展']} value={defSettings.outputVolume}
+                      onChange={v => setDefSettings({ ...defSettings, outputVolume: v })} />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-dim w-16 flex-shrink-0">深度</span>
+                    <PillGroup options={['浅', '中', '深']} value={defSettings.depth}
+                      onChange={v => setDefSettings({ ...defSettings, depth: v })} />
                   </div>
                 </div>
-              ) : (
-                <button onClick={() => setMcpShow(true)} className="flex items-center gap-1.5 px-3 py-2 text-[11px] text-dim hover:bg-[var(--bg-hover)] rounded-xl self-start transition-colors">
-                  <Plus size={12} /> 添加 MCP Server
+              </Section>
+            )}
+
+            {/* 生成后动作 */}
+            {settingsTab === 'actions' && (
+              <Section icon={Zap} title="生成后动作">
+                <div className="flex flex-col gap-2">
+                  <SwitchRow label="自动保存生成物到「我的上传」" desc="对话结束后将回复存入资料列表" checked={postActions.autoSaveResource}
+                    onChange={v => setPostActions({ ...postActions, autoSaveResource: v })} />
+                  <SwitchRow label="自动生成追问" desc="对话结束后生成推荐追问（右侧栏展示）" checked={postActions.autoFollowups}
+                    onChange={v => setPostActions({ ...postActions, autoFollowups: v })} />
+                </div>
+              </Section>
+            )}
+
+            {/* 流式与上下文 */}
+            {settingsTab === 'context' && (
+              <Section icon={MessageSquare} title="流式输出与上下文策略">
+                <div className="flex flex-col gap-2">
+                  <SwitchRow label="打字机渲染效果" desc="回复逐字显示；关闭则整段一次显示" checked={context.typing}
+                    onChange={v => setContext({ ...context, typing: v })} />
+                  <div className="flex flex-col gap-1.5 border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold">历史消息条数</span>
+                      <span className="text-[11px] text-dim">{context.historyLimit} 条</span>
+                    </div>
+                    <input type="range" min="4" max="30" value={context.historyLimit}
+                      onChange={e => setContext({ ...context, historyLimit: Number(e.target.value) })}
+                      className="flex-1 accent-[var(--accent)]" />
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold">记忆注入深度</span>
+                      <PillGroup options={['L1', 'L2', 'L3']} value={context.memoryLayer}
+                        onChange={v => setContext({ ...context, memoryLayer: v })} />
+                    </div>
+                  </div>
+                </div>
+              </Section>
+            )}
+
+            {/* 模型与 API Key */}
+            {settingsTab === 'keys' && (
+              <Section icon={Key} title="模型与 API Key" desc="与模型卡共用同一份配置（localStorage）">
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-dim w-20 flex-shrink-0">默认厂家</span>
+                    <select value={provider} onChange={e => setProvider(e.target.value)} className={inputCls}>
+                      {PROVIDERS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
+                    {PROVIDERS.map(p => (
+                      <div key={p.id} className="flex items-center gap-2">
+                        <span className="text-[11px] text-dim w-20 flex-shrink-0">{p.name}</span>
+                        <input type="password" value={provKeys[p.id] || ''} placeholder={p.id === 'deepseek' ? 'sk-...' : '可选'}
+                          onChange={e => setProvKeys({ ...provKeys, [p.id]: e.target.value })}
+                          className={inputCls} />
+                        {(provKeys[p.id] || '').length > 8 && <span className="text-[10px] text-green-600 flex-shrink-0">✓ 已配置</span>}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-dim w-20 flex-shrink-0">主 Key</span>
+                    <input type="password" value={mainKey} placeholder="coagent-apikey（兼容旧配置）"
+                      onChange={e => setMainKey(e.target.value)} className={inputCls} />
+                  </div>
+                </div>
+              </Section>
+            )}
+
+            {/* 请求超时 */}
+            {settingsTab === 'timeout' && (
+              <Section icon={Timer} title="请求超时" desc="发送消息后无响应自动中止，避免一直转圈">
+                <div className="flex items-center gap-3 border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
+                  <span className="text-xs text-dim">30s</span>
+                  <input type="range" min="30" max="300" step="10" value={timeoutSec}
+                    onChange={e => setTimeoutSec(Number(e.target.value))}
+                    className="flex-1 accent-[var(--accent)]" />
+                  <span className="text-xs text-dim">300s</span>
+                  <span className="text-xs font-semibold w-12 text-right">{timeoutSec}s</span>
+                </div>
+              </Section>
+            )}
+
+            {/* 数据管理 */}
+            {settingsTab === 'data' && (
+              <Section icon={Database} title="数据管理">
+                <div className="flex gap-2">
+                  <button onClick={doClearDialogues} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[11px] border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">
+                    <Trash2 size={12} /> 清空对话
+                  </button>
+                  <button onClick={doClearMemories} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[11px] border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">
+                    <Trash2 size={12} /> 清空记忆
+                  </button>
+                  <button onClick={doExport} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[11px] border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">
+                    <Download size={12} /> 导出数据
+                  </button>
+                </div>
+              </Section>
+            )}
+
+            {/* MCP 配置 */}
+            {settingsTab === 'mcp' && (
+              <Section icon={Plug} title="MCP 配置" desc="连接配置已保存；实际连接与工具调用能力正在开发中">
+                <div className="flex flex-col gap-2">
+                  {mcpServers.length > 0 && (
+                    <div className="flex flex-col gap-1.5">
+                      {mcpServers.map(s => (
+                        <div key={s.id} className="flex items-center gap-2 border hairline rounded-lg px-3 py-2 bg-[var(--bg-panel)]">
+                          <span className="text-[11px] font-semibold flex-shrink-0">{s.name}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-dim flex-shrink-0">{s.type}</span>
+                          <span className="text-[10px] text-dim truncate flex-1 font-mono">{s.target}</span>
+                          <button onClick={() => removeMcp(s.id)} className="p-1 text-gray-300 hover:text-red-500"><Trash2 size={12} /></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {mcpShow ? (
+                    <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
+                      <input autoFocus value={mcpName} onChange={e => setMcpName(e.target.value)} placeholder="名称（如 my-tools）" className={inputCls} />
+                      <div className="flex gap-1.5">
+                        {(['stdio', 'http', 'sse'] as const).map(t => (
+                          <button key={t} onClick={() => setMcpType(t)}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${mcpType === t ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-hover)] text-dim'}`}>{t.toUpperCase()}</button>
+                        ))}
+                      </div>
+                      <input value={mcpTarget} onChange={e => setMcpTarget(e.target.value)} placeholder={mcpType === 'stdio' ? '命令（如 npx @modelcontextprotocol/server-xxx）' : 'URL（如 http://localhost:8080/mcp）'} className={inputCls} />
+                      <div className="flex gap-2 justify-end">
+                        <button onClick={() => setMcpShow(false)} className="px-3 py-1.5 text-[11px] text-dim row-hover rounded-lg">取消</button>
+                        <button onClick={addMcp} className="px-3 py-1.5 text-[11px] bg-[#1a1a1a] text-white rounded-lg font-semibold">保存</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => setMcpShow(true)} className="flex items-center gap-1.5 px-3 py-2 text-[11px] text-dim hover:bg-[var(--bg-hover)] rounded-xl self-start transition-colors">
+                      <Plus size={12} /> 添加 MCP Server
+                    </button>
+                  )}
+                </div>
+              </Section>
+            )}
+
+            {/* 调试模式 */}
+            {settingsTab === 'debug' && (
+              <Section icon={Bug} title="调试模式" desc="开启后，对话回复底部显示各 Agent 的耗时与 token 估算">
+                <SwitchRow label="调试模式" checked={debug} onChange={setDebug} />
+              </Section>
+            )}
+
+            {/* 对话自动清理 */}
+            {settingsTab === 'cleanup' && (
+              <Section icon={Trash2} title="对话自动清理" desc="保留最近 N 条对话，更早的对话自动归档（0 = 不清理）">
+                <div className="flex items-center gap-3 border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
+                  <span className="text-xs text-dim flex-shrink-0">不清理</span>
+                  <input type="range" min="0" max="100" step="5" value={dialogueLimit}
+                    onChange={e => setDialogueLimit(Number(e.target.value))}
+                    className="flex-1 accent-[var(--accent)]" />
+                  <span className="text-xs text-dim flex-shrink-0">100</span>
+                  <span className="text-xs font-semibold w-16 text-right">{dialogueLimit === 0 ? '关闭' : `${dialogueLimit} 条`}</span>
+                </div>
+              </Section>
+            )}
+
+            {/* 恢复默认设置 */}
+            {settingsTab === 'reset' && (
+              <Section icon={Database} title="恢复默认设置" desc="还原字体、主题、默认参数等设置（保留 API Key 与数据）">
+                <button onClick={resetSettings}
+                  className="px-4 py-2 rounded-xl text-xs border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors self-start">
+                  恢复默认设置
                 </button>
-              )}
-            </div>
-          </Section>
+              </Section>
+            )}
 
-          {/* 调试模式 */}
-          <Section icon={Bug} title="调试模式" desc="开启后，对话回复底部显示各 Agent 的耗时与 token 估算">
-            <SwitchRow label="调试模式" checked={debug} onChange={setDebug} />
-          </Section>
-
-          {/* 对话自动清理 */}
-          <Section icon={Trash2} title="对话自动清理" desc="保留最近 N 条对话，更早的对话自动归档（0 = 不清理）">
-            <div className="flex items-center gap-3 border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
-              <span className="text-xs text-dim flex-shrink-0">不清理</span>
-              <input type="range" min="0" max="100" step="5" value={dialogueLimit}
-                onChange={e => setDialogueLimit(Number(e.target.value))}
-                className="flex-1 accent-[var(--accent)]" />
-              <span className="text-xs text-dim flex-shrink-0">100</span>
-              <span className="text-xs font-semibold w-16 text-right">{dialogueLimit === 0 ? '关闭' : `${dialogueLimit} 条`}</span>
-            </div>
-          </Section>
-
-          {/* 恢复默认设置 */}
-          <Section icon={Database} title="恢复默认设置" desc="还原字体、主题、默认参数等设置（保留 API Key 与数据）">
-            <button onClick={resetSettings}
-              className="px-4 py-2 rounded-xl text-xs border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors self-start">
-              恢复默认设置
-            </button>
-          </Section>
-
-          {/* 关于 */}
-          <Section icon={LampDesk} title="关于">
-            <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-1.5">
-              <p className="text-xs font-semibold">CoAgent-Learn <span className="text-dim font-normal">v0.2.0</span></p>
-              <p className="text-[11px] text-dim leading-relaxed">面向领域知识生成的多智能体协同学习平台：4-Agent 工作流 · 三层记忆 · 知识库 RAG · MCP 技术选型（HTTP/SSE）</p>
-              <a href="https://github.com/tpys11/CoAgent-Learn" target="_blank" rel="noreferrer"
-                className="text-[11px] text-[var(--accent)] hover:underline">GitHub: tpys11/CoAgent-Learn ↗</a>
-            </div>
-          </Section>
+            {/* 关于 */}
+            {settingsTab === 'about' && (
+              <Section icon={LampDesk} title="关于">
+                <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-1.5">
+                  <p className="text-xs font-semibold">CoAgent-Learn <span className="text-dim font-normal">v0.2.0</span></p>
+                  <p className="text-[11px] text-dim leading-relaxed">面向领域知识生成的多智能体协同学习平台：4-Agent 工作流 · 三层记忆 · 知识库 RAG · MCP 技术选型（HTTP/SSE）</p>
+                  <a href="https://github.com/tpys11/CoAgent-Learn" target="_blank" rel="noreferrer"
+                    className="text-[11px] text-[var(--accent)] hover:underline">GitHub: tpys11/CoAgent-Learn ↗</a>
+                </div>
+              </Section>
+            )}
+          </div>
         </div>
       </div>
     </div>
