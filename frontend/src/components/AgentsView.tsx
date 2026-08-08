@@ -625,9 +625,9 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                     <p className="text-sm font-bold">{t.name}</p>
                     <span className="text-[11px] text-dim">{t.desc}</span>
                   </div>
-                  <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                    编排：主 Agent（规划）→ 学情与记忆管理 ∥ 知识库管理（并行）→ 主 Agent（生成）→ 审核 → 输出
-                  </p>
+                  <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
+                    <FlowGraph />
+                  </div>
                   <div className="flex flex-col gap-1">
                     {t.agents.map(a => (
                       <div key={a.id} className="flex items-center gap-2 text-[11px]">
@@ -653,10 +653,8 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
             {/* 编排框架设定（伴随编排，含 Agent 参数） */}
             <div className="flex flex-col gap-4">
               <p className="text-xs font-semibold text-dim uppercase tracking-wider">编排框架设定</p>
-              <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] text-xs text-dim leading-relaxed">
-                主 Agent（规划）→ <span className="text-[var(--text)]">学情与记忆管理</span> ∥ <span className="text-[var(--text)]">知识库管理</span>（并行）
-                → 主 Agent（生成）→ <span className="text-[var(--text)]">审核</span> → 输出
-                <span className="text-dim">（未通过则打回重试，上限可在审核 Agent 中配置）</span>
+              <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
+                <FlowGraph />
               </div>
               <div className="flex gap-2 flex-wrap">
                 {agents.map(a => (
