@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+﻿import { useState, useEffect, useRef } from 'react'
 import { Settings, Square, Upload, Folder, Activity, Download, Layers, Wrench, Store, ExternalLink, Plus, Trash2, LayoutTemplate, X, Workflow, Brain, Database, Scale, CheckCircle2 } from 'lucide-react'
 import type { AgentConfig } from '../types'
 import { DEFAULT_AGENTS } from '../types'
@@ -179,7 +179,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   // 模板与编排：Agent 自定义选中的 Agent
   const [templateAgentId, setTemplateAgentId] = useState(agents[0]?.id || '')
   // 右侧设定栏可拖拽宽度
-  const [tplPanelWidth, setTplPanelWidth] = useState(320)
+  const [tplPanelWidth, setTplPanelWidth] = useState(520)
   const dragPanelRef = useRef<{ startX: number; startW: number } | null>(null)
   // 模板与编排：选中模板（展开详情）、自定义模板、保存名称
   const [selectedTpl, setSelectedTpl] = useState<string | null>(null)
