@@ -243,6 +243,22 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
     saveGlobal(gFields, v)
   }
 
+  // 重新分析记忆：携带前端有效 key，后台从现有对话重新提炼（空 projectId = 全部项目）
+  const runRebuild = (pid?: string) => {
+    let key = ''
+    try {
+      const prov = localStorage.getItem('coagent-provider') || 'deepseek'
+      const keys = JSON.parse(localStorage.getItem('coagent-provider-keys') || '{}')
+      key = keys[prov] || localStorage.getItem('coagent-apikey') || ''
+    } catch {
+      key = localStorage.getItem('coagent-apikey') || ''
+    }
+    fetch('/api/memory/rebuild', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_key: key, project_id: pid || '' }),
+    }).then(r => r.json()).then(d => alert(d.message || '记忆分析已启动')).catch(() => alert('记忆分析启动失败'))
+  }
+
   const saveState = (
     <span className={`flex items-center gap-1 text-[10px] flex-shrink-0 ${saved === 'saved' ? 'text-green-600' : 'text-dim'}`}>
       {saved === 'saving' && <><Loader2 size={10} className="animate-spin" /> 保存中</>}
@@ -281,6 +297,11 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
         {level === 'global' && (
           <div className="max-w-4xl flex flex-col gap-6">
             <h2 className="text-xl font-bold flex items-center gap-2"><User size={16} /> 个人全局性记忆</h2>
+            <button onClick={() => runRebuild()}
+              className="self-end -mt-9 px-3 py-1.5 rounded-xl text-[11px] font-medium border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors"
+              title="用当前 API Key 重新分析所有对话，生成全局画像与项目记忆">
+              ↻ 重新分析记忆
+            </button>
 
             {gLoading ? <p className="text-xs text-dim text-center py-10">加载中…</p> : (
               <>
@@ -372,6 +393,11 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
               <h2 className="text-base font-bold flex items-center gap-2">
                 <FolderTree size={16} /> 项目记忆
                 <span className="text-[10px] font-normal text-dim ml-1">点击项目按钮查看记忆 · 字段只读，修改由 AI 处理</span>
+                <button onClick={() => runRebuild(activeProject || undefined)}
+                  className="ml-auto px-3 py-1.5 rounded-xl text-[11px] font-medium border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors"
+                  title="用当前 API Key 重新分析对话，生成该项目的记忆">
+                  ↻ 重新分析
+                </button>
               </h2>
             </div>
 
@@ -407,6 +433,12 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                         </span>
                       </div>
                       <div className="px-4 py-3 flex flex-col gap-4">
+                        {/* 空数据引导 */}
+                        {data && !Object.values(data.fields).some(v => (v || '').trim()) && (data.progress.items || []).length === 0 && (
+                          <div className="px-3 py-2.5 rounded-xl bg-amber-50 text-amber-800 text-[11px] border border-amber-200 leading-relaxed">
+                            ⚠️ 该项目暂无记忆数据：与 AI 对话后会自动分析生成；也可点击右上角「↻ 重新分析」立即从现有对话生成记忆。
+                          </div>
+                        )}
                         {/* 进度：标尺 + 快慢 + 具体内容 */}
                         <div className="flex flex-col gap-2">
                           <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">进度<span className="ml-1 text-[9px] font-normal text-dim/70">起点 → 当前 → 目标 · 快慢直观</span></p>

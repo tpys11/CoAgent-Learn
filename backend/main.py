@@ -383,6 +383,26 @@ async def clear_memories():
     return {"status": "ok"}
 
 
+@app.post("/api/memory/rebuild")
+async def memory_rebuild(req: dict):
+    """重新分析对话生成记忆（前端携带有效 api_key 调用）：
+    - project_id 为空 → 全部项目；否则只分析指定项目
+    - 后台异步执行，不阻塞请求
+    """
+    import threading
+    from core.memory_analysis import update_memories
+    from core.postgres_client import pg_client
+    api_key = (req or {}).get("api_key") or ""
+    project_id = (req or {}).get("project_id") or ""
+    if project_id:
+        threading.Thread(target=update_memories, args=(api_key, project_id, None, pg_client, "default"), daemon=True).start()
+    else:
+        rows = pg_client.execute("SELECT id FROM projects WHERE archived = FALSE")
+        for r in rows or []:
+            threading.Thread(target=update_memories, args=(api_key, r["id"], None, pg_client, "default"), daemon=True).start()
+    return {"status": "ok", "message": "记忆分析已启动，稍后刷新查看"}
+
+
 @app.delete("/api/projects/{pid}/dialogues")
 async def clear_project_dialogues(pid: str):
     """清空指定项目的全部对话（消息 + 对话画像级联删除，保留项目与项目记忆）"""
