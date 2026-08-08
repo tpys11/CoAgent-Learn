@@ -1,38 +1,18 @@
 import { useState, useEffect, useRef } from 'react'
-import { Brain, User, FolderTree, Plus, Trash2, Check, Loader2 } from 'lucide-react'
+import { Brain, User, FolderTree, Check, Loader2 } from 'lucide-react'
 
-/** 个人全局性记忆：数组型字段 */
-const GLOBAL_ARRAY_KEYS = new Set(['偏好提问方式', '偏好学习方式', '偏好_输出', '学习内容'])
-/** 建议的自由要点字段（空状态引导） */
-const GLOBAL_SUGGEST = ['学习者身份', '学习目标', '擅长领域', '学习方式', '兴趣方向']
+/** 个人全局性记忆：基础信息字段（固定，纵向表单） */
+const BASIC_FIELDS = [
+  { key: '身份', label: '身份', placeholder: '如：大学生 / 工程师' },
+  { key: '学习目标', label: '学习目标', placeholder: '如：掌握多智能体开发' },
+  { key: '擅长领域', label: '擅长领域', placeholder: '如：Python、AI 基础' },
+  { key: '学习方式', label: '学习方式', placeholder: '如：动手实践、官方文档' },
+  { key: '兴趣方向', label: '兴趣方向', placeholder: '如：Agent、RAG' },
+]
 
 /** 项目记忆：固定字段（单值 / 数组） */
 const PROJECT_TEXT_KEYS = ['项目概述', '当前进度', '领域', '背景', '水平', '学习目标']
 const PROJECT_ARRAY_KEYS = new Set(['偏好', '知识点', '难点', '薄弱点', '兴趣'])
-
-/** 通用条目行：label + value（数组字段用逗号分隔编辑） */
-function EntryRow({ label, value, array, onLabel, onValue, onRemove }: {
-  label: string; value: string; array: boolean
-  onLabel: (v: string) => void; onValue: (v: string) => void; onRemove: () => void
-}) {
-  return (
-    <div className="flex items-start gap-2">
-      <input value={label} onChange={e => onLabel(e.target.value)} placeholder="要点名称"
-        className="w-28 flex-shrink-0 px-2.5 py-2 text-xs input-surface rounded-lg outline-none font-medium" />
-      {array ? (
-        <input value={value} onChange={e => onValue(e.target.value)} placeholder="多个值用逗号分隔"
-          className="flex-1 px-2.5 py-2 text-xs input-surface rounded-lg outline-none" />
-      ) : (
-        <input value={value} onChange={e => onValue(e.target.value)} placeholder="填写内容"
-          className="flex-1 px-2.5 py-2 text-xs input-surface rounded-lg outline-none" />
-      )}
-      <button onClick={onRemove} className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0" title="删除">
-        <Trash2 size={13} />
-      </button>
-    </div>
-  )
-}
-
 /** 记忆系统：两级（个人全局性记忆 / 项目记忆）完整界面 */
 export default function MemoryView({ projectId }: { projectId: string | null }) {
   const [level, setLevel] = useState<'global' | 'project'>('global')
@@ -41,7 +21,8 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
   const [selectedProject, setSelectedProject] = useState<string | null>(projectId)
 
   // 个人全局记忆
-  const [gEntries, setGEntries] = useState<Array<{ key: string; value: string }>>([])
+  const [gFields, setGFields] = useState<Record<string, string>>({})
+  const [gExtra, setGExtra] = useState('')
   const [gSummary, setGSummary] = useState<Record<string, any>>({}) // 项目摘要（只读）
   const [gLoading, setGLoading] = useState(false)
 
@@ -73,15 +54,11 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
       .then(r => r.json())
       .then(d => {
         const p = d.profile || {}
-        const entries: Array<{ key: string; value: string }> = []
-        let summary: Record<string, any> = {}
-        for (const [k, v] of Object.entries(p)) {
-          if (k === '项目摘要') { summary = (v as any) || {}; continue }
-          if (v === null || v === undefined) continue
-          entries.push({ key: k, value: Array.isArray(v) ? (v as any[]).join(', ') : String(v) })
-        }
-        setGEntries(entries)
-        setGSummary(summary)
+        const f: Record<string, string> = {}
+        for (const b of BASIC_FIELDS) f[b.key] = p[b.key] ? String(p[b.key]) : ''
+        setGFields(f)
+        setGExtra(p['补充信息'] ? String(p['补充信息']) : '')
+        setGSummary((p['项目摘要'] as Record<string, any>) || {})
       })
       .catch(() => {})
       .finally(() => setGLoading(false))
@@ -118,14 +95,10 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
     }, 800)
   }
 
-  const saveGlobal = () => {
+  const saveGlobal = (fields = gFields, extra = gExtra) => {
     const profile: Record<string, any> = { ...gSummary }
-    for (const e of gEntries) {
-      if (!e.key.trim()) continue
-      profile[e.key.trim()] = GLOBAL_ARRAY_KEYS.has(e.key.trim())
-        ? e.value.split(/[,，、]/).map(s => s.trim()).filter(Boolean)
-        : e.value.trim()
-    }
+    for (const [k, v] of Object.entries(fields)) if (v.trim()) profile[k] = v.trim()
+    if (extra.trim()) profile['补充信息'] = extra.trim()
     scheduleSave('/api/global-profile', profile)
   }
   const saveProject = () => {
@@ -137,18 +110,14 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
     scheduleSave('/api/project-memory/' + encodeURIComponent(selectedProject || 'default'), profile)
   }
 
-  const updateG = (i: number, patch: Partial<{ key: string; value: string }>) => {
-    const next = gEntries.map((e, idx) => idx === i ? { ...e, ...patch } : e)
-    setGEntries(next)
-    saveGlobal()
+  const updateField = (k: string, v: string) => {
+    const next = { ...gFields, [k]: v }
+    setGFields(next)
+    saveGlobal(next, gExtra)
   }
-  const removeG = (i: number) => {
-    const next = gEntries.filter((_, idx) => idx !== i)
-    setGEntries(next)
-    saveGlobal()
-  }
-  const addG = (key?: string) => {
-    setGEntries([...gEntries, { key: key || '', value: '' }])
+  const updateExtra = (v: string) => {
+    setGExtra(v)
+    saveGlobal(gFields, v)
   }
   const updateP = (k: string, v: string) => {
     setPFields(prev => ({ ...prev, [k]: v }))
@@ -200,56 +169,44 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
           </div>
         )}
         {level !== 'project' && <div className="flex-1" />}
-        <div className="p-2 border-t hairline">
-          <p className="text-[10px] text-dim leading-relaxed px-2">系统会基于对话自动提炼记忆，这里可手动查看与补充。</p>
-        </div>
       </div>
 
       {/* 右侧内容 */}
       <div className="flex-1 overflow-y-auto p-6">
         {/* ========== 个人全局性记忆 ========== */}
         {level === 'global' && (
-          <div className="max-w-2xl flex flex-col gap-5">
-            <div>
-              <h2 className="text-base font-bold flex items-center gap-2"><User size={16} /> 个人全局性记忆</h2>
-              <p className="text-[11px] text-dim mt-1">面向个人的详细信息（学习者身份、学习目标等），跨项目保留；以"简历式自由要点"记录，可增删改。</p>
-            </div>
+          <div className="max-w-3xl flex flex-col gap-6">
+            <h2 className="text-xl font-bold flex items-center gap-2"><User size={16} /> 个人全局性记忆</h2>
 
             {gLoading ? <p className="text-xs text-dim text-center py-10">加载中…</p> : (
               <>
-                {/* 自由要点列表 */}
-                <div className="flex flex-col gap-2">
-                  {gEntries.length === 0 && (
-                    <div className="border border-dashed hairline rounded-xl py-10 text-center">
-                      <p className="text-xs text-dim">暂无个人要点，系统将基于项目记忆自动提炼，也可手动补充：</p>
-                      <div className="flex flex-wrap gap-2 justify-center mt-3">
-                        {GLOBAL_SUGGEST.map(s => (
-                          <button key={s} onClick={() => addG(s)}
-                            className="px-3 py-1.5 text-[11px] border hairline rounded-full text-dim hover:bg-[var(--bg-hover)] transition-colors">
-                            + {s}
-                          </button>
-                        ))}
+                {/* 基础信息 */}
+                <div>
+                  <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-3">基础信息</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {BASIC_FIELDS.map(f => (
+                      <div key={f.key} className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2">
+                        <span className="text-xs font-semibold">{f.label}</span>
+                        <input value={gFields[f.key] || ''} onChange={e => updateField(f.key, e.target.value)}
+                          placeholder={f.placeholder}
+                          className="w-full px-3 py-2 text-xs input-surface rounded-lg outline-none" />
                       </div>
-                    </div>
-                  )}
-                  {gEntries.map((e, i) => (
-                    <EntryRow key={i} label={e.key} value={e.value}
-                      array={GLOBAL_ARRAY_KEYS.has(e.key)}
-                      onLabel={v => updateG(i, { key: v })} onValue={v => updateG(i, { value: v })}
-                      onRemove={() => removeG(i)} />
-                  ))}
-                  {gEntries.length > 0 && (
-                    <button onClick={() => addG()}
-                      className="flex items-center gap-1.5 px-3 py-2 text-[11px] text-dim hover:bg-[var(--bg-hover)] rounded-xl self-start transition-colors">
-                      <Plus size={13} /> 添加要点
-                    </button>
-                  )}
+                    ))}
+                  </div>
+                </div>
+
+                {/* 补充信息 */}
+                <div>
+                  <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-3">补充信息</p>
+                  <textarea value={gExtra} onChange={e => updateExtra(e.target.value)} rows={6}
+                    placeholder="自由补充想记录的内容……"
+                    className="w-full px-3 py-3 text-xs input-surface rounded-xl outline-none resize-none" />
                 </div>
 
                 {/* 项目摘要（只读） */}
                 {Object.keys(gSummary).length > 0 && (
                   <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
-                    <p className={fieldLabel}>跨项目摘要（系统自动生成，只读）</p>
+                    <p className={fieldLabel}>跨项目摘要</p>
                     <div className="flex flex-col gap-2">
                       {Object.entries(gSummary).map(([pid, info]: [string, any]) => (
                         <div key={pid} className="text-xs text-[var(--text-muted)] leading-relaxed">
