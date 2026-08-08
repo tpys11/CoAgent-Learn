@@ -272,20 +272,7 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
             <FolderTree size={14} /> 项目记忆
           </button>
         </div>
-        {level === 'project' && (
-          <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1">
-            {projects.length === 0 && <p className="text-[11px] text-dim text-center py-6">暂无项目</p>}
-            {projects.map(p => (
-              <button key={p.id} onClick={() => document.getElementById('proj-mem-' + p.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-left transition-colors hover:bg-white/60 text-dim">
-                <FolderTree size={12} className="flex-shrink-0" />
-                <span className="truncate">{p.name || p.id}</span>
-                {p.id === projectId && <span className="text-[9px] text-dim flex-shrink-0">当前</span>}
-              </button>
-            ))}
-          </div>
-        )}
-        {level !== 'project' && <div className="flex-1" />}
+        <div className="flex-1" />
       </div>
 
       {/* 右侧内容 */}
