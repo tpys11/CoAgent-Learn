@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Brain, User, FolderTree, Check, Loader2, ChevronDown } from 'lucide-react'
+import { Brain, User, FolderTree, Check, Loader2 } from 'lucide-react'
 
 /** 个人全局性记忆：基础信息字段（固定，纵向表单） */
 const BASIC_FIELDS = [
@@ -10,14 +10,16 @@ const BASIC_FIELDS = [
   { key: '兴趣方向', label: '兴趣方向', placeholder: '如：Agent、RAG' },
 ]
 
-/** 项目记忆：固定字段（单值 / 数组） */
-const PROJECT_TEXT_KEYS = ['项目概述', '当前进度', '领域', '背景', '水平', '学习目标']
-const PROJECT_ARRAY_KEYS = new Set(['偏好', '知识点', '难点', '薄弱点', '兴趣'])
+/** 项目记忆：按维度展开（概述 → 实现进度 → 时间） */
+const PROJECT_DIMS: Array<{ title: string; hint: string; keys: string[]; arrayKeys: string[] }> = [
+  { title: '概述', hint: '抽象项目目的与整体情况', keys: ['抽象目的', '抽象项目情况'], arrayKeys: ['偏好', '知识点', '难点', '薄弱点', '兴趣'] },
+  { title: '实现进度', hint: '起点 → 当前水平 → 目标', keys: ['起点', '当前水平', '目标'], arrayKeys: [] },
+]
 /** 记忆系统：两级（个人全局性记忆 / 项目记忆）完整界面 */
 export default function MemoryView({ projectId }: { projectId: string | null }) {
   const [level, setLevel] = useState<'global' | 'project'>('global')
   // 项目列表
-  const [projects, setProjects] = useState<Array<{ id: string; name: string; is_default?: boolean }>>([])
+  const [projects, setProjects] = useState<Array<{ id: string; name: string; is_default?: boolean; created_at?: string }>>([])
   const [selectedProject, setSelectedProject] = useState<string | null>(projectId)
 
   // 个人全局记忆
@@ -28,11 +30,9 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
 
   // 项目记忆
   const [pFields, setPFields] = useState<Record<string, string>>({})
-  // 学习时间线
-  const [timeline, setTimeline] = useState<Array<{ date: string; items: any[] }>>([])
-  const [openDays, setOpenDays] = useState<Set<string>>(new Set())
+  // 项目时间信息（只读统计）
+  const [projectStats, setProjectStats] = useState<{ count: number; latest: string }>({ count: 0, latest: '' })
   const [pLoading, setPLoading] = useState(false)
-  const [dialogueSummaries, setDialogueSummaries] = useState<Array<{ dialogue_id?: string; name?: string; 概要?: any }>>([])
 
   const [saved, setSaved] = useState<'saving' | 'saved' | ''>('')
   const saveTimer = useRef<any>(null)
@@ -68,62 +68,6 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
   }
   useEffect(() => { loadGlobal() }, [level === 'global'])
 
-  // ---------- 学习时间线 ----------
-  const fmtDateCN = (s: string) => {
-    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/) || s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})/)
-    if (!m) return s
-    const y = new Date().getFullYear()
-    return String(m[1]) === String(y) ? `${Number(m[2])}月${Number(m[3])}日` : `${m[1]}年${Number(m[2])}月${Number(m[3])}日`
-  }
-  const loadTimeline = (pid: string | null) => {
-    const url = pid ? '/api/learning-log?project_id=' + encodeURIComponent(pid) : '/api/learning-log'
-    fetch(url, { cache: 'no-store' }).then(r => r.json()).then(d => setTimeline(d.days || [])).catch(() => setTimeline([]))
-  }
-  useEffect(() => {
-    if (level === 'project') loadTimeline(selectedProject)
-    else loadTimeline(null)
-  }, [level, selectedProject])
-  const toggleDay = (date: string) => {
-    setOpenDays(prev => { const n = new Set(prev); n.has(date) ? n.delete(date) : n.add(date); return n })
-  }
-  const renderTimeline = () => (
-    <div className="flex flex-col gap-2">
-      {timeline.length === 0 ? (
-        <p className="text-[11px] text-dim text-center py-8">暂无学习记录，对话后会按日期汇总</p>
-      ) : timeline.map(d => {
-        const open = openDays.has(d.date)
-        return (
-          <div key={d.date} className="border hairline rounded-xl bg-[var(--bg-panel)] overflow-hidden">
-            <button onClick={() => toggleDay(d.date)} className="w-full flex items-center gap-2.5 px-4 py-3 text-left">
-              <ChevronDown size={13} className={`transition-transform flex-shrink-0 ${open ? '' : '-rotate-90'}`} />
-              <span className="text-sm font-semibold">{fmtDateCN(d.date)}</span>
-              <span className="text-[11px] text-dim">{d.items.length} 次对话</span>
-            </button>
-            {open && (
-              <div className="px-4 pb-3 flex flex-col gap-2">
-                {d.items.map((item, i) => (
-                  <div key={i} className="border hairline rounded-lg p-3 flex flex-col gap-1">
-                    <p className="text-xs font-semibold">
-                      {item.project_name && item.project_name !== item.project_id ? `${item.project_name} · ` : ''}{item.dialogue_name}
-                    </p>
-                    {item.topic && <p className="text-[11px] text-dim">主题：{item.topic}</p>}
-                    {item.artifacts && item.artifacts.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mt-1">
-                        {item.artifacts.map((a: any, j: number) => (
-                          <span key={j} className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--bg-hover)] text-dim">{a.type}</span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
-
   // ---------- 项目记忆加载 ----------
   useEffect(() => {
     if (level !== 'project' || !selectedProject) return
@@ -133,13 +77,22 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
       .then(d => {
         const mem = d.memory || {}
         const f: Record<string, string> = {}
-        for (const k of PROJECT_TEXT_KEYS) if (mem[k]) f[k] = mem[k]
-        for (const k of PROJECT_ARRAY_KEYS) if (Array.isArray(mem[k]) && (mem[k] as any[]).length) f[k] = (mem[k] as any[]).join(', ')
+        for (const dim of PROJECT_DIMS) {
+          for (const k of dim.keys) if (mem[k]) f[k] = mem[k]
+          for (const k of dim.arrayKeys) if (Array.isArray(mem[k]) && (mem[k] as any[]).length) f[k] = (mem[k] as any[]).join(', ')
+        }
         setPFields(f)
-        setDialogueSummaries(mem['对话概要'] || [])
       })
       .catch(() => {})
       .finally(() => setPLoading(false))
+    // 时间统计（只读）：对话次数 + 最近学习日期
+    fetch('/api/learning-log?project_id=' + encodeURIComponent(selectedProject), { cache: 'no-store' })
+      .then(r => r.json()).then(dd => {
+        const days: any[] = dd.days || []
+        const count = days.reduce((s: number, x: any) => s + ((x.items || []).length || 0), 0)
+        const latest = days.length ? days.map((x: any) => x.date).sort().pop() : ''
+        setProjectStats({ count, latest })
+      }).catch(() => {})
   }, [level, selectedProject])
 
   // ---------- 自动保存 ----------
@@ -162,9 +115,9 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
   }
   const saveProject = () => {
     const profile: Record<string, any> = {}
-    for (const [k, v] of Object.entries(pFields)) {
-      if (PROJECT_ARRAY_KEYS.has(k)) profile[k] = v.split(/[,，、]/).map(s => s.trim()).filter(Boolean)
-      else profile[k] = v.trim()
+    for (const dim of PROJECT_DIMS) {
+      for (const k of dim.keys) if (pFields[k]?.trim()) profile[k] = pFields[k].trim()
+      for (const k of dim.arrayKeys) if (pFields[k]?.trim()) profile[k] = pFields[k].split(/[,，、]/).map((s: string) => s.trim()).filter(Boolean)
     }
     scheduleSave('/api/project-memory/' + encodeURIComponent(selectedProject || 'default'), profile)
   }
@@ -242,7 +195,7 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
                 {/* 基础信息 */}
                 <div>
                   <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-3">基础信息</p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-3">
                     {BASIC_FIELDS.map(f => (
                       <div key={f.key} className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2">
                         <span className="text-xs font-semibold">{f.label}</span>
@@ -262,12 +215,6 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
                     className="w-full px-3 py-3 text-xs input-surface rounded-xl outline-none resize-none" />
                 </div>
 
-                {/* 学习时间线（跨项目） */}
-                <div>
-                  <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-3">学习时间线</p>
-                  {renderTimeline()}
-                </div>
-
                 {/* 项目摘要（只读） */}
                 {Object.keys(gSummary).length > 0 && (
                   <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
@@ -276,11 +223,11 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
                       {Object.entries(gSummary).map(([pid, info]: [string, any]) => (
                         <div key={pid} className="text-xs text-[var(--text-muted)] leading-relaxed">
                           <span className="font-semibold text-[var(--text)]">📁 {pid}</span>
-                          {info && (info.领域 || info.水平 || (info.兴趣 || []).length || (info.薄弱点 || []).length) && (
+                          {info && (info.抽象项目情况 || info.当前水平 || (info.偏好 || []).length || (info.薄弱点 || []).length) && (
                             <span className="ml-1">
-                              {info.领域 && `领域: ${info.领域}；`}
-                              {info.水平 && `水平: ${info.水平}；`}
-                              {(info.兴趣 || []).length > 0 && `兴趣: ${info.兴趣.join(', ')}；`}
+                              {info.抽象项目情况 && `概况: ${info.抽象项目情况}；`}
+                              {info.当前水平 && `水平: ${info.当前水平}；`}
+                              {(info.偏好 || []).length > 0 && `偏好: ${info.偏好.join(', ')}；`}
                               {(info.薄弱点 || []).length > 0 && `薄弱点: ${info.薄弱点.join(', ')}`}
                             </span>
                           )}
@@ -310,33 +257,49 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
 
                 {pLoading ? <p className="text-xs text-dim text-center py-10">加载中…</p> : (
                   <>
-                    {/* 单值字段 */}
-                    <div className="flex flex-col gap-3">
-                      {PROJECT_TEXT_KEYS.map(k => (
-                        <div key={k}>
-                          <label className={fieldLabel}>{k}</label>
-                          <textarea value={pFields[k] || ''} onChange={e => updateP(k, e.target.value)} rows={k === '项目概述' ? 3 : 2}
-                            placeholder={`填写${k}…`}
-                            className="w-full px-3 py-2 border hairline rounded-xl text-xs outline-none resize-none focus:border-[var(--border-strong)] bg-[var(--bg-input)]" />
-                        </div>
-                      ))}
-                    </div>
-                    {/* 数组字段 */}
-                    <div className="flex flex-col gap-3">
-                      {Array.from(PROJECT_ARRAY_KEYS).map(k => (
-                        <div key={k}>
-                          <label className={fieldLabel}>{k}（逗号分隔）</label>
-                          <input value={pFields[k] || ''} onChange={e => updateP(k, e.target.value)}
-                            placeholder={`填写${k}，多个用逗号分隔`}
-                            className="w-full px-3 py-2 border hairline rounded-xl text-xs outline-none focus:border-[var(--border-strong)] bg-[var(--bg-input)]" />
-                        </div>
-                      ))}
-                    </div>
+                    {/* 维度区块：概述 / 实现进度 */}
+                    {PROJECT_DIMS.map(dim => (
+                      <div key={dim.title} className="flex flex-col gap-3">
+                        <p className="text-xs font-semibold text-dim uppercase tracking-wider flex items-baseline gap-2">
+                          {dim.title}
+                          <span className="text-[10px] font-normal text-dim/70">{dim.hint}</span>
+                        </p>
+                        {dim.keys.map(k => (
+                          <div key={k}>
+                            <label className={fieldLabel}>{k}</label>
+                            <textarea value={pFields[k] || ''} onChange={e => updateP(k, e.target.value)} rows={k === '抽象项目情况' ? 3 : 2}
+                              placeholder={`填写${k}…`}
+                              className="w-full px-3 py-2 border hairline rounded-xl text-xs outline-none resize-none focus:border-[var(--border-strong)] bg-[var(--bg-input)]" />
+                          </div>
+                        ))}
+                        {dim.arrayKeys.map(k => (
+                          <div key={k}>
+                            <label className={fieldLabel}>{k}（逗号分隔）</label>
+                            <input value={pFields[k] || ''} onChange={e => updateP(k, e.target.value)}
+                              placeholder={`填写${k}，多个用逗号分隔`}
+                              className="w-full px-3 py-2 border hairline rounded-xl text-xs outline-none focus:border-[var(--border-strong)] bg-[var(--bg-input)]" />
+                          </div>
+                        ))}
+                      </div>
+                    ))}
 
-                    {/* 学习时间线（按日期展开/折叠） */}
-                    <div>
-                      <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-3">学习时间线</p>
-                      {renderTimeline()}
+                    {/* 时间（只读统计） */}
+                    <div className="flex flex-col gap-3">
+                      <p className="text-xs font-semibold text-dim uppercase tracking-wider">时间</p>
+                      <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2.5 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="text-dim">创建时间</span>
+                          <span className="font-medium">{(projects.find(p => p.id === selectedProject) as any)?.created_at ? String((projects.find(p => p.id === selectedProject) as any)?.created_at).slice(0, 10) : '—'}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-dim">对话次数</span>
+                          <span className="font-medium">{projectStats.count} 次</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-dim">最近学习</span>
+                          <span className="font-medium">{projectStats.latest || '暂无'}</span>
+                        </div>
+                      </div>
                     </div>
                   </>
                 )}

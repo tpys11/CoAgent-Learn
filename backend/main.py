@@ -510,11 +510,11 @@ async def save_project_memory(project_id: str, req: ProfileData):
     proj = _as_dict(rows[0]["data"]) if rows and rows[0]["data"] else {}
     p = req.profile
     if isinstance(p, dict):
-        for k in ["项目概述", "当前进度", "领域", "背景", "水平", "学习目标", "偏好", "知识点", "难点", "薄弱点", "兴趣"]:
+        for k in ["抽象目的", "抽象项目情况", "起点", "当前水平", "目标", "偏好", "知识点", "难点", "薄弱点", "兴趣"]:
             if k in p:
                 proj[k] = p[k]
         # 前端置空的单值字段允许清理
-        for k in ["项目概述", "当前进度", "领域", "背景", "水平", "学习目标"]:
+        for k in ["抽象目的", "抽象项目情况", "起点", "当前水平", "目标"]:
             if k in p and not p[k]:
                 proj.pop(k, None)
     data = json.dumps(proj, ensure_ascii=False)
@@ -534,10 +534,10 @@ async def save_project_profile(pid: str, req: ProfileData):
     proj = _as_dict(rows[0]["data"]) if rows and rows[0]["data"] else {}
     p = req.profile
     if isinstance(p, dict):
-        if p.get("domain"): proj["领域"] = p["domain"]
-        if p.get("background"): proj["背景"] = p["background"]
+        if p.get("domain"): proj["抽象项目情况"] = p["domain"]
+        if p.get("background"): proj["抽象项目情况"] = p["background"] or proj.get("抽象项目情况", "")
         if p.get("prefer"): proj["偏好"] = p["prefer"]
-        if p.get("goal"): proj["学习目标"] = p["goal"]
+        if p.get("goal"): proj["目标"] = p["goal"]
     data = json.dumps(proj, ensure_ascii=False)
     if rows:
         pg_client.execute("UPDATE project_memories SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE project_id=%s", (data, pid))
