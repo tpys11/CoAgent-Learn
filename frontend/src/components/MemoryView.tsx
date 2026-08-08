@@ -478,6 +478,35 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                               </>
                             ) })()}
                           </div>
+                          {/* 遗忘面板：知识点掌握度（独立区域，空时也保留明确的填充区域） */}
+                          <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-semibold text-dim uppercase tracking-wider">🧠 遗忘面板 · 知识点掌握度<span className="ml-1 text-[9px] font-normal text-dim/70">久未复习颜色变淡</span></span>
+                              <button onClick={() => onRequestModify?.('知识点', pid)} className="text-[9px] text-[var(--accent)] hover:underline">修改</button>
+                            </div>
+                            {(() => { const kps = (data?.progress.items || []).filter((x: any) => x.kind === '知识点'); return kps.length ? (
+                              <div className="flex flex-col gap-1.5">
+                                {kps.map((it: any) => {
+                                  const r = it.retrievability || 0
+                                  const cls = r >= 0.9 ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : r >= 0.7 ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-red-50 text-red-700 border-red-200'
+                                  return (
+                                    <div key={it.name} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-[10px] ${cls}`} style={{ opacity: 0.45 + r * 0.55 }}>
+                                      <span className="font-medium truncate">{it.name}</span>
+                                      <span className="ml-auto text-dim flex-shrink-0">{it.daysSince >= 999 ? '未提及' : `${it.daysSince} 天前`} · {it.mastery}%</span>
+                                      {it.forgotten && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 flex-shrink-0">待复习</span>}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            ) : (
+                              <div className="min-h-[90px] border border-dashed hairline rounded-xl flex items-center justify-center px-3">
+                                <div className="flex flex-col gap-1 text-[11px] text-dim text-center">
+                                  <span>暂无知识点数据</span>
+                                  <span className="text-[10px]">与 AI 对话后自动分析填充，或点「↻ 重新分析」立即生成</span>
+                                </div>
+                              </div>
+                            ) })()}
+                          </div>
                           <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
                             {['抽象目的', '抽象项目情况'].map(k => (
                               <div key={k}>
@@ -501,30 +530,6 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                                 </div>
                               </div>
                             ))}
-                            {/* 知识点掌握度（遗忘曲线：久未复习颜色变淡） */}
-                            <div>
-                              <div className="flex items-center justify-between mb-1">
-                                <label className="text-[10px] font-semibold text-dim uppercase tracking-wider">知识点（掌握度）</label>
-                                <button onClick={() => onRequestModify?.('知识点', pid)} className="text-[9px] text-[var(--accent)] hover:underline">修改</button>
-                              </div>
-                              {(() => { const kps = (data?.progress.items || []).filter((x: any) => x.kind === '知识点'); return kps.length ? (
-                                <div className="flex flex-col gap-1.5">
-                                  {kps.map((it: any) => {
-                                    const r = it.retrievability || 0
-                                    const cls = r >= 0.9 ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : r >= 0.7 ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-red-50 text-red-700 border-red-200'
-                                    return (
-                                      <div key={it.name} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-[10px] ${cls}`} style={{ opacity: 0.45 + r * 0.55 }}>
-                                        <span className="font-medium truncate">{it.name}</span>
-                                        <span className="ml-auto text-dim flex-shrink-0">{it.daysSince >= 999 ? '未提及' : `${it.daysSince} 天前`} · {it.mastery}%</span>
-                                        {it.forgotten && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 flex-shrink-0">待复习</span>}
-                                      </div>
-                                    )
-                                  })}
-                                </div>
-                              ) : (
-                                <div className="px-3 py-2.5 border border-dashed hairline rounded-xl text-[11px] text-dim">暂无知识点数据 —— 对话后自动分析生成（可点右上角「↻ 重新分析」立即生成）</div>
-                              ) })()}
-                            </div>
                             {/* 难点（待攻克） */}
                             <div>
                               <div className="flex items-center justify-between mb-1">
