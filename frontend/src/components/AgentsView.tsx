@@ -113,7 +113,7 @@ const BLOCKS: Array<{ key: Block; icon: any; label: string }> = [
 ]
 
 /** 编排节点图：节点 + 箭头 */
-function FlowNode({ icon: Icon, name, sub, active, onClick }: { icon: any; name: string; sub?: string; active?: boolean; onClick?: () => void }) {
+function FlowNode({ icon: Icon, name, active, onClick }: { icon: any; name: string; active?: boolean; onClick?: () => void }) {
   return (
     <button onClick={onClick} disabled={!onClick}
       className={`card-surface rounded-xl px-4 py-3 flex flex-col items-center gap-1.5 min-w-[96px] border-2 transition-all ${
@@ -121,7 +121,6 @@ function FlowNode({ icon: Icon, name, sub, active, onClick }: { icon: any; name:
       } ${active ? 'border-[var(--accent)] shadow-soft' : 'border-[var(--border-color)]'}`}>
       {Icon && <Icon size={18} className={active ? 'text-[var(--accent)]' : 'text-dim'} />}
       <span className="text-xs font-bold">{name}</span>
-      {sub && <span className="text-[10px] text-dim text-center leading-snug">{sub}</span>}
     </button>
   )
 }
@@ -133,19 +132,19 @@ const FlowGraph = ({ agents, templateAgentId, onSelect }: { agents?: AgentConfig
   const pick = (id: string) => onSelect ? () => onSelect(id) : undefined
   return (
     <div className="flex items-center justify-center gap-2 flex-wrap">
-      <FlowNode icon={Workflow} name="规划" sub="输入处理·调度" active={act('main')} onClick={pick('main')} />
+      <FlowNode icon={Workflow} name="规划" active={act('main')} onClick={pick('main')} />
       <FlowArrow />
       <div className="flex flex-col gap-1 items-center">
-        <FlowNode icon={Brain} name="学情与记忆" sub="画像·记忆" active={act('study')} onClick={pick('study')} />
+        <FlowNode icon={Brain} name="学情与记忆" active={act('study')} onClick={pick('study')} />
         <span className="text-[9px] text-dim">∥ 并行</span>
-        <FlowNode icon={Database} name="知识库" sub="检索·搜索" active={act('kb')} onClick={pick('kb')} />
+        <FlowNode icon={Database} name="知识库" active={act('kb')} onClick={pick('kb')} />
       </div>
       <FlowArrow />
-      <FlowNode icon={Workflow} name="生成" sub="讲义·指南·测试" active={act('main')} onClick={pick('main')} />
+      <FlowNode icon={Workflow} name="生成" active={act('main')} onClick={pick('main')} />
       <FlowArrow />
-      <FlowNode icon={Scale} name="审核" sub="符实·难度·规范" active={act('review')} onClick={pick('review')} />
+      <FlowNode icon={Scale} name="审核" active={act('review')} onClick={pick('review')} />
       <FlowArrow />
-      <FlowNode icon={CheckCircle2} name="输出" sub="最终结果" />
+      <FlowNode icon={CheckCircle2} name="输出" />
     </div>
   )
 }
