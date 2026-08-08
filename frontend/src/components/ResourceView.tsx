@@ -328,7 +328,7 @@ export default function ResourceView({ projectId }: { projectId: string | null }
   const catTutorials = domainTutorials.filter(t => normalizeCat(t.category) === selectedCat)
   const tutorialList: ListItem[] = catTutorials.map(t => ({
     id: t.id, title: t.title,
-    sub: t.category,
+    sub: '',
     time: '',
     body: t.desc || '暂无简介', icon: BookOpen,
     kind: 'tutorial' as const, url: t.url,
@@ -396,8 +396,10 @@ export default function ResourceView({ projectId }: { projectId: string | null }
             <p className="text-base font-semibold leading-snug">{item.title}</p>
             <p className="text-xs text-dim truncate">{item.body}</p>
             <div className="mt-auto flex items-center gap-1.5 text-[11px] text-dim">
+              {(item.sub || item.time) && <>
               <span className="truncate">{item.sub}</span>
               {item.time && <><span className="flex-shrink-0">·</span><span className="flex-shrink-0">{item.time}</span></>}
+              </>}
             </div>
           </div>
         )
