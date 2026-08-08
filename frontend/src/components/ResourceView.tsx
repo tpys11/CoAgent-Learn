@@ -462,6 +462,22 @@ export default function ResourceView({ projectId }: { projectId: string | null }
       <div className="flex-shrink-0 px-8 pt-7 pb-5 bg-[var(--bg-panel)] border-b border-[var(--border-color)]">
         <div className="max-w-6xl mx-auto">
           <p className="text-[11px] font-bold text-[var(--accent)] tracking-widest uppercase mb-2">Resource Center</p>
+          {/* 领域选择行（系统预设）：置于最顶（RESOURCE CENTER 之下、标题之上） */}
+          <div className="flex items-center gap-2 mb-4 flex-wrap">
+            <span className="text-[11px] font-semibold text-dim mr-1">领域</span>
+            {DEFAULT_DOMAINS.map(d => (
+              <button
+                key={d}
+                onClick={() => { setSelectedDomain(d); setSelectedCat(CATEGORIES[0].key); setDetail(null) }}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                  selectedDomain === d ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'
+                }`}
+              >
+                {d}
+              </button>
+            ))}
+            <span className="text-[11px] text-dim ml-2">领域与分类为系统预设内容</span>
+          </div>
           <h1 className="text-2xl font-bold leading-snug">学习、理解、实践，与社区一起构建人工智能的未来</h1>
           <p className="text-[13px] text-dim mt-2">汇聚教程资源、AI 生成物与你保存的资料，沉淀每一次学习产出</p>
 
@@ -486,23 +502,6 @@ export default function ResourceView({ projectId }: { projectId: string | null }
                 </span>
               </button>
             ))}
-          </div>
-
-          {/* 领域选择行（系统预设） */}
-          <div className="flex items-center gap-2 mt-6 flex-wrap">
-            <span className="text-[11px] font-semibold text-dim mr-1">领域</span>
-            {DEFAULT_DOMAINS.map(d => (
-              <button
-                key={d}
-                onClick={() => { setSelectedDomain(d); setSelectedCat(CATEGORIES[0].key); setDetail(null) }}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                  selectedDomain === d ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'
-                }`}
-              >
-                {d}
-              </button>
-            ))}
-            <span className="text-[11px] text-dim ml-2">领域与分类为系统预设内容</span>
           </div>
         </div>
       </div>
