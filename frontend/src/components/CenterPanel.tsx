@@ -149,8 +149,13 @@ const TEMPLATE_OPTIONS = [
   const [autoMode, setAutoMode] = useState(() => localStorage.getItem('coagent-auto') === '1')
   // 模型 Auto：AI 根据输入自动选择模型（模型选择上拉栏内开关）
   const [modelAuto, setModelAuto] = useState(() => localStorage.getItem('coagent-model-auto') === '1')
-  // 使用模板：开启后前面的设置按钮（输入优化/检索/输出形式/输出内容）变暗
-  const [useTemplate, setUseTemplate] = useState(() => localStorage.getItem('coagent-use-template') === '1')
+  // 使用模板：开启后工具栏显示「模板选择」按钮
+  const [useTemplate, setUseTemplate] = useState(() => localStorage.getItem('coagent-use-template') !== '0')
+  // 细节设定：开启后工具栏显示细节按钮（输入询问/检索模式/输出形式/输出内容）
+  const [useDetail, setUseDetail] = useState(() => localStorage.getItem('coagent-use-detail') !== '0')
+  // 对话模式上拉框
+  const [showDlgMenu, setShowDlgMenu] = useState(false)
+  const dlgRef = useRef<HTMLDivElement>(null)
   const [showTplMenu, setShowTplMenu] = useState(false)
   const tplRef = useRef<HTMLDivElement>(null)
   // 模型选择上拉小窗
@@ -159,6 +164,7 @@ const TEMPLATE_OPTIONS = [
     const close = (e: MouseEvent) => {
       if (tplRef.current && !tplRef.current.contains(e.target as Node)) setShowTplMenu(false)
       if (modelRef.current && !modelRef.current.contains(e.target as Node)) setShowModelModal(false)
+      if (dlgRef.current && !dlgRef.current.contains(e.target as Node)) setShowDlgMenu(false)
     }
     document.addEventListener('mousedown', close)
     return () => document.removeEventListener('mousedown', close)
@@ -442,6 +448,45 @@ const TEMPLATE_OPTIONS = [
                 <Upload size={15} />
               </button>
               {/* 模板选择（挨着上传按钮右边，顶部带「使用模板」开关） */}
+              {/* 对话模式：上拉框控制 Auto / 模板选择 / 细节设定 三个开关 */}
+              <div className="relative" ref={dlgRef}>
+                <button
+                  onClick={() => setShowDlgMenu(!showDlgMenu)}
+                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)]"
+                  title="对话模式">
+                  <SlidersHorizontal size={13} /> 对话模式 <ChevronDown size={9} />
+                </button>
+                {showDlgMenu && (
+                  <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 250 }}>
+                    <div className="flex items-center justify-between gap-2 px-1 py-1.5 border-b border-[#e5e5e5]">
+                      <span className="text-[11px] font-medium">Auto</span>
+                      <button onClick={() => { const next = !autoMode; setAutoMode(next); localStorage.setItem('coagent-auto', next ? '1' : '0') }}
+                        className={`w-9 h-5 rounded-full relative transition-colors flex-shrink-0 ${autoMode ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`}
+                        title="Auto（AI 自动推断模板/细节）">
+                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${autoMode ? 'translate-x-4' : ''}`} />
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 px-1 py-1.5 border-b border-[#e5e5e5]">
+                      <span className="text-[11px] font-medium">模板选择</span>
+                      <button onClick={() => { const next = !useTemplate; setUseTemplate(next); localStorage.setItem('coagent-use-template', next ? '1' : '0') }}
+                        className={`w-9 h-5 rounded-full relative transition-colors flex-shrink-0 ${useTemplate ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`}
+                        title="开启后对话框显示模板选择按钮">
+                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${useTemplate ? 'translate-x-4' : ''}`} />
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 px-1 py-1.5">
+                      <span className="text-[11px] font-medium">细节设定</span>
+                      <button onClick={() => { const next = !useDetail; setUseDetail(next); localStorage.setItem('coagent-use-detail', next ? '1' : '0') }}
+                        className={`w-9 h-5 rounded-full relative transition-colors flex-shrink-0 ${useDetail ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`}
+                        title="开启后对话框显示细节按钮（输入询问/检索模式/输出形式/输出内容）">
+                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${useDetail ? 'translate-x-4' : ''}`} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+              {/* 模板选择（使用模板滑块开启时显示） */}
+              {useTemplate && (
               <div className="relative" ref={tplRef}>
                 <button
                   onClick={() => setShowTplMenu(!showTplMenu)}
@@ -451,17 +496,9 @@ const TEMPLATE_OPTIONS = [
                 </button>
                 {showTplMenu && (
                   <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 230 }}>
-                    <div className="flex items-center justify-between gap-2 px-1 py-1.5 mb-1 border-b border-[#e5e5e5]">
-                      <span className="text-[11px] font-medium">使用模板</span>
-                      <button onClick={() => { const next = !useTemplate; setUseTemplate(next); localStorage.setItem('coagent-use-template', next ? '1' : '0') }}
-                        className={`w-9 h-5 rounded-full relative transition-colors flex-shrink-0 ${useTemplate ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`}
-                        title="使用模板开关">
-                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${useTemplate ? 'translate-x-4' : ''}`} />
-                      </button>
-                    </div>
                     {TEMPLATE_OPTIONS.map(t => (
                       <button key={t.name}
-                        onClick={() => { setTemplateMode(t.name); localStorage.setItem('coagent-template', t.name); setUseTemplate(true); localStorage.setItem('coagent-use-template', '1'); setShowTplMenu(false) }}
+                        onClick={() => { setTemplateMode(t.name); localStorage.setItem('coagent-template', t.name); setShowTplMenu(false) }}
                         className={`text-[11px] px-2 py-1.5 rounded-lg text-left w-full ${templateMode === t.name ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
                         <span className="font-medium">{t.name}</span>
                       </button>
@@ -469,12 +506,14 @@ const TEMPLATE_OPTIONS = [
                   </div>
                 )}
               </div>
-              {/* 输入信息优化 */}
+              )}
+              {/* 细节设定（滑块开启时显示） */}
+              {useDetail && (<>
               <div className="relative" ref={inputOptRef}>
                 <button
                   onClick={() => { setShowInputOpt(!showInputOpt); setShowSearch(false); setShowFormat(false); setShowContent(false) }}
-                  disabled={useTemplate || autoMode}
-                  className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${useTemplate || autoMode ? 'opacity-40' : ''}`}
+                  disabled={autoMode}
+                  className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
                 >
                   <SlidersHorizontal size={13} /> 输入询问 <ChevronDown size={9} />
                 </button>
@@ -494,8 +533,8 @@ const TEMPLATE_OPTIONS = [
               <div className="relative" ref={searchRef}>
                 <button
                   onClick={() => { setShowSearch(!showSearch); setShowFormat(false); setShowContent(false) }}
-                  disabled={useTemplate || autoMode}
-                  className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${useTemplate || autoMode ? 'opacity-40' : ''}`}
+                  disabled={autoMode}
+                  className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
                 >
                   <Search size={13} /> 检索模式 <ChevronDown size={9} />
                 </button>
@@ -526,8 +565,8 @@ const TEMPLATE_OPTIONS = [
               <div className="relative" ref={formatRef}>
                 <button
                   onClick={() => { setShowFormat(!showFormat); setShowContent(false) }}
-                  disabled={useTemplate || autoMode}
-                  className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${useTemplate || autoMode ? 'opacity-40' : ''}`}
+                  disabled={autoMode}
+                  className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
                 >
                   输出形式 <ChevronDown size={9} />
                 </button>
@@ -560,8 +599,8 @@ const TEMPLATE_OPTIONS = [
               <div className="relative" ref={contentRef}>
                 <button
                   onClick={() => { setShowContent(!showContent); setShowFormat(false) }}
-                  disabled={useTemplate || autoMode}
-                  className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${useTemplate || autoMode ? 'opacity-40' : ''}`}
+                  disabled={autoMode}
+                  className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
                 >
                   输出内容 <ChevronDown size={9} />
                 </button>
@@ -602,16 +641,9 @@ const TEMPLATE_OPTIONS = [
                   </div>
                 )}
               </div>
+              </>)}
               <span className="w-px h-4 bg-[#e5e5e5] mx-1" />
               <span className="flex-1" />
-              {/* 对话模式 auto：AI 根据输入自动选择模板/模式（开启后包括模板选择全部变暗） */}
-              <span className="text-[11px] text-dim">对话模式 auto</span>
-              <button
-                onClick={() => { const next = !autoMode; setAutoMode(next); localStorage.setItem('coagent-auto', next ? '1' : '0') }}
-                className={`w-9 h-5 rounded-full relative transition-colors ${autoMode ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`}
-                title={autoMode ? '对话模式 auto 已开启：AI 根据输入自动选择模板/模式' : '对话模式 auto：AI 根据输入自动选择模板/模式'}>
-                <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${autoMode ? 'translate-x-4' : ''}`} />
-              </button>
               <div className="relative" ref={modelRef}>
                 <button
                   onClick={() => setShowModelModal(!showModelModal)}
