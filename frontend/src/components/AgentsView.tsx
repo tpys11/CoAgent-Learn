@@ -41,6 +41,13 @@ const PRESET_TEMPLATES: Array<{ name: string; desc: string; agents: AgentConfig[
 const SKILL_ENABLED_KEY = 'coagent-skill-enabled'
 const CUSTOM_TEMPLATES_KEY = 'coagent-custom-templates'
 
+/** 各模板的节点颜色深浅分布：按模板编排的基础逻辑标注各节点职责负载（0-5，越深负载越高） */
+const TEMPLATE_LEVELS: Record<string, Record<string, number>> = {
+  '均衡模式': { plan: 1, study_memory: 2, kb: 2, generate: 4, review: 3 },
+  '质量优先': { plan: 1, study_memory: 2, kb: 3, generate: 4, review: 5 },
+  '响应更快': { plan: 1, study_memory: 1, kb: 1, generate: 2, review: 2 },
+}
+
 /** 模型选择中文标签 */
 const MODEL_LABEL: Record<string, string> = { global: '跟随全局', main: '强模型', fast: '快模型' }
 
@@ -114,7 +121,7 @@ const BLOCKS: Array<{ key: Block; icon: any; label: string }> = [
 
 /** 编排节点图：节点 + 箭头；节点背景色深浅按模板编排的基础逻辑标注（节点在流程中的职责负载，与内部运行数据无关） */
 function FlowNode({ icon: Icon, name, level = 0, active, onClick }: { icon: any; name: string; level?: number; active?: boolean; onClick?: () => void }) {
-  const pct = [12, 28, 50, 78, 100][Math.min(Math.max(level, 0), 4)]
+  const pct = [10, 22, 38, 56, 76, 100][Math.min(Math.max(level, 0), 5)]
   const dark = level >= 3
   return (
     <button onClick={onClick} disabled={!onClick}
@@ -130,13 +137,13 @@ function FlowNode({ icon: Icon, name, level = 0, active, onClick }: { icon: any;
 const FlowArrow = () => <span className="text-dim flex-shrink-0 text-base">→</span>
 
 /** 4-Agent 编排节点图：节点可点击选中 Agent（无 agents 参数时静态展示）；
- *  节点颜色深浅直接按模板基础逻辑标注（各节点在流程中的职责负载，不依赖运行数据） */
-const FlowGraph = ({ agents, templateAgentId, onSelect }: { agents?: AgentConfig[]; templateAgentId?: string; onSelect?: (id: string) => void }) => {
+ *  节点颜色深浅按当前模板的基础逻辑标注（各模板一套分布，不依赖运行数据） */
+const FlowGraph = ({ agents, templateName, templateAgentId, onSelect }: { agents?: AgentConfig[]; templateName?: string; templateAgentId?: string; onSelect?: (id: string) => void }) => {
   const act = (id: string) => templateAgentId === id
   const pick = (id: string) => onSelect ? () => onSelect(id) : undefined
-  // 模板基础逻辑权重：节点在编排流程中的职责负载（0-4，越深负载越高）
-  const BASE_LEVELS: Record<string, number> = { plan: 1, study_memory: 2, kb: 2, generate: 4, review: 3 }
-  const lv = (n: string) => BASE_LEVELS[n] || 0
+  // 当前模板对应的节点职责负载分布（未选中模板时按均衡模式）
+  const levels = TEMPLATE_LEVELS[templateName || '均衡模式'] || TEMPLATE_LEVELS['均衡模式']
+  const lv = (n: string) => levels[n] || 0
   return (
     <div className="flex items-center justify-center gap-2 flex-wrap">
       <FlowNode icon={Workflow} name="规划" level={lv('plan')} active={act('main')} onClick={pick('main')} />
@@ -643,7 +650,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
             <div className="flex flex-col gap-4">
               <p className="text-xs font-semibold text-dim uppercase tracking-wider">编排框架设定</p>
               <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex items-center justify-center">
-                <FlowGraph agents={agents} templateAgentId={templateAgentId} onSelect={(id) => setTemplateAgentId(id)} />
+                <FlowGraph agents={agents} templateName={selectedTpl || '均衡模式'} templateAgentId={templateAgentId} onSelect={(id) => setTemplateAgentId(id)} />
               </div>
               <p className="text-[10px] text-dim -mt-2">节点颜色越深表示该节点在模板编排中的职责负载越高</p>
             </div>
