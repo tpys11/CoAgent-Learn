@@ -43,7 +43,7 @@ const GROUP_TABS: Record<string, string[]> = {
 
 function Section({ icon: Icon, title, desc, children }: { icon: any; title: string; desc?: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-2.5">
+    <div className="flex flex-col gap-3.5">
       <div>
         <p className="text-xs font-semibold text-dim uppercase tracking-wider flex items-center gap-1.5"><Icon size={13} /> {title}</p>
         {desc && <p className="text-[10px] text-dim mt-0.5">{desc}</p>}
@@ -79,7 +79,7 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 
 function SwitchRow({ label, desc, checked, onChange }: { label: string; desc?: string; checked: boolean; onChange: (v: boolean) => void }) {
   return (
-    <div className="flex items-center justify-between border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
+    <div className="flex items-center justify-between border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
       <div>
         <p className="text-xs font-semibold">{label}</p>
         {desc && <p className="text-[10px] text-dim mt-0.5">{desc}</p>}
@@ -271,7 +271,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             {/* 默认对话参数 */}
             {show('defaults') && (
               <Section icon={Sliders} title="默认对话参数" desc="新对话自动套用；输入框内仍可逐次调整">
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-3">
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] text-dim w-16 flex-shrink-0">模式</span>
                     <PillGroup options={['kb', '默认']} value={defSettings.chatMode}
@@ -299,7 +299,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             {/* 生成后动作 */}
             {show('actions') && (
               <Section icon={Zap} title="生成后动作">
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-3">
                   <SwitchRow label="自动保存生成物到「我的上传」" desc="对话结束后将回复存入资料列表" checked={postActions.autoSaveResource}
                     onChange={v => setPostActions({ ...postActions, autoSaveResource: v })} />
                   <SwitchRow label="自动生成追问" desc="对话结束后生成推荐追问（右侧栏展示）" checked={postActions.autoFollowups}
@@ -311,10 +311,10 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             {/* 流式与上下文 */}
             {show('context') && (
               <Section icon={MessageSquare} title="流式输出与上下文策略">
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-3">
                   <SwitchRow label="打字机渲染效果" desc="回复逐字显示；关闭则整段一次显示" checked={context.typing}
                     onChange={v => setContext({ ...context, typing: v })} />
-                  <div className="flex flex-col gap-1.5 border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
+                  <div className="flex flex-col gap-1.5 border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold">历史消息条数</span>
                       <span className="text-[11px] text-dim">{context.historyLimit} 条</span>
@@ -335,14 +335,14 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             {/* 模型与 API Key */}
             {show('keys') && (
               <Section icon={Key} title="模型与 API Key" desc="与模型卡共用同一份配置（localStorage）">
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-3">
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] text-dim w-20 flex-shrink-0">默认厂家</span>
                     <select value={provider} onChange={e => setProvider(e.target.value)} className={inputCls}>
                       {PROVIDERS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </select>
                   </div>
-                  <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
+                  <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-3">
                     {PROVIDERS.map(p => (
                       <div key={p.id} className="flex items-center gap-2">
                         <span className="text-[11px] text-dim w-20 flex-shrink-0">{p.name}</span>
@@ -365,7 +365,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             {/* 请求超时 */}
             {show('timeout') && (
               <Section icon={Timer} title="请求超时" desc="发送消息后无响应自动中止，避免一直转圈">
-                <div className="flex items-center gap-3 border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
+                <div className="flex items-center gap-3 border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
                   <span className="text-xs text-dim">1s</span>
                   <input type="range" min="1" max="30" step="1" value={timeoutSec}
                     onChange={e => setTimeoutSec(Number(e.target.value))}
@@ -396,7 +396,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             {/* MCP 配置 */}
             {show('mcp') && (
               <Section icon={Plug} title="MCP 配置" desc="连接配置已保存；实际连接与工具调用能力正在开发中">
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-3">
                   {mcpServers.length > 0 && (
                     <div className="flex flex-col gap-1.5">
                       {mcpServers.map(s => (
@@ -410,7 +410,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
                     </div>
                   )}
                   {mcpShow ? (
-                    <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
+                    <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-3">
                       <input autoFocus value={mcpName} onChange={e => setMcpName(e.target.value)} placeholder="名称（如 my-tools）" className={inputCls} />
                       <div className="flex gap-1.5">
                         {(['stdio', 'http', 'sse'] as const).map(t => (
@@ -435,7 +435,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
 
             {/* 调试模式 */}
             {show('debug') && (
-              <Section icon={Bug} title="调试模式" desc="开启后，对话回复底部显示各 Agent 的耗时与 token 估算">
+              <Section icon={Bug} title="调试模式">
                 <SwitchRow label="调试模式" checked={debug} onChange={setDebug} />
               </Section>
             )}
@@ -443,7 +443,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             {/* 对话自动清理 */}
             {show('cleanup') && (
               <Section icon={Trash2} title="对话自动清理" desc="保留最近 N 条对话，更早的对话自动归档（0 = 不清理）">
-                <div className="flex items-center gap-3 border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
+                <div className="flex items-center gap-3 border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
                   <span className="text-xs text-dim flex-shrink-0">不清理</span>
                   <input type="range" min="0" max="100" step="5" value={dialogueLimit}
                     onChange={e => setDialogueLimit(Number(e.target.value))}
