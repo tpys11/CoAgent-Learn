@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Settings, Square, Upload, Folder, Activity, Download, Layers, Wrench, Store, ExternalLink, FileCode, Plus, Trash2, LayoutTemplate } from 'lucide-react'
+import { Settings, Square, Upload, Folder, Activity, Download, Layers, Wrench, Store, ExternalLink, FileCode, Plus, Trash2, LayoutTemplate, X } from 'lucide-react'
 import type { AgentConfig } from '../types'
 import { DEFAULT_AGENTS } from '../types'
 
@@ -39,6 +39,10 @@ const PRESET_TEMPLATES: Array<{ name: string; desc: string; agents: AgentConfig[
 ]
 
 const SKILL_ENABLED_KEY = 'coagent-skill-enabled'
+const CUSTOM_TEMPLATES_KEY = 'coagent-custom-templates'
+
+/** 模型选择中文标签 */
+const MODEL_LABEL: Record<string, string> = { global: '跟随全局', main: '强模型', fast: '快模型' }
 
 /** 推荐 Skill 市场（内置，后端已实现，勾选即在该 Agent 的 Skill 卡片中可选） */
 const MARKET_SKILLS = [
@@ -120,6 +124,12 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   const [expandedSkill, setExpandedSkill] = useState<string | null>(null)
   // 模板与编排：Agent 自定义选中的 Agent
   const [templateAgentId, setTemplateAgentId] = useState(agents[0]?.id || '')
+  // 模板与编排：选中模板（展开详情）、自定义模板、保存名称
+  const [selectedTpl, setSelectedTpl] = useState<string | null>(null)
+  const [customTemplates, setCustomTemplates] = useState<Array<{ name: string; desc: string; agents: AgentConfig[] }>>(() => {
+    try { return JSON.parse(localStorage.getItem(CUSTOM_TEMPLATES_KEY) || '[]') } catch { return [] }
+  })
+  const [saveTplName, setSaveTplName] = useState('')
   // Skill 管理四区
   const [skillTab, setSkillTab] = useState('installed')
   const [mcpStep, setMcpStep] = useState(1)
@@ -234,6 +244,28 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   // 模板与编排：当前自定义 Agent + 保存
   const tplAgent = agents.find(a => a.id === templateAgentId) || agents[0]
   const commitTpl = (patch: Partial<AgentConfig>) => { if (tplAgent) onSave({ ...tplAgent, ...patch }) }
+  // 模板与编排：模板集合（预设 + 自定义）、应用、保存自定义
+  const allTemplates = [...PRESET_TEMPLATES, ...customTemplates]
+  const applyTemplate = (t: { name: string; agents: AgentConfig[] }) => {
+    if (window.confirm(`应用模板「${t.name}」？将覆盖当前全部 Agent 配置。`)) {
+      onReplace(t.agents); setSelectedId(t.agents[0]?.id || ''); setTemplateAgentId(t.agents[0]?.id || '')
+    }
+  }
+  const saveCustomTemplate = () => {
+    const name = saveTplName.trim()
+    if (!name) return
+    const next = [...customTemplates, { name, desc: '自定义模板', agents }]
+    setCustomTemplates(next)
+    localStorage.setItem(CUSTOM_TEMPLATES_KEY, JSON.stringify(next))
+    setSelectedTpl(name)
+    setSaveTplName('')
+  }
+  const removeCustomTemplate = (name: string) => {
+    const next = customTemplates.filter(t => t.name !== name)
+    setCustomTemplates(next)
+    localStorage.setItem(CUSTOM_TEMPLATES_KEY, JSON.stringify(next))
+    if (selectedTpl === name) setSelectedTpl(null)
+  }
 
   return (
     <div className="flex-1 h-full min-w-0 flex panel rounded-3xl overflow-hidden">
@@ -516,36 +548,68 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
 
         {/* ========== 模板与编排 ========== */}
         {block === 'templates' && (
-          <div className="max-w-2xl flex flex-col gap-5">
-            <div>
-              <h2 className="text-base font-bold flex items-center gap-2"><LayoutTemplate size={16} /> 模板与编排</h2>
-              <p className="text-[11px] text-dim mt-1">预设 Agent 团队模板一键应用；配置可导入/导出</p>
-            </div>
+          <div className="max-w-3xl flex flex-col gap-6">
+            <h2 className="text-xl font-bold flex items-center gap-2"><LayoutTemplate size={18} /> 模板与编排</h2>
 
-            {/* 预设模板 */}
-            <div className="flex flex-col gap-2">
-              {PRESET_TEMPLATES.map(t => (
-                <div key={t.name} className="card-surface rounded-xl p-4 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold">{t.name}</p>
-                    <p className="text-[11px] text-dim mt-0.5">{t.desc}</p>
+            {/* 预设模板：点击展开详情 */}
+            <div className="flex flex-col gap-3">
+              <div className="flex gap-2 flex-wrap">
+                {allTemplates.map(t => (
+                  <div key={t.name} className="relative group flex-shrink-0">
+                    <button onClick={() => setSelectedTpl(selectedTpl === t.name ? null : t.name)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-medium transition-all ${
+                        selectedTpl === t.name ? 'border-[var(--border-strong)] bg-[#1a1a1a] text-white shadow-soft' : 'border hairline bg-[var(--bg-panel)] text-dim hover:bg-[var(--bg-hover)]'
+                      }`}>
+                      <LayoutTemplate size={13} /> {t.name}
+                    </button>
+                    {customTemplates.some(c => c.name === t.name) && (
+                      <button onClick={(e) => { e.stopPropagation(); removeCustomTemplate(t.name) }}
+                        className="hidden group-hover:flex absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white items-center justify-center shadow" title="删除模板">
+                        <X size={9} />
+                      </button>
+                    )}
                   </div>
-                  <button
-                    onClick={() => {
-                      if (window.confirm(`应用模板「${t.name}」？将覆盖当前全部 Agent 配置。`)) {
-                        onReplace(t.agents); setSelectedId(t.agents[0]?.id || '')
-                      }
-                    }}
-                    className="px-3.5 py-2 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors flex-shrink-0">
-                    应用
-                  </button>
+                ))}
+              </div>
+              {(() => { const t = allTemplates.find(x => x.name === selectedTpl); if (!t) return null; return (
+                <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-bold">{t.name}</p>
+                    <span className="text-[11px] text-dim">{t.desc}</span>
+                  </div>
+                  <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                    编排：主 Agent（规划）→ 学情与记忆管理 ∥ 知识库管理（并行）→ 主 Agent（生成）→ 审核 → 输出
+                  </p>
+                  <div className="flex flex-col gap-1">
+                    {t.agents.map(a => (
+                      <div key={a.id} className="flex items-center gap-2 text-[11px]">
+                        <span className="font-semibold w-28 flex-shrink-0">{a.name}</span>
+                        <span className="text-dim truncate">模型 {MODEL_LABEL[a.model || 'global']} · 模式 {a.mode}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => applyTemplate(t)}
+                      className="px-3.5 py-2 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors">
+                      应用此模板
+                    </button>
+                    <button onClick={() => { applyTemplate(t); setSelectedTpl(t.name) }}
+                      className="px-3.5 py-2 text-xs border hairline text-dim hover:bg-[var(--bg-hover)] rounded-xl transition-colors">
+                      以此为基础自定义
+                    </button>
+                  </div>
                 </div>
-              ))}
+              ) })()}
             </div>
 
-            {/* Agent 自定义设置（启用/模型/记忆/模式） */}
+            {/* 编排框架设定（伴随编排，含 Agent 参数） */}
             <div className="flex flex-col gap-4">
-              <p className="text-xs font-semibold text-dim uppercase tracking-wider">Agent 自定义设置</p>
+              <p className="text-xs font-semibold text-dim uppercase tracking-wider">编排框架设定</p>
+              <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] text-xs text-dim leading-relaxed">
+                主 Agent（规划）→ <span className="text-[var(--text)]">学情与记忆管理</span> ∥ <span className="text-[var(--text)]">知识库管理</span>（并行）
+                → 主 Agent（生成）→ <span className="text-[var(--text)]">审核</span> → 输出
+                <span className="text-dim">（未通过则打回重试，上限可在审核 Agent 中配置）</span>
+              </div>
               <div className="flex gap-2 flex-wrap">
                 {agents.map(a => (
                   <button key={a.id} onClick={() => setTemplateAgentId(a.id)}
@@ -554,23 +618,12 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                         ? 'border-[var(--border-strong)] bg-[#1a1a1a] text-white shadow-soft'
                         : 'border hairline bg-[var(--bg-panel)] text-dim hover:bg-[var(--bg-hover)]'
                     }`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${a.enabled === false ? 'bg-red-400' : 'bg-green-500'}`} />
                     {a.name}
                   </button>
                 ))}
               </div>
               {tplAgent && (
                 <div className="flex flex-col gap-4">
-                  {/* 启用 */}
-                  <div className="flex items-center justify-between border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
-                    <div>
-                      <p className="text-xs font-semibold">启用该 Agent</p>
-                      <p className="text-[10px] text-dim mt-0.5">{tplAgent.id === 'main' ? '主 Agent 为工作流核心，不可禁用' : '关闭后工作流将自动跳过该 Agent（如审核关闭则直接通过）'}</p>
-                    </div>
-                    <Toggle checked={tplAgent.enabled !== false} disabled={tplAgent.id === 'main'}
-                      onChange={() => commitTpl({ enabled: !(tplAgent.enabled !== false) })} />
-                  </div>
-                  {/* 模型选择 */}
                   <div>
                     <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">模型选择</p>
                     <div className="flex gap-2">
@@ -582,18 +635,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                       ))}
                     </div>
                   </div>
-                  {/* 记忆注入 */}
-                  {(tplAgent.id === 'main' || tplAgent.id === 'study') && (
-                    <div className="flex items-center justify-between border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
-                      <div>
-                        <p className="text-xs font-semibold">记忆注入</p>
-                        <p className="text-[10px] text-dim mt-0.5">{tplAgent.id === 'study' ? '关闭后不读取已有记忆（仍做学情分析）' : '关闭后生成时不注入学情画像'}</p>
-                      </div>
-                      <Toggle checked={tplAgent.memoryEnabled !== false}
-                        onChange={() => commitTpl({ memoryEnabled: !(tplAgent.memoryEnabled !== false) })} />
-                    </div>
-                  )}
-                  {/* 模式 */}
                   <div>
                     <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">模式</p>
                     <div className="flex gap-2">
@@ -605,18 +646,39 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                       ))}
                     </div>
                   </div>
+                  {tplAgent.id === 'review' && (
+                    <div className="flex items-center justify-between border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
+                      <div>
+                        <p className="text-xs font-semibold">审核重试上限</p>
+                        <p className="text-[10px] text-dim mt-0.5">生成未通过审核时最多重试的次数</p>
+                      </div>
+                      <input type="number" min={1} max={5} value={tplAgent.retryMax ?? 2}
+                        onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 1 && n <= 5) commitTpl({ retryMax: n }) }}
+                        className="w-16 px-2 py-1.5 text-xs input-surface rounded-lg outline-none text-center" />
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">全局性提示词</p>
+                    <textarea value={tplAgent.systemPrompt} onChange={e => commitTpl({ systemPrompt: e.target.value })} rows={4}
+                      className="w-full px-3 py-2 border hairline rounded-xl text-xs font-mono outline-none resize-none focus:border-[var(--border-strong)] bg-[var(--bg-input)]" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">输入输出示例（few-shot）</p>
+                    <textarea value={tplAgent.example || ''} onChange={e => commitTpl({ example: e.target.value })} rows={3}
+                      placeholder="可选：粘贴 输入→输出 JSON 示例"
+                      className="w-full px-3 py-2 border hairline rounded-xl text-xs font-mono outline-none resize-none focus:border-[var(--border-strong)] bg-[var(--bg-input)]" />
+                  </div>
                 </div>
               )}
-            </div>
-
-            {/* 工作流编排示意 */}
-            <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
-              <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">工作流编排（4-Agent）</p>
-              <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                主 Agent（规划）→ <span className="text-[var(--text)]">学情与记忆管理</span> ∥ <span className="text-[var(--text)]">知识库管理</span>（并行）
-                → 主 Agent（生成）→ <span className="text-[var(--text)]">审核</span> → 输出
-                <span className="text-dim">（未通过则打回重试，上限可在审核 Agent 中配置；任一 Agent 可单独禁用）</span>
-              </p>
+              {/* 保存为自定义模板 */}
+              <div className="flex gap-2 items-center">
+                <input value={saveTplName} onChange={e => setSaveTplName(e.target.value)} placeholder="自定义模板名称"
+                  className="flex-1 px-3 py-2 text-xs input-surface rounded-lg outline-none" />
+                <button onClick={saveCustomTemplate}
+                  className="px-3.5 py-2 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors flex-shrink-0">
+                  保存为自定义模板
+                </button>
+              </div>
             </div>
 
             {/* 导入导出 */}
