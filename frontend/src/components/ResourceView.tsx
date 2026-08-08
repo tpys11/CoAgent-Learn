@@ -221,6 +221,8 @@ export default function ResourceView({ projectId }: { projectId: string | null }
   const [selectedDomain, setSelectedDomain] = useState(DEFAULT_DOMAINS[0])
   // 分类（固定三类）
   const [selectedCat, setSelectedCat] = useState(CATEGORIES[0].key)
+  // 百科：主题筛选（顶部按钮）
+  const [wikiTheme, setWikiTheme] = useState('all')
   const [loading, setLoading] = useState(false)
   const [detail, setDetail] = useState<ListItem | null>(null)
   // 我的生成：分类（预设 + 自定义）
@@ -338,6 +340,7 @@ export default function ResourceView({ projectId }: { projectId: string | null }
   // 百科词条（当前领域）
   const wikiEntries = WIKI_ENTRIES.filter(w => w.domain === selectedDomain)
   const wikiThemes = Array.from(new Set(wikiEntries.map(w => w.theme)))
+  const filteredWiki = wikiTheme === 'all' ? wikiEntries : wikiEntries.filter(w => w.theme === wikiTheme)
 
   let list: ListItem[] = []
   if (tab === 'generated') {
@@ -458,51 +461,58 @@ const exportItem = (item: ListItem) => {
     </>
   )
 
-  /** 百科区：按主题分组展示词条卡片 */
+  /** 百科区：顶部主题筛选按钮 + 词条卡片（带百度百科链接） */
   const wikiSection = (
     <>
       <div className="flex items-end justify-between mb-5">
-        <div>
-          <h2 className="text-lg font-bold flex items-center gap-2">
-            <Library size={18} /> {selectedDomain} · 百科词条
-          </h2>
-        </div>
+        <h2 className="text-lg font-bold flex items-center gap-2">
+          <Library size={18} /> {selectedDomain} · 百科词条
+        </h2>
       </div>
-      {wikiEntries.length === 0 ? (
-        emptyState('该领域暂无百科词条', '可添加新的领域或切换其他领域浏览')
+      {/* 主题筛选按钮（顶部排开） */}
+      <div className="flex gap-2 flex-wrap mb-6">
+        <button onClick={() => setWikiTheme('all')}
+          className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
+            wikiTheme === 'all' ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'
+          }`}>全部</button>
+        {wikiThemes.map(theme => (
+          <button key={theme} onClick={() => setWikiTheme(theme)}
+            className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
+              wikiTheme === theme ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'
+            }`}>{theme}</button>
+        ))}
+      </div>
+      {filteredWiki.length === 0 ? (
+        emptyState('该领域暂无百科词条', '')
       ) : (
-        wikiThemes.map(theme => {
-          const entries = wikiEntries.filter(w => w.theme === theme)
-          return (
-            <div key={theme} className="mb-6">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-[#1a1a1a] text-white">{theme}</span>
-                <span className="text-[11px] text-dim">{entries.length} 个词条</span>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          {filteredWiki.map(w => (
+            <div
+              key={w.name}
+              onClick={() => setDetail({ id: 'wiki:' + w.name, title: w.name, sub: `${w.theme} · ${w.domain}`, body: w.detail, icon: Library, kind: 'wiki', deletable: false })}
+              className="group card-surface rounded-2xl p-6 flex flex-col gap-4 cursor-pointer transition-all hover:shadow-lg hover:-translate-y-1 hover:border-[var(--border-strong)]"
+            >
+              <div className="flex items-start justify-between">
+                <span className="w-12 h-12 rounded-xl bg-[#1a1a1a] text-white flex items-center justify-center">
+                  <Library size={20} />
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <a href={'https://baike.baidu.com/item/' + encodeURIComponent(w.name)} target="_blank" rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="p-1 rounded-lg text-gray-300 hover:text-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors" title="百度百科">
+                    <ExternalLink size={13} />
+                  </a>
+                  <button onClick={(e) => { e.stopPropagation(); exportItem({ id: 'wiki:' + w.name, title: w.name, sub: w.theme, body: w.detail, icon: Library, kind: 'wiki', deletable: false }) }}
+                    className="p-1 rounded-lg text-gray-300 hover:text-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors" title="导出为文件">
+                    <Download size={13} />
+                  </button>
+                </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {entries.map(w => (
-                  <div
-                    key={w.name}
-                    onClick={() => setDetail({ id: 'wiki:' + w.name, title: w.name, sub: `${w.theme} · ${w.domain}`, body: w.detail, icon: Library, kind: 'wiki', deletable: false })}
-                    className="group card-surface rounded-2xl p-6 flex flex-col gap-4 cursor-pointer transition-all hover:shadow-lg hover:-translate-y-1 hover:border-[var(--border-strong)]"
-                  >
-                    <div className="flex items-start justify-between">
-                      <span className="w-12 h-12 rounded-xl bg-[#1a1a1a] text-white flex items-center justify-center">
-                        <Library size={20} />
-                      </span>
-                      <button onClick={(e) => { e.stopPropagation(); exportItem({ id: 'wiki:' + w.name, title: w.name, sub: w.theme, body: w.detail, icon: Library, kind: 'wiki', deletable: false }) }}
-                        className="p-1 rounded-lg text-gray-300 hover:text-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors" title="导出为文件">
-                        <Download size={13} />
-                      </button>
-                    </div>
-                    <p className="text-base font-semibold leading-snug">{w.name}</p>
-                    <p className="text-xs text-dim truncate">{w.intro}</p>
-                  </div>
-                ))}
-              </div>
+              <p className="text-base font-semibold leading-snug">{w.name}</p>
+              <p className="text-xs text-dim truncate">{w.intro}</p>
             </div>
-          )
-        })
+          ))}
+        </div>
       )}
     </>
   )
