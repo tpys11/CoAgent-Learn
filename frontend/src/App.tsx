@@ -179,8 +179,9 @@ function App() {
   const handleRenameDialogue = useCallback((id: string, name: string) => {
     if (name.trim()) setDialogues(prev => prev.map(d => d.id === id ? { ...d, name: name.trim() } : d))
   }, [])
-  /** 记忆修改：跳转主对话界面，输入框预填 [模块名] 引用 + 修改引导 */
-  const handleRequestModify = (label: string) => {
+  /** 记忆修改：跳转主对话界面，输入框预填 [模块名] 引用 + 修改引导（可指定项目） */
+  const handleRequestModify = (label: string, pid?: string) => {
+    if (pid) setCurrentProjectId(pid)
     setPrefillInput(`[${label}] 请帮我分析并修改这个记忆模块，我的想法：`)
     setView('chat')
   }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Brain, User, FolderTree, Check, Loader2, PenLine } from 'lucide-react'
+import { Brain, User, FolderTree, Check, Loader2, PenLine, ChevronDown } from 'lucide-react'
 
 /** 个人全局性记忆：基础信息字段（固定，纵向表单） */
 const BASIC_FIELDS = [
@@ -99,7 +99,7 @@ function CalendarHeatmap({ data, onPick }: { data: Record<string, number>; onPic
   )
 }
 
-export default function MemoryView({ projectId, onRequestModify }: { projectId: string | null; onRequestModify?: (label: string) => void }) {
+export default function MemoryView({ projectId, onRequestModify }: { projectId: string | null; onRequestModify?: (label: string, pid?: string) => void }) {
   const [level, setLevel] = useState<'global' | 'project'>('global')
   // 项目列表
   const [projects, setProjects] = useState<Array<{ id: string; name: string; is_default?: boolean; created_at?: string }>>([])
@@ -111,19 +111,17 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
   const [gSummary, setGSummary] = useState<Record<string, any>>({}) // 项目摘要（只读）
   const [gLoading, setGLoading] = useState(false)
 
-  // 项目记忆
-  const [pFields, setPFields] = useState<Record<string, string>>({})
-  // 项目时间信息（只读统计）
-  const [projectStats, setProjectStats] = useState<{ count: number; latest: string }>({ count: 0, latest: '' })
-  // 日历数据：date → 当天对话项列表（全局 / 项目）
+  // 项目记忆（全部项目，默认展开显示）
+  const [projData, setProjData] = useState<Record<string, { fields: Record<string, string>; count: number; latest: string; days: Record<string, any[]> }>>({})
+  const [projLoading, setProjLoading] = useState(false)
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  // 日历数据：date → 当天对话项列表（全局）
   const [globalDays, setGlobalDays] = useState<Record<string, any[]>>({})
-  const [projectDays, setProjectDays] = useState<Record<string, any[]>>({})
   const [globalStats, setGlobalStats] = useState<{ count: number; latest: string }>({ count: 0, latest: '' })
   const [dayDetail, setDayDetail] = useState<{ date: string; items: any[] } | null>(null)
   // 记忆模块只读详情（修改记忆由 AI 处理：跳转主对话并以 [模块名] 引用）
   const [detailCard, setDetailCard] = useState<{ key: string; label: string; val: string } | null>(null)
   useEffect(() => { setDayDetail(null) }, [level])
-  const [pLoading, setPLoading] = useState(false)
 
   const [saved, setSaved] = useState<'saving' | 'saved' | ''>('')
   const saveTimer = useRef<any>(null)
@@ -138,7 +136,7 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
     }).catch(() => {})
   }, [])
 
-  // 切到项目层级时默认选中当前项目
+  // 切到项目层级时加载全部项目记忆（默认展开显示）
   useEffect(() => { if (level === 'project') setSelectedProject(selectedProject || projectId) }, [level])
 
   // ---------- 个人全局记忆加载 ----------
@@ -170,35 +168,40 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
   }
   useEffect(() => { loadGlobal() }, [level === 'global'])
 
-  // ---------- 项目记忆加载 ----------
+  // ---------- 项目记忆加载（全部项目） ----------
   useEffect(() => {
-    if (level !== 'project' || !selectedProject) return
-    setPLoading(true)
-    fetch('/api/project-memory/' + encodeURIComponent(selectedProject), { cache: 'no-store' })
-      .then(r => r.json())
-      .then(d => {
-        const mem = d.memory || {}
-        const f: Record<string, string> = {}
-        for (const dim of PROJECT_DIMS) {
-          for (const k of dim.keys) if (mem[k]) f[k] = mem[k]
-          for (const k of dim.arrayKeys) if (Array.isArray(mem[k]) && (mem[k] as any[]).length) f[k] = (mem[k] as any[]).join(', ')
-        }
-        setPFields(f)
-      })
-      .catch(() => {})
-      .finally(() => setPLoading(false))
-    // 时间统计（只读）：对话次数 + 最近学习日期 + 日历数据
-    fetch('/api/learning-log?project_id=' + encodeURIComponent(selectedProject), { cache: 'no-store' })
-      .then(r => r.json()).then(dd => {
-        const days: any[] = dd.days || []
-        const map: Record<string, any[]> = {}
-        for (const d of days) map[d.date] = d.items || []
-        const count = days.reduce((s: number, x: any) => s + ((x.items || []).length || 0), 0)
-        const latest = days.length ? days.map((x: any) => x.date).sort().pop() : ''
-        setProjectDays(map)
-        setProjectStats({ count, latest })
-      }).catch(() => {})
-  }, [level, selectedProject])
+    if (level !== 'project') return
+    setProjLoading(true)
+    fetch('/api/projects', { cache: 'no-store' }).then(r => r.json()).then(d => {
+      const arr = d.projects || d || []
+      const plist = (Array.isArray(arr) ? arr : []) as Array<{ id: string; name: string; created_at?: string }>
+      setProjects(plist)
+      if (plist.length === 0) { setProjLoading(false); return }
+      const out: Record<string, { fields: Record<string, string>; count: number; latest: string; days: Record<string, any[]> }> = {}
+      let done = 0
+      for (const p of plist) {
+        const pid = p.id
+        Promise.all([
+          fetch('/api/project-memory/' + encodeURIComponent(pid), { cache: 'no-store' }).then(r => r.json()).catch(() => ({})),
+          fetch('/api/learning-log?project_id=' + encodeURIComponent(pid), { cache: 'no-store' }).then(r => r.json()).catch(() => ({ days: [] })),
+        ]).then(([m, lg]: [any, any]) => {
+          const mem = (m as any).memory || {}
+          const fields: Record<string, string> = {}
+          for (const dim of PROJECT_DIMS) {
+            for (const k of dim.keys) if (mem[k]) fields[k] = mem[k]
+            for (const k of dim.arrayKeys) if (Array.isArray(mem[k]) && (mem[k] as any[]).length) fields[k] = (mem[k] as any[]).join(', ')
+          }
+          const daysArr: any[] = lg.days || []
+          const days: Record<string, any[]> = {}
+          for (const dd of daysArr) days[dd.date] = dd.items || []
+          const count = daysArr.reduce((s: number, x: any) => s + ((x.items || []).length || 0), 0)
+          const latest = daysArr.length ? daysArr.map((x: any) => x.date).sort().pop() : ''
+          out[pid] = { fields, count, latest, days }
+          if (++done >= plist.length) { setProjData(out); setProjLoading(false) }
+        })
+      }
+    }).catch(() => setProjLoading(false))
+  }, [level])
 
   // ---------- 自动保存 ----------
   const scheduleSave = (url: string, data: Record<string, any>) => {
@@ -218,15 +221,6 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
     if (extra.trim()) profile['补充信息'] = extra.trim()
     scheduleSave('/api/global-profile', profile)
   }
-  const saveProject = () => {
-    const profile: Record<string, any> = {}
-    for (const dim of PROJECT_DIMS) {
-      for (const k of dim.keys) if (pFields[k]?.trim()) profile[k] = pFields[k].trim()
-      for (const k of dim.arrayKeys) if (pFields[k]?.trim()) profile[k] = pFields[k].split(/[,，、]/).map((s: string) => s.trim()).filter(Boolean)
-    }
-    scheduleSave('/api/project-memory/' + encodeURIComponent(selectedProject || 'default'), profile)
-  }
-
   const updateField = (k: string, v: string) => {
     const next = { ...gFields, [k]: v }
     setGFields(next)
@@ -235,10 +229,6 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
   const updateExtra = (v: string) => {
     setGExtra(v)
     saveGlobal(gFields, v)
-  }
-  const updateP = (k: string, v: string) => {
-    setPFields(prev => ({ ...prev, [k]: v }))
-    saveProject()
   }
 
   const saveState = (
@@ -274,10 +264,8 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
           <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1">
             {projects.length === 0 && <p className="text-[11px] text-dim text-center py-6">暂无项目</p>}
             {projects.map(p => (
-              <button key={p.id} onClick={() => setSelectedProject(p.id)}
-                className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-left transition-colors ${
-                  p.id === selectedProject ? 'bg-white text-[#1a1a1a] font-semibold shadow-sm' : 'hover:bg-white/60 text-dim'
-                }`}>
+              <button key={p.id} onClick={() => document.getElementById('proj-mem-' + p.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-left transition-colors hover:bg-white/60 text-dim">
                 <FolderTree size={12} className="flex-shrink-0" />
                 <span className="truncate">{p.name || p.id}</span>
                 {p.id === projectId && <span className="text-[9px] text-dim flex-shrink-0">当前</span>}
@@ -380,87 +368,101 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
 
         {/* ========== 项目记忆 ========== */}
         {level === 'project' && (
-          <div className="max-w-2xl flex flex-col gap-5">
-            {!selectedProject ? (
-              <p className="text-xs text-dim text-center py-10">请先在左侧选择项目</p>
-            ) : (
-              <>
-                <div>
-                  <h2 className="text-base font-bold flex items-center gap-2">
-                    <FolderTree size={16} /> 项目记忆
-                    <span className="text-xs font-normal text-dim ml-1">{projects.find(p => p.id === selectedProject)?.name || selectedProject}</span>
-                  </h2>
-                </div>
+          <div className="max-w-3xl flex flex-col gap-4">
+            <div>
+              <h2 className="text-base font-bold flex items-center gap-2">
+                <FolderTree size={16} /> 项目记忆
+                <span className="text-[10px] font-normal text-dim ml-1">全部项目默认展开 · 点击标题可折叠 · 字段只读，修改由 AI 处理</span>
+              </h2>
+            </div>
 
-                {pLoading ? <p className="text-xs text-dim text-center py-10">加载中…</p> : (
-                  <>
-                    {/* 维度区块：概述 / 实现进度 */}
-                    {PROJECT_DIMS.map(dim => (
-                      <div key={dim.title} className="flex flex-col gap-3">
-                        <p className="text-xs font-semibold text-dim uppercase tracking-wider flex items-baseline gap-2">
-                          {dim.title}
-                          <span className="text-[10px] font-normal text-dim/70">{dim.hint}</span>
-                        </p>
-                        {dim.keys.map(k => (
-                          <div key={k}>
-                            <label className={fieldLabel}>{k}</label>
-                            <textarea value={pFields[k] || ''} onChange={e => updateP(k, e.target.value)} rows={k === '抽象项目情况' ? 3 : 2}
-                              placeholder={`填写${k}…`}
-                              className="w-full px-3 py-2 border hairline rounded-xl text-xs outline-none resize-none focus:border-[var(--border-strong)] bg-[var(--bg-input)]" />
-                          </div>
-                        ))}
-                        {dim.arrayKeys.map(k => (
-                          <div key={k}>
-                            <label className={fieldLabel}>{k}（逗号分隔）</label>
-                            <input value={pFields[k] || ''} onChange={e => updateP(k, e.target.value)}
-                              placeholder={`填写${k}，多个用逗号分隔`}
-                              className="w-full px-3 py-2 border hairline rounded-xl text-xs outline-none focus:border-[var(--border-strong)] bg-[var(--bg-input)]" />
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-
-                    {/* 时间：日历热度图 + 项目统计 */}
-                    <div className="flex flex-col gap-3">
-                      <p className="text-xs font-semibold text-dim uppercase tracking-wider">时间</p>
-                      <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-3">
-                        <CalendarHeatmap
-                          data={Object.fromEntries(Object.entries(projectDays).map(([d, items]) => [d, items.length]))}
-                          onPick={d => setDayDetail({ date: d, items: projectDays[d] || [] })}
-                        />
-                        <div className="flex flex-col gap-2 text-xs">
-                          <div className="flex items-center justify-between">
-                            <span className="text-dim">创建时间</span>
-                            <span className="font-medium">{(projects.find(p => p.id === selectedProject) as any)?.created_at ? String((projects.find(p => p.id === selectedProject) as any)?.created_at).slice(0, 10) : '—'}</span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-dim">对话次数</span>
-                            <span className="font-medium">{projectStats.count} 次</span>
-                          </div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-dim">最近学习</span>
-                            <span className="font-medium">{projectStats.latest || '暂无'}</span>
-                          </div>
-                        </div>
-                      </div>
-                      {dayDetail && (
-                        <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-semibold">{dayDetail.date} 的对话</span>
-                            <button onClick={() => setDayDetail(null)} className="text-[10px] text-dim hover:text-[var(--text)]">关闭</button>
-                          </div>
-                          {dayDetail.items.length === 0 ? <p className="text-[11px] text-dim">无记录</p> : dayDetail.items.map((it, i) => (
-                            <div key={i} className="flex flex-col gap-0.5">
-                              <p className="text-[11px] font-medium">{it.dialogue_name}</p>
-                              {it.topic && <p className="text-[10px] text-dim">主题：{it.topic}</p>}
+            {projLoading ? <p className="text-xs text-dim text-center py-10">加载中…</p> : projects.length === 0 ? (
+              <p className="text-xs text-dim text-center py-10">暂无项目</p>
+            ) : projects.map(p => {
+              const data = projData[p.id]
+              const open = !collapsed[p.id]
+              return (
+                <div key={p.id} id={'proj-mem-' + p.id} className="border hairline rounded-2xl bg-[var(--bg-panel)] overflow-hidden">
+                  <button onClick={() => setCollapsed(prev => ({ ...prev, [p.id]: !prev[p.id] }))}
+                    className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-[var(--bg-hover)] transition-colors">
+                    <ChevronDown size={14} className={`transition-transform flex-shrink-0 ${open ? '' : '-rotate-90'}`} />
+                    <FolderTree size={14} className="flex-shrink-0" />
+                    <span className="text-sm font-bold truncate">{p.name || p.id}</span>
+                    {p.id === projectId && <span className="text-[9px] text-dim flex-shrink-0">当前</span>}
+                    <span className="text-[10px] text-dim ml-auto flex-shrink-0">
+                      {p.created_at ? String(p.created_at).slice(0, 10) : ''}{data ? ` · ${data.count} 次对话` : ''}
+                    </span>
+                  </button>
+                  {open && (
+                    <div className="px-4 pb-4 pt-1 flex flex-col gap-4">
+                      {/* 维度字段：只读 + 修改入口 */}
+                      {PROJECT_DIMS.map(dim => (
+                        <div key={dim.title} className="flex flex-col gap-2">
+                          <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">
+                            {dim.title}<span className="ml-1 text-[9px] font-normal text-dim/70">{dim.hint}</span>
+                          </p>
+                          {dim.keys.map(k => (
+                            <div key={k}>
+                              <div className="flex items-center justify-between mb-1">
+                                <label className="text-[10px] font-semibold text-dim uppercase tracking-wider">{k}</label>
+                                <button onClick={() => onRequestModify?.(k, p.id)}
+                                  className="text-[9px] text-[var(--accent)] hover:underline">修改</button>
+                              </div>
+                              <div className="px-3 py-2 border hairline rounded-xl text-xs bg-[var(--bg-input)] text-[var(--text-muted)] leading-relaxed">
+                                {(data?.fields[k] || '').trim() ? <MiniMD text={data?.fields[k] || ''} /> : <span className="text-dim">（空）</span>}
+                              </div>
+                            </div>
+                          ))}
+                          {dim.arrayKeys.map(k => (
+                            <div key={k}>
+                              <div className="flex items-center justify-between mb-1">
+                                <label className="text-[10px] font-semibold text-dim uppercase tracking-wider">{k}</label>
+                                <button onClick={() => onRequestModify?.(k, p.id)}
+                                  className="text-[9px] text-[var(--accent)] hover:underline">修改</button>
+                              </div>
+                              <div className="px-3 py-2 border hairline rounded-xl text-xs bg-[var(--bg-input)] text-[var(--text-muted)] leading-relaxed">
+                                {(data?.fields[k] || '').trim() ? (data?.fields[k] || '') : <span className="text-dim">（空）</span>}
+                              </div>
                             </div>
                           ))}
                         </div>
-                      )}
+                      ))}
+                      {/* 时间：日历热度图 + 统计 */}
+                      <div className="flex flex-col gap-2">
+                        <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">时间</p>
+                        <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
+                          <CalendarHeatmap
+                            data={Object.fromEntries(Object.entries(data?.days || {}).map(([d, items]) => [d, items.length]))}
+                            onPick={d => setDayDetail({ date: d, items: (data?.days || {})[d] || [] })}
+                          />
+                          <div className="flex gap-4 text-[10px] text-dim mt-2">
+                            <span>累计 {data?.count || 0} 次对话</span>
+                            {data?.latest && <span>最近学习 {data.latest}</span>}
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  </>
-                )}
-              </>
+                  )}
+                </div>
+              )
+            })}
+
+            {/* 当天对话详情（点击日历日期） */}
+            {dayDetail && (
+              <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold">{dayDetail.date} 的对话</span>
+                  <button onClick={() => setDayDetail(null)} className="text-[10px] text-dim hover:text-[var(--text)]">关闭</button>
+                </div>
+                {dayDetail.items.length === 0 ? <p className="text-[11px] text-dim">无记录</p> : dayDetail.items.map((it, i) => (
+                  <div key={i} className="flex flex-col gap-0.5">
+                    <p className="text-[11px] font-medium">
+                      {it.project_name && it.project_name !== it.project_id ? `${it.project_name} · ` : ''}{it.dialogue_name}
+                    </p>
+                    {it.topic && <p className="text-[10px] text-dim">主题：{it.topic}</p>}
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         )}
