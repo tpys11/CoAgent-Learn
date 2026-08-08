@@ -177,7 +177,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         memory_txt = ""
         try:
             if (cfg.get("memoryEnabled") is not False):
-                mem = registry.execute("memory_ops", action="read", layer="L2")
+                mem = registry.execute("memory_ops", action="read", layer=settings.get('memoryLayer', 'L2'))
                 state["memory"] = mem.get("memory", {})
                 if state["memory"]:
                     memory_txt = "\n已有记忆: " + json.dumps(state["memory"], ensure_ascii=False)
@@ -248,11 +248,12 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         if state.get("knowledge"): context += f"知识库: {json.dumps(state['knowledge'], ensure_ascii=False)}" + NL
         if state.get("search_results"): context += f"联网搜索: {json.dumps(state['search_results'], ensure_ascii=False)}" + NL
         if state.get("review_feedback"): context += NL + "【审核修正要求】上一版未通过审核，请针对以下意见修改后再生成：" + NL + state["review_feedback"] + NL
-        # 读最近对话历史
+        # 读最近对话历史（历史条数可配置）
         try:
             from core.sqlite_client import get_db
             _dbx = get_db()
-            _rows = _dbx.execute("SELECT role,content FROM messages WHERE dialogue_id=%s ORDER BY created_at DESC LIMIT 10", (state.get("dialogue_id", "default"),))
+            _limit = int(settings.get('historyLimit') or 10)
+            _rows = _dbx.execute("SELECT role,content FROM messages WHERE dialogue_id=%s ORDER BY created_at DESC LIMIT %s", (state.get("dialogue_id", "default"), _limit))
             _rows.reverse()
             if _rows:
                 context += NL + "【历史对话】" + NL

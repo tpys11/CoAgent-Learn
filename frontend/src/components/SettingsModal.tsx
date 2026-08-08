@@ -1,55 +1,183 @@
 import { useState, useEffect } from 'react'
-import { X, Sun, Moon, Monitor, Type, Key, LampDesk } from 'lucide-react'
+import { X, Sun, Moon, Monitor, Type, LampDesk, Sliders, Zap, MessageSquare, Key, Timer, Database, Plug, Bug, Check, Trash2, Plus, Download } from 'lucide-react'
 import { getThemePref, setThemePref, type ThemePref } from '../theme'
 
 interface Props {
   onClose: () => void
+  projectId: string | null
 }
 
-export default function SettingsModal({ onClose }: Props) {
-  const [fontSize, setFontSize] = useState(() => parseInt(localStorage.getItem('coagent-fontSize') || '15'))
+/** 多厂家 API Key 管理 */
+const PROVIDERS = [
+  { id: 'deepseek', name: 'DeepSeek' },
+  { id: 'openai', name: 'OpenAI' },
+  { id: 'qwen', name: '通义千问' },
+  { id: 'zhipu', name: '智谱 GLM' },
+  { id: 'moonshot', name: '月之暗面' },
+  { id: 'doubao', name: '豆包' },
+]
+
+interface McpServer { id: string; name: string; type: 'stdio' | 'http' | 'sse'; target: string }
+
+const get = (k: string, d: string) => { try { return localStorage.getItem(k) || d } catch { return d } }
+const getJSON = <T,>(k: string, d: T): T => { try { return JSON.parse(localStorage.getItem(k) || 'null') ?? d } catch { return d } }
+
+function Section({ icon: Icon, title, desc, children }: { icon: any; title: string; desc?: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-2.5">
+      <div>
+        <p className="text-xs font-semibold text-dim uppercase tracking-wider flex items-center gap-1.5"><Icon size={13} /> {title}</p>
+        {desc && <p className="text-[10px] text-dim mt-0.5">{desc}</p>}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function PillGroup({ options, value, onChange }: { options: string[]; value: string; onChange: (v: string) => void }) {
+  return (
+    <div className="flex gap-1.5 flex-wrap">
+      {options.map(o => (
+        <button key={o} onClick={() => onChange(o)}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+            value === o ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'
+          }`}>{o}</button>
+      ))}
+    </div>
+  )
+}
+
+function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button onClick={() => onChange(!checked)}
+      className={`w-9 h-5 rounded-full flex items-center px-0.5 transition-colors flex-shrink-0 ${
+        checked ? 'bg-[#1a1a1a] justify-end' : 'bg-[var(--bg-active)] justify-start'
+      }`}>
+      <span className="w-4 h-4 rounded-full bg-white shadow" />
+    </button>
+  )
+}
+
+function SwitchRow({ label, desc, checked, onChange }: { label: string; desc?: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div className="flex items-center justify-between border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
+      <div>
+        <p className="text-xs font-semibold">{label}</p>
+        {desc && <p className="text-[10px] text-dim mt-0.5">{desc}</p>}
+      </div>
+      <Toggle checked={checked} onChange={onChange} />
+    </div>
+  )
+}
+
+export default function SettingsModal({ onClose, projectId }: Props) {
+  const [fontSize, setFontSize] = useState(() => parseInt(get('coagent-fontSize', '15')))
   const [theme, setTheme] = useState<ThemePref>(() => getThemePref())
-  const [saved, setSaved] = useState(false)
+  const [feedback, setFeedback] = useState('')
+
+  // 默认对话参数
+  const [defSettings, setDefSettings] = useState<Record<string, string>>(() => getJSON('coagent-default-settings', { chatMode: 'kb', outputFormat: '高结构化', outputVolume: '适中', depth: '中' }))
+  // 生成后动作
+  const [postActions, setPostActions] = useState(() => getJSON('coagent-post-actions', { autoSaveResource: true, autoFollowups: true }))
+  // 流式与上下文
+  const [context, setContext] = useState(() => getJSON('coagent-context-settings', { typing: false, historyLimit: 10, memoryLayer: 'L2' }))
+  // 模型与 Key
+  const [provider, setProvider] = useState(() => get('coagent-provider', 'deepseek'))
+  const [provKeys, setProvKeys] = useState<Record<string, string>>(() => getJSON('coagent-provider-keys', {}))
+  const [mainKey, setMainKey] = useState(() => get('coagent-apikey', ''))
+  // 超时
+  const [timeoutSec, setTimeoutSec] = useState(() => parseInt(get('coagent-timeout', '120')))
+  // MCP 配置
+  const [mcpServers, setMcpServers] = useState<McpServer[]>(() => getJSON('coagent-mcp-servers', []))
+  const [mcpShow, setMcpShow] = useState(false)
+  const [mcpName, setMcpName] = useState('')
+  const [mcpType, setMcpType] = useState<'stdio' | 'http' | 'sse'>('http')
+  const [mcpTarget, setMcpTarget] = useState('')
+  // 调试
+  const [debug, setDebug] = useState(() => get('coagent-debug', '0') === '1')
 
   useEffect(() => {
     document.documentElement.style.setProperty('--ui-font', `${fontSize}px`)
     localStorage.setItem('coagent-fontSize', String(fontSize))
   }, [fontSize])
-
+  useEffect(() => { setThemePref(theme) }, [theme])
+  useEffect(() => { localStorage.setItem('coagent-default-settings', JSON.stringify(defSettings)) }, [defSettings])
+  useEffect(() => { localStorage.setItem('coagent-post-actions', JSON.stringify(postActions)) }, [postActions])
+  useEffect(() => { localStorage.setItem('coagent-context-settings', JSON.stringify(context)) }, [context])
+  useEffect(() => { localStorage.setItem('coagent-provider', provider) }, [provider])
+  useEffect(() => { localStorage.setItem('coagent-provider-keys', JSON.stringify(provKeys)) }, [provKeys])
   useEffect(() => {
-    setThemePref(theme)
-  }, [theme])
+    if (mainKey.trim()) localStorage.setItem('coagent-apikey', mainKey.trim())
+  }, [mainKey])
+  useEffect(() => { localStorage.setItem('coagent-timeout', String(timeoutSec)) }, [timeoutSec])
+  useEffect(() => { localStorage.setItem('coagent-debug', debug ? '1' : '0') }, [debug])
 
+  const flash = (msg: string) => { setFeedback(msg); setTimeout(() => setFeedback(''), 2000) }
+
+  const doClearDialogues = async () => {
+    if (!projectId) { flash('暂无项目'); return }
+    if (!window.confirm('确定清空当前项目的全部对话？消息将不可恢复（项目与记忆保留）。')) return
+    const r = await fetch('/api/projects/' + encodeURIComponent(projectId) + '/dialogues', { method: 'DELETE' })
+    if (r.ok) flash('对话已清空') ; else flash('清空失败')
+  }
+  const doClearMemories = async () => {
+    if (!window.confirm('确定清空全部记忆（个人全局 / 项目 / 对话记忆）？')) return
+    const r = await fetch('/api/memories', { method: 'DELETE' })
+    if (r.ok) flash('记忆已清空') ; else flash('清空失败')
+  }
+  const doExport = async () => {
+    try {
+      const r = await fetch('/api/export?project_id=' + encodeURIComponent(projectId || 'default'), { cache: 'no-store' })
+      const j = await r.json()
+      const blob = new Blob([JSON.stringify(j, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a'); a.href = url; a.download = 'coagent-data-export.json'; a.click()
+      URL.revokeObjectURL(url)
+      flash('已导出 JSON 备份')
+    } catch { flash('导出失败') }
+  }
+
+  const addMcp = () => {
+    if (!mcpName.trim() || !mcpTarget.trim()) return
+    const next = [...mcpServers, { id: 'mcp-' + Date.now(), name: mcpName.trim(), type: mcpType, target: mcpTarget.trim() }]
+    setMcpServers(next)
+    localStorage.setItem('coagent-mcp-servers', JSON.stringify(next))
+    setMcpName(''); setMcpTarget(''); setMcpShow(false)
+  }
+  const removeMcp = (id: string) => {
+    const next = mcpServers.filter(s => s.id !== id)
+    setMcpServers(next)
+    localStorage.setItem('coagent-mcp-servers', JSON.stringify(next))
+  }
+
+  const inputCls = 'w-full px-3 py-2 input-surface rounded-lg text-xs outline-none focus:border-[var(--accent)]'
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="card-lift w-full max-w-md mx-4" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b hairline">
+      <div className="card-lift w-full max-w-lg mx-4 max-h-[88vh] flex flex-col" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b hairline flex-shrink-0">
           <h2 className="font-display text-lg">设置</h2>
-          <button onClick={onClose} className="p-1 rounded-lg row-hover text-dim"><X size={18} /></button>
+          <div className="flex items-center gap-2">
+            {feedback && <span className="text-[11px] text-green-600 flex items-center gap-1"><Check size={11} /> {feedback}</span>}
+            <button onClick={onClose} className="p-1 rounded-lg row-hover text-dim"><X size={18} /></button>
+          </div>
         </div>
 
-        <div className="p-5 flex flex-col gap-5">
+        <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-6">
           {/* 字体大小 */}
-          <div>
-            <label className="text-xs font-semibold text-dim uppercase tracking-wider flex items-center gap-1.5 mb-2">
-              <Type size={14} /> 字体大小
-            </label>
+          <Section icon={Type} title="字体大小">
             <div className="flex items-center gap-3">
               <span className="text-xs text-dim">12</span>
-              <input
-                type="range" min="12" max="20" value={fontSize}
+              <input type="range" min="12" max="20" value={fontSize}
                 onChange={(e) => setFontSize(Number(e.target.value))}
-                className="flex-1 accent-[var(--accent)]"
-              />
+                className="flex-1 accent-[var(--accent)]" />
               <span className="text-xs text-dim">20</span>
               <span className="text-xs font-semibold text-[var(--text)] w-8 text-right">{fontSize}px</span>
             </div>
-          </div>
+          </Section>
 
-          {/* 主题 */}
-          <div>
-            <label className="text-xs font-semibold text-dim uppercase tracking-wider mb-2 block">页面主题</label>
+          {/* 页面主题 */}
+          <Section icon={Monitor} title="页面主题">
             <div className="flex gap-2">
               {[
                 { value: 'light', icon: Sun, swatch: 'bg-white border border-gray-300', iconColor: 'text-gray-700' },
@@ -57,22 +185,171 @@ export default function SettingsModal({ onClose }: Props) {
                 { value: 'warm', icon: LampDesk, swatch: 'bg-[#fdf3e3] border border-amber-200', iconColor: 'text-amber-700' },
                 { value: 'system', icon: Monitor, swatch: 'bg-gradient-to-r from-white via-gray-400 to-gray-900 border border-gray-300', iconColor: 'text-gray-700' },
               ].map(({ value, icon: Icon, swatch, iconColor }) => (
-                <button
-                  key={value}
-                  onClick={() => setTheme(value as ThemePref)}
-                  title={value}
+                <button key={value} onClick={() => setTheme(value as ThemePref)} title={value}
                   className={`flex-1 flex items-center justify-center aspect-[4/3] rounded-xl transition-all ${swatch} ${
-                    theme === value
-                      ? 'ring-2 ring-[var(--accent)] shadow-sm'
-                      : 'hover:brightness-95'
-                  }`}
-                >
+                    theme === value ? 'ring-2 ring-[var(--accent)] shadow-sm' : 'hover:brightness-95'
+                  }`}>
                   <Icon size={18} strokeWidth={theme === value ? 2.2 : 1.8} className={iconColor} />
                 </button>
               ))}
             </div>
-          </div>
+          </Section>
 
+          {/* 默认对话参数 */}
+          <Section icon={Sliders} title="默认对话参数" desc="新对话自动套用；输入框内仍可逐次调整">
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-dim w-16 flex-shrink-0">模式</span>
+                <PillGroup options={['kb', '默认']} value={defSettings.chatMode}
+                  onChange={v => setDefSettings({ ...defSettings, chatMode: v })} />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-dim w-16 flex-shrink-0">结构化</span>
+                <PillGroup options={['高结构化', '自然']} value={defSettings.outputFormat}
+                  onChange={v => setDefSettings({ ...defSettings, outputFormat: v })} />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-dim w-16 flex-shrink-0">输出量</span>
+                <PillGroup options={['精简', '适中', '拓展']} value={defSettings.outputVolume}
+                  onChange={v => setDefSettings({ ...defSettings, outputVolume: v })} />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-dim w-16 flex-shrink-0">深度</span>
+                <PillGroup options={['浅', '中', '深']} value={defSettings.depth}
+                  onChange={v => setDefSettings({ ...defSettings, depth: v })} />
+              </div>
+            </div>
+          </Section>
+
+          {/* 生成后动作 */}
+          <Section icon={Zap} title="生成后动作">
+            <div className="flex flex-col gap-2">
+              <SwitchRow label="自动保存生成物到「我的上传」" desc="对话结束后将回复存入资料列表" checked={postActions.autoSaveResource}
+                onChange={v => setPostActions({ ...postActions, autoSaveResource: v })} />
+              <SwitchRow label="自动生成追问" desc="对话结束后生成推荐追问（右侧栏展示）" checked={postActions.autoFollowups}
+                onChange={v => setPostActions({ ...postActions, autoFollowups: v })} />
+            </div>
+          </Section>
+
+          {/* 流式与上下文 */}
+          <Section icon={MessageSquare} title="流式输出与上下文策略">
+            <div className="flex flex-col gap-2">
+              <SwitchRow label="打字机渲染效果" desc="回复逐字显示；关闭则整段一次显示" checked={context.typing}
+                onChange={v => setContext({ ...context, typing: v })} />
+              <div className="flex flex-col gap-1.5 border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold">历史消息条数</span>
+                  <span className="text-[11px] text-dim">{context.historyLimit} 条</span>
+                </div>
+                <input type="range" min="4" max="30" value={context.historyLimit}
+                  onChange={e => setContext({ ...context, historyLimit: Number(e.target.value) })}
+                  className="flex-1 accent-[var(--accent)]" />
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold">记忆注入深度</span>
+                  <PillGroup options={['L1', 'L2', 'L3']} value={context.memoryLayer}
+                    onChange={v => setContext({ ...context, memoryLayer: v })} />
+                </div>
+              </div>
+            </div>
+          </Section>
+
+          {/* 模型与 API Key */}
+          <Section icon={Key} title="模型与 API Key" desc="与模型卡共用同一份配置（localStorage）">
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-dim w-20 flex-shrink-0">默认厂家</span>
+                <select value={provider} onChange={e => setProvider(e.target.value)} className={inputCls}>
+                  {PROVIDERS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+              <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
+                {PROVIDERS.map(p => (
+                  <div key={p.id} className="flex items-center gap-2">
+                    <span className="text-[11px] text-dim w-20 flex-shrink-0">{p.name}</span>
+                    <input type="password" value={provKeys[p.id] || ''} placeholder={p.id === 'deepseek' ? 'sk-...' : '可选'}
+                      onChange={e => setProvKeys({ ...provKeys, [p.id]: e.target.value })}
+                      className={inputCls} />
+                    {(provKeys[p.id] || '').length > 8 && <span className="text-[10px] text-green-600 flex-shrink-0">✓ 已配置</span>}
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-dim w-20 flex-shrink-0">主 Key</span>
+                <input type="password" value={mainKey} placeholder="coagent-apikey（兼容旧配置）"
+                  onChange={e => setMainKey(e.target.value)} className={inputCls} />
+              </div>
+            </div>
+          </Section>
+
+          {/* 请求超时 */}
+          <Section icon={Timer} title="请求超时" desc="发送消息后无响应自动中止，避免一直转圈">
+            <div className="flex items-center gap-3 border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
+              <span className="text-xs text-dim">30s</span>
+              <input type="range" min="30" max="300" step="10" value={timeoutSec}
+                onChange={e => setTimeoutSec(Number(e.target.value))}
+                className="flex-1 accent-[var(--accent)]" />
+              <span className="text-xs text-dim">300s</span>
+              <span className="text-xs font-semibold w-12 text-right">{timeoutSec}s</span>
+            </div>
+          </Section>
+
+          {/* 数据管理 */}
+          <Section icon={Database} title="数据管理">
+            <div className="flex gap-2">
+              <button onClick={doClearDialogues} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[11px] border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">
+                <Trash2 size={12} /> 清空对话
+              </button>
+              <button onClick={doClearMemories} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[11px] border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">
+                <Trash2 size={12} /> 清空记忆
+              </button>
+              <button onClick={doExport} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[11px] border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">
+                <Download size={12} /> 导出数据
+              </button>
+            </div>
+          </Section>
+
+          {/* MCP 配置 */}
+          <Section icon={Plug} title="MCP 配置" desc="连接配置已保存；实际连接与工具调用能力正在开发中">
+            <div className="flex flex-col gap-2">
+              {mcpServers.length > 0 && (
+                <div className="flex flex-col gap-1.5">
+                  {mcpServers.map(s => (
+                    <div key={s.id} className="flex items-center gap-2 border hairline rounded-lg px-3 py-2 bg-[var(--bg-panel)]">
+                      <span className="text-[11px] font-semibold flex-shrink-0">{s.name}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-dim flex-shrink-0">{s.type}</span>
+                      <span className="text-[10px] text-dim truncate flex-1 font-mono">{s.target}</span>
+                      <button onClick={() => removeMcp(s.id)} className="p-1 text-gray-300 hover:text-red-500"><Trash2 size={12} /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {mcpShow ? (
+                <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
+                  <input autoFocus value={mcpName} onChange={e => setMcpName(e.target.value)} placeholder="名称（如 my-tools）" className={inputCls} />
+                  <div className="flex gap-1.5">
+                    {(['stdio', 'http', 'sse'] as const).map(t => (
+                      <button key={t} onClick={() => setMcpType(t)}
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${mcpType === t ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-hover)] text-dim'}`}>{t.toUpperCase()}</button>
+                    ))}
+                  </div>
+                  <input value={mcpTarget} onChange={e => setMcpTarget(e.target.value)} placeholder={mcpType === 'stdio' ? '命令（如 npx @modelcontextprotocol/server-xxx）' : 'URL（如 http://localhost:8080/mcp）'} className={inputCls} />
+                  <div className="flex gap-2 justify-end">
+                    <button onClick={() => setMcpShow(false)} className="px-3 py-1.5 text-[11px] text-dim row-hover rounded-lg">取消</button>
+                    <button onClick={addMcp} className="px-3 py-1.5 text-[11px] bg-[#1a1a1a] text-white rounded-lg font-semibold">保存</button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => setMcpShow(true)} className="flex items-center gap-1.5 px-3 py-2 text-[11px] text-dim hover:bg-[var(--bg-hover)] rounded-xl self-start transition-colors">
+                  <Plus size={12} /> 添加 MCP Server
+                </button>
+              )}
+            </div>
+          </Section>
+
+          {/* 调试模式 */}
+          <Section icon={Bug} title="调试模式" desc="开启后，对话回复底部显示各 Agent 的耗时与 token 估算">
+            <SwitchRow label="调试模式" checked={debug} onChange={setDebug} />
+          </Section>
         </div>
       </div>
     </div>

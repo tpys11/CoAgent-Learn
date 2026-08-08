@@ -370,6 +370,50 @@ async def get_task_stats(project_id: str = "default", limit: int = 20):
     return {"tasks": out}
 
 
+# ---------- 数据管理 ----------
+
+@app.delete("/api/memories")
+async def clear_memories():
+    """清空全部记忆：全局画像 / 项目记忆 / 对话记忆"""
+    from core.postgres_client import pg_client
+    pg_client.execute("DELETE FROM global_profile", ())
+    pg_client.execute("DELETE FROM project_memories", ())
+    pg_client.execute("DELETE FROM dialogue_memories", ())
+    return {"status": "ok"}
+
+
+@app.delete("/api/projects/{pid}/dialogues")
+async def clear_project_dialogues(pid: str):
+    """清空指定项目的全部对话（消息 + 对话画像级联删除，保留项目与项目记忆）"""
+    from core.postgres_client import pg_client
+    dialogs = pg_client.execute("SELECT id FROM dialogues WHERE project_id=%s", (pid,))
+    for d in dialogs or []:
+        pg_client.execute("DELETE FROM messages WHERE dialogue_id=%s", (d["id"],))
+        pg_client.execute("DELETE FROM dialogue_memories WHERE dialogue_id=%s", (d["id"],))
+    pg_client.execute("DELETE FROM dialogues WHERE project_id=%s", (pid,))
+    return {"status": "ok", "deleted": len(dialogs or [])}
+
+
+@app.get("/api/export")
+async def export_all(project_id: str = "default"):
+    """导出全部数据（JSON 备份）：项目/对话/消息/记忆/资源/知识库"""
+    import json as _json
+    from core.postgres_client import pg_client
+    def _q(sql, args=()):
+        return pg_client.execute(sql, args)
+    out = {
+        "projects": _q("SELECT id, name, is_default, simple, domain, created_at FROM projects WHERE archived = FALSE"),
+        "dialogues": _q("SELECT id, project_id, session_id, name, created_at FROM dialogues"),
+        "messages": _q("SELECT dialogue_id, role, content, created_at FROM messages ORDER BY created_at"),
+        "global_profile": _q("SELECT data, updated_at FROM global_profile"),
+        "project_memories": _q("SELECT project_id, data, updated_at FROM project_memories"),
+        "dialogue_memories": _q("SELECT dialogue_id, project_id, profile_data, updated_at FROM dialogue_memories"),
+        "resources": _q("SELECT id, name, content, project_id, created_at FROM resources WHERE project_id=%s", (project_id,)),
+        "stats": _q("SELECT project_id, tokens, duration_seconds, metrics FROM stats"),
+    }
+    return {"exported_at": __import__("datetime").datetime.now().isoformat(), "data": out}
+
+
 # ---------- 画像 API ----------
 
 class ProfileData(BaseModel):
@@ -760,8 +804,23 @@ async def chat(req: ChatRequest):
                             _pg.execute("INSERT INTO messages(dialogue_id,role,content) VALUES(%s,%s,%s)",(_did,"assistant",_reply))
                     except Exception as _e:
                         print("[存储]",_e)
+                    # 自动保存生成物到"我的上传"（设置开关 autoSaveResource）
+                    if req.settings and req.settings.get('autoSaveResource') and result.get("final_reply"):
+                        try:
+                            import hashlib as _hl
+                            from core.postgres_client import pg_client as _pg3
+                            _fr = result.get("final_reply","")
+                            _nm = "对话生成·" + _fr.strip()[:14]
+                            _rid = _hl.md5((_nm + pid).encode()).hexdigest()[:16]
+                            _has = _pg3.execute("SELECT id FROM resources WHERE id=%s", (_rid,))
+                            if _has:
+                                _pg3.execute("UPDATE resources SET content=%s WHERE id=%s", (_fr[:6000], _rid))
+                            else:
+                                _pg3.execute("INSERT INTO resources (id, name, content, project_id) VALUES (%s,%s,%s,%s)", (_rid, _nm, _fr[:6000], pid))
+                        except Exception as _e:
+                            print("[auto-save]", _e)
                     token_queue.put(("done", result))
-                    # 后台异步分析记忆 + 生成追问
+                    # 后台异步分析记忆 + 生成追问（开关可配）
                     try:
                         reply = result.get("final_reply", "")
                         import sys as _s
@@ -771,8 +830,9 @@ async def chat(req: ChatRequest):
                             from core.postgres_client import pg_client
                             import threading
                             threading.Thread(target=update_memories, args=(req.api_key, pid, _did, pg_client, req.session_id or "default"), daemon=True).start()
-                            from core.followups import generate_followups
-                            threading.Thread(target=generate_followups, args=(req.api_key, pid, _did, pg_client), daemon=True).start()
+                            if not (req.settings and req.settings.get('autoFollowups') is False):
+                                from core.followups import generate_followups
+                                threading.Thread(target=generate_followups, args=(req.api_key, pid, _did, pg_client), daemon=True).start()
                     except Exception as e:
                         print("[记忆] err:", e)
                 except Exception as e:
@@ -793,7 +853,7 @@ async def chat(req: ChatRequest):
                     yield f"data: {json.dumps({'type': 'thought_token', 'agent': agent, 'chunk': chunk})}\n\n"
                 elif msg[0] == "done":
                     result = msg[1]
-                    yield f"data: {json.dumps({'type': 'done', 'reply': result.get('final_reply', '处理完成'), 'steps': result.get('steps', []), 'mindchain': result.get('mindchain', [])})}\n\n"
+                    yield f"data: {json.dumps({'type': 'done', 'reply': result.get('final_reply', '处理完成'), 'steps': result.get('steps', []), 'mindchain': result.get('mindchain', []), 'task_stats': result.get('task_stats', {})})}\n\n"
                     break
                 elif msg[0] == "error":
                     yield f"data: {json.dumps({'type': 'error', 'message': msg[1]})}\n\n"

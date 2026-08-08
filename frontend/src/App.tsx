@@ -195,6 +195,7 @@ function App() {
     setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'user', content: text }] }))
     setIsLoading(true)
     setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = []
+    let timeoutTimer: any = null
     try {
       // 读取所选模型厂家配置
       const provKeys = (() => { try { return JSON.parse(localStorage.getItem('coagent-provider-keys') || '{}') } catch { return {} } })()
@@ -212,12 +213,20 @@ function App() {
         doubao: 'https://ark.cn-beijing.volces.com/api/v3',
       }
       const apiKey = provKeys[provider] || localStorage.getItem('coagent-apikey') || undefined
+      // 合并默认对话参数（设置里可配）
+      const defSettings = (() => { try { return JSON.parse(localStorage.getItem('coagent-default-settings') || '{}') } catch { return {} } })()
+      const mergedSettings = { ...defSettings, ...(settings || {}) }
+      // 请求超时（设置里可配，默认 120s）
+      const timeoutMs = (parseInt(localStorage.getItem('coagent-timeout') || '120', 10) || 120) * 1000
+      const ctrl = new AbortController()
+      timeoutTimer = setTimeout(() => ctrl.abort(), timeoutMs)
       const res = await fetch('/api/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text.trim(), session_id: sessionId.current, dialogue_id: currentDialogueId, project_id: currentProjectId, api_key: apiKey, model: model, base_url: providerBaseUrls[provider], settings: settings || {}, mode: (settings && settings.chatMode) || 'kb', image: (settings && settings.image) || undefined, agents: agents }),
+        body: JSON.stringify({ message: text.trim(), session_id: sessionId.current, dialogue_id: currentDialogueId, project_id: currentProjectId, api_key: apiKey, model: model, base_url: providerBaseUrls[provider], settings: mergedSettings, mode: (mergedSettings && mergedSettings.chatMode) || 'kb', image: (mergedSettings && mergedSettings.image) || undefined, agents: agents }),
+        signal: ctrl.signal,
       })
       const reader = res.body!.getReader(); const decoder = new TextDecoder()
-      let finalReply = ''; const steps: any[] = []
+      let finalReply = ''; const steps: any[] = []; let taskStats: any = null
       var _buf=""
       while (true) {
         const { done, value } = await reader.read(); if (done) break
@@ -248,16 +257,45 @@ function App() {
               return next
             })
           }
-          if (data.type === 'done') { finalReply = data.reply; steps.push(...(data.steps || [])) }
+          if (data.type === 'done') { finalReply = data.reply; steps.push(...(data.steps || [])); taskStats = data.task_stats || null }
         }
       }
       try{
-        if(_buf.trim()){var _blines=_buf.split(String.fromCharCode(10));for(var _bi=0;_bi<_blines.length;_bi++){var _bl=_blines[_bi];if(!_bl.startsWith("data: "))continue;try{var _bd=JSON.parse(_bl.slice(6));if(_bd.type==="done")finalReply=_bd.reply||finalReply}catch(_be){}}}
-        setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'assistant', content: finalReply || '处理完成', steps, think: mindchainRef.current.map(m => m.content) }] }))
+        if(_buf.trim()){var _blines=_buf.split(String.fromCharCode(10));for(var _bi=0;_bi<_blines.length;_bi++){var _bl=_blines[_bi];if(!_bl.startsWith("data: "))continue;try{var _bd=JSON.parse(_bl.slice(6));if(_bd.type==="done"){finalReply=_bd.reply||finalReply;taskStats=_bd.task_stats||taskStats}}catch(_be){}}}
+        // 调试模式：在回复底部追加各 Agent 耗时/token 摘要
+        const debugOn = localStorage.getItem('coagent-debug') === '1'
+        let debugLine = ''
+        if (debugOn && taskStats && Object.keys(taskStats).length) {
+          const NODE_CN: Record<string, string> = { plan: '规划', study_memory: '学情', kb: '知识库', generate: '生成', review: '审核' }
+          const nodes = Object.entries(taskStats).filter(([k]) => k !== 'token_estimate')
+          const total = nodes.reduce((s, [, v]: any) => s + (v.ms || 0), 0)
+          debugLine = '⏱ ' + nodes.map(([k, v]: any) => `${NODE_CN[k] || k} ${v.ms}ms×${v.llm_calls || 1}`).join(' · ') + ` · 总计 ${total}ms · ~${taskStats.token_estimate || 0} tokens`
+        }
+        const thinkArr = mindchainRef.current.map(m => m.content)
+        if (debugLine) thinkArr.push(debugLine)
+        const finalContent = finalReply || '处理完成'
+        // 打字机效果（设置开关）
+        const typingOn = (() => { try { return (JSON.parse(localStorage.getItem('coagent-context-settings') || '{}') as any).typing === true } catch { return false } })()
+        if (typingOn) {
+          setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'assistant', content: '', steps, think: thinkArr }] }))
+          let i = 0
+          const iv = setInterval(() => {
+            i += 3
+            const chunk = finalContent.slice(0, i)
+            setAllMessages(prev => {
+              const arr = [...(prev[did || ''] || [])]
+              if (arr.length) arr[arr.length - 1] = { role: 'assistant', content: chunk, steps, think: thinkArr }
+              return { ...prev, [did || '']: arr }
+            })
+            if (i >= finalContent.length) clearInterval(iv)
+          }, 16)
+        } else {
+          setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'assistant', content: finalContent, steps, think: thinkArr }] }))
+        }
       }catch(_ex){}
     } catch {
       setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'assistant', content: '抱歉，请求失败。' }] }))
-    } finally { setIsLoading(false) }
+    } finally { clearTimeout(timeoutTimer); setIsLoading(false) }
   }, [currentDialogueId])
   const handleSaveAgent = useCallback((updated: AgentConfig) => {
     setAgents(prev => prev.map(a => a.id === updated.id ? updated : a))
@@ -348,7 +386,7 @@ function App() {
 
 
       {showDiagnosis && <DiagnosisModal onClose={() => setShowDiagnosis(false)} />}
-      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} projectId={currentProjectId} />}
       {showGuide && <GuideModal onClose={() => setShowGuide(false)} />}
       {wizard && <ProfileWizard mode={wizard.mode} projectName={wizard.name} onClose={() => {
         // 跳过：项目标记为无画像（simple），名字加 [简]，后续对话不弹向导
