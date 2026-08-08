@@ -25,34 +25,21 @@ const getJSON = <T,>(k: string, d: T): T => { try { return JSON.parse(localStora
 /** 当前版本号（与 package.json 同步） */
 const APP_VERSION = '0.2.0'
 
-/** 设置分区（Claude 风格左侧栏）：基础分组收纳 外观/模型与API/数据 */
-const GROUPS: Array<{ label: string; subs: Array<{ label: string; items: Array<{ key: string; label: string; icon: any }> }> }> = [
-  {
-    label: '基础',
-    subs: [
-      { label: '外观', items: [{ key: 'font', label: '字体大小', icon: Type }, { key: 'theme', label: '页面主题', icon: Monitor }] },
-      {
-        label: '模型与 API',
-        items: [
-          { key: 'keys', label: '模型与 API Key', icon: Key },
-          { key: 'timeout', label: '请求超时', icon: Timer },
-        ],
-      },
-      { label: '数据', items: [{ key: 'data', label: '数据管理', icon: Database }, { key: 'reset', label: '恢复默认设置', icon: Database }] },
-    ],
-  },
-  {
-    label: '对话',
-    subs: [{ label: '', items: [
-      { key: 'defaults', label: '默认对话参数', icon: Sliders },
-      { key: 'actions', label: '生成后动作', icon: Zap },
-      { key: 'context', label: '流式与上下文', icon: MessageSquare },
-      { key: 'cleanup', label: '对话自动清理', icon: Trash2 },
-    ] }],
-  },
-  { label: '高级', subs: [{ label: '', items: [{ key: 'mcp', label: 'MCP 配置', icon: Plug }, { key: 'debug', label: '调试模式', icon: Bug }] }] },
-  { label: '其他', subs: [{ label: '', items: [{ key: 'about', label: '关于', icon: LampDesk }] }] },
+/** 设置分组（左侧只排 4 个大按钮，点开后右侧展示该组全部内容） */
+const GROUPS: Array<{ key: string; label: string; icon: any }> = [
+  { key: 'base', label: '基础', icon: Sliders },
+  { key: 'chat', label: '对话', icon: MessageSquare },
+  { key: 'advanced', label: '高级', icon: Plug },
+  { key: 'other', label: '其他', icon: LampDesk },
 ]
+
+/** 分组 → 其下设置项 */
+const GROUP_TABS: Record<string, string[]> = {
+  base: ['font', 'theme', 'keys', 'timeout', 'data', 'reset'],
+  chat: ['defaults', 'actions', 'context', 'cleanup'],
+  advanced: ['mcp', 'debug'],
+  other: ['about'],
+}
 
 function Section({ icon: Icon, title, desc, children }: { icon: any; title: string; desc?: string; children: React.ReactNode }) {
   return (
@@ -106,7 +93,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
   const [fontSize, setFontSize] = useState(() => parseInt(get('coagent-fontSize', '15')))
   const [theme, setTheme] = useState<ThemePref>(() => getThemePref())
   const [feedback, setFeedback] = useState('')
-  const [settingsTab, setSettingsTab] = useState('font')
+  const [settingsGroup, setSettingsGroup] = useState('base')
 
   // 默认对话参数
   const [defSettings, setDefSettings] = useState<Record<string, string>>(() => getJSON('coagent-default-settings', { chatMode: 'kb', outputFormat: '高结构化', outputVolume: '适中', depth: '中' }))
@@ -199,6 +186,8 @@ export default function SettingsModal({ onClose, projectId }: Props) {
   }
 
   const inputCls = 'w-full px-3 py-2 input-surface rounded-lg text-xs outline-none focus:border-[var(--accent)]'
+  /** 当前分组是否包含某设置项 */
+  const show = (k: string) => (GROUP_TABS[settingsGroup] || []).includes(k)
 
   /** 检查更新：对比 GitHub 最新 Release 版本号 */
   const checkUpdate = async () => {
@@ -232,30 +221,20 @@ export default function SettingsModal({ onClose, projectId }: Props) {
 
         {/* 左侧分类栏 + 右侧内容（Claude 风格） */}
         <div className="flex-1 flex min-h-0">
-          <div className="w-44 flex-shrink-0 border-r hairline bg-[var(--bg-sidebar)] p-2.5 overflow-y-auto">
+          <div className="w-40 flex-shrink-0 border-r hairline bg-[var(--bg-sidebar)] p-2.5 flex flex-col gap-1 overflow-y-auto">
             {GROUPS.map(g => (
-              <div key={g.label}>
-                <p className="text-[10px] font-bold text-dim uppercase tracking-wider px-2.5 mt-3 mb-1">{g.label}</p>
-                {g.subs.map(sub => (
-                  <div key={sub.label || g.label + '-' + sub.items[0]?.key}>
-                    {sub.label && <p className="text-[9px] text-dim px-2.5 mt-1.5 mb-0.5">{sub.label}</p>}
-                    {sub.items.map(it => (
-                      <button key={it.key} onClick={() => setSettingsTab(it.key)}
-                        className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium text-left transition-colors ${
-                          settingsTab === it.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
-                        }`}>
-                        <it.icon size={13} /> {it.label}
-                      </button>
-                    ))}
-                  </div>
-                ))}
-              </div>
+              <button key={g.key} onClick={() => setSettingsGroup(g.key)}
+                className={`w-full flex items-center gap-2 px-2.5 py-2.5 rounded-lg text-sm font-medium text-left transition-colors ${
+                  settingsGroup === g.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
+                }`}>
+                <g.icon size={14} /> {g.label}
+              </button>
             ))}
           </div>
 
           <div className="flex-1 overflow-y-auto p-6">
             {/* 字体大小 */}
-            {settingsTab === 'font' && (
+            {show('font') && (
               <Section icon={Type} title="字体大小">
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-dim">12</span>
@@ -269,7 +248,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             )}
 
             {/* 页面主题 */}
-            {settingsTab === 'theme' && (
+            {show('theme') && (
               <Section icon={Monitor} title="页面主题">
                 <div className="flex gap-2">
                   {[
@@ -290,7 +269,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             )}
 
             {/* 默认对话参数 */}
-            {settingsTab === 'defaults' && (
+            {show('defaults') && (
               <Section icon={Sliders} title="默认对话参数" desc="新对话自动套用；输入框内仍可逐次调整">
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center gap-2">
@@ -318,7 +297,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             )}
 
             {/* 生成后动作 */}
-            {settingsTab === 'actions' && (
+            {show('actions') && (
               <Section icon={Zap} title="生成后动作">
                 <div className="flex flex-col gap-2">
                   <SwitchRow label="自动保存生成物到「我的上传」" desc="对话结束后将回复存入资料列表" checked={postActions.autoSaveResource}
@@ -330,7 +309,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             )}
 
             {/* 流式与上下文 */}
-            {settingsTab === 'context' && (
+            {show('context') && (
               <Section icon={MessageSquare} title="流式输出与上下文策略">
                 <div className="flex flex-col gap-2">
                   <SwitchRow label="打字机渲染效果" desc="回复逐字显示；关闭则整段一次显示" checked={context.typing}
@@ -354,7 +333,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             )}
 
             {/* 模型与 API Key */}
-            {settingsTab === 'keys' && (
+            {show('keys') && (
               <Section icon={Key} title="模型与 API Key" desc="与模型卡共用同一份配置（localStorage）">
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center gap-2">
@@ -384,7 +363,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             )}
 
             {/* 请求超时 */}
-            {settingsTab === 'timeout' && (
+            {show('timeout') && (
               <Section icon={Timer} title="请求超时" desc="发送消息后无响应自动中止，避免一直转圈">
                 <div className="flex items-center gap-3 border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
                   <span className="text-xs text-dim">30s</span>
@@ -398,7 +377,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             )}
 
             {/* 数据管理 */}
-            {settingsTab === 'data' && (
+            {show('data') && (
               <Section icon={Database} title="数据管理">
                 <div className="flex gap-2">
                   <button onClick={doClearDialogues} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-[11px] border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">
@@ -415,7 +394,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             )}
 
             {/* MCP 配置 */}
-            {settingsTab === 'mcp' && (
+            {show('mcp') && (
               <Section icon={Plug} title="MCP 配置" desc="连接配置已保存；实际连接与工具调用能力正在开发中">
                 <div className="flex flex-col gap-2">
                   {mcpServers.length > 0 && (
@@ -455,14 +434,14 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             )}
 
             {/* 调试模式 */}
-            {settingsTab === 'debug' && (
+            {show('debug') && (
               <Section icon={Bug} title="调试模式" desc="开启后，对话回复底部显示各 Agent 的耗时与 token 估算">
                 <SwitchRow label="调试模式" checked={debug} onChange={setDebug} />
               </Section>
             )}
 
             {/* 对话自动清理 */}
-            {settingsTab === 'cleanup' && (
+            {show('cleanup') && (
               <Section icon={Trash2} title="对话自动清理" desc="保留最近 N 条对话，更早的对话自动归档（0 = 不清理）">
                 <div className="flex items-center gap-3 border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
                   <span className="text-xs text-dim flex-shrink-0">不清理</span>
@@ -476,7 +455,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             )}
 
             {/* 恢复默认设置 */}
-            {settingsTab === 'reset' && (
+            {show('reset') && (
               <Section icon={Database} title="恢复默认设置" desc="还原字体、主题、默认参数等设置（保留 API Key 与数据）">
                 <button onClick={resetSettings}
                   className="px-4 py-2 rounded-xl text-xs border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors self-start">
@@ -486,7 +465,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             )}
 
             {/* 关于：只显示名字与版本号，可检查更新 */}
-            {settingsTab === 'about' && (
+            {show('about') && (
               <Section icon={LampDesk} title="关于">
                 <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-3">
                   <div className="flex items-center justify-between">
