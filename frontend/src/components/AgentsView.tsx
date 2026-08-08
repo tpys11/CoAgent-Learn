@@ -346,12 +346,18 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                         return (
                           <button key={s.name} onClick={() => toggleSkill(s.name)}
                             title={s.description}
-                            className={`w-20 h-20 rounded-xl border-2 flex flex-col items-center justify-center gap-1 transition-all ${
+                            className={`relative w-20 h-20 rounded-xl border-2 flex flex-col items-center justify-center gap-1 transition-all ${
                               disabled ? 'opacity-30 cursor-not-allowed' :
                               linked ? 'border-[#1a1a1a] bg-[var(--bg-hover)]' : 'border-dashed border-[var(--border-color)] hover:border-[var(--border-strong)]'
                             }`}>
                             <Square size={16} className={linked ? 'text-[#1a1a1a]' : 'text-dim'} />
                             <span className="text-[10px] font-medium leading-tight text-center px-1 truncate w-full">{s.name}</span>
+                            {/* 右下角 radio：选中实心、未选中空心 */}
+                            <span className={`absolute right-1.5 bottom-1.5 w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center transition-colors ${
+                              linked ? 'border-[#1a1a1a]' : 'border-[var(--border-color)]'
+                            }`}>
+                              {linked && <span className="w-1.5 h-1.5 rounded-full bg-[#1a1a1a]" />}
+                            </span>
                           </button>
                         )
                       })}
