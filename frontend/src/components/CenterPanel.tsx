@@ -562,22 +562,23 @@ const TEMPLATE_OPTIONS = [
                   </div>
                 )}
               </div>
-              {/* 模板模式（挨着输出内容，选择框向上展开） */}
+              {/* 模板选择（挨着输出内容，选择框向上展开，样式与其他设置一致） */}
               <div className="relative" ref={tplRef}>
                 <button
                   onClick={() => setShowTplMenu(!showTplMenu)}
                   className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)]"
                   title="模板模式（均衡/质量优先/响应更快）">
-                  <LayoutTemplate size={13} /> {templateMode} <ChevronDown size={9} />
+                  <LayoutTemplate size={13} /> 模板选择 <ChevronDown size={9} />
                 </button>
                 {showTplMenu && (
-                  <div className="absolute bottom-full left-0 mb-1 panel rounded-2xl p-2 w-60 flex flex-col gap-1 shadow-soft z-30">
+                  <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 230 }}>
+                    <div className="text-[10px] text-dim mb-1">模板模式：</div>
                     {TEMPLATE_OPTIONS.map(t => (
                       <button key={t.name}
                         onClick={() => { setTemplateMode(t.name); localStorage.setItem('coagent-template', t.name); setShowTplMenu(false) }}
-                        className={`text-left px-3 py-2 rounded-xl text-[11px] transition-colors ${templateMode === t.name ? 'bg-[#1a1a1a] text-white' : 'hover:bg-[var(--bg-hover)]'}`}>
-                        <span className="font-semibold block">{t.name}</span>
-                        <span className={`text-[10px] ${templateMode === t.name ? 'text-white/70' : 'text-dim'}`}>{t.desc}</span>
+                        className={`text-[11px] px-2 py-1 rounded-lg text-left w-full flex flex-col ${templateMode === t.name ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
+                        <span className="font-medium">{t.name}</span>
+                        <span className="text-[10px] text-dim">{t.desc}</span>
                       </button>
                     ))}
                   </div>
