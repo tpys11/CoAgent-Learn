@@ -572,17 +572,14 @@ const TEMPLATE_OPTIONS = [
               <div className="relative" ref={tplRef}>
                 <button
                   onClick={() => setShowTplMenu(!showTplMenu)}
-                  className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
+                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)]"
                   title="模板模式（均衡/质量优先/响应更快）">
                   <LayoutTemplate size={13} /> 模板选择 <ChevronDown size={9} />
                 </button>
                 {showTplMenu && (
                   <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 230 }}>
                     <div className="flex items-center justify-between gap-2 px-1 py-1.5 mb-1 border-b border-[#e5e5e5]">
-                      <div className="flex flex-col">
-                        <span className="text-[11px] font-medium">Auto 自动选择</span>
-                        <span className="text-[9px] text-dim">开启后前面按钮作废，AI 基于所选模板自动选择</span>
-                      </div>
+                      <span className="text-[11px] font-medium">Auto 自动选择</span>
                       <button onClick={() => { const next = !autoMode; setAutoMode(next); localStorage.setItem('coagent-auto', next ? '1' : '0') }}
                         className={`w-9 h-5 rounded-full relative transition-colors flex-shrink-0 ${autoMode ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`}
                         title="Auto 开关">
