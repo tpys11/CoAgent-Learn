@@ -112,7 +112,7 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
   const [gLoading, setGLoading] = useState(false)
 
   // 项目记忆（全部项目，默认展开显示）
-  const [projData, setProjData] = useState<Record<string, { fields: Record<string, string>; count: number; latest: string; days: Record<string, any[]> }>>({})
+  const [projData, setProjData] = useState<Record<string, { fields: Record<string, string>; count: number; latest: string; days: Record<string, any[]>; progress: { items: any[]; daily: Array<{ date: string; count: number }>; pace: string } }>>({})
   const [projLoading, setProjLoading] = useState(false)
   // 当前查看的项目（点击项目按钮切换）
   const [activeProject, setActiveProject] = useState<string | null>(null)
@@ -136,20 +136,6 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
     if (/intermediate|中级|进阶/.test(lv)) return 60
     if (/advanced|高级|掌握/.test(lv)) return 85
     return Math.min(80, 15 + count * 3)
-  }
-  // 学习快慢：近7天 vs 前7天（由近30天推算）的对话次数对比
-  const trendOf = (days: Record<string, any[]>) => {
-    const now = new Date()
-    const key = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-    let w7 = 0, w30 = 0
-    for (let i = 0; i < 30; i++) {
-      const c = (days[key(new Date(now.getTime() - i * 86400000))] || []).length
-      if (i < 7) w7 += c
-      w30 += c
-    }
-    const prev7 = Math.max(1, (w30 - w7) / 3)
-    const ratio = w7 / prev7
-    return { w7, w30, up: ratio > 1.3, down: ratio < 0.7, trend: ratio > 1.3 ? '↗ 变快' : ratio < 0.7 ? '↘ 变慢' : '→ 平稳' }
   }
 
   // ---------- 项目列表 ----------
@@ -201,14 +187,15 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
       const plist = (Array.isArray(arr) ? arr : []) as Array<{ id: string; name: string; created_at?: string }>
       setProjects(plist)
       if (plist.length === 0) { setProjLoading(false); return }
-      const out: Record<string, { fields: Record<string, string>; count: number; latest: string; days: Record<string, any[]> }> = {}
+      const out: Record<string, { fields: Record<string, string>; count: number; latest: string; days: Record<string, any[]>; progress: { items: any[]; daily: Array<{ date: string; count: number }>; pace: string } }> = {}
       let done = 0
       for (const p of plist) {
         const pid = p.id
         Promise.all([
           fetch('/api/project-memory/' + encodeURIComponent(pid), { cache: 'no-store' }).then(r => r.json()).catch(() => ({})),
           fetch('/api/learning-log?project_id=' + encodeURIComponent(pid), { cache: 'no-store' }).then(r => r.json()).catch(() => ({ days: [] })),
-        ]).then(([m, lg]: [any, any]) => {
+          fetch('/api/memory/progress?project_id=' + encodeURIComponent(pid), { cache: 'no-store' }).then(r => r.json()).catch(() => ({ items: [], daily: [], pace: '' })),
+        ]).then(([m, lg, pg]: [any, any, any]) => {
           const mem = (m as any).memory || {}
           const fields: Record<string, string> = {}
           for (const dim of PROJECT_DIMS) {
@@ -220,7 +207,8 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
           for (const dd of daysArr) days[dd.date] = dd.items || []
           const count = daysArr.reduce((s: number, x: any) => s + ((x.items || []).length || 0), 0)
           const latest = daysArr.length ? daysArr.map((x: any) => x.date).sort().pop() : ''
-          out[pid] = { fields, count, latest, days }
+          const progress = { items: (pg.items || []), daily: (pg.daily || []), pace: (pg.pace || '') }
+          out[pid] = { fields, count, latest, days, progress }
           if (++done >= plist.length) { setProjData(out); setProjLoading(false); setActiveProject(prev => prev || (plist[0]?.id || null)) }
         })
       }
@@ -445,12 +433,21 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                               <span className="font-semibold text-[var(--text)] flex-shrink-0">{pctOf(data?.fields || {}, data?.count || 0)}%</span>
                               <span className="truncate max-w-[38%] text-right">目标：{(data?.fields['目标'] || '').trim() || '（空）'}</span>
                             </div>
-                            {(() => { const t = trendOf(data?.days || {}); return (
-                              <div className="flex items-center gap-3 text-[10px] text-dim pt-2 border-t hairline">
-                                <span>近7天 <b className="text-[var(--text)]">{t.w7}</b> 次</span>
-                                <span>近30天 <b className="text-[var(--text)]">{t.w30}</b> 次</span>
-                                <span className={`ml-auto font-medium ${t.up ? 'text-green-600' : t.down ? 'text-red-500' : 'text-dim'}`}>{t.trend}</span>
-                              </div>
+                            {(() => { const dl = data?.progress.daily || []; const w7 = dl.slice(-7).reduce((s: number, d: any) => s + (d.count || 0), 0); const maxC = Math.max(1, ...dl.map((d: any) => d.count || 0)); return (
+                              <>
+                                {/* 推进节奏：最近 14 天柱状图（昨天多今天少一目了然） */}
+                                <div className="flex items-end gap-1 h-10 pt-2 border-t hairline">
+                                  {dl.map((d: any) => (
+                                    <div key={d.date} className="flex-1 flex items-end" title={`${d.date} ${d.count} 次对话`}>
+                                      <div className="w-full rounded-t" style={{ height: Math.max(2, Math.round((d.count || 0) / maxC * 32)) + 'px', background: 'var(--accent)', opacity: d.count ? 0.35 + Math.min(0.65, (d.count || 0) / maxC) : 0.08 }} />
+                                    </div>
+                                  ))}
+                                </div>
+                                <div className="flex items-center gap-3 text-[10px] text-dim">
+                                  <span>近7天 <b className="text-[var(--text)]">{w7}</b> 次</span>
+                                  <span className="ml-auto font-medium">{data?.progress.pace || '—'}</span>
+                                </div>
+                              </>
                             ) })()}
                           </div>
                           <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
@@ -476,21 +473,42 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                                 </div>
                               </div>
                             ))}
-                            {(['知识点', '难点'] as const).map(k => (
-                              <div key={k}>
-                                <div className="flex items-center justify-between mb-1">
-                                  <label className="text-[10px] font-semibold text-dim uppercase tracking-wider">{k}{k === '知识点' ? '（已掌握）' : '（待攻克）'}</label>
-                                  <button onClick={() => onRequestModify?.(k, pid)} className="text-[9px] text-[var(--accent)] hover:underline">修改</button>
-                                </div>
-                                {(data?.fields[k] || '').trim() ? (
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {(data?.fields[k] || '').split(/[,，、]/).map((s, i) => s.trim()).filter(Boolean).map((s, i) => (
-                                      <span key={i} className={`text-[10px] px-2 py-0.5 rounded-full ${k === '知识点' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>{s}</span>
-                                    ))}
-                                  </div>
-                                ) : <span className="text-[11px] text-dim">（空）</span>}
+                            {/* 知识点掌握度（遗忘曲线：久未复习颜色变淡） */}
+                            <div>
+                              <div className="flex items-center justify-between mb-1">
+                                <label className="text-[10px] font-semibold text-dim uppercase tracking-wider">知识点（掌握度）</label>
+                                <button onClick={() => onRequestModify?.('知识点', pid)} className="text-[9px] text-[var(--accent)] hover:underline">修改</button>
                               </div>
-                            ))}
+                              {(() => { const kps = (data?.progress.items || []).filter((x: any) => x.kind === '知识点'); return kps.length ? (
+                                <div className="flex flex-col gap-1.5">
+                                  {kps.map((it: any) => {
+                                    const r = it.retrievability || 0
+                                    const cls = r >= 0.9 ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : r >= 0.7 ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-red-50 text-red-700 border-red-200'
+                                    return (
+                                      <div key={it.name} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-[10px] ${cls}`} style={{ opacity: 0.45 + r * 0.55 }}>
+                                        <span className="font-medium truncate">{it.name}</span>
+                                        <span className="ml-auto text-dim flex-shrink-0">{it.daysSince >= 999 ? '未提及' : `${it.daysSince} 天前`} · {it.mastery}%</span>
+                                        {it.forgotten && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 flex-shrink-0">待复习</span>}
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              ) : <span className="text-[11px] text-dim">（空）</span> })()}
+                            </div>
+                            {/* 难点（待攻克） */}
+                            <div>
+                              <div className="flex items-center justify-between mb-1">
+                                <label className="text-[10px] font-semibold text-dim uppercase tracking-wider">难点（待攻克）</label>
+                                <button onClick={() => onRequestModify?.('难点', pid)} className="text-[9px] text-[var(--accent)] hover:underline">修改</button>
+                              </div>
+                              {(data?.fields['难点'] || '').trim() ? (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {(data?.fields['难点'] || '').split(/[,，、]/).map((s, i) => s.trim()).filter(Boolean).map((s, i) => (
+                                    <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-red-50 text-red-600">{s}</span>
+                                  ))}
+                                </div>
+                              ) : <span className="text-[11px] text-dim">（空）</span>}
+                            </div>
                           </div>
                         </div>
                         {/* 时间：日历热度图 + 统计 */}

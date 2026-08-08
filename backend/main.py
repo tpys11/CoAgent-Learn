@@ -466,6 +466,103 @@ async def get_learning_log(project_id: str = ""):
     return {"days": out}
 
 
+@app.get("/api/memory/progress")
+async def memory_progress(project_id: str = "default"):
+    """学习效果分析（基于对话内容）：知识点掌握度（遗忘曲线衰减 R=exp(-Δt/S)）+ 每日推进节奏
+    - 知识点提及统计：知识点名称出现在对话消息中的日期
+    - 记忆强度 S：按提及天数估计（提及越多越稳定）；可检索性 R 随时间指数衰减
+    - 掌握度 = 基础分 × R（久未复习的颜色变淡，即"遗忘"）
+    """
+    import math, datetime
+    from collections import defaultdict
+    from core.postgres_client import pg_client as _pg
+    # 知识点/难点：来自项目记忆
+    rows = _pg.execute("SELECT data FROM project_memories WHERE project_id=%s", (project_id,))
+    mem = _as_dict(rows[0]["data"]) if rows and rows[0]["data"] else {}
+    names: list = []
+    kind_map: dict = {}
+    for k in ["知识点", "难点"]:
+        v = mem.get(k) or []
+        if isinstance(v, list):
+            parts = [str(x).strip() for x in v if str(x).strip()]
+        elif isinstance(v, str):
+            parts = [s.strip() for s in v.split(",") if s.strip()]
+        else:
+            parts = []
+        for p in parts:
+            if p and p not in kind_map:
+                names.append(p)
+                kind_map[p] = k
+    names = names[:20]
+    # 对话列表（用于每日节奏）
+    dialogs = _pg.execute("SELECT id, created_at FROM dialogues WHERE project_id=%s ORDER BY created_at", (project_id,)) or []
+    # 消息（提及统计）
+    seen_days: dict = defaultdict(set)
+    try:
+        from core.sqlite_client import get_db
+        d_ids = [d["id"] for d in dialogs]
+        msgs: list = []
+        if d_ids and names:
+            ph = ",".join(["%s"] * len(d_ids))
+            msgs = get_db().execute("SELECT content, created_at FROM messages WHERE dialogue_id IN (" + ph + ") ORDER BY created_at LIMIT 500", tuple(d_ids)) or []
+        for m in msgs:
+            c = str(m.get("content") or "")
+            d = str(m.get("created_at") or "")[:10]
+            if not d:
+                continue
+            for n in names:
+                if n and n in c:
+                    seen_days[n].add(d)
+    except Exception:
+        pass
+    today = datetime.date.today()
+    items = []
+    for n in names:
+        days = sorted(seen_days.get(n, set()))
+        last = days[-1] if days else None
+        dt = 999
+        if last:
+            try:
+                dt = (today - datetime.date.fromisoformat(last)).days
+            except Exception:
+                dt = 999
+        mentions = len(days)
+        # 记忆稳定性 S（天）：提及越多越稳定，上限 30 天
+        stability = min(30, mentions * 2 + 3)
+        R = 0.0 if dt >= 999 else math.exp(-dt / max(stability, 1))
+        mastery = int(min(95, 20 + mentions * 10) * R)
+        items.append({
+            "name": n,
+            "kind": kind_map.get(n, "知识点"),
+            "mastery": mastery,
+            "retrievability": round(R, 2),
+            "lastSeen": last,
+            "daysSince": 999 if dt >= 999 else dt,
+            "mentions": mentions,
+            "stability": stability,
+            "forgotten": dt >= 999 or R < 0.7,
+        })
+    items.sort(key=lambda x: -x["mastery"])
+    # 每日推进节奏：最近 14 天对话数
+    day_counts: dict = defaultdict(int)
+    for dlg in dialogs:
+        d = str(dlg.get("created_at") or "")[:10]
+        if d:
+            day_counts[d] += 1
+    daily = []
+    for i in range(13, -1, -1):
+        d = (today - datetime.timedelta(days=i)).isoformat()
+        daily.append({"date": d, "count": day_counts.get(d, 0)})
+    # 节奏总结（规则）：近7天 vs 前7天
+    def _sum(arr, start, end):
+        return sum(x["count"] for x in arr[start:end])
+    w7 = _sum(daily, 7, 14)
+    prev7 = max(1, _sum(daily, 0, 7))
+    ratio = w7 / prev7
+    pace = "↗ 变快" if ratio > 1.3 else ("↘ 变慢" if ratio < 0.7 else "→ 平稳")
+    return {"items": items, "daily": daily, "pace": pace, "total_dialogues": len(dialogs)}
+
+
 # ---------- 画像 API ----------
 
 class ProfileData(BaseModel):
