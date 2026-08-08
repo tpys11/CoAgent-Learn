@@ -113,35 +113,42 @@ const BLOCKS: Array<{ key: Block; icon: any; label: string }> = [
 ]
 
 /** 编排节点图：节点 + 箭头 */
-function FlowNode({ icon: Icon, name, sub }: { icon: any; name: string; sub?: string }) {
+function FlowNode({ icon: Icon, name, sub, active, onClick }: { icon: any; name: string; sub?: string; active?: boolean; onClick?: () => void }) {
   return (
-    <div className="card-surface rounded-xl px-4 py-3 flex flex-col items-center gap-1.5 min-w-[96px] border-[var(--border-color)]">
-      {Icon && <Icon size={18} className="text-dim" />}
+    <button onClick={onClick} disabled={!onClick}
+      className={`card-surface rounded-xl px-4 py-3 flex flex-col items-center gap-1.5 min-w-[96px] border-2 transition-all ${
+        onClick ? 'cursor-pointer hover:border-[var(--accent)]' : ''
+      } ${active ? 'border-[var(--accent)] shadow-soft' : 'border-[var(--border-color)]'}`}>
+      {Icon && <Icon size={18} className={active ? 'text-[var(--accent)]' : 'text-dim'} />}
       <span className="text-xs font-bold">{name}</span>
       {sub && <span className="text-[10px] text-dim text-center leading-snug">{sub}</span>}
-    </div>
+    </button>
   )
 }
 const FlowArrow = () => <span className="text-dim flex-shrink-0 text-base">→</span>
 
-/** 4-Agent 编排节点图（节点内即介绍） */
-const FlowGraph = () => (
-  <div className="flex items-center justify-center gap-2 flex-wrap">
-    <FlowNode icon={Workflow} name="规划" sub="输入处理·调度" />
-    <FlowArrow />
-    <div className="flex flex-col gap-1 items-center">
-      <FlowNode icon={Brain} name="学情与记忆" sub="画像·记忆" />
-      <span className="text-[9px] text-dim">∥ 并行</span>
-      <FlowNode icon={Database} name="知识库" sub="检索·搜索" />
+/** 4-Agent 编排节点图：节点可点击选中 Agent（无 agents 参数时静态展示） */
+const FlowGraph = ({ agents, templateAgentId, onSelect }: { agents?: AgentConfig[]; templateAgentId?: string; onSelect?: (id: string) => void }) => {
+  const act = (id: string) => templateAgentId === id
+  const pick = (id: string) => onSelect ? () => onSelect(id) : undefined
+  return (
+    <div className="flex items-center justify-center gap-2 flex-wrap">
+      <FlowNode icon={Workflow} name="规划" sub="输入处理·调度" active={act('main')} onClick={pick('main')} />
+      <FlowArrow />
+      <div className="flex flex-col gap-1 items-center">
+        <FlowNode icon={Brain} name="学情与记忆" sub="画像·记忆" active={act('study')} onClick={pick('study')} />
+        <span className="text-[9px] text-dim">∥ 并行</span>
+        <FlowNode icon={Database} name="知识库" sub="检索·搜索" active={act('kb')} onClick={pick('kb')} />
+      </div>
+      <FlowArrow />
+      <FlowNode icon={Workflow} name="生成" sub="讲义·指南·测试" active={act('main')} onClick={pick('main')} />
+      <FlowArrow />
+      <FlowNode icon={Scale} name="审核" sub="符实·难度·规范" active={act('review')} onClick={pick('review')} />
+      <FlowArrow />
+      <FlowNode icon={CheckCircle2} name="输出" sub="最终结果" />
     </div>
-    <FlowArrow />
-    <FlowNode icon={Workflow} name="生成" sub="讲义·指南·测试" />
-    <FlowArrow />
-    <FlowNode icon={Scale} name="审核" sub="符实·难度·规范" />
-    <FlowArrow />
-    <FlowNode icon={CheckCircle2} name="输出" sub="最终结果" />
-  </div>
-)
+  )
+}
 
 /** 开关 */
 function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: () => void; disabled?: boolean }) {
@@ -658,23 +665,11 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
               ) })()}
             </div>
 
-            {/* 编排框架设定（伴随编排，含 Agent 参数） */}
+            {/* 编排框架设定（伴随编排，节点图内直接点击 Agent 展开设定） */}
             <div className="flex flex-col gap-4">
               <p className="text-xs font-semibold text-dim uppercase tracking-wider">编排框架设定</p>
               <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
-                <FlowGraph />
-              </div>
-              <div className="flex gap-2 flex-wrap">
-                {agents.map(a => (
-                  <button key={a.id} onClick={() => setTemplateAgentId(a.id)}
-                    className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border text-xs font-medium transition-all ${
-                      a.id === templateAgentId
-                        ? 'border-[var(--border-strong)] bg-[#1a1a1a] text-white shadow-soft'
-                        : 'border hairline bg-[var(--bg-panel)] text-dim hover:bg-[var(--bg-hover)]'
-                    }`}>
-                    {a.name}
-                  </button>
-                ))}
+                <FlowGraph agents={agents} templateAgentId={templateAgentId} onSelect={(id) => setTemplateAgentId(id)} />
               </div>
               {tplAgent && (
                 <div className="flex flex-col gap-4">
