@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { BookOpen, Sparkles, Upload, FileText, Trash2, Wrench, PenLine, ExternalLink, Plus, X, FolderTree } from 'lucide-react'
+import { BookOpen, Sparkles, Upload, FileText, Trash2, Wrench, ExternalLink, Plus, X, FolderTree, FolderOpen } from 'lucide-react'
 
 interface Artifact {
   id: string
@@ -69,7 +69,7 @@ const NAV: Array<{ key: Tab; icon: any; label: string; desc: string }> = [
   { key: 'uploads', icon: Upload, label: '我的上传', desc: '知识库文档与保存的资料' },
 ]
 
-/** 资源界面：左侧分类导航 + 右侧卡片流（借鉴 hyper.ai 风格） */
+/** 资源界面：hyper.ai 风格——顶部 Hero + 功能入口大按钮 + 分区卡片流（无左侧导航） */
 export default function ResourceView({ projectId }: { projectId: string | null }) {
   const [tab, setTab] = useState<Tab>('tutorials')
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
@@ -192,21 +192,23 @@ export default function ResourceView({ projectId }: { projectId: string | null }
     else if (item.kind === 'kb') deleteKbDoc(item.title)
   }
 
-  /** 教程卡片网格（含空状态） */
-  const tutorialCards = (
+  /** 卡片网格（含空状态） */
+  const cards = (
     <>
-      {/* 分类头 */}
-      <div className="flex items-center justify-between mb-4">
+      {/* 区块标题行 */}
+      <div className="flex items-end justify-between mb-5">
         <div>
           <h2 className="text-lg font-bold flex items-center gap-2">
-            <FolderTree size={18} /> {DOMAIN.label}
+            {(() => { const n = NAV.find(x => x.key === tab)!; const I = n.icon; return <><I size={18} /> {n.label}</> })()}
           </h2>
-          <p className="text-[11px] text-gray-400 mt-0.5">{selectedCat} · 共 {list.length} 条教程</p>
+          <p className="text-xs text-gray-400 mt-1">
+            {tab === 'tutorials' ? `${DOMAIN.label} · ${selectedCat} · 共 ${list.length} 条` : `${NAV.find(x => x.key === tab)!.desc} · 共 ${list.length} 条`}
+          </p>
         </div>
-        {!showAddTutorial && (
+        {tab === 'tutorials' && !showAddTutorial && (
           <button
             onClick={() => { setTCat(selectedCat); setShowAddTutorial(true) }}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333] transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333] transition-colors"
           >
             <Plus size={13} /> 添加教程
           </button>
@@ -233,41 +235,58 @@ export default function ResourceView({ projectId }: { projectId: string | null }
         </div>
       )}
 
-      {/* 卡片网格 */}
-      {loading && <p className="text-xs text-gray-400 text-center py-10">加载中…</p>}
+      {/* 加载 / 空状态 / 卡片网格 */}
+      {loading && <p className="text-xs text-gray-400 text-center py-16">加载中…</p>}
       {!loading && list.length === 0 && (
-        <div className="border border-dashed border-[#d0d0d0] rounded-2xl py-14 text-center">
-          <p className="text-xs text-gray-400">该分类暂无教程，点击右上角"添加教程"</p>
+        <div className="flex flex-col items-center justify-center py-20 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-[#f2f2f2] flex items-center justify-center mb-4">
+            <FolderOpen size={22} className="text-gray-400" />
+          </div>
+          <p className="text-sm font-semibold text-gray-500">
+            {tab === 'tutorials' ? `「${selectedCat}」分类暂无教程` : tab === 'generated' ? '暂无生成物' : '暂无上传内容'}
+          </p>
+          <p className="text-xs text-gray-400 mt-1.5">
+            {tab === 'tutorials' ? '点击右上角「添加教程」收录外部学习资料' : tab === 'generated' ? '对话生成讲义 / 指南 / 测试题后自动收录到这里' : '上传知识库文档或保存资料后将展示在这里'}
+          </p>
         </div>
       )}
       {!loading && list.length > 0 && (
-        <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
           {list.map(item => {
             const Icon = item.icon
             return (
               <div
                 key={item.id}
                 onClick={() => setDetail(item)}
-                className="card-surface rounded-2xl p-4 flex flex-col gap-2.5 cursor-pointer transition-all hover:shadow-soft hover:-translate-y-0.5"
+                className="group card-surface rounded-2xl p-5 flex flex-col gap-3 cursor-pointer transition-all hover:shadow-lg hover:-translate-y-1 hover:border-[#1a1a1a]/10"
               >
                 <div className="flex items-start justify-between">
-                  <span className="w-9 h-9 rounded-xl bg-[#f0f0f0] flex items-center justify-center text-[#1a1a1a]">
-                    <Icon size={16} />
+                  <span className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#1a1a1a] to-[#4a4a4a] text-white flex items-center justify-center">
+                    <Icon size={17} />
                   </span>
-                  {item.deletable && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); removeItem(item) }}
-                      className="p-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors" title="删除"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {item.kind === 'tutorial' && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#f2f2f2] text-gray-500 flex-shrink-0">
+                        {item.sub.split(' · ')[0]}
+                      </span>
+                    )}
+                    {item.deletable && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); removeItem(item) }}
+                        className="p-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors" title="删除"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <p className="text-[13px] font-semibold truncate">{item.title}</p>
-                <p className="text-[11px] text-gray-400 line-clamp-2 min-h-[2em]">{item.body}</p>
-                <div className="flex items-center justify-between mt-auto pt-1">
-                  <span className="text-[10px] text-gray-400 truncate">{item.sub}</span>
-                  {item.kind === 'tutorial' && item.url && <ExternalLink size={12} className="text-gray-300 flex-shrink-0" />}
+                <p className="text-sm font-semibold truncate">{item.title}</p>
+                <p className="text-xs text-gray-400 line-clamp-2 min-h-[2.5em]">{item.body}</p>
+                <div className="flex items-center justify-between mt-auto pt-2 border-t border-[#f2f2f2]">
+                  <span className="text-[10px] text-gray-400 truncate">{item.sub.split(' · ')[1] || item.sub}</span>
+                  {item.kind === 'tutorial' && item.url && (
+                    <ExternalLink size={12} className="text-gray-300 group-hover:text-[#1a1a1a] transition-colors flex-shrink-0" />
+                  )}
                 </div>
               </div>
             )
@@ -278,134 +297,87 @@ export default function ResourceView({ projectId }: { projectId: string | null }
   )
 
   return (
-    <div className="flex-1 h-full min-w-0 flex panel rounded-3xl overflow-hidden">
-      {/* 左侧分类导航 */}
-      <div className="w-44 flex-shrink-0 border-r border-[#e5e5e5] bg-[#f5f5f5] p-2 flex flex-col gap-1">
-        {NAV.map(({ key, icon: Icon, label }) => (
-          <button
-            key={key}
-            onClick={() => { setTab(key); setDetail(null) }}
-            className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-colors ${
-              tab === key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-gray-500 hover:bg-[#ededed]'
-            }`}
-          >
-            <Icon size={14} /> {label}
-          </button>
-        ))}
-      </div>
-
-      {/* 教程：领域 + 子分类 + 卡片流 */}
-      {tab === 'tutorials' && (
-        <>
-          {/* 领域列 */}
-          <div className="w-40 flex-shrink-0 border-r border-[#e5e5e5] p-2 flex flex-col gap-1">
-            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-2 mb-1">领域</p>
-            <button className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-medium text-left bg-[#1a1a1a] text-white shadow-soft">
-              <FolderTree size={14} /> {DOMAIN.label}
-            </button>
-          </div>
-          {/* 子分类列 */}
-          <div className="w-44 flex-shrink-0 border-r border-[#e5e5e5] p-2 flex flex-col gap-1 overflow-y-auto">
-            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-2 mb-1">分类</p>
-            {cats.map(c => (
-              <div key={c} className={`group flex items-center rounded-xl ${selectedCat === c ? 'bg-[#f0f0f0]' : ''}`}>
-                <button
-                  onClick={() => { setSelectedCat(c); setDetail(null) }}
-                  className={`flex-1 px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-colors ${
-                    selectedCat === c ? 'text-[#1a1a1a]' : 'text-gray-500 hover:bg-[#ededed]'
-                  }`}
-                >
-                  {c}
-                </button>
-                {customCats.includes(c) && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); removeCat(c) }}
-                    className="opacity-0 group-hover:opacity-100 p-1 mr-1 rounded text-gray-300 hover:text-red-500 flex-shrink-0" title="删除分类"
-                  >
-                    <Trash2 size={11} />
-                  </button>
-                )}
-              </div>
-            ))}
-            {showAddCat ? (
-              <div className="flex gap-1 px-1 pt-1">
-                <input autoFocus value={newCat} onChange={e => setNewCat(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') addCat() }}
-                  placeholder="分类名" className="flex-1 px-2 py-1.5 text-[11px] input-surface rounded-lg outline-none" />
-                <button onClick={addCat} className="px-2 py-1 text-[11px] bg-[#1a1a1a] text-white rounded-lg font-semibold">加</button>
-              </div>
-            ) : (
+    <div className="flex-1 h-full min-w-0 flex flex-col panel rounded-3xl overflow-hidden">
+      {/* 顶部 Hero：hyper.ai 首页风格大标题 + 功能入口 */}
+      <div className="flex-shrink-0 px-8 pt-7 pb-5 bg-gradient-to-br from-[#fafafc] via-white to-[#f3f4fa] border-b border-[#eef0f4]">
+        <div className="max-w-6xl mx-auto">
+          <p className="text-[11px] font-bold text-indigo-500 tracking-widest uppercase mb-2">Resource Center</p>
+          <h1 className="text-2xl font-bold text-[#1a1a1a] leading-snug">学习、理解、实践，与社区一起构建人工智能的未来</h1>
+          <p className="text-[13px] text-gray-500 mt-2">汇聚第三方教程、AI 生成物与你保存的资料，沉淀每一次学习产出</p>
+          {/* 功能入口大按钮 */}
+          <div className="flex flex-wrap gap-3 mt-6">
+            {NAV.map(({ key, icon: Icon, label, desc }) => (
               <button
-                onClick={() => setShowAddCat(true)}
-                className="flex items-center gap-1.5 px-3 py-2 mt-1 text-[11px] text-gray-400 hover:text-[#1a1a1a] rounded-xl hover:bg-[#ededed] transition-colors"
+                key={key}
+                onClick={() => { setTab(key); setDetail(null) }}
+                className={`flex items-center gap-3 px-5 py-3 rounded-2xl border text-left transition-all ${
+                  tab === key
+                    ? 'border-[#1a1a1a] bg-white shadow-soft'
+                    : 'border-[#e5e5e5] bg-white/70 hover:bg-white hover:shadow-soft'
+                }`}
               >
-                <Plus size={12} /> 添加分类
+                <span className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-[#1a1a1a] text-white">
+                  <Icon size={15} />
+                </span>
+                <span>
+                  <span className="block text-sm font-semibold">{label}</span>
+                  <span className="block text-[11px] text-gray-400">{desc}</span>
+                </span>
               </button>
-            )}
-          </div>
-          {/* 卡片流 */}
-          <div className="flex-1 overflow-y-auto p-6">
-            <div className="max-w-4xl mx-auto">{tutorialCards}</div>
-          </div>
-        </>
-      )}
-
-      {/* 我的生成 / 我的上传：单层卡片流 */}
-      {tab !== 'tutorials' && (
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="max-w-4xl mx-auto">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-lg font-bold flex items-center gap-2">
-                  {(() => { const n = NAV.find(x => x.key === tab)!; const I = n.icon; return <><I size={18} /> {n.label}</> })()}
-                </h2>
-                <p className="text-[11px] text-gray-400 mt-0.5">{NAV.find(x => x.key === tab)!.desc}</p>
-              </div>
-            </div>
-            {loading && <p className="text-xs text-gray-400 text-center py-10">加载中…</p>}
-            {!loading && list.length === 0 && (
-              <div className="border border-dashed border-[#d0d0d0] rounded-2xl py-14 text-center">
-                <p className="text-xs text-gray-400">
-                  {tab === 'generated' ? '暂无生成物（对话生成讲义/指南/测试题后自动收录）' : '暂无上传内容'}
-                </p>
-              </div>
-            )}
-            {!loading && list.length > 0 && (
-              <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
-                {list.map(item => {
-                  const Icon = item.icon
-                  return (
-                    <div
-                      key={item.id}
-                      onClick={() => setDetail(item)}
-                      className="card-surface rounded-2xl p-4 flex flex-col gap-2.5 cursor-pointer transition-all hover:shadow-soft hover:-translate-y-0.5"
-                    >
-                      <div className="flex items-start justify-between">
-                        <span className="w-9 h-9 rounded-xl bg-[#f0f0f0] flex items-center justify-center text-[#1a1a1a]">
-                          <Icon size={16} />
-                        </span>
-                        {item.deletable && (
-                          <button
-                            onClick={(e) => { e.stopPropagation(); removeItem(item) }}
-                            className="p-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors" title="删除"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        )}
-                      </div>
-                      <p className="text-[13px] font-semibold truncate">{item.title}</p>
-                      <p className="text-[11px] text-gray-400 line-clamp-2 min-h-[2em]">{item.body}</p>
-                      <div className="flex items-center justify-between mt-auto pt-1">
-                        <span className="text-[10px] text-gray-400 truncate">{item.sub}</span>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+            ))}
           </div>
         </div>
+      </div>
+
+      {/* 子分类胶囊条（仅教程） */}
+      {tab === 'tutorials' && (
+        <div className="flex-shrink-0 px-8 py-3 border-b border-[#eef0f4] bg-white flex items-center gap-2 overflow-x-auto">
+          <span className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-400 mr-1 flex-shrink-0">
+            <FolderTree size={12} /> 领域 · {DOMAIN.label}
+          </span>
+          {cats.map(c => (
+            <div key={c} className="relative group flex-shrink-0">
+              <button
+                onClick={() => { setSelectedCat(c); setDetail(null) }}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                  selectedCat === c ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[#f2f2f2] text-gray-500 hover:bg-[#e8e8e8]'
+                }`}
+              >
+                {c}
+              </button>
+              {customCats.includes(c) && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); removeCat(c) }}
+                  className="hidden group-hover:flex absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white items-center justify-center shadow" title="删除分类"
+                >
+                  <X size={9} />
+                </button>
+              )}
+            </div>
+          ))}
+          {showAddCat ? (
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <input autoFocus value={newCat} onChange={e => setNewCat(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') addCat() }}
+                placeholder="分类名"
+                className="w-24 px-2.5 py-1.5 text-[11px] input-surface rounded-full outline-none" />
+              <button onClick={addCat} className="px-2.5 py-1 text-[11px] bg-[#1a1a1a] text-white rounded-full font-semibold">添加</button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowAddCat(true)}
+              className="flex items-center gap-1 px-3 py-1.5 text-[11px] text-gray-400 hover:text-[#1a1a1a] rounded-full hover:bg-[#f2f2f2] transition-colors flex-shrink-0"
+            >
+              <Plus size={12} /> 添加分类
+            </button>
+          )}
+        </div>
       )}
+
+      {/* 内容区：宽卡片流 */}
+      <div className="flex-1 overflow-y-auto px-8 py-6">
+        <div className="max-w-6xl mx-auto">{cards}</div>
+      </div>
 
       {/* 详情模态 */}
       {detail && (
