@@ -15,6 +15,7 @@ interface Resource {
   id: string
   name: string
   content?: string
+  created_at?: string
 }
 
 interface KbDoc {
@@ -48,12 +49,22 @@ type ListItem = {
   id: string; title: string; sub: string; body: string; icon: any
   kind: 'tutorial' | 'artifact' | 'resource' | 'kb' | 'wiki' | 'gen'; url?: string
   deletable: boolean
+  time?: string
 }
 
 const TYPE_ICONS: Record<string, any> = {
   '定制讲义': BookOpen, '讲义': BookOpen,
   '实操指南': Wrench,
   '分阶测试题': FileText, '测试题': FileText,
+}
+
+/** 时间格式化：ISO/sqlite 时间 → YYYY-MM-DD */
+const fmtTime = (s?: string) => {
+  if (!s) return ''
+  const d = new Date(s)
+  if (isNaN(d.getTime())) return String(s).slice(0, 10)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 }
 
 /** 领域：系统预设，不可增删（教程资源为预设内容，手动添加仅限我的上传） */
@@ -318,6 +329,7 @@ export default function ResourceView({ projectId }: { projectId: string | null }
   const tutorialList: ListItem[] = catTutorials.map(t => ({
     id: t.id, title: t.title,
     sub: t.preset ? `预置 · ${t.category}` : `手动添加 · ${t.category}`,
+    time: '',
     body: t.desc || '暂无简介', icon: BookOpen,
     kind: 'tutorial' as const, url: t.url,
     deletable: !t.id.startsWith('preset-'),
@@ -335,13 +347,13 @@ export default function ResourceView({ projectId }: { projectId: string | null }
       return keys.some(k => String(a.type).includes(k))
     })
     list = matched.map(a => ({
-      id: a.id, title: a.title, sub: a.dialogue_name || a.created_at || '',
+      id: a.id, title: a.title, sub: a.dialogue_name ? `来自「${a.dialogue_name}」` : '对话生成',
       body: a.content, icon: TYPE_ICONS[a.type] || FileText,
-      kind: 'artifact' as const, deletable: false,
+      kind: 'artifact' as const, deletable: false, time: fmtTime(a.created_at),
     }))
   } else if (tab === 'uploads') {
-    const kbItems: ListItem[] = kbDocs.map(d => ({ id: 'kb:' + d.source, title: d.source, sub: `知识库文档 · ${d.chunks} 块`, body: d.preview || '（无预览内容）', icon: Upload, kind: 'kb' as const, deletable: true }))
-    const resItems: ListItem[] = resources.map(r => ({ id: r.id, title: r.name, sub: '保存的资料', body: r.content || '', icon: FileText, kind: 'resource' as const, deletable: true }))
+    const kbItems: ListItem[] = kbDocs.map(d => ({ id: 'kb:' + d.source, title: d.source, sub: `知识库文档 · ${d.chunks} 块`, body: d.preview || '（无预览内容）', icon: Upload, kind: 'kb' as const, deletable: true, time: '' }))
+    const resItems: ListItem[] = resources.map(r => ({ id: r.id, title: r.name, sub: '保存的资料', body: r.content || '', icon: FileText, kind: 'resource' as const, deletable: true, time: fmtTime(r.created_at) }))
     if (uploadCat === 'all') list = [...kbItems, ...resItems]
     else if (uploadCat === 'kb') list = kbItems
     else if (uploadCat === 'resource') list = resItems
@@ -383,6 +395,10 @@ export default function ResourceView({ projectId }: { projectId: string | null }
             </div>
             <p className="text-base font-semibold leading-snug">{item.title}</p>
             <p className="text-xs text-dim truncate">{item.body}</p>
+            <div className="mt-auto flex items-center gap-1.5 text-[11px] text-dim">
+              <span className="truncate">{item.sub}</span>
+              {item.time && <><span className="flex-shrink-0">·</span><span className="flex-shrink-0">{item.time}</span></>}
+            </div>
           </div>
         )
       })}
@@ -465,7 +481,7 @@ export default function ResourceView({ projectId }: { projectId: string | null }
   const isCustomUploadCat = customGens.some(c => c.id === uploadCat)
   const customItems: ListItem[] = (customGens.find(c => c.id === (tab === 'generated' ? genCat : uploadCat))?.items || []).map(i => ({
     id: i.id, title: i.title, sub: '自定义内容', body: i.content, icon: Sparkles,
-    kind: 'gen' as const, deletable: true,
+    kind: 'gen' as const, deletable: true, time: '',
   }))
 
   /** 左侧栏「我的分类」公共区块（我的生成 / 我的上传 共用） */

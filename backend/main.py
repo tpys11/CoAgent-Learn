@@ -218,7 +218,7 @@ class ResourceSave(BaseModel):
 @app.get("/api/resources")
 async def list_resources(project_id: str = "default"):
     from core.postgres_client import pg_client
-    rows = pg_client.execute("SELECT id, name, content FROM resources WHERE project_id=%s ORDER BY created_at", (project_id,))
+    rows = pg_client.execute("SELECT id, name, content, created_at FROM resources WHERE project_id=%s ORDER BY created_at", (project_id,))
     return {"resources": rows}
 
 
