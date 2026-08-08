@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Settings, Square, Upload, Folder, Activity, Download, Layers, Wrench } from 'lucide-react'
+import { Settings, Square, Upload, Folder, Activity, Download, Layers, Wrench, Store, ExternalLink, FileCode, Plus, Trash2 } from 'lucide-react'
 import type { AgentConfig } from '../types'
 import { DEFAULT_AGENTS } from '../types'
 
@@ -40,6 +40,51 @@ const PRESET_TEMPLATES: Array<{ name: string; desc: string; agents: AgentConfig[
 
 const SKILL_ENABLED_KEY = 'coagent-skill-enabled'
 
+/** 推荐 Skill 市场（内置，后端已实现，勾选即在该 Agent 的 Skill 卡片中可选） */
+const MARKET_SKILLS = [
+  { name: 'fetch_web', desc: '抓取指定网页内容并提取正文文本', category: '信息获取' },
+  { name: 'calculator', desc: '安全计算数学表达式（幂/根/三角等）', category: '计算工具' },
+  { name: 'execute_code', desc: '在受限 Python 沙箱中执行代码并返回输出', category: '开发工具' },
+  { name: 'pdf_parse', desc: '解析 PDF 文件提取文本（按页）', category: '文档处理' },
+  { name: 'doc_parse', desc: '解析 Word 文档提取文本（段落+表格）', category: '文档处理' },
+]
+
+/** MCP 聚合平台 */
+const MCP_PLATFORMS = [
+  { name: 'mcp.so', url: 'https://mcp.so', desc: 'MCP 服务器搜索引擎' },
+  { name: 'Smithery', url: 'https://smithery.ai', desc: 'MCP 服务器注册与发现平台' },
+  { name: 'PulseMCP', url: 'https://www.pulsemcp.com', desc: 'MCP 服务器列表与评测' },
+  { name: 'Glama', url: 'https://glama.ai/mcp/servers', desc: 'MCP 服务器目录' },
+]
+
+/** Skill 开发模板（下载用） */
+const SKILL_TEMPLATE = `# Skill 开发模板（Python）
+
+将你的 Skill 文件夹放入后端 skills/ 目录（或上传目录）后刷新即自动注册。
+
+skills/your_skill_name/__init__.py:
+
+from skills import Skill
+
+class YourSkill(Skill):
+    name = "your_skill"           # 唯一标识（小写+下划线）
+    description = "技能的一句话说明"  # 展示给用户与模型
+    input_schema = {               # 入参说明（可选）
+        "keyword": {"type": "string", "description": "参数说明"}
+    }
+
+    def execute(self, keyword="", **kwargs) -> dict:
+        # 在这里实现你的能力，返回 dict
+        return {"results": [{"content": f"处理 {keyword} 的结果"}], "total": 1}
+`
+
+const SKILL_TABS: Array<{ key: string; label: string }> = [
+  { key: 'installed', label: '已安装' },
+  { key: 'market', label: '推荐市场' },
+  { key: 'mcp', label: 'MCP 市场' },
+  { key: 'dev', label: '开发者' },
+]
+
 const BLOCKS: Array<{ key: Block; icon: any; label: string }> = [
   { key: 'agents', icon: Settings, label: 'Agent 管理' },
   { key: 'skills', icon: Layers, label: 'Skill 管理' },
@@ -72,6 +117,15 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
     try { return JSON.parse(localStorage.getItem(SKILL_ENABLED_KEY) || '{}') } catch { return {} }
   })
   const [expandedSkill, setExpandedSkill] = useState<string | null>(null)
+  // Skill 管理四区
+  const [skillTab, setSkillTab] = useState('installed')
+  const [mcpStep, setMcpStep] = useState(1)
+  const [mcpName, setMcpName] = useState('')
+  const [mcpType, setMcpType] = useState<'stdio' | 'http' | 'sse'>('http')
+  const [mcpTarget, setMcpTarget] = useState('')
+  const [mcpList, setMcpList] = useState<Array<{ id: string; name: string; type: string; target: string }>>(() => {
+    try { return JSON.parse(localStorage.getItem('coagent-mcp-servers') || '[]') } catch { return [] }
+  })
   // 该 Agent 的运行监控（最近任务中其节点的耗时/调用）
   const [agentRuns, setAgentRuns] = useState<Array<{ created_at: string; ms: number; calls: number }>>([])
   // 模板 / 导入导出
@@ -125,6 +179,25 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
     const next = { ...skillEnabled, [name]: !(skillEnabled[name] ?? true) }
     setSkillEnabled(next)
     localStorage.setItem(SKILL_ENABLED_KEY, JSON.stringify(next))
+  }
+
+  const addMcpServer = () => {
+    if (!mcpName.trim() || !mcpTarget.trim()) return
+    const next = [...mcpList, { id: 'mcp-' + Date.now(), name: mcpName.trim(), type: mcpType, target: mcpTarget.trim() }]
+    setMcpList(next)
+    localStorage.setItem('coagent-mcp-servers', JSON.stringify(next))
+    setMcpName(''); setMcpTarget(''); setMcpStep(1)
+  }
+  const removeMcpServer = (id: string) => {
+    const next = mcpList.filter(s => s.id !== id)
+    setMcpList(next)
+    localStorage.setItem('coagent-mcp-servers', JSON.stringify(next))
+  }
+  const downloadTemplate = () => {
+    const blob = new Blob([SKILL_TEMPLATE], { type: 'text/markdown' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url; a.download = 'skill-template.md'; a.click()
+    URL.revokeObjectURL(url)
   }
 
   // ---------- 导出 / 导入 ----------
@@ -380,36 +453,144 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
               <h2 className="text-base font-bold flex items-center gap-2"><Layers size={16} /> Skill 管理</h2>
               <p className="text-[11px] text-dim mt-1">已注册的 Skill 模块：可查看详情、全局启用/停用</p>
             </div>
-            <div className="flex flex-col gap-2">
-              {allSkills.map(s => {
-                const enabled = skillEnabled[s.name] !== false
-                return (
-                  <div key={s.name} className="card-surface rounded-xl p-3.5">
-                    <div className="flex items-center gap-3">
-                      <span className="w-8 h-8 rounded-lg bg-[var(--bg-hover)] flex items-center justify-center flex-shrink-0"><Wrench size={14} className="text-dim" /></span>
-                      <button className="flex-1 text-left" onClick={() => setExpandedSkill(expandedSkill === s.name ? null : s.name)}>
-                        <span className="block text-xs font-semibold">{s.name}</span>
-                        <span className="block text-[10px] text-dim truncate">{s.description}</span>
-                      </button>
-                      <span className="text-[10px] text-dim font-mono flex-shrink-0">{s.folder}</span>
+            {/* 四个接入区 tab */}
+            <div className="flex gap-1.5 flex-wrap">
+              {SKILL_TABS.map(t => (
+                <button key={t.key} onClick={() => setSkillTab(t.key)}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                    skillTab === t.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'
+                  }`}>{t.label}</button>
+              ))}
+            </div>
+
+            {/* 已安装：当前注册的 Skill 列表 */}
+            {skillTab === 'installed' && (
+              <div className="flex flex-col gap-2">
+                {allSkills.map(s => {
+                  const enabled = skillEnabled[s.name] !== false
+                  return (
+                    <div key={s.name} className="card-surface rounded-xl p-3.5">
+                      <div className="flex items-center gap-3">
+                        <span className="w-8 h-8 rounded-lg bg-[var(--bg-hover)] flex items-center justify-center flex-shrink-0"><Wrench size={14} className="text-dim" /></span>
+                        <button className="flex-1 text-left" onClick={() => setExpandedSkill(expandedSkill === s.name ? null : s.name)}>
+                          <span className="block text-xs font-semibold">{s.name}</span>
+                          <span className="block text-[10px] text-dim truncate">{s.description}</span>
+                        </button>
+                        <span className="text-[10px] text-dim font-mono flex-shrink-0">{s.folder}</span>
+                        <Toggle checked={enabled} onChange={() => toggleSkillEnabled(s.name)} />
+                      </div>
+                      {expandedSkill === s.name && (
+                        <div className="mt-2.5 pt-2.5 border-t hairline">
+                          <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">{s.description}</p>
+                          <p className="text-[10px] text-dim mt-1">目录：{s.folder}</p>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+                {allSkills.length === 0 && <p className="text-xs text-dim text-center py-8">暂无已注册 Skill</p>}
+              </div>
+            )}
+
+            {/* 推荐市场：内置常用 Skill，一键启用 */}
+            {skillTab === 'market' && (
+              <div className="flex flex-col gap-2">
+                <p className="text-[11px] text-dim">预置常用 Skill，点击开关「启用」后即可在 Agent 的 Skill 卡片中勾选使用（无需联网）。</p>
+                {MARKET_SKILLS.map(s => {
+                  const installed = allSkills.some(x => x.name === s.name)
+                  const enabled = skillEnabled[s.name] !== false
+                  return (
+                    <div key={s.name} className="card-surface rounded-xl p-3.5 flex items-center gap-3">
+                      <span className="w-8 h-8 rounded-lg bg-[var(--bg-hover)] flex items-center justify-center flex-shrink-0"><Store size={14} className="text-dim" /></span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold">{s.name}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-dim flex-shrink-0">{s.category}</span>
+                          {installed && <span className="text-[10px] text-green-600 flex-shrink-0">已安装</span>}
+                        </div>
+                        <p className="text-[10px] text-dim truncate mt-0.5">{s.desc}</p>
+                      </div>
                       <Toggle checked={enabled} onChange={() => toggleSkillEnabled(s.name)} />
                     </div>
-                    {expandedSkill === s.name && (
-                      <div className="mt-2.5 pt-2.5 border-t hairline">
-                        <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">{s.description}</p>
-                        <p className="text-[10px] text-dim mt-1">目录：{s.folder}</p>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* MCP 市场：三步引导从聚合平台接入 */}
+            {skillTab === 'mcp' && (
+              <div className="flex flex-col gap-3">
+                <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] text-xs text-dim leading-relaxed">
+                  <p className="font-semibold text-[var(--text)] mb-1.5">三步接入外部 Skill（MCP 标准协议）</p>
+                  <p className="mb-1">1. 在聚合平台搜索所需 MCP Server（如 filesystem / github / fetch）</p>
+                  <p className="mb-1">2. 复制其安装命令（stdio：npx xxx）或连接地址（http/sse：URL）</p>
+                  <p className="mb-1">3. 粘贴到下方「我的 MCP Server」完成登记（后端连接与调用能力开发中）</p>
+                </div>
+                {/* 平台链接 */}
+                <div className="flex flex-wrap gap-2">
+                  {MCP_PLATFORMS.map(p => (
+                    <a key={p.name} href={p.url} target="_blank" rel="noreferrer"
+                      className="flex items-center gap-2 px-3 py-2 rounded-xl border hairline text-xs text-dim hover:bg-[var(--bg-hover)] transition-colors">
+                      <ExternalLink size={12} /> {p.name}
+                      <span className="text-[10px] text-dim">{p.desc}</span>
+                    </a>
+                  ))}
+                </div>
+                {/* 我的 MCP Server 列表 */}
+                {mcpList.length > 0 && (
+                  <div className="flex flex-col gap-1.5">
+                    {mcpList.map(s => (
+                      <div key={s.id} className="flex items-center gap-2 border hairline rounded-lg px-3 py-2 bg-[var(--bg-panel)]">
+                        <span className="text-[11px] font-semibold flex-shrink-0">{s.name}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-dim flex-shrink-0">{s.type}</span>
+                        <span className="text-[10px] text-dim truncate flex-1 font-mono">{s.target}</span>
+                        <button onClick={() => removeMcpServer(s.id)} className="p-1 text-gray-300 hover:text-red-500"><Trash2 size={12} /></button>
                       </div>
-                    )}
+                    ))}
                   </div>
-                )
-              })}
-              {allSkills.length === 0 && <p className="text-xs text-dim text-center py-8">暂无已注册 Skill</p>}
-            </div>
-            {/* MCP 安装入口 */}
-            <div className="border hairline rounded-xl p-4 text-xs text-dim bg-[var(--bg-panel)]">
-              <p className="font-semibold text-[var(--text)] mb-1 flex items-center gap-1.5"><Wrench size={13} /> 从 MCP 安装 Skill</p>
-              <p className="leading-relaxed">MCP 标准协议（HTTP/SSE）已列入项目技术选型。当前版本可通过「上传 Skill 目录」或将 Skill 放入 <span className="font-mono">skills/</span> 文件夹后刷新自动注册；独立 MCP Server 安装入口正在开发中。</p>
-            </div>
+                )}
+                {/* 添加表单 */}
+                {mcpStep === 1 ? (
+                  <button onClick={() => setMcpStep(2)}
+                    className="flex items-center gap-1.5 px-3 py-2 text-[11px] text-dim hover:bg-[var(--bg-hover)] rounded-xl self-start transition-colors">
+                    <Plus size={12} /> 添加我的 MCP Server
+                  </button>
+                ) : (
+                  <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
+                    <input autoFocus value={mcpName} onChange={e => setMcpName(e.target.value)} placeholder="名称（如 github-tools）"
+                      className="w-full px-3 py-2 text-xs input-surface rounded-lg outline-none" />
+                    <div className="flex gap-1.5">
+                      {(['stdio', 'http', 'sse'] as const).map(t => (
+                        <button key={t} onClick={() => setMcpType(t)}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-colors ${mcpType === t ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-hover)] text-dim'}`}>{t.toUpperCase()}</button>
+                      ))}
+                    </div>
+                    <input value={mcpTarget} onChange={e => setMcpTarget(e.target.value)} placeholder={mcpType === 'stdio' ? '命令（如 npx @modelcontextprotocol/server-github）' : 'URL（如 http://localhost:8080/mcp）'}
+                      className="w-full px-3 py-2 text-xs input-surface rounded-lg outline-none" />
+                    <div className="flex gap-2 justify-end">
+                      <button onClick={() => setMcpStep(1)} className="px-3 py-1.5 text-[11px] text-dim row-hover rounded-lg">取消</button>
+                      <button onClick={addMcpServer} className="px-3 py-1.5 text-[11px] bg-[#1a1a1a] text-white rounded-lg font-semibold">保存</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 开发者：模板下载 + 接入说明 */}
+            {skillTab === 'dev' && (
+              <div className="flex flex-col gap-3">
+                <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] text-xs text-dim leading-relaxed">
+                  <p className="font-semibold text-[var(--text)] mb-1.5">开发自己的 Skill</p>
+                  <p className="mb-1">1. 下载下方模板，按示例实现 <span className="font-mono">execute</span> 方法</p>
+                  <p className="mb-1">2. 将文件夹放入后端 <span className="font-mono">skills/</span> 目录（或上传目录）</p>
+                  <p className="mb-1">3. 重启后端容器，Skill 自动注册，即可在「已安装」中查看并启用</p>
+                </div>
+                <button onClick={downloadTemplate}
+                  className="flex items-center gap-1.5 px-3 py-2 text-[11px] border hairline rounded-xl text-dim hover:bg-[var(--bg-hover)] self-start transition-colors">
+                  <Download size={12} /> 下载 Skill 开发模板
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
