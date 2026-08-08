@@ -67,6 +67,9 @@ const CATEGORIES: Array<{ key: string; desc: string }> = [
 ]
 const WIKI_CAT = '百科'
 
+/** 分类图标（竖向展开列表用） */
+const CAT_ICONS: Record<string, any> = { '系统学习': BookOpen, '技术工具': Wrench, '百科': Library }
+
 /** 旧数据分类名 → 新三类 */
 const LEGACY_CAT_MAP: Record<string, string> = {
   '系统教程': '系统学习', '技术教程': '系统学习', '实践案例': '系统学习',
@@ -506,22 +509,28 @@ export default function ResourceView({ projectId }: { projectId: string | null }
         </div>
       </div>
 
-      {/* 分类胶囊条（仅教程资源） */}
+      {/* 分类（竖向展开，无"分类"标签） */}
       {tab === 'tutorials' && (
-        <div className="flex-shrink-0 px-8 py-3 border-b border-[var(--border-color)] bg-[var(--bg-panel)] flex items-center gap-2 overflow-x-auto">
-          <span className="text-[11px] font-semibold text-dim mr-1 flex-shrink-0">分类</span>
-          {CATEGORIES.map(c => (
-            <button
-              key={c.key}
-              onClick={() => { setSelectedCat(c.key); setDetail(null) }}
-              title={c.desc}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors flex-shrink-0 ${
-                selectedCat === c.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'
-              }`}
-            >
-              {c.key}
-            </button>
-          ))}
+        <div className="flex-shrink-0 px-8 py-3 border-b border-[var(--border-color)] bg-[var(--bg-panel)]">
+          <div className="max-w-6xl mx-auto flex flex-col gap-1">
+            {CATEGORIES.map(c => {
+              const Icon = CAT_ICONS[c.key]
+              const active = selectedCat === c.key
+              return (
+                <button
+                  key={c.key}
+                  onClick={() => { setSelectedCat(c.key); setDetail(null) }}
+                  className={`flex items-center gap-2.5 px-3.5 py-2 rounded-xl text-xs font-medium text-left transition-colors ${
+                    active ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
+                  }`}
+                >
+                  {Icon && <Icon size={14} className={active ? 'text-white' : 'text-dim'} />}
+                  <span className="font-semibold flex-shrink-0">{c.key}</span>
+                  <span className={`text-[11px] ${active ? 'text-white/70' : 'text-dim'}`}>{c.desc}</span>
+                </button>
+              )
+            })}
+          </div>
         </div>
       )}
 
