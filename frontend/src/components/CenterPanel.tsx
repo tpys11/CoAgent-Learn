@@ -570,24 +570,28 @@ const TEMPLATE_OPTIONS = [
                   </div>
                 )}
               </div>
-              {/* 模板选择（挨着输出内容，选择框向上展开，样式与其他设置一致） */}
+              {/* 模板选择（顶部带 Auto 开关：开启后前面按钮作废，基于所选模板自动选择） */}
               <div className="relative" ref={tplRef}>
                 <button
                   onClick={() => setShowTplMenu(!showTplMenu)}
-                  disabled={autoMode}
                   className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
                   title="模板模式（均衡/质量优先/响应更快）">
                   <LayoutTemplate size={13} /> 模板选择 <ChevronDown size={9} />
                 </button>
                 {showTplMenu && (
                   <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 230 }}>
-                    <div className="text-[10px] text-dim mb-1">模板模式：</div>
+                    <div className="flex items-center justify-between gap-3 px-1 py-1 mb-1 border-b border-[#e5e5e5]">
+                      <span className="text-[10px] text-dim">Auto 自动选择（开启后前面按钮作废，基于所选模板自动选择）</span>
+                      <button onClick={() => { const next = !autoMode; setAutoMode(next); localStorage.setItem('coagent-auto', next ? '1' : '0') }}
+                        className={`w-8 h-4.5 rounded-full relative transition-colors flex-shrink-0 ${autoMode ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`} style={{ height: 18 }}>
+                        <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-all ${autoMode ? 'left-4' : 'left-0.5'}`} />
+                      </button>
+                    </div>
                     {TEMPLATE_OPTIONS.map(t => (
                       <button key={t.name}
                         onClick={() => { setTemplateMode(t.name); localStorage.setItem('coagent-template', t.name); setShowTplMenu(false) }}
-                        className={`text-[11px] px-2 py-1 rounded-lg text-left w-full flex flex-col ${templateMode === t.name ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
+                        className={`text-[11px] px-2 py-1.5 rounded-lg text-left w-full ${templateMode === t.name ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
                         <span className="font-medium">{t.name}</span>
-                        <span className="text-[10px] text-dim">{t.desc}</span>
                       </button>
                     ))}
                   </div>
@@ -595,13 +599,6 @@ const TEMPLATE_OPTIONS = [
               </div>
               <span className="w-px h-4 bg-[#e5e5e5] mx-1" />
               <span className="flex-1" />
-              {/* Auto：AI 根据输入自动选择模板/模式（开启后手动设置禁用） */}
-              <button
-                onClick={() => { const next = !autoMode; setAutoMode(next); localStorage.setItem('coagent-auto', next ? '1' : '0') }}
-                className={`h-9 px-3 rounded-xl text-[11px] flex items-center gap-1.5 border transition-colors ${autoMode ? 'bg-[#1a1a1a] text-white border-[#1a1a1a] shadow-soft' : 'input-surface border-[var(--border-strong)] hover:opacity-90'}`}
-                title={autoMode ? 'Auto 已开启：AI 根据输入自动选择模板/模式等' : 'Auto：AI 根据输入自动选择模板/模式等（手动设置将禁用）'}>
-                <Zap size={14} /> Auto
-              </button>
               <button
                 onClick={() => setShowModelModal(true)}
                 className="h-9 px-3 rounded-xl input-surface text-[11px] flex items-center gap-1.5 hover:opacity-90 transition-colors"

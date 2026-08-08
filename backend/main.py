@@ -844,16 +844,17 @@ def _extract_json_obj(text: str) -> dict:
     return {}
 
 
-def _auto_settings(api_key: str, message: str) -> dict:
-    """Auto 模式：让 AI 读取用户输入，自动推断模板/模式等设置；失败时返回空 dict（保持默认）"""
+def _auto_settings(api_key: str, message: str, template: str = "均衡模式") -> dict:
+    """Auto 模式：让 AI 读取用户输入，基于用户所选模板自动推断其余设置；失败时返回空 dict（保持默认）"""
     from core.config import config as _cfg
     prompt = (
-        "你是对话设置分析器。根据用户的输入内容，推断最适合的对话设置，只输出 JSON：\n"
-        "{\"template\": \"均衡模式|质量优先|响应更快\", \"inputOptMode\": \"默认模式|详尽模式|不询问模式\", "
-        "\"searchMode\": \"自由|知识库\", \"webSearchMode\": \"默认|增强\", "
-        "\"outputFormat\": \"低结构化|高结构化\", \"outputStyle\": \"MD文档|对话形式\", "
-        "\"thinking\": \"开|关\", \"outputVolume\": \"精简|适中|拓展\", \"depth\": \"浅|中|深\"}\n"
-        "推断规则：涉及学习/讲解/推导用较深深度与适中输出；复杂主题用质量优先；简单问答用响应更快；无需搜索则 webSearchMode=默认。\n"
+        "你是对话设置分析器。模板已由用户选定，请根据用户的输入内容，推断其余最适合的对话设置，只输出 JSON：\n"
+        "{\"inputOptMode\": \"默认模式|详尽模式|不询问模式\", \"searchMode\": \"自由|知识库\", "
+        "\"webSearchMode\": \"默认|增强\", \"outputFormat\": \"低结构化|高结构化\", "
+        "\"outputStyle\": \"MD文档|对话形式\", \"thinking\": \"开|关\", "
+        "\"outputVolume\": \"精简|适中|拓展\", \"depth\": \"浅|中|深\"}\n"
+        f"已选模板：{template}（质量优先=审核严格、响应更快=快模型，推断时可参考）\n"
+        "推断规则：涉及学习/讲解/推导用较深深度与适中输出；复杂主题适当加重输出量；简单问答用精简；无需搜索则 webSearchMode=默认。\n"
         f"用户输入：{message[:1500]}"
     )
     h = {"Authorization": "Bearer " + (api_key or _cfg.DEEPSEEK_API_KEY), "Content-Type": "application/json"}
@@ -868,9 +869,8 @@ def _auto_settings(api_key: str, message: str) -> dict:
         d = _extract_json_obj(raw)
         if not d:
             return {}
-        # 只接受合法取值，非法字段丢弃
+        # 只接受合法取值，非法字段丢弃（template 由用户选择，不参与推断）
         ok = {
-            "template": ["均衡模式", "质量优先", "响应更快"],
             "inputOptMode": ["默认模式", "详尽模式", "不询问模式"],
             "searchMode": ["自由", "知识库"],
             "webSearchMode": ["默认", "增强"],
@@ -998,10 +998,11 @@ async def chat(req: ChatRequest):
 
             def run_workflow():
                 try:
-                    # Auto 模式：AI 读取输入自动推断模板/模式等设置
+                    # Auto 模式：AI 读取输入，基于所选模板自动推断其余设置
                     _settings = dict(req.settings or {})
                     if _settings.get("auto"):
-                        _auto = _auto_settings(req.api_key, req.message)
+                        _tpl0 = _settings.get("template") or "均衡模式"
+                        _auto = _auto_settings(req.api_key, req.message, _tpl0)
                         if _auto:
                             _settings.update(_auto)
                     # 模板模式：按所选模板调整 agents（均衡模式 = 不调整）
