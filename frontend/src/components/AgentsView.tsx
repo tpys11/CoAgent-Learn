@@ -648,9 +648,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                     <p className="text-sm font-bold">{t.name}</p>
                     <span className="text-[11px] text-dim">{t.desc}</span>
                   </div>
-                  <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
-                    <FlowGraph />
-                  </div>
                   <div className="flex gap-2">
                     <button onClick={() => applyTemplate(t)}
                       className="px-3.5 py-2 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors">
