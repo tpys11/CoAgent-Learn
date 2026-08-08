@@ -224,7 +224,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
           <div className="w-40 flex-shrink-0 border-r hairline bg-[var(--bg-sidebar)] p-2.5 flex flex-col gap-1 overflow-y-auto">
             {GROUPS.map(g => (
               <button key={g.key} onClick={() => setSettingsGroup(g.key)}
-                className={`w-full flex items-center gap-2 px-2.5 py-2.5 rounded-lg text-sm font-medium text-left transition-colors ${
+                className={`w-full flex items-center gap-2 px-2.5 py-2.5 rounded-lg text-sm font-medium text-left transition-colors active:transform-none ${
                   settingsGroup === g.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
                 }`}>
                 <g.icon size={14} /> {g.label}
