@@ -263,15 +263,16 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
               <span className="flex items-center gap-1 text-[11px]"><CheckCircle2 size={12} /> 幻觉{stats.metrics.hallucination.rate || 0}% · 适配{stats.metrics.adaptation ? stats.metrics.adaptation.rate || 0 : '-'}% · 覆盖{stats.metrics.coverage ? stats.metrics.coverage.rate || 0 : '-'}%</span>
             </>
           )}
-          <span className="flex-1" />
-<button onClick={onToggleStats} className="w-6 h-6 flex items-center justify-center rounded-lg row-hover text-[10px]" title="收起">▲</button>
         </div>
       </div>
-      {statsCollapsed && (
-        <div className="flex justify-center flex-shrink-0">
-          <button onClick={onToggleStats} className="text-[10px] text-dim hover:text-[#1a1a1a] px-3 py-0.5 rounded-b-lg row-hover" title="展开统计条">▼</button>
-        </div>
-      )}
+      {/* 收起/展开按钮：固定在统计条下方正中央，收起与展开位置一致 */}
+      <div className="flex justify-center flex-shrink-0">
+        <button onClick={onToggleStats}
+          className="text-[10px] text-dim hover:text-[#1a1a1a] px-3 py-0.5 rounded-b-lg row-hover"
+          title={statsCollapsed ? '展开统计条' : '收起统计条'}>
+          {statsCollapsed ? '▼' : '▲'}
+        </button>
+      </div>
 
       {/* 消息流：内容限宽居中 */}
       <div ref={msgScrollRef} className="flex-1 overflow-y-auto">
