@@ -220,9 +220,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
   }, [])
 
-  // 模板 / 导入导出
-  const fileInputRef = useRef<HTMLInputElement>(null)
-
   useEffect(() => {
     setMode(agent?.mode || '标准')
     setPrompt(agent?.systemPrompt || '')
@@ -288,34 +285,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a'); a.href = url; a.download = 'skill-template.md'; a.click()
     URL.revokeObjectURL(url)
-  }
-
-  // ---------- 导出 / 导入 ----------
-  const exportConfig = () => {
-    const blob = new Blob([JSON.stringify(agents, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url; a.download = 'coagent-agents.json'; a.click()
-    URL.revokeObjectURL(url)
-  }
-  const importConfig = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0]
-    if (!f) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      try {
-        const arr = JSON.parse(String(reader.result))
-        if (Array.isArray(arr) && arr.length && arr.every((x: any) => x && x.id && x.name)) {
-          if (window.confirm(`导入 ${arr.length} 个 Agent 配置？将覆盖当前全部配置。`)) onReplace(arr)
-        } else {
-          window.alert('配置文件格式不正确（需为 AgentConfig 数组）')
-        }
-      } catch {
-        window.alert('解析失败：不是有效的 JSON')
-      }
-    }
-    reader.readAsText(f)
-    e.target.value = ''
   }
 
   const fieldLabel = 'text-xs font-semibold text-dim uppercase tracking-wider mb-2 block'
@@ -670,19 +639,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
               <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex items-center justify-center">
                 <FlowGraph agents={agents} templateAgentId={templateAgentId} onSelect={(id) => setTemplateAgentId(id)} />
               </div>
-            </div>
-
-            {/* 导入导出 */}
-            <div className="flex gap-2">
-              <button onClick={exportConfig}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">
-                <Download size={13} /> 导出配置
-              </button>
-              <button onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">
-                <Upload size={13} /> 导入配置
-              </button>
-              <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={importConfig} />
             </div>
           </div>
         )}
