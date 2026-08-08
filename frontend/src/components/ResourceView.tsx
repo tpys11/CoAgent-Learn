@@ -46,7 +46,7 @@ type Tab = 'tutorials' | 'generated' | 'uploads'
 
 type ListItem = {
   id: string; title: string; sub: string; body: string; icon: any
-  kind: 'tutorial' | 'artifact' | 'resource' | 'kb' | 'wiki'; url?: string
+  kind: 'tutorial' | 'artifact' | 'resource' | 'kb' | 'wiki' | 'gen'; url?: string
   deletable: boolean
 }
 
@@ -180,6 +180,16 @@ const WIKI_ENTRIES: WikiEntry[] = [
 ]
 
 const TUTORIALS_KEY = 'coagent-tutorials'
+const CUSTOM_GENS_KEY = 'coagent-custom-gens'
+
+/** 我的生成：预设分类（按生成物类型匹配） */
+const GEN_CATS = [
+  { key: 'all', label: '全部' },
+  { key: '讲义', label: '讲义' },
+  { key: '实操指南', label: '实操指南' },
+  { key: '测试题', label: '测试题' },
+]
+const GEN_MATCH: Record<string, string[]> = { '讲义': ['讲义'], '实操指南': ['实操指南'], '测试题': ['测试题'] }
 
 const NAV: Array<{ key: Tab; icon: any; label: string; desc: string }> = [
   { key: 'tutorials', icon: BookOpen, label: '教程资源', desc: '按领域与分类组织的学习资料与百科' },
@@ -202,6 +212,16 @@ export default function ResourceView({ projectId }: { projectId: string | null }
   const [selectedCat, setSelectedCat] = useState(CATEGORIES[0].key)
   const [loading, setLoading] = useState(false)
   const [detail, setDetail] = useState<ListItem | null>(null)
+  // 我的生成：分类（预设 + 自定义）
+  const [genCat, setGenCat] = useState('all')
+  const [customGens, setCustomGens] = useState<Array<{ id: string; name: string; items: Array<{ id: string; title: string; content: string }> }>>(() => {
+    try { return JSON.parse(localStorage.getItem(CUSTOM_GENS_KEY) || '[]') } catch { return [] }
+  })
+  const [showNewGenCat, setShowNewGenCat] = useState(false)
+  const [newGenCatName, setNewGenCatName] = useState('')
+  const [showNewGenItem, setShowNewGenItem] = useState(false)
+  const [gTitle, setGTitle] = useState('')
+  const [gContent, setGContent] = useState('')
   // 我的上传：添加资料表单
   const [showAddResource, setShowAddResource] = useState(false)
   const [rName, setRName] = useState('')
@@ -259,6 +279,34 @@ export default function ResourceView({ projectId }: { projectId: string | null }
     })
   }
 
+  // 我的生成：自定义分类与内容
+  const saveCustomGens = (next: typeof customGens) => {
+    setCustomGens(next)
+    localStorage.setItem(CUSTOM_GENS_KEY, JSON.stringify(next))
+  }
+  const addGenCat = () => {
+    const name = newGenCatName.trim()
+    if (!name || customGens.some(c => c.name === name)) return
+    const id = 'cg-' + Date.now()
+    saveCustomGens([...customGens, { id, name, items: [] }])
+    setGenCat(id)
+    setNewGenCatName(''); setShowNewGenCat(false)
+  }
+  const addGenItem = () => {
+    if (!gTitle.trim()) return
+    saveCustomGens(customGens.map(c => c.id === genCat ? { ...c, items: [...c.items, { id: 'gi-' + Date.now(), title: gTitle.trim(), content: gContent }] } : c))
+    setGTitle(''); setGContent(''); setShowNewGenItem(false)
+  }
+  const removeGenCat = (id: string) => {
+    if (!window.confirm('确定删除该分类及其内容？')) return
+    saveCustomGens(customGens.filter(c => c.id !== id))
+    if (genCat === id) setGenCat('all')
+  }
+  const removeGenItem = (id: string) => {
+    setDetail(null)
+    saveCustomGens(customGens.map(c => c.id === genCat ? { ...c, items: c.items.filter(i => i.id !== id) } : c))
+  }
+
   // ---------- 列表组装 ----------
   // 当前领域 + 当前分类下的教程
   const domainTutorials = allTutorials.filter(t => (t.domain || DEFAULT_DOMAINS[0]) === selectedDomain)
@@ -277,7 +325,12 @@ export default function ResourceView({ projectId }: { projectId: string | null }
 
   let list: ListItem[] = []
   if (tab === 'generated') {
-    list = artifacts.map(a => ({
+    const matched = artifacts.filter(a => {
+      if (genCat === 'all') return true
+      const keys = GEN_MATCH[genCat] || []
+      return keys.some(k => String(a.type).includes(k))
+    })
+    list = matched.map(a => ({
       id: a.id, title: a.title, sub: a.dialogue_name || a.created_at || '',
       body: a.content, icon: TYPE_ICONS[a.type] || FileText,
       kind: 'artifact' as const, deletable: false,
@@ -293,6 +346,7 @@ export default function ResourceView({ projectId }: { projectId: string | null }
     if (item.kind === 'tutorial') removeTutorial(item.id)
     else if (item.kind === 'resource') deleteResource(item.id)
     else if (item.kind === 'kb') deleteKbDoc(item.title)
+    else if (item.kind === 'gen') removeGenItem(item.id)
   }
 
   /** 普通卡片网格 */
@@ -405,6 +459,13 @@ export default function ResourceView({ projectId }: { projectId: string | null }
     </>
   )
 
+  // 我的生成：当前是否为自定义分类 + 其内容列表
+  const isCustomCat = customGens.some(c => c.id === genCat)
+  const customItems: ListItem[] = (customGens.find(c => c.id === genCat)?.items || []).map(i => ({
+    id: i.id, title: i.title, sub: '自定义内容', body: i.content, icon: Sparkles,
+    kind: 'gen' as const, deletable: true,
+  }))
+
   return (
     <div className="flex-1 h-full min-w-0 flex flex-col panel rounded-3xl overflow-hidden">
       {/* 顶部 Hero：主题化配色（跟随 light/dark/warm） */}
@@ -471,6 +532,48 @@ export default function ResourceView({ projectId }: { projectId: string | null }
             })}
           </div>
         )}
+        {tab === 'generated' && (
+          <div className="w-40 flex-shrink-0 border-r hairline bg-[var(--bg-sidebar)] p-2.5 flex flex-col gap-1 overflow-y-auto">
+            <p className="text-[10px] font-bold text-dim uppercase tracking-wider px-2.5 mt-1 mb-0.5">预设分类</p>
+            {GEN_CATS.map(c => (
+              <button key={c.key} onClick={() => { setGenCat(c.key); setDetail(null) }}
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-left transition-colors ${
+                  genCat === c.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
+                }`}>
+                <Sparkles size={13} /> {c.label}
+              </button>
+            ))}
+            <div className="w-px h-3 bg-[var(--border-color)] my-1.5 self-center" />
+            <p className="text-[10px] font-bold text-dim uppercase tracking-wider px-2.5 mb-0.5">我的分类</p>
+            {customGens.map(c => (
+              <div key={c.id} className="group flex items-center rounded-xl">
+                <button onClick={() => { setGenCat(c.id); setDetail(null) }}
+                  className={`flex-1 flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-left transition-colors ${
+                    genCat === c.id ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
+                  }`}>
+                  <Sparkles size={13} /> {c.name}
+                </button>
+                <button onClick={(e) => { e.stopPropagation(); removeGenCat(c.id) }}
+                  className="opacity-0 group-hover:opacity-100 p-1 mr-1 rounded text-gray-300 hover:text-red-500 flex-shrink-0" title="删除分类">
+                  <Trash2 size={11} />
+                </button>
+              </div>
+            ))}
+            {showNewGenCat ? (
+              <div className="flex gap-1 px-1 pt-1">
+                <input autoFocus value={newGenCatName} onChange={e => setNewGenCatName(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') addGenCat() }}
+                  placeholder="分类名" className="flex-1 px-2 py-1.5 text-[11px] input-surface rounded-lg outline-none" />
+                <button onClick={addGenCat} className="px-2 py-1 text-[11px] bg-[#1a1a1a] text-white rounded-lg font-semibold">加</button>
+              </div>
+            ) : (
+              <button onClick={() => setShowNewGenCat(true)}
+                className="flex items-center gap-1.5 px-3 py-2 mt-1 text-[11px] text-dim hover:text-[#1a1a1a] rounded-xl hover:bg-[var(--bg-hover)] transition-colors">
+                <Plus size={12} /> 新建分类
+              </button>
+            )}
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto px-10 py-8">
           <div className="max-w-6xl mx-auto">
           {tab === 'tutorials' && (selectedCat === WIKI_CAT ? wikiSection : tutorialSection)}
@@ -478,10 +581,43 @@ export default function ResourceView({ projectId }: { projectId: string | null }
             <>
               <div className="flex items-end justify-between mb-5">
                 <h2 className="text-lg font-bold flex items-center gap-2"><Sparkles size={18} /> 我的生成</h2>
+                {isCustomCat && !showNewGenItem && (
+                  <button
+                    onClick={() => setShowNewGenItem(true)}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors"
+                  >
+                    <Plus size={13} /> 新建内容
+                  </button>
+                )}
               </div>
-              {loading && <p className="text-xs text-dim text-center py-16">加载中…</p>}
-              {!loading && list.length === 0 && emptyState('暂无生成物', '对话生成讲义 / 指南 / 测试题后自动收录到这里')}
-              {!loading && list.length > 0 && cardGrid(list)}
+
+              {isCustomCat && showNewGenItem && (
+                <div className="border border-[var(--border-color)] rounded-2xl p-3 mb-5 flex flex-col gap-2 bg-[var(--bg-panel)] shadow-soft">
+                  <input autoFocus value={gTitle} onChange={e => setGTitle(e.target.value)} placeholder="内容名称"
+                    className="px-3 py-2 text-xs input-surface rounded-xl outline-none" />
+                  <textarea value={gContent} onChange={e => setGContent(e.target.value)} placeholder="内容（支持多行）"
+                    rows={4}
+                    className="px-3 py-2 text-xs input-surface rounded-xl outline-none resize-none" />
+                  <div className="flex gap-2 justify-end">
+                    <button onClick={() => setShowNewGenItem(false)} className="px-3 py-1.5 text-[11px] text-dim rounded-xl row-hover">取消</button>
+                    <button onClick={addGenItem} className="px-3 py-1.5 text-[11px] bg-[#1a1a1a] text-white font-semibold rounded-xl">保存</button>
+                  </div>
+                </div>
+              )}
+
+              {isCustomCat ? (
+                <>
+                  {loading && <p className="text-xs text-dim text-center py-16">加载中…</p>}
+                  {!loading && customItems.length === 0 && emptyState('该分类暂无内容', '点击右上角「新建内容」添加')}
+                  {!loading && customItems.length > 0 && cardGrid(customItems)}
+                </>
+              ) : (
+                <>
+                  {loading && <p className="text-xs text-dim text-center py-16">加载中…</p>}
+                  {!loading && list.length === 0 && emptyState('暂无生成物', '对话生成讲义 / 指南 / 测试题后自动收录到这里')}
+                  {!loading && list.length > 0 && cardGrid(list)}
+                </>
+              )}
             </>
           )}
           {tab === 'uploads' && (
