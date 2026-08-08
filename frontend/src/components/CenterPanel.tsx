@@ -588,7 +588,7 @@ const TEMPLATE_OPTIONS = [
                     </div>
                     {TEMPLATE_OPTIONS.map(t => (
                       <button key={t.name}
-                        onClick={() => { setTemplateMode(t.name); localStorage.setItem('coagent-template', t.name); setShowTplMenu(false) }}
+                        onClick={() => { setTemplateMode(t.name); localStorage.setItem('coagent-template', t.name); setAutoMode(true); localStorage.setItem('coagent-auto', '1'); setShowTplMenu(false) }}
                         className={`text-[11px] px-2 py-1.5 rounded-lg text-left w-full ${templateMode === t.name ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
                         <span className="font-medium">{t.name}</span>
                       </button>
