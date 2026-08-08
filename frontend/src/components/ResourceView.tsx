@@ -357,18 +357,18 @@ export default function ResourceView({ projectId }: { projectId: string | null }
 
   /** 普通卡片网格 */
   const cardGrid = (items: ListItem[]) => (
-    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
       {items.map(item => {
         const Icon = item.icon
         return (
           <div
             key={item.id}
             onClick={() => setDetail(item)}
-            className="group card-surface rounded-2xl p-5 flex flex-col gap-3 cursor-pointer transition-all hover:shadow-lg hover:-translate-y-1 hover:border-[var(--border-strong)]"
+            className="group card-surface rounded-2xl p-6 flex flex-col gap-4 cursor-pointer transition-all hover:shadow-lg hover:-translate-y-1 hover:border-[var(--border-strong)]"
           >
             <div className="flex items-start justify-between">
-              <span className="w-10 h-10 rounded-xl bg-[#1a1a1a] text-white flex items-center justify-center">
-                <Icon size={17} />
+              <span className="w-12 h-12 rounded-xl bg-[#1a1a1a] text-white flex items-center justify-center">
+                <Icon size={20} />
               </span>
               <div className="flex items-center gap-1.5">
                 {item.deletable && (
@@ -381,7 +381,8 @@ export default function ResourceView({ projectId }: { projectId: string | null }
                 )}
               </div>
             </div>
-            <p className="text-sm font-semibold leading-snug">{item.title}</p>
+            <p className="text-base font-semibold leading-snug">{item.title}</p>
+            <p className="text-xs text-dim truncate">{item.body}</p>
           </div>
         )
       })}
@@ -437,17 +438,18 @@ export default function ResourceView({ projectId }: { projectId: string | null }
                 <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-[#1a1a1a] text-white">{theme}</span>
                 <span className="text-[11px] text-dim">{entries.length} 个词条</span>
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                 {entries.map(w => (
                   <div
                     key={w.name}
                     onClick={() => setDetail({ id: 'wiki:' + w.name, title: w.name, sub: `${w.theme} · ${w.domain}`, body: w.detail, icon: Library, kind: 'wiki', deletable: false })}
-                    className="group card-surface rounded-2xl p-5 flex flex-col gap-3 cursor-pointer transition-all hover:shadow-lg hover:-translate-y-1 hover:border-[var(--border-strong)]"
+                    className="group card-surface rounded-2xl p-6 flex flex-col gap-4 cursor-pointer transition-all hover:shadow-lg hover:-translate-y-1 hover:border-[var(--border-strong)]"
                   >
-                    <span className="w-10 h-10 rounded-xl bg-[#1a1a1a] text-white flex items-center justify-center">
-                      <Library size={17} />
+                    <span className="w-12 h-12 rounded-xl bg-[#1a1a1a] text-white flex items-center justify-center">
+                      <Library size={20} />
                     </span>
-                    <p className="text-sm font-semibold leading-snug">{w.name}</p>
+                    <p className="text-base font-semibold leading-snug">{w.name}</p>
+                    <p className="text-xs text-dim truncate">{w.intro}</p>
                   </div>
                 ))}
               </div>
