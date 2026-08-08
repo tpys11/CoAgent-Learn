@@ -112,6 +112,37 @@ const BLOCKS: Array<{ key: Block; icon: any; label: string }> = [
   { key: 'templates', icon: LayoutTemplate, label: '模板与编排' },
 ]
 
+/** 编排节点图：节点 + 箭头 */
+function FlowNode({ icon: Icon, name, sub }: { icon: any; name: string; sub?: string }) {
+  return (
+    <div className="card-surface rounded-xl px-3 py-2 flex flex-col items-center gap-1 min-w-[76px] border-[var(--border-color)]">
+      {Icon && <Icon size={15} className="text-dim" />}
+      <span className="text-[11px] font-semibold">{name}</span>
+      {sub && <span className="text-[9px] text-dim">{sub}</span>}
+    </div>
+  )
+}
+const FlowArrow = () => <span className="text-dim flex-shrink-0 text-base">→</span>
+
+/** 4-Agent 编排节点图 */
+const FlowGraph = () => (
+  <div className="flex items-center justify-center gap-2 flex-wrap">
+    <FlowNode icon={Workflow} name="规划" sub="主 Agent" />
+    <FlowArrow />
+    <div className="flex flex-col gap-1 items-center">
+      <FlowNode icon={Brain} name="学情与记忆" />
+      <span className="text-[9px] text-dim">∥ 并行</span>
+      <FlowNode icon={Database} name="知识库" />
+    </div>
+    <FlowArrow />
+    <FlowNode icon={Workflow} name="生成" sub="主 Agent" />
+    <FlowArrow />
+    <FlowNode icon={Scale} name="审核" />
+    <FlowArrow />
+    <FlowNode icon={CheckCircle2} name="输出" />
+  </div>
+)
+
 /** 开关 */
 function Toggle({ checked, onChange, disabled }: { checked: boolean; onChange: () => void; disabled?: boolean }) {
   return (
