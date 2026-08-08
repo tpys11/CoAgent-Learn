@@ -844,6 +844,52 @@ def _extract_json_obj(text: str) -> dict:
     return {}
 
 
+def _auto_settings(api_key: str, message: str) -> dict:
+    """Auto 模式：让 AI 读取用户输入，自动推断模板/模式等设置；失败时返回空 dict（保持默认）"""
+    from core.config import config as _cfg
+    prompt = (
+        "你是对话设置分析器。根据用户的输入内容，推断最适合的对话设置，只输出 JSON：\n"
+        "{\"template\": \"均衡模式|质量优先|响应更快\", \"inputOptMode\": \"默认模式|详尽模式|不询问模式\", "
+        "\"searchMode\": \"自由|知识库\", \"webSearchMode\": \"默认|增强\", "
+        "\"outputFormat\": \"低结构化|高结构化\", \"outputStyle\": \"MD文档|对话形式\", "
+        "\"thinking\": \"开|关\", \"outputVolume\": \"精简|适中|拓展\", \"depth\": \"浅|中|深\"}\n"
+        "推断规则：涉及学习/讲解/推导用较深深度与适中输出；复杂主题用质量优先；简单问答用响应更快；无需搜索则 webSearchMode=默认。\n"
+        f"用户输入：{message[:1500]}"
+    )
+    h = {"Authorization": "Bearer " + (api_key or _cfg.DEEPSEEK_API_KEY), "Content-Type": "application/json"}
+    try:
+        import requests as _req
+        resp = _req.post(_cfg.DEEPSEEK_BASE_URL + "/chat/completions",
+                         json={"model": "deepseek-flash", "messages": [{"role": "user", "content": prompt}]},
+                         headers=h, timeout=60)
+        if resp.status_code != 200:
+            return {}
+        raw = resp.json()["choices"][0]["message"]["content"] or ""
+        d = _extract_json_obj(raw)
+        if not d:
+            return {}
+        # 只接受合法取值，非法字段丢弃
+        ok = {
+            "template": ["均衡模式", "质量优先", "响应更快"],
+            "inputOptMode": ["默认模式", "详尽模式", "不询问模式"],
+            "searchMode": ["自由", "知识库"],
+            "webSearchMode": ["默认", "增强"],
+            "outputFormat": ["低结构化", "高结构化"],
+            "outputStyle": ["MD文档", "对话形式"],
+            "thinking": ["开", "关"],
+            "outputVolume": ["精简", "适中", "拓展"],
+            "depth": ["浅", "中", "深"],
+        }
+        out = {}
+        for k, vals in ok.items():
+            v = str(d.get(k, "")).strip()
+            if v in vals:
+                out[k] = v
+        return out
+    except Exception:
+        return {}
+
+
 def _apply_template(agents, tpl: str):
     """按模板调整 agents 配置：质量优先=审核更严格(重试3次/严格模式)；响应更快=主Agent生成用快模型"""
     if not agents:
@@ -952,10 +998,16 @@ async def chat(req: ChatRequest):
 
             def run_workflow():
                 try:
+                    # Auto 模式：AI 读取输入自动推断模板/模式等设置
+                    _settings = dict(req.settings or {})
+                    if _settings.get("auto"):
+                        _auto = _auto_settings(req.api_key, req.message)
+                        if _auto:
+                            _settings.update(_auto)
                     # 模板模式：按所选模板调整 agents（均衡模式 = 不调整）
-                    _tpl = (req.settings or {}).get("template") or "均衡模式"
+                    _tpl = _settings.get("template") or "均衡模式"
                     _agents = _apply_template(req.agents, _tpl)
-                    wf = create_workflow(req.api_key, req.settings, on_token, model=req.model, base_url=req.base_url, agents=_agents)
+                    wf = create_workflow(req.api_key, _settings, on_token, model=req.model, base_url=req.base_url, agents=_agents)
                     pid = req.project_id or "default"
                     _did = req.dialogue_id or "default"
                     # 先存用户消息（invoke 时 generate_node 才能读到）

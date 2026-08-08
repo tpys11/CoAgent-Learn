@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Send, Bot, X, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Cpu, SlidersHorizontal, Check, AlertTriangle, Search, FileText, LayoutTemplate, Image as ImageIcon } from 'lucide-react'
+import { Send, Bot, X, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Cpu, SlidersHorizontal, Check, AlertTriangle, Search, FileText, LayoutTemplate, Zap, Image as ImageIcon } from 'lucide-react'
 import type { Message, Project } from '../types'
 
 
@@ -152,6 +152,8 @@ const TEMPLATE_OPTIONS = [
   })
   // 模板模式（与模板与编排预设一致）
   const [templateMode, setTemplateMode] = useState(() => localStorage.getItem('coagent-template') || '均衡模式')
+  // Auto：AI 根据输入自动选择模板/模式（开启后手动设置按钮禁用）
+  const [autoMode, setAutoMode] = useState(() => localStorage.getItem('coagent-auto') === '1')
   const [showTplMenu, setShowTplMenu] = useState(false)
   const tplRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -220,6 +222,7 @@ const TEMPLATE_OPTIONS = [
       image: image,
       chatMode: chatMode,
       template: templateMode,
+      auto: autoMode,
       searchMode: searchLabels[searchMode],
       outputFormat: outputFormat === 0 ? '低结构化' : '高结构化',
       outputStyle: outputStyle === 0 ? 'MD文档' : '对话形式',
@@ -237,6 +240,7 @@ const TEMPLATE_OPTIONS = [
     onSendMessage(q, {
       chatMode: chatMode,
       template: templateMode,
+      auto: autoMode,
       searchMode: searchLabels[searchMode],
       outputFormat: outputFormat === 0 ? '低结构化' : '高结构化',
       outputStyle: outputStyle === 0 ? 'MD文档' : '对话形式',
@@ -437,7 +441,8 @@ const TEMPLATE_OPTIONS = [
               <div className="relative" ref={inputOptRef}>
                 <button
                   onClick={() => { setShowInputOpt(!showInputOpt); setShowSearch(false); setShowFormat(false); setShowContent(false) }}
-                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)]"
+                  disabled={autoMode}
+                  className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
                 >
                   <SlidersHorizontal size={13} /> <ChevronDown size={9} />
                 </button>
@@ -457,7 +462,8 @@ const TEMPLATE_OPTIONS = [
               <div className="relative" ref={searchRef}>
                 <button
                   onClick={() => { setShowSearch(!showSearch); setShowFormat(false); setShowContent(false) }}
-                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)]"
+                  disabled={autoMode}
+                  className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
                 >
                   <Search size={13} /> <ChevronDown size={9} />
                 </button>
@@ -488,7 +494,8 @@ const TEMPLATE_OPTIONS = [
               <div className="relative" ref={formatRef}>
                 <button
                   onClick={() => { setShowFormat(!showFormat); setShowContent(false) }}
-                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)]"
+                  disabled={autoMode}
+                  className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
                 >
                   输出形式 <ChevronDown size={9} />
                 </button>
@@ -521,7 +528,8 @@ const TEMPLATE_OPTIONS = [
               <div className="relative" ref={contentRef}>
                 <button
                   onClick={() => { setShowContent(!showContent); setShowFormat(false) }}
-                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)]"
+                  disabled={autoMode}
+                  className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
                 >
                   输出内容 <ChevronDown size={9} />
                 </button>
@@ -566,7 +574,8 @@ const TEMPLATE_OPTIONS = [
               <div className="relative" ref={tplRef}>
                 <button
                   onClick={() => setShowTplMenu(!showTplMenu)}
-                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)]"
+                  disabled={autoMode}
+                  className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
                   title="模板模式（均衡/质量优先/响应更快）">
                   <LayoutTemplate size={13} /> 模板选择 <ChevronDown size={9} />
                 </button>
@@ -586,6 +595,13 @@ const TEMPLATE_OPTIONS = [
               </div>
               <span className="w-px h-4 bg-[#e5e5e5] mx-1" />
               <span className="flex-1" />
+              {/* Auto：AI 根据输入自动选择模板/模式（开启后手动设置禁用） */}
+              <button
+                onClick={() => { const next = !autoMode; setAutoMode(next); localStorage.setItem('coagent-auto', next ? '1' : '0') }}
+                className={`h-9 px-3 rounded-xl text-[11px] flex items-center gap-1.5 border transition-colors ${autoMode ? 'bg-[#1a1a1a] text-white border-[#1a1a1a] shadow-soft' : 'input-surface border-[var(--border-strong)] hover:opacity-90'}`}
+                title={autoMode ? 'Auto 已开启：AI 根据输入自动选择模板/模式等' : 'Auto：AI 根据输入自动选择模板/模式等（手动设置将禁用）'}>
+                <Zap size={14} /> Auto
+              </button>
               <button
                 onClick={() => setShowModelModal(true)}
                 className="h-9 px-3 rounded-xl input-surface text-[11px] flex items-center gap-1.5 hover:opacity-90 transition-colors"
