@@ -214,6 +214,7 @@ export default function ResourceView({ projectId }: { projectId: string | null }
   const [detail, setDetail] = useState<ListItem | null>(null)
   // 我的生成：分类（预设 + 自定义）
   const [genCat, setGenCat] = useState('all')
+  const [uploadCat, setUploadCat] = useState('all')
   const [customGens, setCustomGens] = useState<Array<{ id: string; name: string; items: Array<{ id: string; title: string; content: string }> }>>(() => {
     try { return JSON.parse(localStorage.getItem(CUSTOM_GENS_KEY) || '[]') } catch { return [] }
   })
@@ -289,22 +290,25 @@ export default function ResourceView({ projectId }: { projectId: string | null }
     if (!name || customGens.some(c => c.name === name)) return
     const id = 'cg-' + Date.now()
     saveCustomGens([...customGens, { id, name, items: [] }])
-    setGenCat(id)
+    if (tab === 'generated') setGenCat(id); else setUploadCat(id)
     setNewGenCatName(''); setShowNewGenCat(false)
   }
   const addGenItem = () => {
     if (!gTitle.trim()) return
-    saveCustomGens(customGens.map(c => c.id === genCat ? { ...c, items: [...c.items, { id: 'gi-' + Date.now(), title: gTitle.trim(), content: gContent }] } : c))
+    const curCat = tab === 'generated' ? genCat : uploadCat
+    saveCustomGens(customGens.map(c => c.id === curCat ? { ...c, items: [...c.items, { id: 'gi-' + Date.now(), title: gTitle.trim(), content: gContent }] } : c))
     setGTitle(''); setGContent(''); setShowNewGenItem(false)
   }
   const removeGenCat = (id: string) => {
     if (!window.confirm('确定删除该分类及其内容？')) return
     saveCustomGens(customGens.filter(c => c.id !== id))
     if (genCat === id) setGenCat('all')
+    if (uploadCat === id) setUploadCat('all')
   }
   const removeGenItem = (id: string) => {
     setDetail(null)
-    saveCustomGens(customGens.map(c => c.id === genCat ? { ...c, items: c.items.filter(i => i.id !== id) } : c))
+    const curCat = tab === 'generated' ? genCat : uploadCat
+    saveCustomGens(customGens.map(c => c.id === curCat ? { ...c, items: c.items.filter(i => i.id !== id) } : c))
   }
 
   // ---------- 列表组装 ----------
@@ -336,10 +340,12 @@ export default function ResourceView({ projectId }: { projectId: string | null }
       kind: 'artifact' as const, deletable: false,
     }))
   } else if (tab === 'uploads') {
-    list = [
-      ...kbDocs.map(d => ({ id: 'kb:' + d.source, title: d.source, sub: `知识库文档 · ${d.chunks} 块`, body: d.preview || '（无预览内容）', icon: Upload, kind: 'kb' as const, deletable: true })),
-      ...resources.map(r => ({ id: r.id, title: r.name, sub: '保存的资料', body: r.content || '', icon: FileText, kind: 'resource' as const, deletable: true })),
-    ]
+    const kbItems: ListItem[] = kbDocs.map(d => ({ id: 'kb:' + d.source, title: d.source, sub: `知识库文档 · ${d.chunks} 块`, body: d.preview || '（无预览内容）', icon: Upload, kind: 'kb' as const, deletable: true }))
+    const resItems: ListItem[] = resources.map(r => ({ id: r.id, title: r.name, sub: '保存的资料', body: r.content || '', icon: FileText, kind: 'resource' as const, deletable: true }))
+    if (uploadCat === 'all') list = [...kbItems, ...resItems]
+    else if (uploadCat === 'kb') list = kbItems
+    else if (uploadCat === 'resource') list = resItems
+    else list = []
   }
 
   const removeItem = (item: ListItem) => {
@@ -461,10 +467,46 @@ export default function ResourceView({ projectId }: { projectId: string | null }
 
   // 我的生成：当前是否为自定义分类 + 其内容列表
   const isCustomCat = customGens.some(c => c.id === genCat)
-  const customItems: ListItem[] = (customGens.find(c => c.id === genCat)?.items || []).map(i => ({
+  const isCustomUploadCat = customGens.some(c => c.id === uploadCat)
+  const customItems: ListItem[] = (customGens.find(c => c.id === (tab === 'generated' ? genCat : uploadCat))?.items || []).map(i => ({
     id: i.id, title: i.title, sub: '自定义内容', body: i.content, icon: Sparkles,
     kind: 'gen' as const, deletable: true,
   }))
+
+  /** 左侧栏「我的分类」公共区块（我的生成 / 我的上传 共用） */
+  const renderMyCats = (active: string, onSelect: (id: string) => void) => (
+    <>
+      <div className="w-px h-3 bg-[var(--border-color)] my-1.5 self-center" />
+      <p className="text-[10px] font-bold text-dim uppercase tracking-wider px-2.5 mb-0.5">我的分类</p>
+      {customGens.map(c => (
+        <div key={c.id} className="group flex items-center rounded-xl">
+          <button onClick={() => { onSelect(c.id); setDetail(null) }}
+            className={`flex-1 flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-left transition-colors ${
+              active === c.id ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
+            }`}>
+            <Sparkles size={13} /> {c.name}
+          </button>
+          <button onClick={(e) => { e.stopPropagation(); removeGenCat(c.id) }}
+            className="opacity-0 group-hover:opacity-100 p-1 mr-1 rounded text-gray-300 hover:text-red-500 flex-shrink-0" title="删除分类">
+            <Trash2 size={11} />
+          </button>
+        </div>
+      ))}
+      {showNewGenCat ? (
+        <div className="flex gap-1 px-1 pt-1">
+          <input autoFocus value={newGenCatName} onChange={e => setNewGenCatName(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') addGenCat() }}
+            placeholder="分类名" className="flex-1 px-2 py-1.5 text-[11px] input-surface rounded-lg outline-none" />
+          <button onClick={addGenCat} className="px-2 py-1 text-[11px] bg-[#1a1a1a] text-white rounded-lg font-semibold">加</button>
+        </div>
+      ) : (
+        <button onClick={() => setShowNewGenCat(true)}
+          className="flex items-center gap-1.5 px-3 py-2 mt-1 text-[11px] text-dim hover:text-[#1a1a1a] rounded-xl hover:bg-[var(--bg-hover)] transition-colors">
+          <Plus size={12} /> 新建分类
+        </button>
+      )}
+    </>
+  )
 
   return (
     <div className="flex-1 h-full min-w-0 flex flex-col panel rounded-3xl overflow-hidden">
@@ -472,7 +514,6 @@ export default function ResourceView({ projectId }: { projectId: string | null }
       <div className="flex-shrink-0 px-8 pt-6 pb-6 bg-[var(--bg-panel)] border-b border-[var(--border-color)]">
           {/* 领域选择（逻辑上最先选领域：置于最顶、靠左展开） */}
           <div className="flex items-center gap-3 mb-4 flex-wrap">
-            <span className="text-sm font-bold text-[var(--text)] mr-1">选择领域</span>
             {DEFAULT_DOMAINS.map(d => (
               <button
                 key={d}
@@ -543,35 +584,21 @@ export default function ResourceView({ projectId }: { projectId: string | null }
                 <Sparkles size={13} /> {c.label}
               </button>
             ))}
-            <div className="w-px h-3 bg-[var(--border-color)] my-1.5 self-center" />
-            <p className="text-[10px] font-bold text-dim uppercase tracking-wider px-2.5 mb-0.5">我的分类</p>
-            {customGens.map(c => (
-              <div key={c.id} className="group flex items-center rounded-xl">
-                <button onClick={() => { setGenCat(c.id); setDetail(null) }}
-                  className={`flex-1 flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-left transition-colors ${
-                    genCat === c.id ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
-                  }`}>
-                  <Sparkles size={13} /> {c.name}
-                </button>
-                <button onClick={(e) => { e.stopPropagation(); removeGenCat(c.id) }}
-                  className="opacity-0 group-hover:opacity-100 p-1 mr-1 rounded text-gray-300 hover:text-red-500 flex-shrink-0" title="删除分类">
-                  <Trash2 size={11} />
-                </button>
-              </div>
-            ))}
-            {showNewGenCat ? (
-              <div className="flex gap-1 px-1 pt-1">
-                <input autoFocus value={newGenCatName} onChange={e => setNewGenCatName(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') addGenCat() }}
-                  placeholder="分类名" className="flex-1 px-2 py-1.5 text-[11px] input-surface rounded-lg outline-none" />
-                <button onClick={addGenCat} className="px-2 py-1 text-[11px] bg-[#1a1a1a] text-white rounded-lg font-semibold">加</button>
-              </div>
-            ) : (
-              <button onClick={() => setShowNewGenCat(true)}
-                className="flex items-center gap-1.5 px-3 py-2 mt-1 text-[11px] text-dim hover:text-[#1a1a1a] rounded-xl hover:bg-[var(--bg-hover)] transition-colors">
-                <Plus size={12} /> 新建分类
+            {renderMyCats(genCat, setGenCat)}
+          </div>
+        )}
+        {tab === 'uploads' && (
+          <div className="w-40 flex-shrink-0 border-r hairline bg-[var(--bg-sidebar)] p-2.5 flex flex-col gap-1 overflow-y-auto">
+            <p className="text-[10px] font-bold text-dim uppercase tracking-wider px-2.5 mt-1 mb-0.5">预设分类</p>
+            {[{ key: 'all', label: '全部' }, { key: 'kb', label: '知识库文档' }, { key: 'resource', label: '保存的资料' }].map(c => (
+              <button key={c.key} onClick={() => { setUploadCat(c.key); setDetail(null) }}
+                className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-left transition-colors ${
+                  uploadCat === c.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
+                }`}>
+                <Upload size={13} /> {c.label}
               </button>
-            )}
+            ))}
+            {renderMyCats(uploadCat, setUploadCat)}
           </div>
         )}
         <div className="flex-1 overflow-y-auto px-10 py-8">
@@ -624,18 +651,25 @@ export default function ResourceView({ projectId }: { projectId: string | null }
             <>
               <div className="flex items-end justify-between mb-5">
                 <h2 className="text-lg font-bold flex items-center gap-2"><Upload size={18} /> 我的上传</h2>
-                {!showAddResource && (
-                  <button
-                    onClick={() => setShowAddResource(true)}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors"
-                  >
-                    <Plus size={13} /> 添加资料
-                  </button>
+                {isCustomUploadCat ? (
+                  !showNewGenItem && (
+                    <button onClick={() => setShowNewGenItem(true)}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors">
+                      <Plus size={13} /> 新建内容
+                    </button>
+                  )
+                ) : (
+                  !showAddResource && (
+                    <button onClick={() => setShowAddResource(true)}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors">
+                      <Plus size={13} /> 添加资料
+                    </button>
+                  )
                 )}
               </div>
 
-              {/* 添加资料表单（手动添加入口在“我的上传”） */}
-              {showAddResource && (
+              {/* 添加资料表单（预设分类下） */}
+              {!isCustomUploadCat && showAddResource && (
                 <div className="border border-[var(--border-color)] rounded-2xl p-3 mb-5 flex flex-col gap-2 bg-[var(--bg-panel)] shadow-soft">
                   <input autoFocus value={rName} onChange={e => setRName(e.target.value)} placeholder="资料名称"
                     className="px-3 py-2 text-xs input-surface rounded-xl outline-none" />
@@ -649,9 +683,34 @@ export default function ResourceView({ projectId }: { projectId: string | null }
                 </div>
               )}
 
-              {loading && <p className="text-xs text-dim text-center py-16">加载中…</p>}
-              {!loading && list.length === 0 && emptyState('暂无上传内容', '点击右上角「添加资料」或上传知识库文档后展示在这里')}
-              {!loading && list.length > 0 && cardGrid(list)}
+              {/* 新建内容表单（自定义分类下） */}
+              {isCustomUploadCat && showNewGenItem && (
+                <div className="border border-[var(--border-color)] rounded-2xl p-3 mb-5 flex flex-col gap-2 bg-[var(--bg-panel)] shadow-soft">
+                  <input autoFocus value={gTitle} onChange={e => setGTitle(e.target.value)} placeholder="内容名称"
+                    className="px-3 py-2 text-xs input-surface rounded-xl outline-none" />
+                  <textarea value={gContent} onChange={e => setGContent(e.target.value)} placeholder="内容（支持多行）"
+                    rows={4}
+                    className="px-3 py-2 text-xs input-surface rounded-xl outline-none resize-none" />
+                  <div className="flex gap-2 justify-end">
+                    <button onClick={() => setShowNewGenItem(false)} className="px-3 py-1.5 text-[11px] text-dim rounded-xl row-hover">取消</button>
+                    <button onClick={addGenItem} className="px-3 py-1.5 text-[11px] bg-[#1a1a1a] text-white font-semibold rounded-xl">保存</button>
+                  </div>
+                </div>
+              )}
+
+              {isCustomUploadCat ? (
+                <>
+                  {loading && <p className="text-xs text-dim text-center py-16">加载中…</p>}
+                  {!loading && customItems.length === 0 && emptyState('该分类暂无内容', '点击右上角「新建内容」添加')}
+                  {!loading && customItems.length > 0 && cardGrid(customItems)}
+                </>
+              ) : (
+                <>
+                  {loading && <p className="text-xs text-dim text-center py-16">加载中…</p>}
+                  {!loading && list.length === 0 && emptyState('暂无上传内容', '点击右上角「添加资料」或上传知识库文档后展示在这里')}
+                  {!loading && list.length > 0 && cardGrid(list)}
+                </>
+              )}
             </>
           )}
           </div>
