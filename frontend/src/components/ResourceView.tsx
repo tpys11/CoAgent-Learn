@@ -450,24 +450,27 @@ export default function ResourceView({ projectId }: { projectId: string | null }
   return (
     <div className="flex-1 h-full min-w-0 flex flex-col panel rounded-3xl overflow-hidden">
       {/* 顶部 Hero：主题化配色（跟随 light/dark/warm） */}
-      <div className="flex-shrink-0 px-8 pt-7 pb-6 bg-[var(--bg-panel)] border-b border-[var(--border-color)]">
+      <div className="flex-shrink-0 px-8 pt-6 pb-6 bg-[var(--bg-panel)] border-b border-[var(--border-color)]">
         <div className="max-w-6xl mx-auto">
-          <p className="text-[11px] font-bold text-[var(--accent)] tracking-widest uppercase mb-2">Resource Center</p>
-          {/* 领域选择行（系统预设）：置于最顶（RESOURCE CENTER 之下、标题之上） */}
-          <div className="flex items-center gap-2 mb-4 flex-wrap">
-            <span className="text-[11px] font-semibold text-dim mr-1">领域</span>
+          {/* 领域选择（逻辑上最先选领域：置于最顶、加大醒目） */}
+          <div className="flex items-center gap-3 mb-5 flex-wrap">
+            <span className="text-sm font-bold text-[var(--text)] mr-1">选择领域</span>
             {DEFAULT_DOMAINS.map(d => (
               <button
                 key={d}
                 onClick={() => { setSelectedDomain(d); setSelectedCat(CATEGORIES[0].key); setDetail(null) }}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                  selectedDomain === d ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold transition-all ${
+                  selectedDomain === d
+                    ? 'bg-[#1a1a1a] text-white shadow-soft ring-2 ring-[var(--accent)]/40'
+                    : 'bg-[var(--bg-hover)] text-[var(--text-muted)] hover:bg-[var(--bg-active)] border border-[var(--border-color)]'
                 }`}
               >
+                <FolderTree size={15} />
                 {d}
               </button>
             ))}
           </div>
+          <p className="text-[11px] font-bold text-[var(--accent)] tracking-widest uppercase mb-2">Resource Center</p>
           <h1 className="text-2xl font-bold leading-snug">学习、理解、实践，与社区一起构建人工智能的未来</h1>
 
           {/* 功能入口大按钮 */}
