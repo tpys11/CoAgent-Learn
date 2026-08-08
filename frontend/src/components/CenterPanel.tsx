@@ -495,7 +495,7 @@ const TEMPLATE_OPTIONS = [
                   <LayoutTemplate size={13} /> 模板选择 <ChevronDown size={9} />
                 </button>
                 {showTplMenu && (
-                  <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 230 }}>
+                  <div className="absolute bottom-full left-0 mb-1 card-lift p-1.5 z-10" style={{ width: 125 }}>
                     {TEMPLATE_OPTIONS.map(t => (
                       <button key={t.name}
                         onClick={() => { setTemplateMode(t.name); localStorage.setItem('coagent-template', t.name); setShowTplMenu(false) }}
@@ -518,7 +518,7 @@ const TEMPLATE_OPTIONS = [
                   <SlidersHorizontal size={13} /> 输入优化 <ChevronDown size={9} />
                 </button>
                 {showInputOpt && (
-                  <div className="absolute bottom-full left-0 mb-1 card-lift p-1.5 z-10" style={{ width: 150 }}>
+                  <div className="absolute bottom-full left-0 mb-1 card-lift p-1.5 z-10" style={{ width: 100 }}>
                     {inputOptLabels.map((label, i) => (
                       <button key={label} onClick={() => { setInputOptMode(i) }}
                         className={`text-[11px] px-2 py-1 rounded-lg text-left w-full ${i === inputOptMode ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
@@ -538,7 +538,7 @@ const TEMPLATE_OPTIONS = [
                   <Search size={13} /> 检索模式 <ChevronDown size={9} />
                 </button>
                 {showSearch && (
-                  <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 205 }}>
+                  <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 165 }}>
                     <div className="text-[10px] text-dim mb-1">知识库检索：</div>
                     {searchLabels.map((label, i) => (
                       <button key={label} onClick={() => { setSearchMode(i); setChatMode(i === 1 ? 'kb' : 'free') }}
@@ -570,7 +570,7 @@ const TEMPLATE_OPTIONS = [
                   输出形式 <ChevronDown size={9} />
                 </button>
                 {showFormat && (
-                  <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 220 }}>
+                  <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 165 }}>
                     <div className="text-[10px] text-dim mb-1">结构化程度：</div>
                     {([
                       ['低结构化', '减少列表和表格，以段落为主'],
@@ -604,7 +604,7 @@ const TEMPLATE_OPTIONS = [
                   输出内容 <ChevronDown size={9} />
                 </button>
                 {showContent && (
-                  <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 220 }}>
+                  <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 175 }}>
                     <div className="text-[10px] text-dim mb-1">思考链展示：</div>
                     {([
                       ['关', '不展示思考链'],
@@ -651,7 +651,7 @@ const TEMPLATE_OPTIONS = [
                   <Cpu size={14} /> 模型 <ChevronDown size={9} />
                 </button>
                 {showModelModal && (
-                  <div className="absolute bottom-full right-0 mb-1 card-lift p-2 z-10" style={{ width: 230 }}>
+                  <div className="absolute bottom-full right-0 mb-1 card-lift p-2 z-10" style={{ width: 175 }}>
                     <div className="flex items-center justify-between gap-2 px-1 py-1.5 mb-1 border-b border-[#e5e5e5]">
                       <span className="text-[11px] font-medium">Auto</span>
                       <button onClick={() => { const next = !modelAuto; setModelAuto(next); localStorage.setItem('coagent-model-auto', next ? '1' : '0') }}
