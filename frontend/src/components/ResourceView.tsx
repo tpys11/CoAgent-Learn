@@ -451,8 +451,7 @@ export default function ResourceView({ projectId }: { projectId: string | null }
     <div className="flex-1 h-full min-w-0 flex flex-col panel rounded-3xl overflow-hidden">
       {/* 顶部 Hero：主题化配色（跟随 light/dark/warm） */}
       <div className="flex-shrink-0 px-8 pt-6 pb-6 bg-[var(--bg-panel)] border-b border-[var(--border-color)]">
-        <div className="max-w-6xl mx-auto">
-          {/* 领域选择（逻辑上最先选领域：置于最顶、加大醒目） */}
+          {/* 领域选择（逻辑上最先选领域：置于最顶、靠左展开） */}
           <div className="flex items-center gap-3 mb-4 flex-wrap">
             <span className="text-sm font-bold text-[var(--text)] mr-1">选择领域</span>
             {DEFAULT_DOMAINS.map(d => (
@@ -490,7 +489,6 @@ export default function ResourceView({ projectId }: { projectId: string | null }
               </button>
             ))}
           </div>
-        </div>
       </div>
 
       {/* 主体：左侧分类栏 + 内容区 */}
