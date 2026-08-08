@@ -580,11 +580,15 @@ const TEMPLATE_OPTIONS = [
                 </button>
                 {showTplMenu && (
                   <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 230 }}>
-                    <div className="flex items-center justify-between gap-3 px-1 py-1 mb-1 border-b border-[#e5e5e5]">
-                      <span className="text-[10px] text-dim">Auto 自动选择（开启后前面按钮作废，基于所选模板自动选择）</span>
+                    <div className="flex items-center justify-between gap-2 px-1 py-1.5 mb-1 border-b border-[#e5e5e5]">
+                      <div className="flex flex-col">
+                        <span className="text-[11px] font-medium">Auto 自动选择</span>
+                        <span className="text-[9px] text-dim">开启后前面按钮作废，AI 基于所选模板自动选择</span>
+                      </div>
                       <button onClick={() => { const next = !autoMode; setAutoMode(next); localStorage.setItem('coagent-auto', next ? '1' : '0') }}
-                        className={`w-8 h-4.5 rounded-full relative transition-colors flex-shrink-0 ${autoMode ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`} style={{ height: 18 }}>
-                        <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-all ${autoMode ? 'left-4' : 'left-0.5'}`} />
+                        className={`w-9 h-5 rounded-full relative transition-colors flex-shrink-0 ${autoMode ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`}
+                        title="Auto 开关">
+                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${autoMode ? 'translate-x-4' : ''}`} />
                       </button>
                     </div>
                     {TEMPLATE_OPTIONS.map(t => (
