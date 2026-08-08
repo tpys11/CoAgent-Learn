@@ -87,7 +87,7 @@ body {
 @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes slideInLeft { from { opacity: 0; transform: translateX(-16px); } to { opacity: 1; transform: translateX(0); } }
 button { transition-property: color, background-color, border-color, box-shadow, transform; transition-duration: 150ms; transition-timing-function: ease; }
-button:active { transform: scale(0.98); }
+/* 移除全局按压缩放：点击按钮不再缩放，避免弹窗/边框视觉跳动 */
 
 /* ============ 语义类层（直接绑定主题变量，新结构组件使用） ============ */
 .panel          { background: var(--bg-tonal); }
