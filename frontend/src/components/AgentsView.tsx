@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Settings, Square, Upload, Folder, Activity, Download, Layers, Wrench, Store, ExternalLink, FileCode, Plus, Trash2, LayoutTemplate, X } from 'lucide-react'
+import { Settings, Square, Upload, Folder, Activity, Download, Layers, Wrench, Store, ExternalLink, FileCode, Plus, Trash2, LayoutTemplate, X, Workflow, Brain, Database, Scale, CheckCircle2 } from 'lucide-react'
 import type { AgentConfig } from '../types'
 import { DEFAULT_AGENTS } from '../types'
 
