@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Settings, Square, Upload, Folder, Check } from 'lucide-react'
+import { Settings, Square, Upload, Folder } from 'lucide-react'
 import type { AgentConfig } from '../types'
 
 interface SkillInfo { name: string; description: string; folder: string }
@@ -17,7 +17,6 @@ export default function AgentsView({ agents, onSave }: Props) {
   const [prompt, setPrompt] = useState(agent?.systemPrompt || '')
   const [allSkills, setAllSkills] = useState<SkillInfo[]>([])
   const [linkedSkills, setLinkedSkills] = useState<string[]>([])
-  const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     setMode(agent?.mode || '标准')
@@ -30,17 +29,18 @@ export default function AgentsView({ agents, onSave }: Props) {
   }, [selectedId])
 
   const toggleSkill = (name: string) => {
-    setLinkedSkills(prev => prev.includes(name) ? prev.filter(s => s !== name) : [...prev, name])
+    const next = linkedSkills.includes(name) ? linkedSkills.filter(s => s !== name) : [...linkedSkills, name]
+    setLinkedSkills(next)
+    commit(mode, prompt, next)
   }
 
-  const handleSave = () => {
-    const linked = linkedSkills.map(n => {
-      const s = allSkills.find(x => x.name === n)
-      return s ? `${s.name}: ${s.description}` : n
-    }).join('\n')
-    onSave({ ...agent, mode, systemPrompt: prompt, skill: linked || agent.skill })
-    setSaved(true)
-    setTimeout(() => setSaved(false), 1500)
+  /** 自动保存：任何修改立即持久化（无需手动点保存） */
+  const buildSkill = (linked: string[]) => linked.map(n => {
+    const s = allSkills.find(x => x.name === n)
+    return s ? `${s.name}: ${s.description}` : n
+  }).join('\n')
+  const commit = (m: string, p: string, linked: string[]) => {
+    onSave({ ...agent, mode: m, systemPrompt: p, skill: buildSkill(linked) || agent.skill })
   }
 
   return (
@@ -60,14 +60,6 @@ export default function AgentsView({ agents, onSave }: Props) {
             </button>
           ))}
         </div>
-        <div className="p-2 border-t border-[#e5e5e5]">
-          <button onClick={handleSave}
-            className={`w-full py-2 text-white text-xs font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5 ${
-              saved ? 'bg-green-600' : 'bg-[#1a1a1a] hover:bg-[#333]'
-            }`}>
-            {saved && <Check size={12} />}{saved ? '已保存' : '保存'}
-          </button>
-        </div>
       </div>
 
       {/* 右侧设置 */}
@@ -78,7 +70,7 @@ export default function AgentsView({ agents, onSave }: Props) {
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">模式</label>
             <div className="flex gap-2">
               {agent.modes.map(m => (
-                <button key={m.label} onClick={() => setMode(m.label)}
+                <button key={m.label} onClick={() => { setMode(m.label); commit(m.label, prompt, linkedSkills) }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
                     mode === m.label ? 'bg-[#1a1a1a] text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                   }`}>{m.label}</button>
@@ -89,7 +81,7 @@ export default function AgentsView({ agents, onSave }: Props) {
           {/* 提示词 */}
           <div>
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">全局性提示词</label>
-            <textarea value={prompt} onChange={e => setPrompt(e.target.value)} rows={5}
+            <textarea value={prompt} onChange={e => { setPrompt(e.target.value); commit(mode, e.target.value, linkedSkills) }} rows={5}
               className="w-full px-3 py-2 border border-[#d0d0d0] rounded-lg text-xs font-mono outline-none resize-none focus:border-[#1a1a1a] bg-[#fafafa]" />
           </div>
 
