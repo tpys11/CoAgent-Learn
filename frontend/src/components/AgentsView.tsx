@@ -187,6 +187,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
     try { return JSON.parse(localStorage.getItem(CUSTOM_TEMPLATES_KEY) || '[]') } catch { return [] }
   })
   const [saveTplName, setSaveTplName] = useState('')
+  const [showNewTplModal, setShowNewTplModal] = useState(false)
   // Skill 管理四区
   const [skillTab, setSkillTab] = useState('installed')
   const [skillCat, setSkillCat] = useState('all')
@@ -317,6 +318,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
     localStorage.setItem(CUSTOM_TEMPLATES_KEY, JSON.stringify(next))
     setSelectedTpl(name)
     setSaveTplName('')
+    setShowNewTplModal(false)
   }
   const removeCustomTemplate = (name: string) => {
     const next = customTemplates.filter(t => t.name !== name)
@@ -616,23 +618,35 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
 
             {/* 预设模板：点击展开详情 */}
             <div className="flex flex-col gap-3">
-              <div className="flex gap-2 flex-wrap">
-                {allTemplates.map(t => (
-                  <div key={t.name} className="relative group flex-shrink-0">
-                    <button onClick={() => setSelectedTpl(selectedTpl === t.name ? null : t.name)}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-medium transition-all ${
-                        selectedTpl === t.name ? 'border-[var(--border-strong)] bg-[#1a1a1a] text-white shadow-soft' : 'border hairline bg-[var(--bg-panel)] text-dim hover:bg-[var(--bg-hover)]'
-                      }`}>
-                      <LayoutTemplate size={13} /> {t.name}
-                    </button>
-                    {customTemplates.some(c => c.name === t.name) && (
-                      <button onClick={(e) => { e.stopPropagation(); removeCustomTemplate(t.name) }}
-                        className="hidden group-hover:flex absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white items-center justify-center shadow" title="删除模板">
-                        <X size={9} />
+              <div className="flex gap-2 flex-wrap items-center">
+                {allTemplates.map(t => {
+                  const isCustom = customTemplates.some(c => c.name === t.name)
+                  return (
+                    <div key={t.name} className="relative group flex-shrink-0">
+                      <button onClick={() => setSelectedTpl(selectedTpl === t.name ? null : t.name)}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-medium transition-all ${
+                          selectedTpl === t.name
+                            ? 'border-[var(--border-strong)] bg-[#1a1a1a] text-white shadow-soft'
+                            : isCustom
+                              ? 'border-dashed border-[var(--border-color)] bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'
+                              : 'border hairline bg-[var(--bg-panel)] text-dim hover:bg-[var(--bg-hover)]'
+                        }`}>
+                        <LayoutTemplate size={13} /> {t.name}
                       </button>
-                    )}
-                  </div>
-                ))}
+                      {isCustom && (
+                        <button onClick={(e) => { e.stopPropagation(); removeCustomTemplate(t.name) }}
+                          className="hidden group-hover:flex absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white items-center justify-center shadow" title="删除模板">
+                          <X size={9} />
+                        </button>
+                      )}
+                    </div>
+                  )
+                })}
+                <span className="w-px h-5 bg-[var(--border-color)]" />
+                <button onClick={() => setShowNewTplModal(true)}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium border border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors flex-shrink-0">
+                  <Plus size={13} /> 新建模板
+                </button>
               </div>
               {(() => { const t = allTemplates.find(x => x.name === selectedTpl); if (!t) return null; return (
                 <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-3">
@@ -710,15 +724,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                   )}
                 </div>
               </div>
-              {/* 保存为自定义模板 */}
-              <div className="flex gap-2 items-center">
-                <input value={saveTplName} onChange={e => setSaveTplName(e.target.value)} placeholder="自定义模板名称"
-                  className="flex-1 px-3 py-2 text-xs input-surface rounded-lg outline-none" />
-                <button onClick={saveCustomTemplate}
-                  className="px-3.5 py-2 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors flex-shrink-0">
-                  保存为自定义模板
-                </button>
-              </div>
             </div>
 
             {/* 导入导出 */}
@@ -736,6 +741,22 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
           </div>
         )}
       </div>
+      {/* 新建模板弹窗 */}
+      {showNewTplModal && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setShowNewTplModal(false)}>
+          <div className="bg-[var(--bg-panel)] rounded-2xl shadow-xl w-full max-w-sm p-6 mx-4" onClick={e => e.stopPropagation()}>
+            <h3 className="text-base font-bold mb-2">新建模板</h3>
+            <p className="text-[11px] text-dim mb-4">将当前 Agent 团队配置保存为自定义模板。</p>
+            <input autoFocus value={saveTplName} onChange={e => setSaveTplName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') saveCustomTemplate() }}
+              placeholder="模板名称" className="w-full px-3 py-2 text-xs input-surface rounded-lg outline-none mb-4" />
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setShowNewTplModal(false)} className="px-4 py-2 text-xs text-dim row-hover rounded-lg">取消</button>
+              <button onClick={saveCustomTemplate} className="px-4 py-2 text-xs bg-[#1a1a1a] text-white rounded-lg font-semibold">保存</button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Skill 详情弹窗（独立小窗口） */}
       {skillDetail && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setSkillDetail(null)}>
