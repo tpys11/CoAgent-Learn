@@ -428,14 +428,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                   </div>
                 </div>
 
-                {/* 输入输出示例（few-shot） */}
-                <div>
-                  <label className={fieldLabel}>输入输出示例（few-shot）</label>
-                  <textarea value={example} onChange={e => { setExample(e.target.value); commit({ example: e.target.value }) }} rows={4}
-                    placeholder="可选：粘贴一段 输入→输出 的 JSON 示例，帮助该 Agent 稳定输出格式"
-                    className="w-full px-3 py-2 border hairline rounded-xl text-xs font-mono outline-none resize-none focus:border-[var(--border-strong)] bg-[var(--bg-input)]" />
-                </div>
-
                 {/* 该 Agent 运行监控 */}
                 <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
                   <p className={`${fieldLabel} flex items-center gap-1`}><Activity size={13} /> 运行监控（该 Agent 最近任务）</p>
@@ -710,12 +702,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                       <div>
                         <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">全局性提示词</p>
                         <textarea value={tplAgent.systemPrompt} onChange={e => commitTpl({ systemPrompt: e.target.value })} rows={4}
-                          className="w-full px-3 py-2 border hairline rounded-xl text-xs font-mono outline-none resize-none focus:border-[var(--border-strong)] bg-[var(--bg-input)]" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">输入输出示例（few-shot）</p>
-                        <textarea value={tplAgent.example || ''} onChange={e => commitTpl({ example: e.target.value })} rows={3}
-                          placeholder="可选：粘贴 输入→输出 JSON 示例"
                           className="w-full px-3 py-2 border hairline rounded-xl text-xs font-mono outline-none resize-none focus:border-[var(--border-strong)] bg-[var(--bg-input)]" />
                       </div>
                     </>
