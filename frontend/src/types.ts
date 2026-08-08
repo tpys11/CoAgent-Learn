@@ -1,4 +1,4 @@
-export interface Project {
+﻿export interface Project {
   id: string
   name: string
   initialized?: boolean
@@ -62,9 +62,9 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
     id: 'main',
     name: '主 Agent',
     icon: '🎯',
-    mode: '标准',
+    mode: '均衡',
     modes: [
-      { label: '标准', promptOverride: '' },
+      { label: '均衡', promptOverride: '' },
       { label: '深思', promptOverride: '请进行更深入的分析，考虑更多背景与细节。' },
       { label: '快速', promptOverride: '请快速给出核心内容，减少冗余。' },
     ],
@@ -84,8 +84,8 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
     id: 'study',
     name: '学情与记忆管理',
     icon: '🧠',
-    mode: '标准',
-    modes: [{ label: '标准', promptOverride: '' }],
+    mode: '均衡',
+    modes: [{ label: '均衡', promptOverride: '' }],
     systemPrompt: '你是学情与记忆管理 Agent。负责用户记忆的读写与学情画像：分析用户知识水平，参考已有记忆输出结构化画像。',
     defaultPrompt: '你是学情与记忆管理 Agent。负责用户记忆的读写与学情画像：分析用户知识水平，参考已有记忆输出结构化画像。',
     skill: '记忆分层：L1事件追踪→L2精选事实→L3综合画像；学情诊断输出 level/strengths/gaps/suggestion。',
@@ -102,8 +102,8 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
     id: 'kb',
     name: '知识库管理',
     icon: '📚',
-    mode: '标准',
-    modes: [{ label: '标准', promptOverride: '' }],
+    mode: '均衡',
+    modes: [{ label: '均衡', promptOverride: '' }],
     systemPrompt: '你是知识库管理 Agent。负责知识库检索与联网搜索：从知识库向量库检索相关片段，必要时联网补充信息。',
     defaultPrompt: '你是知识库管理 Agent。负责知识库检索与联网搜索：从知识库向量库检索相关片段，必要时联网补充信息。',
     skill: '知识库管理：文档切片→向量化→语义检索；联网搜索聚合多源权威信息。',
@@ -120,9 +120,9 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
     id: 'review',
     name: '审核',
     icon: '⚖️',
-    mode: '标准',
+    mode: '均衡',
     modes: [
-      { label: '标准', promptOverride: '' },
+      { label: '均衡', promptOverride: '' },
       { label: '严格', promptOverride: '请进行严格的事实核查，对每个论断要求引用来源，幻觉率目标<3%。' },
     ],
     systemPrompt: '你是审核 Agent。对生成内容进行三维度综合审查：符实性、难度适配、规范性与专业性，输出综合裁定。',

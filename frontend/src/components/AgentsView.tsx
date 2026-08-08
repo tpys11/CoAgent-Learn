@@ -27,7 +27,7 @@ const NODE_BY_AGENT: Record<string, string[]> = {
 
 /** 预设模板库 */
 const PRESET_TEMPLATES: Array<{ name: string; desc: string; agents: AgentConfig[] }> = [
-  { name: '标准 4-Agent 团队', desc: '与默认一致', agents: DEFAULT_AGENTS },
+  { name: '均衡 4-Agent 团队', desc: '与默认一致', agents: DEFAULT_AGENTS },
   {
     name: '质量优先', desc: '审核更严格（重试 3 次、严格模式）',
     agents: DEFAULT_AGENTS.map(a => a.id === 'review' ? { ...a, retryMax: 3, mode: '严格' } : { ...a }),
@@ -112,37 +112,61 @@ const BLOCKS: Array<{ key: Block; icon: any; label: string }> = [
   { key: 'templates', icon: LayoutTemplate, label: '模板与编排' },
 ]
 
-/** 编排节点图：节点 + 箭头 */
-function FlowNode({ icon: Icon, name, active, onClick }: { icon: any; name: string; active?: boolean; onClick?: () => void }) {
+/** 编排节点图：节点 + 箭头；节点背景色深浅表示该节点最近任务的耗时/质量（与主题色匹配） */
+function FlowNode({ icon: Icon, name, level = 0, active, onClick }: { icon: any; name: string; level?: number; active?: boolean; onClick?: () => void }) {
+  const pct = [12, 28, 50, 78, 100][Math.min(Math.max(level, 0), 4)]
+  const dark = level >= 3
   return (
     <button onClick={onClick} disabled={!onClick}
+      style={{ backgroundColor: `color-mix(in srgb, var(--accent) ${pct}%, var(--bg-panel))` }}
       className={`card-surface rounded-xl px-4 py-3 flex flex-col items-center gap-1.5 min-w-[96px] border-2 transition-all ${
         onClick ? 'cursor-pointer hover:border-[var(--accent)]' : ''
-      } ${active ? 'border-[var(--accent)] shadow-soft' : 'border-[var(--border-color)]'}`}>
-      {Icon && <Icon size={18} className={active ? 'text-[var(--accent)]' : 'text-dim'} />}
+      } ${active ? 'border-[var(--accent)] shadow-soft' : 'border-[var(--border-color)]'} ${dark ? 'text-white' : 'text-[var(--text)]'}`}>
+      {Icon && <Icon size={18} className={dark ? 'text-white' : active ? 'text-[var(--accent)]' : 'text-dim'} />}
       <span className="text-xs font-bold">{name}</span>
     </button>
   )
 }
 const FlowArrow = () => <span className="text-dim flex-shrink-0 text-base">→</span>
 
-/** 4-Agent 编排节点图：节点可点击选中 Agent（无 agents 参数时静态展示） */
+/** 4-Agent 编排节点图：节点可点击选中 Agent（无 agents 参数时静态展示）；
+ *  节点颜色深浅来自最近一次任务的各节点耗时归一化（无数据时全部同色） */
 const FlowGraph = ({ agents, templateAgentId, onSelect }: { agents?: AgentConfig[]; templateAgentId?: string; onSelect?: (id: string) => void }) => {
   const act = (id: string) => templateAgentId === id
   const pick = (id: string) => onSelect ? () => onSelect(id) : undefined
+  // 节点深浅：最近一次任务各节点耗时（耗时越长颜色越深），无数据时全部同色
+  const [nodeLevels, setNodeLevels] = useState<Record<string, number>>({})
+  useEffect(() => {
+    fetch('/api/task-stats?limit=1', { cache: 'no-store' })
+      .then(r => r.json()).then(d => {
+        const tasks: any[] = d.tasks || []
+        const t = tasks[0]
+        if (!t || !t.data) { setNodeLevels({}); return }
+        const data = t.data
+        const names = ['plan', 'study_memory', 'kb', 'generate', 'review']
+        const ms: Record<string, number> = {}
+        let max = 0
+        for (const n of names) { const v = data[n] || {}; const m = Number(v.ms) || 0; ms[n] = m; if (m > max) max = m }
+        if (max <= 0) { setNodeLevels({}); return }
+        const lv: Record<string, number> = {}
+        for (const n of names) lv[n] = Math.round((ms[n] / max) * 3)
+        setNodeLevels(lv)
+      }).catch(() => setNodeLevels({}))
+  }, [])
+  const lv = (n: string) => nodeLevels[n] || 0
   return (
     <div className="flex items-center justify-center gap-2 flex-wrap">
-      <FlowNode icon={Workflow} name="规划" active={act('main')} onClick={pick('main')} />
+      <FlowNode icon={Workflow} name="规划" level={lv('plan')} active={act('main')} onClick={pick('main')} />
       <FlowArrow />
       <div className="flex flex-col gap-1 items-center">
-        <FlowNode icon={Brain} name="学情与记忆" active={act('study')} onClick={pick('study')} />
+        <FlowNode icon={Brain} name="学情与记忆" level={lv('study_memory')} active={act('study')} onClick={pick('study')} />
         <span className="text-[9px] text-dim">∥ 并行</span>
-        <FlowNode icon={Database} name="知识库" active={act('kb')} onClick={pick('kb')} />
+        <FlowNode icon={Database} name="知识库" level={lv('kb')} active={act('kb')} onClick={pick('kb')} />
       </div>
       <FlowArrow />
-      <FlowNode icon={Workflow} name="生成" active={act('main')} onClick={pick('main')} />
+      <FlowNode icon={Workflow} name="生成" level={lv('generate')} active={act('main')} onClick={pick('main')} />
       <FlowArrow />
-      <FlowNode icon={Scale} name="审核" active={act('review')} onClick={pick('review')} />
+      <FlowNode icon={Scale} name="审核" level={lv('review')} active={act('review')} onClick={pick('review')} />
       <FlowArrow />
       <FlowNode icon={CheckCircle2} name="输出" />
     </div>
@@ -166,7 +190,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   const [block, setBlock] = useState<Block>('agents')
   const [selectedId, setSelectedId] = useState(agents[0]?.id || '')
   const agent = agents.find(a => a.id === selectedId) || agents[0]
-  const [mode, setMode] = useState(agent?.mode || '标准')
+  const [mode, setMode] = useState(agent?.mode || '均衡')
   const [prompt, setPrompt] = useState(agent?.systemPrompt || '')
   const [allSkills, setAllSkills] = useState<SkillInfo[]>([])
   const [linkedSkills, setLinkedSkills] = useState<string[]>([])
@@ -220,7 +244,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   }, [])
 
   useEffect(() => {
-    setMode(agent?.mode || '标准')
+    setMode(agent?.mode || '均衡')
     setPrompt(agent?.systemPrompt || '')
     fetch('/api/skills').then(r => r.json()).then(d => {
       setAllSkills(d.skills || [])
@@ -638,6 +662,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
               <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex items-center justify-center">
                 <FlowGraph agents={agents} templateAgentId={templateAgentId} onSelect={(id) => setTemplateAgentId(id)} />
               </div>
+              <p className="text-[10px] text-dim -mt-2">节点颜色越深表示该节点最近任务的耗时/质量越高（与主题色匹配）</p>
             </div>
           </div>
         )}
