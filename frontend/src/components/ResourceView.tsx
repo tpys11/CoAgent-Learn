@@ -56,9 +56,8 @@ const TYPE_ICONS: Record<string, any> = {
   '分阶测试题': FileText, '测试题': FileText,
 }
 
-/** 领域：预置 + 可自增（localStorage） */
+/** 领域：系统预设，不可增删（教程资源为预设内容，手动添加仅限我的上传） */
 const DEFAULT_DOMAINS = ['Agent 应用与开发', 'Python 编程']
-const DOMAINS_KEY = 'coagent-domains'
 
 /** 分类：固定三类 */
 const CATEGORIES: Array<{ key: string; desc: string }> = [
@@ -194,13 +193,8 @@ export default function ResourceView({ projectId }: { projectId: string | null }
   const [tutorials, setTutorials] = useState<Tutorial[]>(() => {
     try { return JSON.parse(localStorage.getItem(TUTORIALS_KEY) || '[]') } catch { return [] }
   })
-  // 领域（预置 + 自定义）
-  const [customDomains, setCustomDomains] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem(DOMAINS_KEY) || '[]') } catch { return [] }
-  })
+  // 领域（系统预设）
   const [selectedDomain, setSelectedDomain] = useState(DEFAULT_DOMAINS[0])
-  const [showAddDomain, setShowAddDomain] = useState(false)
-  const [newDomain, setNewDomain] = useState('')
   // 分类（固定三类）
   const [selectedCat, setSelectedCat] = useState(CATEGORIES[0].key)
   const [loading, setLoading] = useState(false)
@@ -211,8 +205,10 @@ export default function ResourceView({ projectId }: { projectId: string | null }
   const [tUrl, setTUrl] = useState('')
   const [tDesc, setTDesc] = useState('')
   const [tCat, setTCat] = useState(CATEGORIES[0].key)
-
-  const allDomains = [...DEFAULT_DOMAINS, ...customDomains]
+  // 我的上传：添加资料表单
+  const [showAddResource, setShowAddResource] = useState(false)
+  const [rName, setRName] = useState('')
+  const [rContent, setRContent] = useState('')
 
   const load = useCallback(() => {
     if (!projectId) return
@@ -227,25 +223,6 @@ export default function ResourceView({ projectId }: { projectId: string | null }
   }, [projectId])
 
   useEffect(() => { setDetail(null); load() }, [load])
-
-  // ---------- 领域 ----------
-  const saveCustomDomains = (next: string[]) => {
-    setCustomDomains(next)
-    localStorage.setItem(DOMAINS_KEY, JSON.stringify(next))
-  }
-  const addDomain = () => {
-    const name = newDomain.trim()
-    if (!name || allDomains.includes(name)) return
-    saveCustomDomains([...customDomains, name])
-    setSelectedDomain(name)
-    setNewDomain(''); setShowAddDomain(false)
-  }
-  const removeDomain = (name: string) => {
-    if (!window.confirm(`确定删除领域「${name}」？该领域下的手动教程将不再显示（数据保留）。`)) return
-    const next = customDomains.filter(c => c !== name)
-    saveCustomDomains(next)
-    if (selectedDomain === name) setSelectedDomain(DEFAULT_DOMAINS[0])
-  }
 
   // ---------- 教程资源 ----------
   const allTutorials = [...PRESET_TUTORIALS, ...tutorials]
@@ -279,6 +256,16 @@ export default function ResourceView({ projectId }: { projectId: string | null }
         setKbDocs(prev => prev.filter(d => d.source !== source))
         setDetail(null)
       })
+  }
+  // 我的上传：手动添加资料
+  const saveResource = () => {
+    if (!rName.trim()) return
+    fetch('/api/resources', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: rName.trim(), content: rContent, project_id: projectId || 'default' }),
+    }).then(() => {
+      setRName(''); setRContent(''); setShowAddResource(false); load()
+    })
   }
 
   // ---------- 列表组装 ----------
@@ -501,45 +488,21 @@ export default function ResourceView({ projectId }: { projectId: string | null }
             ))}
           </div>
 
-          {/* 领域选择行 */}
+          {/* 领域选择行（系统预设） */}
           <div className="flex items-center gap-2 mt-6 flex-wrap">
             <span className="text-[11px] font-semibold text-dim mr-1">领域</span>
-            {allDomains.map(d => (
-              <div key={d} className="relative group flex-shrink-0">
-                <button
-                  onClick={() => { setSelectedDomain(d); setSelectedCat(CATEGORIES[0].key); setDetail(null) }}
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                    selectedDomain === d ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'
-                  }`}
-                >
-                  {d}
-                </button>
-                {customDomains.includes(d) && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); removeDomain(d) }}
-                    className="hidden group-hover:flex absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white items-center justify-center shadow" title="删除领域"
-                  >
-                    <X size={9} />
-                  </button>
-                )}
-              </div>
-            ))}
-            {showAddDomain ? (
-              <div className="flex items-center gap-1 flex-shrink-0">
-                <input autoFocus value={newDomain} onChange={e => setNewDomain(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') addDomain() }}
-                  placeholder="领域名"
-                  className="w-28 px-2.5 py-1.5 text-[11px] input-surface rounded-full outline-none" />
-                <button onClick={addDomain} className="px-2.5 py-1 text-[11px] bg-[#1a1a1a] text-white rounded-full font-semibold">添加</button>
-              </div>
-            ) : (
+            {DEFAULT_DOMAINS.map(d => (
               <button
-                onClick={() => setShowAddDomain(true)}
-                className="flex items-center gap-1 px-3 py-1.5 text-[11px] text-dim rounded-full hover:bg-[var(--bg-hover)] transition-colors flex-shrink-0"
+                key={d}
+                onClick={() => { setSelectedDomain(d); setSelectedCat(CATEGORIES[0].key); setDetail(null) }}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                  selectedDomain === d ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'
+                }`}
               >
-                <Plus size={12} /> 添加领域
+                {d}
               </button>
-            )}
+            ))}
+            <span className="text-[11px] text-dim ml-2">领域与分类为系统预设内容</span>
           </div>
         </div>
       </div>
@@ -587,9 +550,33 @@ export default function ResourceView({ projectId }: { projectId: string | null }
                   <h2 className="text-lg font-bold flex items-center gap-2"><Upload size={18} /> 我的上传</h2>
                   <p className="text-xs text-dim mt-1">知识库文档与保存的资料 · 共 {list.length} 条</p>
                 </div>
+                {!showAddResource && (
+                  <button
+                    onClick={() => setShowAddResource(true)}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors"
+                  >
+                    <Plus size={13} /> 添加资料
+                  </button>
+                )}
               </div>
+
+              {/* 添加资料表单（手动添加入口在“我的上传”） */}
+              {showAddResource && (
+                <div className="border border-[var(--border-color)] rounded-2xl p-3 mb-5 flex flex-col gap-2 bg-[var(--bg-panel)] shadow-soft">
+                  <input autoFocus value={rName} onChange={e => setRName(e.target.value)} placeholder="资料名称"
+                    className="px-3 py-2 text-xs input-surface rounded-xl outline-none" />
+                  <textarea value={rContent} onChange={e => setRContent(e.target.value)} placeholder="资料内容（可选，支持多行）"
+                    rows={3}
+                    className="px-3 py-2 text-xs input-surface rounded-xl outline-none resize-none" />
+                  <div className="flex gap-2 justify-end">
+                    <button onClick={() => setShowAddResource(false)} className="px-3 py-1.5 text-[11px] text-dim rounded-xl row-hover">取消</button>
+                    <button onClick={saveResource} className="px-3 py-1.5 text-[11px] bg-[#1a1a1a] text-white font-semibold rounded-xl">保存</button>
+                  </div>
+                </div>
+              )}
+
               {loading && <p className="text-xs text-dim text-center py-16">加载中…</p>}
-              {!loading && list.length === 0 && emptyState('暂无上传内容', '上传知识库文档或保存资料后将展示在这里')}
+              {!loading && list.length === 0 && emptyState('暂无上传内容', '点击右上角「添加资料」或上传知识库文档后展示在这里')}
               {!loading && list.length > 0 && cardGrid(list)}
             </>
           )}
