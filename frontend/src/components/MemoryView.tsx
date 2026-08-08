@@ -189,6 +189,15 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
       if (plist.length === 0) { setProjLoading(false); return }
       const out: Record<string, { fields: Record<string, string>; count: number; latest: string; days: Record<string, any[]>; progress: { items: any[]; daily: Array<{ date: string; count: number }>; pace: string } }> = {}
       let done = 0
+      // 加载超时兜底：任何接口挂起也不让页面卡在「加载中…」
+      const timer = window.setTimeout(() => {
+        setProjData(out)
+        setProjLoading(false)
+        setActiveProject(prev => prev || (plist[0]?.id || null))
+      }, 8000)
+      const finish = () => {
+        if (++done >= plist.length) { window.clearTimeout(timer); setProjData(out); setProjLoading(false); setActiveProject(prev => prev || (plist[0]?.id || null)) }
+      }
       for (const p of plist) {
         const pid = p.id
         Promise.all([
@@ -209,7 +218,7 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
           const latest = daysArr.length ? daysArr.map((x: any) => x.date).sort().pop() : ''
           const progress = { items: (pg.items || []), daily: (pg.daily || []), pace: (pg.pace || '') }
           out[pid] = { fields, count, latest, days, progress }
-          if (++done >= plist.length) { setProjData(out); setProjLoading(false); setActiveProject(prev => prev || (plist[0]?.id || null)) }
+          finish()
         })
       }
     }).catch(() => setProjLoading(false))
@@ -448,9 +457,9 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                               <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white border-2" style={{ left: `calc(${pctOf(data?.fields || {}, data?.count || 0)}% - 6px)`, borderColor: 'var(--accent)' }} />
                             </div>
                             <div className="flex items-center justify-between gap-2 text-[10px] text-dim">
-                              <span className="truncate max-w-[38%]">起点：{(data?.fields['起点'] || '').trim() || '（空）'}</span>
+                              <span className="truncate max-w-[38%]">起点：{(data?.fields['起点'] || '').trim() || '（待填写）'}</span>
                               <span className="font-semibold text-[var(--text)] flex-shrink-0">{pctOf(data?.fields || {}, data?.count || 0)}%</span>
-                              <span className="truncate max-w-[38%] text-right">目标：{(data?.fields['目标'] || '').trim() || '（空）'}</span>
+                              <span className="truncate max-w-[38%] text-right">目标：{(data?.fields['目标'] || '').trim() || '（待填写）'}</span>
                             </div>
                             {(() => { const dl = data?.progress.daily || []; const w7 = dl.slice(-7).reduce((s: number, d: any) => s + (d.count || 0), 0); const maxC = Math.max(1, ...dl.map((d: any) => d.count || 0)); return (
                               <>
@@ -512,7 +521,9 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                                     )
                                   })}
                                 </div>
-                              ) : <span className="text-[11px] text-dim">（空）</span> })()}
+                              ) : (
+                                <div className="px-3 py-2.5 border border-dashed hairline rounded-xl text-[11px] text-dim">暂无知识点数据 —— 对话后自动分析生成（可点右上角「↻ 重新分析」立即生成）</div>
+                              ) })()}
                             </div>
                             {/* 难点（待攻克） */}
                             <div>
