@@ -13,14 +13,3 @@ class Skill:
 
     def execute(self, **kwargs) -> dict:
         raise NotImplementedError
-
-    def to_api_desc(self) -> dict:
-        return {
-            "name": self.name,
-            "description": self.description,
-            "parameters": {
-                "type": "object",
-                "properties": self.input_schema,
-                "required": list(self.input_schema.keys()),
-            },
-        }

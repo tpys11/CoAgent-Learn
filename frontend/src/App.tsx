@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Github } from 'lucide-react'
+import { PanelLeftOpen, PanelRightOpen, Github } from 'lucide-react'
 
 // 模块级 session：页面刷新(JS重载)时重新生成一次；组件重挂载不改变
 const SESSION_ID = (() => {
@@ -10,7 +10,6 @@ const SESSION_ID = (() => {
 import Sidebar from './components/Sidebar'
 import CenterPanel from './components/CenterPanel'
 import RightPanel from './components/RightPanel'
-import DiagnosisModal from './components/DiagnosisModal'
 import SettingsModal, { ApiKeyPrompt } from './components/SettingsModal'
 import ProfileWizard from './components/ProfileWizard'
 import GuideModal from './components/GuideModal'
@@ -44,7 +43,6 @@ function App() {
   const [allMessages, setAllMessages] = useState<Record<string, Message[]>>({})
   const currentMessages = (currentDialogueId ? allMessages[currentDialogueId] : []) || []
   const [isLoading, setIsLoading] = useState(false)
-  const [showDiagnosis, setShowDiagnosis] = useState(false)
   const [agents, setAgents] = useState<AgentConfig[]>(DEFAULT_AGENTS)
   const [showSettings, setShowSettings] = useState(false)
   const [projectKBId, setProjectKBId] = useState<string | null>(null)
@@ -61,7 +59,6 @@ function App() {
   }, [])
 
   // 从后端加载项目/对话（持久化）
-  const [loaded, setLoaded] = useState(false)
   useEffect(() => {
     let cancelled = false
     fetch('/api/projects')
@@ -85,9 +82,8 @@ function App() {
           const first = allD.find(d => d.projectId === projs[0].id)
           if (first) setCurrentDialogueId(first.id)
         }
-        setLoaded(true)
       })
-      .catch(() => setLoaded(true))
+      .catch(() => {})
     return () => { cancelled = true }
   }, [])
   const [showApiKeyPrompt, setShowApiKeyPrompt] = useState(
@@ -411,7 +407,6 @@ function App() {
       </div>
 
 
-      {showDiagnosis && <DiagnosisModal onClose={() => setShowDiagnosis(false)} />}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} projectId={currentProjectId} />}
       {showGuide && <GuideModal onClose={() => setShowGuide(false)} />}
       {wizard && <ProfileWizard mode={wizard.mode} projectName={wizard.name} onClose={() => {

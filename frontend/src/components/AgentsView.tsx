@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Settings, Square, Upload, Folder, Activity, Download, Layers, Wrench, Store, ExternalLink, FileCode, Plus, Trash2, LayoutTemplate, X, Workflow, Brain, Database, Scale, CheckCircle2 } from 'lucide-react'
+import { Settings, Square, Upload, Folder, Activity, Download, Layers, Wrench, Store, ExternalLink, Plus, Trash2, LayoutTemplate, X, Workflow, Brain, Database, Scale, CheckCircle2 } from 'lucide-react'
 import type { AgentConfig } from '../types'
 import { DEFAULT_AGENTS } from '../types'
 
@@ -169,14 +169,12 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   const agent = agents.find(a => a.id === selectedId) || agents[0]
   const [mode, setMode] = useState(agent?.mode || '标准')
   const [prompt, setPrompt] = useState(agent?.systemPrompt || '')
-  const [example, setExample] = useState(agent?.example || '')
   const [allSkills, setAllSkills] = useState<SkillInfo[]>([])
   const [linkedSkills, setLinkedSkills] = useState<string[]>([])
   // Skill 全局启用开关（localStorage）
   const [skillEnabled, setSkillEnabled] = useState<Record<string, boolean>>(() => {
     try { return JSON.parse(localStorage.getItem(SKILL_ENABLED_KEY) || '{}') } catch { return {} }
   })
-  const [expandedSkill, setExpandedSkill] = useState<string | null>(null)
   // Skill 详情弹窗（独立小窗口）
   const [skillDetail, setSkillDetail] = useState<{ name: string; description: string; folder: string; category: string } | null>(null)
   // 模板与编排：Agent 自定义选中的 Agent
@@ -228,7 +226,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   useEffect(() => {
     setMode(agent?.mode || '标准')
     setPrompt(agent?.systemPrompt || '')
-    setExample(agent?.example || '')
     fetch('/api/skills').then(r => r.json()).then(d => {
       setAllSkills(d.skills || [])
       const names = (agent?.skill || '').match(/[a-z_]+/g) || []

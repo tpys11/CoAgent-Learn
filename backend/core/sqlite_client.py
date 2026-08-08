@@ -98,15 +98,6 @@ class SQLiteClient:
             (project_id,),
         )
 
-    def get_kb_by_ids(self, ids: list) -> list[dict]:
-        if not ids:
-            return []
-        ph = ",".join("?" * len(ids))
-        return self.execute(
-            f"SELECT rowid, doc_id, source, chunk, session_id, has_context, content FROM kb_vectors WHERE rowid IN ({ph})",
-            tuple(ids),
-        )
-
     def delete_kb_by_source(self, project_id: str, source: str) -> int:
         rows = self.execute(
             "SELECT rowid FROM kb_vectors WHERE project_id = ? AND source = ?",
@@ -125,21 +116,6 @@ class SQLiteClient:
             ph = ",".join("?" * len(ids))
             self.execute(f"DELETE FROM kb_vectors WHERE rowid IN ({ph})", tuple(ids))
         return len(ids)
-
-    def upsert_memory_vector(self, scope: str, content: str, embedding: list):
-        self.conn.execute(
-            "INSERT INTO memory_vectors(rowid, scope, content, embedding) VALUES (?, ?, ?, ?)",
-            (None, scope, content, sqlite_vec.serialize_float32(embedding)),
-        )
-        self.conn.commit()
-
-    def search_memory_vectors(self, scope: str, query_embedding: list, k: int = 5) -> list[dict]:
-        rows = self.conn.execute(
-            "SELECT rowid, distance, scope, content FROM memory_vectors "
-            "WHERE scope = ? AND embedding MATCH ? AND k = ? ORDER BY distance",
-            (scope, sqlite_vec.serialize_float32(query_embedding), k),
-        ).fetchall()
-        return [dict(r) for r in rows]
 
     # ── 业务表 ──
 

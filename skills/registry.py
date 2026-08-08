@@ -28,18 +28,9 @@ class SkillRegistry:
             except Exception as e:
                 print(f"[SkillRegistry] 加载 {folder} 失败: {e}")
 
-    def register(self, skill: Skill):
-        self._skills[skill.name] = skill
-
-    def unregister(self, name: str):
-        self._skills.pop(name, None)
-
     def list_all(self) -> list[dict]:
         return [{"name": s.name, "description": s.description, "folder": s.__class__.__module__.split(".")[-1]}
                 for s in self._skills.values()]
-
-    def list_for_llm(self) -> list[dict]:
-        return [s.to_api_desc() for s in self._skills.values()]
 
     def execute(self, name: str, **kwargs) -> dict:
         skill = self._skills.get(name)

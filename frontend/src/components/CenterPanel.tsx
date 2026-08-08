@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Send, Bot, Settings, X, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Cpu, SlidersHorizontal, Check, AlertTriangle, Search, FileText, Image as ImageIcon } from 'lucide-react'
+import { Send, Bot, X, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Cpu, SlidersHorizontal, Check, AlertTriangle, Search, FileText, Image as ImageIcon } from 'lucide-react'
 import type { Message, Project } from '../types'
 
 
@@ -62,7 +62,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
     fs.forEach(processFile)
   }
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const imgB64Ref = useRef('')
 
   const processFile = function(f: File) {
     if (!f) return
@@ -141,7 +140,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   const [providerKeys, setProviderKeys] = useState<Record<string, string>>(() => {
     try { return JSON.parse(localStorage.getItem('coagent-provider-keys') || '{}') } catch { return {} }
   })
-  const [modelKeyInput, setModelKeyInput] = useState('')
   const searchRef = useRef<HTMLDivElement>(null)
   const [showInputOpt, setShowInputOpt] = useState(false)
   const inputOptRef = useRef<HTMLDivElement>(null)
@@ -213,7 +211,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
     })
     setInput('')
     setAttachments([])
-    imgB64Ref.current = ''
   }
 
   const sendFollowup = (q: string) => {
