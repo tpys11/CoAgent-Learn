@@ -457,29 +457,29 @@ const TEMPLATE_OPTIONS = [
                   <SlidersHorizontal size={13} /> 对话模式 <ChevronDown size={9} />
                 </button>
                 {showDlgMenu && (
-                  <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 250 }}>
-                    <div className="flex items-center justify-between gap-2 px-1 py-1.5 border-b border-[#e5e5e5]">
+                  <div className="absolute bottom-full left-0 mb-1 card-lift p-1.5 z-10" style={{ width: 125 }}>
+                    <div className="flex items-center justify-between gap-1 px-1 py-1.5 border-b border-[#e5e5e5]">
                       <span className="text-[11px] font-medium">Auto</span>
-                      <button onClick={() => { const next = !autoMode; setAutoMode(next); localStorage.setItem('coagent-auto', next ? '1' : '0') }}
-                        className={`w-9 h-5 rounded-full relative transition-colors flex-shrink-0 ${autoMode ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`}
+                      <button onClick={() => { const next = !autoMode; setAutoMode(next); localStorage.setItem('coagent-auto', next ? '1' : '0'); if (next) { setUseTemplate(false); localStorage.setItem('coagent-use-template', '0'); setUseDetail(false); localStorage.setItem('coagent-use-detail', '0') } }}
+                        className={`w-8 h-4.5 rounded-full relative transition-colors flex-shrink-0 ${autoMode ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`} style={{ height: 18 }}
                         title="Auto（AI 自动推断模板/细节）">
-                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${autoMode ? 'translate-x-4' : ''}`} />
+                        <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-all ${autoMode ? 'left-4' : 'left-0.5'}`} />
                       </button>
                     </div>
-                    <div className="flex items-center justify-between gap-2 px-1 py-1.5 border-b border-[#e5e5e5]">
+                    <div className="flex items-center justify-between gap-1 px-1 py-1.5 border-b border-[#e5e5e5]">
                       <span className="text-[11px] font-medium">模板选择</span>
-                      <button onClick={() => { const next = !useTemplate; setUseTemplate(next); localStorage.setItem('coagent-use-template', next ? '1' : '0') }}
-                        className={`w-9 h-5 rounded-full relative transition-colors flex-shrink-0 ${useTemplate ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`}
+                      <button onClick={() => { const next = !useTemplate; setUseTemplate(next); localStorage.setItem('coagent-use-template', next ? '1' : '0'); if (next) { setAutoMode(false); localStorage.setItem('coagent-auto', '0'); setUseDetail(false); localStorage.setItem('coagent-use-detail', '0') } }}
+                        className={`w-8 h-4.5 rounded-full relative transition-colors flex-shrink-0 ${useTemplate ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`} style={{ height: 18 }}
                         title="开启后对话框显示模板选择按钮">
-                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${useTemplate ? 'translate-x-4' : ''}`} />
+                        <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-all ${useTemplate ? 'left-4' : 'left-0.5'}`} />
                       </button>
                     </div>
-                    <div className="flex items-center justify-between gap-2 px-1 py-1.5">
+                    <div className="flex items-center justify-between gap-1 px-1 py-1.5">
                       <span className="text-[11px] font-medium">细节设定</span>
-                      <button onClick={() => { const next = !useDetail; setUseDetail(next); localStorage.setItem('coagent-use-detail', next ? '1' : '0') }}
-                        className={`w-9 h-5 rounded-full relative transition-colors flex-shrink-0 ${useDetail ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`}
+                      <button onClick={() => { const next = !useDetail; setUseDetail(next); localStorage.setItem('coagent-use-detail', next ? '1' : '0'); if (next) { setAutoMode(false); localStorage.setItem('coagent-auto', '0'); setUseTemplate(false); localStorage.setItem('coagent-use-template', '0') } }}
+                        className={`w-8 h-4.5 rounded-full relative transition-colors flex-shrink-0 ${useDetail ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`} style={{ height: 18 }}
                         title="开启后对话框显示细节按钮（输入询问/检索模式/输出形式/输出内容）">
-                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${useDetail ? 'translate-x-4' : ''}`} />
+                        <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-all ${useDetail ? 'left-4' : 'left-0.5'}`} />
                       </button>
                     </div>
                   </div>
