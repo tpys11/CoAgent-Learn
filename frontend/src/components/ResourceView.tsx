@@ -202,12 +202,6 @@ export default function ResourceView({ projectId }: { projectId: string | null }
   const [selectedCat, setSelectedCat] = useState(CATEGORIES[0].key)
   const [loading, setLoading] = useState(false)
   const [detail, setDetail] = useState<ListItem | null>(null)
-  // 添加教程表单
-  const [showAddTutorial, setShowAddTutorial] = useState(false)
-  const [tTitle, setTTitle] = useState('')
-  const [tUrl, setTUrl] = useState('')
-  const [tDesc, setTDesc] = useState('')
-  const [tCat, setTCat] = useState(CATEGORIES[0].key)
   // 我的上传：添加资料表单
   const [showAddResource, setShowAddResource] = useState(false)
   const [rName, setRName] = useState('')
@@ -227,17 +221,11 @@ export default function ResourceView({ projectId }: { projectId: string | null }
 
   useEffect(() => { setDetail(null); load() }, [load])
 
-  // ---------- 教程资源 ----------
+  // 教程资源
   const allTutorials = [...PRESET_TUTORIALS, ...tutorials]
   const saveTutorials = (next: Tutorial[]) => {
     setTutorials(next)
     localStorage.setItem(TUTORIALS_KEY, JSON.stringify(next))
-  }
-  const addTutorial = () => {
-    if (!tTitle.trim() || !tUrl.trim()) return
-    const url = tUrl.trim().startsWith('http') ? tUrl.trim() : 'https://' + tUrl.trim()
-    saveTutorials([...tutorials, { id: 't-' + Date.now(), title: tTitle.trim(), url, desc: tDesc.trim(), category: tCat, domain: selectedDomain }])
-    setTTitle(''); setTUrl(''); setTDesc(''); setShowAddTutorial(false)
   }
   const removeTutorial = (id: string) => {
     setDetail(null)
@@ -366,40 +354,10 @@ export default function ResourceView({ projectId }: { projectId: string | null }
             <FolderTree size={18} /> {selectedDomain} · {selectedCat}
           </h2>
         </div>
-        {!showAddTutorial && (
-          <button
-            onClick={() => { setTCat(selectedCat === WIKI_CAT ? CATEGORIES[0].key : selectedCat); setShowAddTutorial(true) }}
-            className="flex items-center gap-1.5 px-4 py-2 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors"
-          >
-            <Plus size={13} /> 添加教程
-          </button>
-        )}
       </div>
 
-      {showAddTutorial && (
-        <div className="border border-[var(--border-color)] rounded-2xl p-3 mb-5 flex flex-col gap-2 bg-[var(--bg-panel)] shadow-soft">
-          <input autoFocus value={tTitle} onChange={e => setTTitle(e.target.value)} placeholder="教程标题"
-            className="px-3 py-2 text-xs input-surface rounded-xl outline-none" />
-          <input value={tUrl} onChange={e => setTUrl(e.target.value)} placeholder="链接 URL"
-            className="px-3 py-2 text-xs input-surface rounded-xl outline-none" />
-          <input value={tDesc} onChange={e => setTDesc(e.target.value)} placeholder="简介（可选）"
-            className="px-3 py-2 text-xs input-surface rounded-xl outline-none" />
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] text-dim flex-shrink-0">分类</span>
-            <select value={tCat} onChange={e => setTCat(e.target.value)}
-              className="flex-1 px-3 py-2 text-xs input-surface rounded-xl outline-none">
-              {CATEGORIES.filter(c => c.key !== WIKI_CAT).map(c => <option key={c.key} value={c.key}>{c.key} · {c.desc}</option>)}
-            </select>
-          </div>
-          <div className="flex gap-2 justify-end">
-            <button onClick={() => setShowAddTutorial(false)} className="px-3 py-1.5 text-[11px] text-dim rounded-xl row-hover">取消</button>
-            <button onClick={addTutorial} className="px-3 py-1.5 text-[11px] bg-[#1a1a1a] text-white font-semibold rounded-xl">保存</button>
-          </div>
-        </div>
-      )}
-
       {loading && <p className="text-xs text-dim text-center py-16">加载中…</p>}
-      {!loading && tutorialList.length === 0 && emptyState(`「${selectedCat}」暂无教程`, '点击右上角「添加教程」收录外部学习资料')}
+      {!loading && tutorialList.length === 0 && emptyState(`「${selectedCat}」暂无教程`, '教程资源为系统预设内容')}
       {!loading && tutorialList.length > 0 && cardGrid(tutorialList)}
     </>
   )
