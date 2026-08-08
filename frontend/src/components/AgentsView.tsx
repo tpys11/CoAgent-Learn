@@ -170,6 +170,8 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
     try { return JSON.parse(localStorage.getItem(SKILL_ENABLED_KEY) || '{}') } catch { return {} }
   })
   const [expandedSkill, setExpandedSkill] = useState<string | null>(null)
+  // Skill 详情弹窗（独立小窗口）
+  const [skillDetail, setSkillDetail] = useState<{ name: string; description: string; folder: string; category: string } | null>(null)
   // 模板与编排：Agent 自定义选中的 Agent
   const [templateAgentId, setTemplateAgentId] = useState(agents[0]?.id || '')
   // 模板与编排：选中模板（展开详情）、自定义模板、保存名称
@@ -490,9 +492,8 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                     return (
                       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                         {filtered.map(s => {
-                          const open = expandedSkill === s.name
                           return (
-                            <div key={s.name} onClick={() => setExpandedSkill(open ? null : s.name)}
+                            <div key={s.name} onClick={() => setSkillDetail({ name: s.name, description: s.description, folder: s.folder, category: SKILL_CAT_MAP[s.name] || '其他' })}
                               className="card-surface rounded-2xl p-5 flex flex-col gap-3 cursor-pointer transition-all hover:shadow-lg hover:-translate-y-1">
                               <div className="flex items-start justify-between">
                                 <span className="w-10 h-10 rounded-xl bg-[#1a1a1a] text-white flex items-center justify-center"><Wrench size={17} /></span>
@@ -500,12 +501,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                               </div>
                               <p className="text-sm font-semibold truncate">{s.name}</p>
                               <p className="text-[11px] text-dim truncate">{s.description}</p>
-                              {open && (
-                                <div className="mt-1 pt-3 border-t hairline flex flex-col gap-1.5">
-                                  <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">{s.description}</p>
-                                  <p className="text-[10px] text-dim font-mono">目录：{s.folder}</p>
-                                </div>
-                              )}
                             </div>
                           )
                         })}
@@ -523,9 +518,8 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                   {MARKET_SKILLS.map(s => {
                     const installed = allSkills.some(x => x.name === s.name)
-                    const open = expandedSkill === 'm:' + s.name
                     return (
-                      <div key={s.name} onClick={() => setExpandedSkill(open ? null : 'm:' + s.name)}
+                      <div key={s.name} onClick={() => setSkillDetail({ name: s.name, description: s.desc, folder: '内置', category: s.category })}
                         className="card-surface rounded-2xl p-5 flex flex-col gap-3 cursor-pointer transition-all hover:shadow-lg hover:-translate-y-1">
                         <div className="flex items-start justify-between">
                           <span className="w-10 h-10 rounded-xl bg-[#1a1a1a] text-white flex items-center justify-center"><Store size={17} /></span>
@@ -536,11 +530,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                         </div>
                         <p className="text-sm font-semibold truncate">{s.name}</p>
                         <p className="text-[11px] text-dim truncate">{s.desc}</p>
-                        {open && (
-                          <div className="mt-1 pt-3 border-t hairline">
-                            <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">{s.desc}</p>
-                          </div>
-                        )}
                       </div>
                     )
                   })}
@@ -773,6 +762,24 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
           </div>
         )}
       </div>
+      {/* Skill 详情弹窗（独立小窗口） */}
+      {skillDetail && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setSkillDetail(null)}>
+          <div className="bg-[var(--bg-panel)] rounded-2xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b hairline flex-shrink-0">
+              <h3 className="text-base font-bold flex items-center gap-2"><Wrench size={16} /> {skillDetail.name}</h3>
+              <button onClick={() => setSkillDetail(null)} className="p-1 hover:bg-[var(--bg-hover)] rounded"><X size={18} /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--bg-hover)] text-dim">{skillDetail.category}</span>
+                <span className="text-[10px] text-dim font-mono">{skillDetail.folder}</span>
+              </div>
+              <p className="text-sm leading-relaxed text-[var(--text-muted)]">{skillDetail.description}</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
