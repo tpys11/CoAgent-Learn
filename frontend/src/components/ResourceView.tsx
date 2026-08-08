@@ -399,22 +399,22 @@ const exportItem = (item: ListItem) => {
               <div className="flex items-center gap-1.5">
                 {item.url && (
                   <a href={item.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}
-                    className="p-1 rounded-lg text-gray-300 hover:text-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors" title="打开链接">
-                    <ExternalLink size={13} />
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)] hover:text-[var(--accent)] transition-colors" title="打开链接">
+                    <ExternalLink size={15} />
                   </a>
                 )}
                 {item.kind !== 'tutorial' && item.body && (
                   <button onClick={(e) => { e.stopPropagation(); exportItem(item) }}
-                    className="p-1 rounded-lg text-gray-300 hover:text-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors" title="导出为文件">
-                    <Download size={13} />
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)] hover:text-[var(--accent)] transition-colors" title="导出为文件">
+                    <Download size={15} />
                   </button>
                 )}
                 {item.deletable && (
                   <button
                     onClick={(e) => { e.stopPropagation(); removeItem(item) }}
-                    className="p-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors" title="删除"
+                    className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)] hover:text-red-500 transition-colors" title="删除"
                   >
-                    <Trash2 size={13} />
+                    <Trash2 size={14} />
                   </button>
                 )}
               </div>
@@ -499,12 +499,12 @@ const exportItem = (item: ListItem) => {
                 <div className="flex items-center gap-1.5">
                   <a href={'https://baike.baidu.com/item/' + encodeURIComponent(w.name)} target="_blank" rel="noreferrer"
                     onClick={(e) => e.stopPropagation()}
-                    className="p-1 rounded-lg text-gray-300 hover:text-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors" title="百度百科">
-                    <ExternalLink size={13} />
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)] hover:text-[var(--accent)] transition-colors" title="百度百科">
+                    <ExternalLink size={15} />
                   </a>
                   <button onClick={(e) => { e.stopPropagation(); exportItem({ id: 'wiki:' + w.name, title: w.name, sub: w.theme, body: w.detail, icon: Library, kind: 'wiki', deletable: false }) }}
-                    className="p-1 rounded-lg text-gray-300 hover:text-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors" title="导出为文件">
-                    <Download size={13} />
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)] hover:text-[var(--accent)] transition-colors" title="导出为文件">
+                    <Download size={15} />
                   </button>
                 </div>
               </div>
@@ -784,12 +784,7 @@ const exportItem = (item: ListItem) => {
               <div className="text-sm leading-relaxed whitespace-pre-wrap text-[var(--text-muted)]">{detail.body}</div>
             </div>
             <div className="flex gap-2 justify-between items-center px-5 py-3 border-t border-[var(--border-color)] flex-shrink-0">
-              {detail.kind === 'tutorial' && detail.url ? (
-                <a href={detail.url} target="_blank" rel="noreferrer"
-                  className="flex items-center gap-1.5 px-4 py-2 bg-[#1a1a1a] text-white text-sm font-semibold rounded-xl hover:bg-[#333333] transition-colors">
-                  <ExternalLink size={14} /> 打开教程
-                </a>
-              ) : detail.kind === 'wiki' ? (
+              {detail.kind === 'wiki' ? (
                 <span className="text-[11px] text-dim">百科词条 · 由系统内置</span>
               ) : <span />}
               {detail.deletable && (
