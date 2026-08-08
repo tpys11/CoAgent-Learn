@@ -449,7 +449,7 @@ const TEMPLATE_OPTIONS = [
               </button>
               {/* 模板选择（挨着上传按钮右边，顶部带「使用模板」开关） */}
               {/* 对话模式：上拉框控制 Auto / 模板选择 / 细节设定 三个开关 */}
-              <div className="relative" ref={dlgRef}>
+              <div className="relative ml-2" ref={dlgRef}>
                 <button
                   onClick={() => setShowDlgMenu(!showDlgMenu)}
                   className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)]"
@@ -681,7 +681,7 @@ const TEMPLATE_OPTIONS = [
               <button
                 onClick={handleSend}
                 disabled={isLoading}
-                className="w-9 h-9 btn-primary flex items-center justify-center disabled:opacity-50"
+                className="w-9 h-9 ml-2 btn-primary flex items-center justify-center disabled:opacity-50"
                 title="发送"
               >
                 <Send size={15} />
