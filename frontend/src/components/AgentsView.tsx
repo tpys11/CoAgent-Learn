@@ -181,6 +181,9 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   const [skillDetail, setSkillDetail] = useState<{ name: string; description: string; folder: string; category: string } | null>(null)
   // 模板与编排：Agent 自定义选中的 Agent
   const [templateAgentId, setTemplateAgentId] = useState(agents[0]?.id || '')
+  // 右侧设定栏可拖拽宽度
+  const [tplPanelWidth, setTplPanelWidth] = useState(320)
+  const dragPanelRef = useRef<{ startX: number; startW: number } | null>(null)
   // 模板与编排：选中模板（展开详情）、自定义模板、保存名称
   const [selectedTpl, setSelectedTpl] = useState<string | null>(null)
   const [customTemplates, setCustomTemplates] = useState<Array<{ name: string; desc: string; agents: AgentConfig[] }>>(() => {
@@ -200,6 +203,25 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   })
   // 该 Agent 的运行监控（最近任务中其节点的耗时/调用）
   const [agentRuns, setAgentRuns] = useState<Array<{ created_at: string; ms: number; calls: number }>>([])
+  // 右侧设定栏拖拽
+  const startDragPanel = (e: React.MouseEvent) => {
+    e.preventDefault()
+    dragPanelRef.current = { startX: e.clientX, startW: tplPanelWidth }
+    document.body.style.userSelect = 'none'
+  }
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const d = dragPanelRef.current
+      if (!d) return
+      const w = Math.max(240, Math.min(520, d.startW - (e.clientX - d.startX)))
+      setTplPanelWidth(w)
+    }
+    const onUp = () => { dragPanelRef.current = null; document.body.style.userSelect = '' }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+  }, [])
+
   // 模板 / 导入导出
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -691,9 +713,14 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
           </div>
         )}
       </div>
-      {/* 最右侧：选中 Agent 设定栏（仅模板与编排时显示，淡边框 + 色块） */}
+      {/* 最右侧：拖拽手柄 + 选中 Agent 设定栏（仅模板与编排时显示） */}
       {block === 'templates' && (
-        <div className="w-80 flex-shrink-0 border-l hairline bg-[var(--bg-hover)] p-5 flex flex-col gap-4 overflow-y-auto">
+        <>
+          <div onMouseDown={startDragPanel} title="拖拽调整宽度"
+            className="w-1.5 flex-shrink-0 cursor-ew-resize group flex items-center justify-center">
+            <span className="w-0.5 h-16 rounded-full bg-[var(--border-color)] opacity-0 group-hover:opacity-100 transition-opacity" />
+          </div>
+          <div className="flex-shrink-0 border-l hairline bg-[var(--bg-hover)] p-5 flex flex-col gap-4 overflow-y-auto" style={{ width: tplPanelWidth }}>
           {tplAgent ? (
             <>
               <div className="flex items-center justify-between">
@@ -739,6 +766,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
             <p className="text-xs text-dim text-center py-10">点击节点选择 Agent</p>
           )}
         </div>
+        </>
       )}
       {/* 新建模板弹窗 */}
       {showNewTplModal && (
