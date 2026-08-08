@@ -173,7 +173,7 @@ const TEMPLATE_OPTIONS = [
   const [showInputOpt, setShowInputOpt] = useState(false)
   const inputOptRef = useRef<HTMLDivElement>(null)
   const [inputOptMode, setInputOptMode] = useState(0) // 0=开启优化,1=关闭优化
-  const inputOptLabels = ['开启优化', '关闭优化']
+  const inputOptLabels = ['开启', '关闭']
   const [webSearchMode, setWebSearchMode] = useState(0) // 0=默认,1=增强
   const [timeRange, setTimeRange] = useState('今天')
   const [showTimeRange, setShowTimeRange] = useState(false)
