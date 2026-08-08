@@ -288,7 +288,7 @@ function App() {
       )}
       {view === 'tutorial' && <TutorialView />}
       {view === 'resources' && <ResourceView projectId={currentProjectId} />}
-      {view === 'memory' && <MemoryView />}
+      {view === 'memory' && <MemoryView projectId={currentProjectId} />}
       {view === 'knowledge' && <KnowledgeView projectId={projectKBId ?? currentProjectId} onClose={() => setView('chat')} />}
       {view === 'agents' && <AgentsView agents={agents} onSave={handleSaveAgent} onReplace={handleReplaceAgents} projectId={currentProjectId} />}
       {view === 'chat' && (<>

@@ -376,6 +376,44 @@ class ProfileData(BaseModel):
     profile: dict = {}
 
 
+@app.post("/api/global-profile")
+async def save_global_profile(req: ProfileData):
+    """个人全局性记忆：保存简历式自由要点（upsert 最新一条，单行表 id=1）"""
+    import json
+    from core.postgres_client import pg_client
+    data = json.dumps(req.profile, ensure_ascii=False)
+    rows = pg_client.execute("SELECT id FROM global_profile LIMIT 1")
+    if rows:
+        pg_client.execute("UPDATE global_profile SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE id=%s", (data, rows[0]["id"]))
+    else:
+        pg_client.execute("INSERT INTO global_profile (session_id, data) VALUES (%s,%s)", ("default", data))
+    return {"status": "ok"}
+
+
+@app.post("/api/project-memory/{project_id}")
+async def save_project_memory(project_id: str, req: ProfileData):
+    """项目记忆全字段保存：合并写入 project_memories（保留对话概要/对话摘要等系统字段）"""
+    import json
+    from core.postgres_client import pg_client
+    rows = pg_client.execute("SELECT session_id, data FROM project_memories WHERE project_id=%s", (project_id,))
+    proj = _as_dict(rows[0]["data"]) if rows and rows[0]["data"] else {}
+    p = req.profile
+    if isinstance(p, dict):
+        for k in ["项目概述", "当前进度", "领域", "背景", "水平", "学习目标", "偏好", "知识点", "难点", "薄弱点", "兴趣"]:
+            if k in p:
+                proj[k] = p[k]
+        # 前端置空的单值字段允许清理
+        for k in ["项目概述", "当前进度", "领域", "背景", "水平", "学习目标"]:
+            if k in p and not p[k]:
+                proj.pop(k, None)
+    data = json.dumps(proj, ensure_ascii=False)
+    if rows:
+        pg_client.execute("UPDATE project_memories SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE project_id=%s", (data, project_id))
+    else:
+        pg_client.execute("INSERT INTO project_memories (session_id, project_id, data) VALUES (%s,%s,%s)", ("project", project_id, data))
+    return {"status": "ok"}
+
+
 @app.post("/api/projects/{pid}/profile")
 async def save_project_profile(pid: str, req: ProfileData):
     import json
