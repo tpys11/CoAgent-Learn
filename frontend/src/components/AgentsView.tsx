@@ -112,7 +112,7 @@ const BLOCKS: Array<{ key: Block; icon: any; label: string }> = [
   { key: 'templates', icon: LayoutTemplate, label: '模板与编排' },
 ]
 
-/** 编排节点图：节点 + 箭头；节点背景色深浅表示该节点最近任务的耗时/质量（与主题色匹配） */
+/** 编排节点图：节点 + 箭头；节点背景色深浅按模板编排的基础逻辑标注（节点在流程中的职责负载，与内部运行数据无关） */
 function FlowNode({ icon: Icon, name, level = 0, active, onClick }: { icon: any; name: string; level?: number; active?: boolean; onClick?: () => void }) {
   const pct = [12, 28, 50, 78, 100][Math.min(Math.max(level, 0), 4)]
   const dark = level >= 3
@@ -130,30 +130,13 @@ function FlowNode({ icon: Icon, name, level = 0, active, onClick }: { icon: any;
 const FlowArrow = () => <span className="text-dim flex-shrink-0 text-base">→</span>
 
 /** 4-Agent 编排节点图：节点可点击选中 Agent（无 agents 参数时静态展示）；
- *  节点颜色深浅来自最近一次任务的各节点耗时归一化（无数据时全部同色） */
+ *  节点颜色深浅直接按模板基础逻辑标注（各节点在流程中的职责负载，不依赖运行数据） */
 const FlowGraph = ({ agents, templateAgentId, onSelect }: { agents?: AgentConfig[]; templateAgentId?: string; onSelect?: (id: string) => void }) => {
   const act = (id: string) => templateAgentId === id
   const pick = (id: string) => onSelect ? () => onSelect(id) : undefined
-  // 节点深浅：最近一次任务各节点耗时（耗时越长颜色越深），无数据时全部同色
-  const [nodeLevels, setNodeLevels] = useState<Record<string, number>>({})
-  useEffect(() => {
-    fetch('/api/task-stats?limit=1', { cache: 'no-store' })
-      .then(r => r.json()).then(d => {
-        const tasks: any[] = d.tasks || []
-        const t = tasks[0]
-        if (!t || !t.data) { setNodeLevels({}); return }
-        const data = t.data
-        const names = ['plan', 'study_memory', 'kb', 'generate', 'review']
-        const ms: Record<string, number> = {}
-        let max = 0
-        for (const n of names) { const v = data[n] || {}; const m = Number(v.ms) || 0; ms[n] = m; if (m > max) max = m }
-        if (max <= 0) { setNodeLevels({}); return }
-        const lv: Record<string, number> = {}
-        for (const n of names) lv[n] = Math.round((ms[n] / max) * 3)
-        setNodeLevels(lv)
-      }).catch(() => setNodeLevels({}))
-  }, [])
-  const lv = (n: string) => nodeLevels[n] || 0
+  // 模板基础逻辑权重：节点在编排流程中的职责负载（0-4，越深负载越高）
+  const BASE_LEVELS: Record<string, number> = { plan: 1, study_memory: 2, kb: 2, generate: 4, review: 3 }
+  const lv = (n: string) => BASE_LEVELS[n] || 0
   return (
     <div className="flex items-center justify-center gap-2 flex-wrap">
       <FlowNode icon={Workflow} name="规划" level={lv('plan')} active={act('main')} onClick={pick('main')} />
@@ -662,7 +645,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
               <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex items-center justify-center">
                 <FlowGraph agents={agents} templateAgentId={templateAgentId} onSelect={(id) => setTemplateAgentId(id)} />
               </div>
-              <p className="text-[10px] text-dim -mt-2">节点颜色越深表示该节点最近任务的耗时/质量越高</p>
+              <p className="text-[10px] text-dim -mt-2">节点颜色越深表示该节点在模板编排中的职责负载越高</p>
             </div>
           </div>
         )}
