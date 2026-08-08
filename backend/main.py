@@ -414,6 +414,57 @@ async def export_all(project_id: str = "default"):
     return {"exported_at": __import__("datetime").datetime.now().isoformat(), "data": out}
 
 
+# ---------- 学习时间线 ----------
+
+@app.get("/api/learning-log")
+async def get_learning_log(project_id: str = ""):
+    """按日期聚合的学习时间线：每次对话的名称/主题/产出（project_id 为空=全部项目）"""
+    import json as _json
+    from core.postgres_client import pg_client
+    if project_id:
+        dialogs = pg_client.execute("SELECT id, project_id, name, created_at FROM dialogues WHERE project_id=%s AND archived=FALSE", (project_id,))
+    else:
+        dialogs = pg_client.execute("SELECT id, project_id, name, created_at FROM dialogues WHERE archived=FALSE")
+    projs = pg_client.execute("SELECT id, name FROM projects")
+    pname = {p["id"]: p.get("name", p["id"]) for p in projs or []}
+    days: dict = {}
+    for d in dialogs or []:
+        date = (d.get("created_at") or "")[:10] or "未知日期"
+        topic = ""
+        try:
+            dm = pg_client.execute("SELECT profile_data FROM dialogue_memories WHERE dialogue_id=%s", (d["id"],))
+            if dm and dm[0].get("profile_data"):
+                pd = dm[0]["profile_data"]
+                if isinstance(pd, str):
+                    try: pd = _json.loads(pd)
+                    except Exception: pd = {}
+                topic = pd.get("topic", "") if isinstance(pd, dict) else ""
+        except Exception:
+            pass
+        arts: list = []
+        try:
+            from core.sqlite_client import get_db
+            msgs = get_db().execute("SELECT content FROM messages WHERE dialogue_id=%s ORDER BY created_at", (d["id"],))
+            for m in msgs or []:
+                c = str(m.get("content") or "")
+                if "## 📘 定制讲义" in c and not any(a["type"] == "讲义" for a in arts):
+                    arts.append({"type": "讲义", "title": "定制讲义"})
+                elif "## 🛠 实操指南" in c and not any(a["type"] == "实操指南" for a in arts):
+                    arts.append({"type": "实操指南", "title": "实操指南"})
+                elif "## 📝 分阶测试题" in c and not any(a["type"] == "测试题" for a in arts):
+                    arts.append({"type": "测试题", "title": "分阶测试题"})
+        except Exception:
+            pass
+        item = {
+            "project_id": d.get("project_id"), "project_name": pname.get(d.get("project_id"), d.get("project_id")),
+            "dialogue_id": d["id"], "dialogue_name": d.get("name") or "对话",
+            "topic": topic, "artifacts": arts, "created_at": d.get("created_at"),
+        }
+        days.setdefault(date, []).append(item)
+    out = [{"date": k, "items": v} for k, v in sorted(days.items(), key=lambda x: x[0], reverse=True)]
+    return {"days": out}
+
+
 # ---------- 画像 API ----------
 
 class ProfileData(BaseModel):

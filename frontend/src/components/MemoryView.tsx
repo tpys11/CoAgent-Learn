@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Brain, User, FolderTree, Check, Loader2 } from 'lucide-react'
+import { Brain, User, FolderTree, Check, Loader2, ChevronDown } from 'lucide-react'
 
 /** 个人全局性记忆：基础信息字段（固定，纵向表单） */
 const BASIC_FIELDS = [
@@ -28,6 +28,9 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
 
   // 项目记忆
   const [pFields, setPFields] = useState<Record<string, string>>({})
+  // 学习时间线
+  const [timeline, setTimeline] = useState<Array<{ date: string; items: any[] }>>([])
+  const [openDays, setOpenDays] = useState<Set<string>>(new Set())
   const [pLoading, setPLoading] = useState(false)
   const [dialogueSummaries, setDialogueSummaries] = useState<Array<{ dialogue_id?: string; name?: string; 概要?: any }>>([])
 
@@ -64,6 +67,62 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
       .finally(() => setGLoading(false))
   }
   useEffect(() => { loadGlobal() }, [level === 'global'])
+
+  // ---------- 学习时间线 ----------
+  const fmtDateCN = (s: string) => {
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/) || s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})/)
+    if (!m) return s
+    const y = new Date().getFullYear()
+    return String(m[1]) === String(y) ? `${Number(m[2])}月${Number(m[3])}日` : `${m[1]}年${Number(m[2])}月${Number(m[3])}日`
+  }
+  const loadTimeline = (pid: string | null) => {
+    const url = pid ? '/api/learning-log?project_id=' + encodeURIComponent(pid) : '/api/learning-log'
+    fetch(url, { cache: 'no-store' }).then(r => r.json()).then(d => setTimeline(d.days || [])).catch(() => setTimeline([]))
+  }
+  useEffect(() => {
+    if (level === 'project') loadTimeline(selectedProject)
+    else loadTimeline(null)
+  }, [level, selectedProject])
+  const toggleDay = (date: string) => {
+    setOpenDays(prev => { const n = new Set(prev); n.has(date) ? n.delete(date) : n.add(date); return n })
+  }
+  const renderTimeline = () => (
+    <div className="flex flex-col gap-2">
+      {timeline.length === 0 ? (
+        <p className="text-[11px] text-dim text-center py-8">暂无学习记录，对话后会按日期汇总</p>
+      ) : timeline.map(d => {
+        const open = openDays.has(d.date)
+        return (
+          <div key={d.date} className="border hairline rounded-xl bg-[var(--bg-panel)] overflow-hidden">
+            <button onClick={() => toggleDay(d.date)} className="w-full flex items-center gap-2.5 px-4 py-3 text-left">
+              <ChevronDown size={13} className={`transition-transform flex-shrink-0 ${open ? '' : '-rotate-90'}`} />
+              <span className="text-sm font-semibold">{fmtDateCN(d.date)}</span>
+              <span className="text-[11px] text-dim">{d.items.length} 次对话</span>
+            </button>
+            {open && (
+              <div className="px-4 pb-3 flex flex-col gap-2">
+                {d.items.map((item, i) => (
+                  <div key={i} className="border hairline rounded-lg p-3 flex flex-col gap-1">
+                    <p className="text-xs font-semibold">
+                      {item.project_name && item.project_name !== item.project_id ? `${item.project_name} · ` : ''}{item.dialogue_name}
+                    </p>
+                    {item.topic && <p className="text-[11px] text-dim">主题：{item.topic}</p>}
+                    {item.artifacts && item.artifacts.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-1">
+                        {item.artifacts.map((a: any, j: number) => (
+                          <span key={j} className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--bg-hover)] text-dim">{a.type}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
 
   // ---------- 项目记忆加载 ----------
   useEffect(() => {
@@ -203,6 +262,12 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
                     className="w-full px-3 py-3 text-xs input-surface rounded-xl outline-none resize-none" />
                 </div>
 
+                {/* 学习时间线（跨项目） */}
+                <div>
+                  <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-3">学习时间线</p>
+                  {renderTimeline()}
+                </div>
+
                 {/* 项目摘要（只读） */}
                 {Object.keys(gSummary).length > 0 && (
                   <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
@@ -269,27 +334,10 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
                       ))}
                     </div>
 
-                    {/* 对话记忆（只读） */}
-                    <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
-                      <p className={fieldLabel}>对话记忆（{dialogueSummaries.length}）</p>
-                      {dialogueSummaries.length === 0 ? (
-                        <p className="text-[11px] text-dim">暂无对话记忆，新建对话并填写对话画像后自动生成</p>
-                      ) : (
-                        <div className="flex flex-col gap-2">
-                          {dialogueSummaries.map((ds, i) => (
-                            <div key={i} className="border hairline rounded-lg p-3">
-                              <p className="text-xs font-semibold mb-1">💬 {ds.name || '对话'}</p>
-                              {ds.概要 && (
-                                <p className="text-[11px] text-[var(--text-muted)]">
-                                  {ds.概要.topic && <>主题：{ds.概要.topic}</>}
-                                  {ds.概要.selfLevel && <> · 水平：{ds.概要.selfLevel}</>}
-                                  {ds.概要.target && <> · 目标：{ds.概要.target}</>}
-                                </p>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                    {/* 学习时间线（按日期展开/折叠） */}
+                    <div>
+                      <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-3">学习时间线</p>
+                      {renderTimeline()}
                     </div>
                   </>
                 )}
