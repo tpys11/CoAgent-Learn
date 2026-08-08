@@ -128,6 +128,29 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
 
   const fieldLabel = 'text-[10px] font-semibold text-dim uppercase tracking-wider mb-2 block'
 
+  // 进度估算：按「当前水平」关键词映射，无则按对话量估计
+  const pctOf = (fields: Record<string, string>, count: number) => {
+    const lv = (fields['当前水平'] || '').toLowerCase()
+    if (/beginner|初级|入门/.test(lv)) return 30
+    if (/intermediate|中级|进阶/.test(lv)) return 60
+    if (/advanced|高级|掌握/.test(lv)) return 85
+    return Math.min(80, 15 + count * 3)
+  }
+  // 学习快慢：近7天 vs 前7天（由近30天推算）的对话次数对比
+  const trendOf = (days: Record<string, any[]>) => {
+    const now = new Date()
+    const key = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    let w7 = 0, w30 = 0
+    for (let i = 0; i < 30; i++) {
+      const c = (days[key(new Date(now.getTime() - i * 86400000))] || []).length
+      if (i < 7) w7 += c
+      w30 += c
+    }
+    const prev7 = Math.max(1, (w30 - w7) / 3)
+    const ratio = w7 / prev7
+    return { w7, w30, up: ratio > 1.3, down: ratio < 0.7, trend: ratio > 1.3 ? '↗ 变快' : ratio < 0.7 ? '↘ 变慢' : '→ 平稳' }
+  }
+
   // ---------- 项目列表 ----------
   useEffect(() => {
     fetch('/api/projects', { cache: 'no-store' }).then(r => r.json()).then(d => {
@@ -395,38 +418,70 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                   </button>
                   {open && (
                     <div className="px-4 pb-4 pt-1 flex flex-col gap-4">
-                      {/* 维度字段：只读 + 修改入口 */}
-                      {PROJECT_DIMS.map(dim => (
-                        <div key={dim.title} className="flex flex-col gap-2">
-                          <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">
-                            {dim.title}<span className="ml-1 text-[9px] font-normal text-dim/70">{dim.hint}</span>
-                          </p>
-                          {dim.keys.map(k => (
+                      {/* 进度：标尺 + 快慢 + 具体内容 */}
+                      <div className="flex flex-col gap-2">
+                        <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">进度<span className="ml-1 text-[9px] font-normal text-dim/70">起点 → 当前 → 目标 · 快慢直观</span></p>
+                        <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2.5">
+                          {/* 进度标尺 */}
+                          <div className="relative h-2 rounded-full bg-[#ececec]">
+                            <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: pctOf(data?.fields || {}, data?.count || 0) + '%', background: 'var(--accent)' }} />
+                            <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white border-2" style={{ left: `calc(${pctOf(data?.fields || {}, data?.count || 0)}% - 6px)`, borderColor: 'var(--accent)' }} />
+                          </div>
+                          <div className="flex items-center justify-between gap-2 text-[10px] text-dim">
+                            <span className="truncate max-w-[38%]">起点：{(data?.fields['起点'] || '').trim() || '（空）'}</span>
+                            <span className="font-semibold text-[var(--text)] flex-shrink-0">{pctOf(data?.fields || {}, data?.count || 0)}%</span>
+                            <span className="truncate max-w-[38%] text-right">目标：{(data?.fields['目标'] || '').trim() || '（空）'}</span>
+                          </div>
+                          {/* 快慢 */}
+                          {(() => { const t = trendOf(data?.days || {}); return (
+                            <div className="flex items-center gap-3 text-[10px] text-dim pt-2 border-t hairline">
+                              <span>近7天 <b className="text-[var(--text)]">{t.w7}</b> 次</span>
+                              <span>近30天 <b className="text-[var(--text)]">{t.w30}</b> 次</span>
+                              <span className={`ml-auto font-medium ${t.up ? 'text-green-600' : t.down ? 'text-red-500' : 'text-dim'}`}>{t.trend}</span>
+                            </div>
+                          ) })()}
+                        </div>
+                        {/* 进度具体内容：概述 + 起点/当前/目标 + 知识点/难点 */}
+                        <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
+                          {['抽象目的', '抽象项目情况'].map(k => (
                             <div key={k}>
                               <div className="flex items-center justify-between mb-1">
                                 <label className="text-[10px] font-semibold text-dim uppercase tracking-wider">{k}</label>
-                                <button onClick={() => onRequestModify?.(k, p.id)}
-                                  className="text-[9px] text-[var(--accent)] hover:underline">修改</button>
+                                <button onClick={() => onRequestModify?.(k, p.id)} className="text-[9px] text-[var(--accent)] hover:underline">修改</button>
                               </div>
                               <div className="px-3 py-2 border hairline rounded-xl text-xs bg-[var(--bg-input)] text-[var(--text-muted)] leading-relaxed">
                                 {(data?.fields[k] || '').trim() ? <MiniMD text={data?.fields[k] || ''} /> : <span className="text-dim">（空）</span>}
                               </div>
                             </div>
                           ))}
-                          {dim.arrayKeys.map(k => (
+                          {['起点', '当前水平', '目标'].map(k => (
                             <div key={k}>
                               <div className="flex items-center justify-between mb-1">
                                 <label className="text-[10px] font-semibold text-dim uppercase tracking-wider">{k}</label>
-                                <button onClick={() => onRequestModify?.(k, p.id)}
-                                  className="text-[9px] text-[var(--accent)] hover:underline">修改</button>
+                                <button onClick={() => onRequestModify?.(k, p.id)} className="text-[9px] text-[var(--accent)] hover:underline">修改</button>
                               </div>
                               <div className="px-3 py-2 border hairline rounded-xl text-xs bg-[var(--bg-input)] text-[var(--text-muted)] leading-relaxed">
-                                {(data?.fields[k] || '').trim() ? (data?.fields[k] || '') : <span className="text-dim">（空）</span>}
+                                {(data?.fields[k] || '').trim() ? <MiniMD text={data?.fields[k] || ''} /> : <span className="text-dim">（空）</span>}
                               </div>
                             </div>
                           ))}
+                          {(['知识点', '难点'] as const).map(k => (
+                            <div key={k}>
+                              <div className="flex items-center justify-between mb-1">
+                                <label className="text-[10px] font-semibold text-dim uppercase tracking-wider">{k}{k === '知识点' ? '（已掌握）' : '（待攻克）'}</label>
+                                <button onClick={() => onRequestModify?.(k, p.id)} className="text-[9px] text-[var(--accent)] hover:underline">修改</button>
+                              </div>
+                              {(data?.fields[k] || '').trim() ? (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {(data?.fields[k] || '').split(/[,，、]/).map((s, i) => s.trim()).filter(Boolean).map((s, i) => (
+                                    <span key={i} className={`text-[10px] px-2 py-0.5 rounded-full ${k === '知识点' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>{s}</span>
+                                  ))}
+                                </div>
+                              ) : <span className="text-[11px] text-dim">（空）</span>}
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      </div>
                       {/* 时间：日历热度图 + 统计 */}
                       <div className="flex flex-col gap-2">
                         <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">时间</p>
