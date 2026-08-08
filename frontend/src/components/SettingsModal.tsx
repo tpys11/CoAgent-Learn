@@ -95,6 +95,8 @@ export default function SettingsModal({ onClose, projectId }: Props) {
   const [mcpTarget, setMcpTarget] = useState('')
   // 调试
   const [debug, setDebug] = useState(() => get('coagent-debug', '0') === '1')
+  // 对话自动清理（0 = 关闭）
+  const [dialogueLimit, setDialogueLimit] = useState(() => parseInt(get('coagent-dialogue-limit', '0')))
 
   useEffect(() => {
     document.documentElement.style.setProperty('--ui-font', `${fontSize}px`)
@@ -111,6 +113,16 @@ export default function SettingsModal({ onClose, projectId }: Props) {
   }, [mainKey])
   useEffect(() => { localStorage.setItem('coagent-timeout', String(timeoutSec)) }, [timeoutSec])
   useEffect(() => { localStorage.setItem('coagent-debug', debug ? '1' : '0') }, [debug])
+  useEffect(() => { localStorage.setItem('coagent-dialogue-limit', String(dialogueLimit)) }, [dialogueLimit])
+
+  /** 恢复默认设置：清除设置类键（保留 API Key / 模型 / 数据）后刷新 */
+  const resetSettings = () => {
+    if (!window.confirm('确定恢复默认设置？字体、主题、默认参数等将还原（API Key、对话与记忆数据不受影响）。')) return
+    ;['coagent-fontSize', 'coagent-default-settings', 'coagent-post-actions', 'coagent-context-settings',
+      'coagent-timeout', 'coagent-debug', 'coagent-provider', 'coagent-mcp-servers', 'coagent-dialogue-limit',
+      'coagent-last-settings', 'coagent-tutorial-cats', 'coagent-tutorials'].forEach(k => localStorage.removeItem(k))
+    window.location.reload()
+  }
 
   const flash = (msg: string) => { setFeedback(msg); setTimeout(() => setFeedback(''), 2000) }
 
@@ -349,6 +361,36 @@ export default function SettingsModal({ onClose, projectId }: Props) {
           {/* 调试模式 */}
           <Section icon={Bug} title="调试模式" desc="开启后，对话回复底部显示各 Agent 的耗时与 token 估算">
             <SwitchRow label="调试模式" checked={debug} onChange={setDebug} />
+          </Section>
+
+          {/* 对话自动清理 */}
+          <Section icon={Trash2} title="对话自动清理" desc="保留最近 N 条对话，更早的对话自动归档（0 = 不清理）">
+            <div className="flex items-center gap-3 border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
+              <span className="text-xs text-dim flex-shrink-0">不清理</span>
+              <input type="range" min="0" max="100" step="5" value={dialogueLimit}
+                onChange={e => setDialogueLimit(Number(e.target.value))}
+                className="flex-1 accent-[var(--accent)]" />
+              <span className="text-xs text-dim flex-shrink-0">100</span>
+              <span className="text-xs font-semibold w-16 text-right">{dialogueLimit === 0 ? '关闭' : `${dialogueLimit} 条`}</span>
+            </div>
+          </Section>
+
+          {/* 恢复默认设置 */}
+          <Section icon={Database} title="恢复默认设置" desc="还原字体、主题、默认参数等设置（保留 API Key 与数据）">
+            <button onClick={resetSettings}
+              className="px-4 py-2 rounded-xl text-xs border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors self-start">
+              恢复默认设置
+            </button>
+          </Section>
+
+          {/* 关于 */}
+          <Section icon={LampDesk} title="关于">
+            <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-1.5">
+              <p className="text-xs font-semibold">CoAgent-Learn <span className="text-dim font-normal">v0.2.0</span></p>
+              <p className="text-[11px] text-dim leading-relaxed">面向领域知识生成的多智能体协同学习平台：4-Agent 工作流 · 三层记忆 · 知识库 RAG · MCP 技术选型（HTTP/SSE）</p>
+              <a href="https://github.com/tpys11/CoAgent-Learn" target="_blank" rel="noreferrer"
+                className="text-[11px] text-[var(--accent)] hover:underline">GitHub: tpys11/CoAgent-Learn ↗</a>
+            </div>
           </Section>
         </div>
       </div>

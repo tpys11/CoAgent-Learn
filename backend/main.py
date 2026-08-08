@@ -420,6 +420,22 @@ class ProfileData(BaseModel):
     profile: dict = {}
 
 
+class DialogueUpdate(BaseModel):
+    name: str | None = None
+    archived: bool | None = None
+
+
+@app.post("/api/dialogues/{did}/update")
+async def update_dialogue(did: str, req: DialogueUpdate):
+    """更新对话信息：改名 / 归档（自动命名、自动清理用）"""
+    from core.postgres_client import pg_client
+    if req.name is not None:
+        pg_client.execute("UPDATE dialogues SET name=%s WHERE id=%s", (req.name, did))
+    if req.archived is not None:
+        pg_client.execute("UPDATE dialogues SET archived=%s WHERE id=%s", (1 if req.archived else 0, did))
+    return {"status": "ok"}
+
+
 @app.post("/api/global-profile")
 async def save_global_profile(req: ProfileData):
     """个人全局性记忆：保存简历式自由要点（upsert 最新一条，单行表 id=1）"""

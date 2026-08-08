@@ -190,11 +190,33 @@ function App() {
       setDialogues(prev => [...prev, d])
       did = d.id
       setCurrentDialogueId(d.id)
+      // 对话自动清理：保留最近 N 条未归档对话（设置里可配，0=关闭）
+      try {
+        const lim = parseInt(localStorage.getItem('coagent-dialogue-limit') || '0', 10)
+        if (lim > 0) {
+          const active = dialogues.filter(x => x.projectId === currentProjectId && !x.archived)
+          const excess = active.length - (lim - 1)
+          if (excess > 0) {
+            const sorted = [...active].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''))
+            sorted.slice(0, excess).forEach(x => {
+              fetch('/api/dialogues/' + x.id + '/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: true }) }).catch(() => {})
+              setDialogues(prev => prev.map(y => y.id === x.id ? { ...y, archived: true } : y))
+            })
+          }
+        }
+      } catch {}
     }
     if (!did) return
     setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'user', content: text }] }))
     setIsLoading(true)
     setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = []
+    // 自动命名：对话名为「对话 N」时，按首条消息内容改名
+    const curDlg = dialogues.find(d => d.id === did)
+    if (curDlg && /^对话 \d+$/.test(curDlg.name)) {
+      const nm = text.trim().slice(0, 14) || curDlg.name
+      fetch('/api/dialogues/' + did + '/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: nm }) }).catch(() => {})
+      setDialogues(prev => prev.map(x => x.id === did ? { ...x, name: nm } : x))
+    }
     let timeoutTimer: any = null
     try {
       // 读取所选模型厂家配置
@@ -213,9 +235,11 @@ function App() {
         doubao: 'https://ark.cn-beijing.volces.com/api/v3',
       }
       const apiKey = provKeys[provider] || localStorage.getItem('coagent-apikey') || undefined
-      // 合并默认对话参数（设置里可配）
+      // 合并默认对话参数（设置里可配）+ 记住上次设置
       const defSettings = (() => { try { return JSON.parse(localStorage.getItem('coagent-default-settings') || '{}') } catch { return {} } })()
-      const mergedSettings = { ...defSettings, ...(settings || {}) }
+      const lastSettings = (() => { try { return JSON.parse(localStorage.getItem('coagent-last-settings') || '{}') } catch { return {} } })()
+      const mergedSettings = { ...defSettings, ...lastSettings, ...(settings || {}) }
+      try { localStorage.setItem('coagent-last-settings', JSON.stringify(mergedSettings)) } catch {}
       // 请求超时（设置里可配，默认 120s）
       const timeoutMs = (parseInt(localStorage.getItem('coagent-timeout') || '120', 10) || 120) * 1000
       const ctrl = new AbortController()
