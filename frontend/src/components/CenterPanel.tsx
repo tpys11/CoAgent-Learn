@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Send, Bot, X, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Cpu, SlidersHorizontal, Check, AlertTriangle, Search, FileText, Image as ImageIcon } from 'lucide-react'
+import { Send, Bot, X, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Cpu, SlidersHorizontal, Check, AlertTriangle, Search, FileText, LayoutTemplate, Image as ImageIcon } from 'lucide-react'
 import type { Message, Project } from '../types'
 
 
@@ -126,7 +126,14 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   const [thinkingCollapsed, setThinkingCollapsed] = useState(true)
   const [showSearch, setShowSearch] = useState(false)
   const [showModelModal, setShowModelModal] = useState(false)
-  // 模型厂家配置
+  // 模板模式：与「模板与编排」预设模板一致
+const TEMPLATE_OPTIONS = [
+  { name: '均衡模式', desc: '生成最重、审核次之（默认编排）' },
+  { name: '质量优先', desc: '审核更严格（重试 3 次、严格模式）' },
+  { name: '响应更快', desc: '生成用快模型，整体负载轻' },
+]
+
+/** 模型厂家配置 */
   const MODEL_PROVIDERS = [
     { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', models: ['deepseek-pro', 'deepseek-flash'] },
     { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1-mini'] },
@@ -143,6 +150,15 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   const [providerKeys, setProviderKeys] = useState<Record<string, string>>(() => {
     try { return JSON.parse(localStorage.getItem('coagent-provider-keys') || '{}') } catch { return {} }
   })
+  // 模板模式（与模板与编排预设一致）
+  const [templateMode, setTemplateMode] = useState(() => localStorage.getItem('coagent-template') || '均衡模式')
+  const [showTplMenu, setShowTplMenu] = useState(false)
+  const tplRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const close = (e: MouseEvent) => { if (tplRef.current && !tplRef.current.contains(e.target as Node)) setShowTplMenu(false) }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [])
   const searchRef = useRef<HTMLDivElement>(null)
   const [showInputOpt, setShowInputOpt] = useState(false)
   const inputOptRef = useRef<HTMLDivElement>(null)
@@ -203,6 +219,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
     onSendMessage(full, {
       image: image,
       chatMode: chatMode,
+      template: templateMode,
       searchMode: searchLabels[searchMode],
       outputFormat: outputFormat === 0 ? '低结构化' : '高结构化',
       outputStyle: outputStyle === 0 ? 'MD文档' : '对话形式',
@@ -219,6 +236,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   const sendFollowup = (q: string) => {
     onSendMessage(q, {
       chatMode: chatMode,
+      template: templateMode,
       searchMode: searchLabels[searchMode],
       outputFormat: outputFormat === 0 ? '低结构化' : '高结构化',
       outputStyle: outputStyle === 0 ? 'MD文档' : '对话形式',
@@ -546,6 +564,26 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
               </div>
               <span className="w-px h-4 bg-[#e5e5e5] mx-1" />
               <span className="flex-1" />
+              <div className="relative" ref={tplRef}>
+                <button
+                  onClick={() => setShowTplMenu(!showTplMenu)}
+                  className={`h-9 px-3 rounded-xl input-surface text-[11px] flex items-center gap-1.5 transition-colors ${showTplMenu ? 'opacity-90' : 'hover:opacity-90'}`}
+                  title="模板模式（均衡/质量优先/响应更快）">
+                  <LayoutTemplate size={14} /> {templateMode}
+                </button>
+                {showTplMenu && (
+                  <div className="absolute right-0 top-11 z-30 panel rounded-2xl p-2 w-60 flex flex-col gap-1 shadow-soft">
+                    {TEMPLATE_OPTIONS.map(t => (
+                      <button key={t.name}
+                        onClick={() => { setTemplateMode(t.name); localStorage.setItem('coagent-template', t.name); setShowTplMenu(false) }}
+                        className={`text-left px-3 py-2 rounded-xl text-[11px] transition-colors ${templateMode === t.name ? 'bg-[#1a1a1a] text-white' : 'hover:bg-[var(--bg-hover)]'}`}>
+                        <span className="font-semibold block">{t.name}</span>
+                        <span className={`text-[10px] ${templateMode === t.name ? 'text-white/70' : 'text-dim'}`}>{t.desc}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               <button
                 onClick={() => setShowModelModal(true)}
                 className="h-9 px-3 rounded-xl input-surface text-[11px] flex items-center gap-1.5 hover:opacity-90 transition-colors"

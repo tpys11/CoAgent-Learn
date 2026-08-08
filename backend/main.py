@@ -844,6 +844,18 @@ def _extract_json_obj(text: str) -> dict:
     return {}
 
 
+def _apply_template(agents, tpl: str):
+    """按模板调整 agents 配置：质量优先=审核更严格(重试3次/严格模式)；响应更快=主Agent生成用快模型"""
+    if not agents:
+        return agents
+    out = list(agents)
+    if tpl == "质量优先":
+        out = [dict(a, retryMax=3, mode="严格") if (isinstance(a, dict) and a.get("id") == "review") else a for a in out]
+    elif tpl == "响应更快":
+        out = [dict(a, model="fast") if (isinstance(a, dict) and a.get("id") == "main") else a for a in out]
+    return out
+
+
 def _memory_edit(api_key: str, message: str, project_id: str, session_id: str) -> dict | None:
     """检测 [模块名] 引用 → AI 分析并修改记忆；返回 {"reply":..., "steps":...}，非引用消息返回 None"""
     m = re.search(r"\[([^\[\]]{1,16})\]", message)
@@ -940,7 +952,10 @@ async def chat(req: ChatRequest):
 
             def run_workflow():
                 try:
-                    wf = create_workflow(req.api_key, req.settings, on_token, model=req.model, base_url=req.base_url, agents=req.agents)
+                    # 模板模式：按所选模板调整 agents（均衡模式 = 不调整）
+                    _tpl = (req.settings or {}).get("template") or "均衡模式"
+                    _agents = _apply_template(req.agents, _tpl)
+                    wf = create_workflow(req.api_key, req.settings, on_token, model=req.model, base_url=req.base_url, agents=_agents)
                     pid = req.project_id or "default"
                     _did = req.dialogue_id or "default"
                     # 先存用户消息（invoke 时 generate_node 才能读到）
