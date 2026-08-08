@@ -147,6 +147,8 @@ const TEMPLATE_OPTIONS = [
   const [templateMode, setTemplateMode] = useState(() => localStorage.getItem('coagent-template') || '均衡模式')
   // Auto：AI 根据输入自动选择模板/模式（开启后手动设置按钮禁用）
   const [autoMode, setAutoMode] = useState(() => localStorage.getItem('coagent-auto') === '1')
+  // 模型 Auto：AI 根据输入自动选择模型（模型选择上拉栏内开关）
+  const [modelAuto, setModelAuto] = useState(() => localStorage.getItem('coagent-model-auto') === '1')
   // 使用模板：开启后前面的设置按钮（输入优化/检索/输出形式/输出内容）变暗
   const [useTemplate, setUseTemplate] = useState(() => localStorage.getItem('coagent-use-template') === '1')
   const [showTplMenu, setShowTplMenu] = useState(false)
@@ -223,6 +225,7 @@ const TEMPLATE_OPTIONS = [
       chatMode: chatMode,
       template: templateMode,
       auto: autoMode,
+      modelAuto: modelAuto,
       searchMode: searchLabels[searchMode],
       outputFormat: outputFormat === 0 ? '低结构化' : '高结构化',
       outputStyle: outputStyle === 0 ? 'MD文档' : '对话形式',
@@ -241,6 +244,7 @@ const TEMPLATE_OPTIONS = [
       chatMode: chatMode,
       template: templateMode,
       auto: autoMode,
+      modelAuto: modelAuto,
       searchMode: searchLabels[searchMode],
       outputFormat: outputFormat === 0 ? '低结构化' : '高结构化',
       outputStyle: outputStyle === 0 ? 'MD文档' : '对话形式',
@@ -600,11 +604,12 @@ const TEMPLATE_OPTIONS = [
               </div>
               <span className="w-px h-4 bg-[#e5e5e5] mx-1" />
               <span className="flex-1" />
-              {/* Auto：AI 根据输入自动选择模板/模式（开启后包括模板选择全部变暗） */}
+              {/* 对话模式 auto：AI 根据输入自动选择模板/模式（开启后包括模板选择全部变暗） */}
+              <span className="text-[11px] text-dim">对话模式 auto</span>
               <button
                 onClick={() => { const next = !autoMode; setAutoMode(next); localStorage.setItem('coagent-auto', next ? '1' : '0') }}
                 className={`w-9 h-5 rounded-full relative transition-colors ${autoMode ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`}
-                title={autoMode ? 'Auto 已开启：AI 根据输入自动选择模板/模式' : 'Auto：AI 根据输入自动选择模板/模式'}>
+                title={autoMode ? '对话模式 auto 已开启：AI 根据输入自动选择模板/模式' : '对话模式 auto：AI 根据输入自动选择模板/模式'}>
                 <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${autoMode ? 'translate-x-4' : ''}`} />
               </button>
               <div className="relative" ref={modelRef}>
@@ -617,11 +622,11 @@ const TEMPLATE_OPTIONS = [
                 {showModelModal && (
                   <div className="absolute bottom-full right-0 mb-1 card-lift p-2 z-10" style={{ width: 230 }}>
                     <div className="flex items-center justify-between gap-2 px-1 py-1.5 mb-1 border-b border-[#e5e5e5]">
-                      <span className="text-[11px] font-medium">Auto 自动选择</span>
-                      <button onClick={() => { const next = !autoMode; setAutoMode(next); localStorage.setItem('coagent-auto', next ? '1' : '0') }}
-                        className={`w-9 h-5 rounded-full relative transition-colors flex-shrink-0 ${autoMode ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`}
-                        title="Auto 开关">
-                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${autoMode ? 'translate-x-4' : ''}`} />
+                      <span className="text-[11px] font-medium">Auto 自动选择模型</span>
+                      <button onClick={() => { const next = !modelAuto; setModelAuto(next); localStorage.setItem('coagent-model-auto', next ? '1' : '0') }}
+                        className={`w-9 h-5 rounded-full relative transition-colors flex-shrink-0 ${modelAuto ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`}
+                        title="Auto 开关（自动选择模型）">
+                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${modelAuto ? 'translate-x-4' : ''}`} />
                       </button>
                     </div>
                     {/* 模型并列平铺（不按厂家分组） */}

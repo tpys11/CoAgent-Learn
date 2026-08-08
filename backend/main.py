@@ -844,17 +844,19 @@ def _extract_json_obj(text: str) -> dict:
     return {}
 
 
-def _auto_settings(api_key: str, message: str, template: str = "均衡模式") -> dict:
-    """Auto 模式：让 AI 读取用户输入，基于用户所选模板自动推断其余设置；失败时返回空 dict（保持默认）"""
+def _auto_settings(api_key: str, message: str, template: str = "均衡模式", infer_model: bool = False) -> dict:
+    """Auto 模式：让 AI 读取用户输入，基于用户所选模板自动推断其余设置；infer_model=True 时同时推断模型；失败时返回空 dict（保持默认）"""
     from core.config import config as _cfg
+    _model_field = "\"model\": \"deepseek-pro|deepseek-flash|glm-4-plus|glm-4-flash\", " if infer_model else ""
     prompt = (
         "你是对话设置分析器。模板已由用户选定，请根据用户的输入内容，推断其余最适合的对话设置，只输出 JSON：\n"
-        "{\"inputOptMode\": \"默认模式|详尽模式|不询问模式\", \"searchMode\": \"自由|知识库\", "
+        "{" + _model_field + "\"inputOptMode\": \"默认模式|详尽模式|不询问模式\", \"searchMode\": \"自由|知识库\", "
         "\"webSearchMode\": \"默认|增强\", \"outputFormat\": \"低结构化|高结构化\", "
         "\"outputStyle\": \"MD文档|对话形式\", \"thinking\": \"开|关\", "
         "\"outputVolume\": \"精简|适中|拓展\", \"depth\": \"浅|中|深\"}\n"
         f"已选模板：{template}（质量优先=审核严格、响应更快=快模型，推断时可参考）\n"
         "推断规则：涉及学习/讲解/推导用较深深度与适中输出；复杂主题适当加重输出量；简单问答用精简；无需搜索则 webSearchMode=默认。\n"
+        "模型推断规则（仅在要求推断模型时）：复杂/长篇任务用 deepseek-pro 或 glm-4-plus；简单问答用 deepseek-flash 或 glm-4-flash。\n"
         f"用户输入：{message[:1500]}"
     )
     h = {"Authorization": "Bearer " + (api_key or _cfg.DEEPSEEK_API_KEY), "Content-Type": "application/json"}
@@ -880,6 +882,8 @@ def _auto_settings(api_key: str, message: str, template: str = "均衡模式") -
             "outputVolume": ["精简", "适中", "拓展"],
             "depth": ["浅", "中", "深"],
         }
+        if infer_model:
+            ok["model"] = ["deepseek-pro", "deepseek-flash", "glm-4-plus", "glm-4-flash"]
         out = {}
         for k, vals in ok.items():
             v = str(d.get(k, "")).strip()
@@ -998,17 +1002,20 @@ async def chat(req: ChatRequest):
 
             def run_workflow():
                 try:
-                    # Auto 模式：AI 读取输入，基于所选模板自动推断其余设置
+                    # Auto / 模型 Auto：AI 读取输入自动推断设置（模型 Auto 同时推断模型）
                     _settings = dict(req.settings or {})
-                    if _settings.get("auto"):
-                        _tpl0 = _settings.get("template") or "均衡模式"
-                        _auto = _auto_settings(req.api_key, req.message, _tpl0)
+                    _model = req.model
+                    _tpl0 = _settings.get("template") or "均衡模式"
+                    if _settings.get("modelAuto") or _settings.get("auto"):
+                        _auto = _auto_settings(req.api_key, req.message, _tpl0, infer_model=bool(_settings.get("modelAuto")))
                         if _auto:
                             _settings.update(_auto)
+                            if _auto.get("model"):
+                                _model = _auto["model"]
                     # 模板模式：按所选模板调整 agents（均衡模式 = 不调整）
                     _tpl = _settings.get("template") or "均衡模式"
                     _agents = _apply_template(req.agents, _tpl)
-                    wf = create_workflow(req.api_key, _settings, on_token, model=req.model, base_url=req.base_url, agents=_agents)
+                    wf = create_workflow(req.api_key, _settings, on_token, model=_model, base_url=req.base_url, agents=_agents)
                     pid = req.project_id or "default"
                     _did = req.dialogue_id or "default"
                     # 先存用户消息（invoke 时 generate_node 才能读到）
