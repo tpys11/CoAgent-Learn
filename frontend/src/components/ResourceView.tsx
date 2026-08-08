@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { BookOpen, Sparkles, Upload, FileText, Trash2, Wrench, ExternalLink, Plus, X, FolderTree, FolderOpen, Library } from 'lucide-react'
+import { BookOpen, Sparkles, Upload, FileText, Trash2, Wrench, ExternalLink, Plus, X, FolderTree, FolderOpen, Library, Download } from 'lucide-react'
 
 interface Artifact {
   id: string
@@ -367,7 +367,18 @@ export default function ResourceView({ projectId }: { projectId: string | null }
     else if (item.kind === 'gen') removeGenItem(item.id)
   }
 
-  /** 普通卡片网格 */
+  /** 导出卡片内容为 Markdown 文件（wiki 详情 / 生成物 / 资料正文） */
+const exportItem = (item: ListItem) => {
+  const content = item.body || ''
+  const safeName = (item.title || '导出').replace(/[\\/:*?"<>|]/g, '-')
+  const blob = new Blob(['# ' + item.title + '\n\n' + content], { type: 'text/markdown' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url; a.download = safeName + '.md'; a.click()
+  URL.revokeObjectURL(url)
+}
+
+/** 普通卡片网格 */
   const cardGrid = (items: ListItem[]) => (
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
       {items.map(item => {
@@ -383,6 +394,18 @@ export default function ResourceView({ projectId }: { projectId: string | null }
                 <Icon size={20} />
               </span>
               <div className="flex items-center gap-1.5">
+                {item.url && (
+                  <a href={item.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}
+                    className="p-1 rounded-lg text-gray-300 hover:text-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors" title="打开链接">
+                    <ExternalLink size={13} />
+                  </a>
+                )}
+                {item.kind !== 'tutorial' && item.body && (
+                  <button onClick={(e) => { e.stopPropagation(); exportItem(item) }}
+                    className="p-1 rounded-lg text-gray-300 hover:text-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors" title="导出为文件">
+                    <Download size={13} />
+                  </button>
+                )}
                 {item.deletable && (
                   <button
                     onClick={(e) => { e.stopPropagation(); removeItem(item) }}
@@ -463,9 +486,15 @@ export default function ResourceView({ projectId }: { projectId: string | null }
                     onClick={() => setDetail({ id: 'wiki:' + w.name, title: w.name, sub: `${w.theme} · ${w.domain}`, body: w.detail, icon: Library, kind: 'wiki', deletable: false })}
                     className="group card-surface rounded-2xl p-6 flex flex-col gap-4 cursor-pointer transition-all hover:shadow-lg hover:-translate-y-1 hover:border-[var(--border-strong)]"
                   >
-                    <span className="w-12 h-12 rounded-xl bg-[#1a1a1a] text-white flex items-center justify-center">
-                      <Library size={20} />
-                    </span>
+                    <div className="flex items-start justify-between">
+                      <span className="w-12 h-12 rounded-xl bg-[#1a1a1a] text-white flex items-center justify-center">
+                        <Library size={20} />
+                      </span>
+                      <button onClick={(e) => { e.stopPropagation(); exportItem({ id: 'wiki:' + w.name, title: w.name, sub: w.theme, body: w.detail, icon: Library, kind: 'wiki', deletable: false }) }}
+                        className="p-1 rounded-lg text-gray-300 hover:text-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors" title="导出为文件">
+                        <Download size={13} />
+                      </button>
+                    </div>
                     <p className="text-base font-semibold leading-snug">{w.name}</p>
                     <p className="text-xs text-dim truncate">{w.intro}</p>
                   </div>
