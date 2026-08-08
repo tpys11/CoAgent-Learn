@@ -122,7 +122,7 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
   const [dayDetail, setDayDetail] = useState<{ date: string; items: any[] } | null>(null)
   // 记忆模块只读详情（修改记忆由 AI 处理：跳转主对话并以 [模块名] 引用）
   const [detailCard, setDetailCard] = useState<{ key: string; label: string; val: string } | null>(null)
-  useEffect(() => { setDayDetail(null) }, [level])
+  useEffect(() => { setDayDetail(null); setDetailCard(null) }, [level])
 
   const [saved, setSaved] = useState<'saving' | 'saved' | ''>('')
   const saveTimer = useRef<any>(null)
