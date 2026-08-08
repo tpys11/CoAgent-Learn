@@ -105,8 +105,8 @@ export default function SettingsModal({ onClose, projectId }: Props) {
   const [provider, setProvider] = useState(() => get('coagent-provider', 'deepseek'))
   const [provKeys, setProvKeys] = useState<Record<string, string>>(() => getJSON('coagent-provider-keys', {}))
   const [mainKey, setMainKey] = useState(() => get('coagent-apikey', ''))
-  // 超时
-  const [timeoutSec, setTimeoutSec] = useState(() => parseInt(get('coagent-timeout', '120')))
+  // 超时（1-30s）
+  const [timeoutSec, setTimeoutSec] = useState(() => Math.min(30, Math.max(1, parseInt(get('coagent-timeout', '30')) || 30)))
   // MCP 配置
   const [mcpServers, setMcpServers] = useState<McpServer[]>(() => getJSON('coagent-mcp-servers', []))
   const [mcpShow, setMcpShow] = useState(false)
@@ -366,12 +366,12 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             {show('timeout') && (
               <Section icon={Timer} title="请求超时" desc="发送消息后无响应自动中止，避免一直转圈">
                 <div className="flex items-center gap-3 border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
-                  <span className="text-xs text-dim">30s</span>
-                  <input type="range" min="30" max="300" step="10" value={timeoutSec}
+                  <span className="text-xs text-dim">1s</span>
+                  <input type="range" min="1" max="30" step="1" value={timeoutSec}
                     onChange={e => setTimeoutSec(Number(e.target.value))}
                     className="flex-1 accent-[var(--accent)]" />
-                  <span className="text-xs text-dim">300s</span>
-                  <span className="text-xs font-semibold w-12 text-right">{timeoutSec}s</span>
+                  <span className="text-xs text-dim">30s</span>
+                  <span className="text-xs font-semibold w-10 text-right">{timeoutSec}s</span>
                 </div>
               </Section>
             )}

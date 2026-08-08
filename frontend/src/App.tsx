@@ -240,8 +240,8 @@ function App() {
       const lastSettings = (() => { try { return JSON.parse(localStorage.getItem('coagent-last-settings') || '{}') } catch { return {} } })()
       const mergedSettings = { ...defSettings, ...lastSettings, ...(settings || {}) }
       try { localStorage.setItem('coagent-last-settings', JSON.stringify(mergedSettings)) } catch {}
-      // 请求超时（设置里可配，默认 120s）
-      const timeoutMs = (parseInt(localStorage.getItem('coagent-timeout') || '120', 10) || 120) * 1000
+      // 请求超时（设置里可配 1-30s，默认 30）
+      const timeoutMs = (Math.min(30, Math.max(1, parseInt(localStorage.getItem('coagent-timeout') || '30', 10) || 30))) * 1000
       const ctrl = new AbortController()
       timeoutTimer = setTimeout(() => ctrl.abort(), timeoutMs)
       const res = await fetch('/api/chat', {
