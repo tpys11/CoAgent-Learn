@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { Send, Bot, X, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Cpu, SlidersHorizontal, Check, AlertTriangle, Search, FileText, LayoutTemplate, Zap, Image as ImageIcon } from 'lucide-react'
+﻿import { useState, useEffect, useRef } from 'react'
+import { Send, Bot, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Cpu, SlidersHorizontal, Check, AlertTriangle, Search, FileText, LayoutTemplate, Image as ImageIcon } from 'lucide-react'
 import type { Message, Project } from '../types'
 
 
@@ -133,22 +133,15 @@ const TEMPLATE_OPTIONS = [
   { name: '响应更快', desc: '生成用快模型，整体负载轻' },
 ]
 
-/** 模型厂家配置 */
+/** 模型厂家配置（仅保留最常用：DeepSeek / 智谱GLM） */
   const MODEL_PROVIDERS = [
     { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', models: ['deepseek-pro', 'deepseek-flash'] },
-    { id: 'openai', name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1-mini'] },
-    { id: 'qwen', name: '通义千问', baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1', models: ['qwen-plus', 'qwen-max', 'qwen-turbo'] },
     { id: 'zhipu', name: '智谱GLM', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', models: ['glm-4-plus', 'glm-4-flash'] },
-    { id: 'moonshot', name: 'Kimi', baseUrl: 'https://api.moonshot.cn/v1', models: ['moonshot-v1-8k', 'moonshot-v1-32k'] },
-    { id: 'doubao', name: '豆包', baseUrl: 'https://ark.cn-beijing.volces.com/api/v3', models: ['doubao-pro-32k', 'doubao-lite-32k'] },
   ]
   const [selectedProvider, setSelectedProvider] = useState(() => localStorage.getItem('coagent-provider') || 'deepseek')
   const [selectedModel, setSelectedModel] = useState(() => {
     const m = localStorage.getItem('coagent-model') || 'deepseek-pro'
     return (m === 'deepseek-chat' || m === 'deepseek-reasoner') ? 'deepseek-pro' : m
-  })
-  const [providerKeys, setProviderKeys] = useState<Record<string, string>>(() => {
-    try { return JSON.parse(localStorage.getItem('coagent-provider-keys') || '{}') } catch { return {} }
   })
   // 模板模式（与模板与编排预设一致）
   const [templateMode, setTemplateMode] = useState(() => localStorage.getItem('coagent-template') || '均衡模式')
@@ -156,8 +149,13 @@ const TEMPLATE_OPTIONS = [
   const [autoMode, setAutoMode] = useState(() => localStorage.getItem('coagent-auto') === '1')
   const [showTplMenu, setShowTplMenu] = useState(false)
   const tplRef = useRef<HTMLDivElement>(null)
+  // 模型选择上拉小窗
+  const modelRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
-    const close = (e: MouseEvent) => { if (tplRef.current && !tplRef.current.contains(e.target as Node)) setShowTplMenu(false) }
+    const close = (e: MouseEvent) => {
+      if (tplRef.current && !tplRef.current.contains(e.target as Node)) setShowTplMenu(false)
+      if (modelRef.current && !modelRef.current.contains(e.target as Node)) setShowModelModal(false)
+    }
     document.addEventListener('mousedown', close)
     return () => document.removeEventListener('mousedown', close)
   }, [])
@@ -603,12 +601,36 @@ const TEMPLATE_OPTIONS = [
               </div>
               <span className="w-px h-4 bg-[#e5e5e5] mx-1" />
               <span className="flex-1" />
-              <button
-                onClick={() => setShowModelModal(true)}
-                className="h-9 px-3 rounded-xl input-surface text-[11px] flex items-center gap-1.5 hover:opacity-90 transition-colors"
-                title="模型设置">
-                <Cpu size={14} /> 模型
-              </button>
+              <div className="relative" ref={modelRef}>
+                <button
+                  onClick={() => setShowModelModal(!showModelModal)}
+                  className="h-9 px-3 rounded-xl input-surface text-[11px] flex items-center gap-1.5 hover:opacity-90 transition-colors"
+                  title="模型选择">
+                  <Cpu size={14} /> 模型 <ChevronDown size={9} />
+                </button>
+                {showModelModal && (
+                  <div className="absolute bottom-full right-0 mb-1 card-lift p-2 z-10" style={{ width: 230 }}>
+                    {MODEL_PROVIDERS.map(p => (
+                      <div key={p.id} className="mb-1.5">
+                        <div className="text-[10px] text-dim mb-1">{p.name}</div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {p.models.map(m => (
+                            <button key={m}
+                              onClick={() => { setSelectedProvider(p.id); setSelectedModel(m); localStorage.setItem('coagent-provider', p.id); localStorage.setItem('coagent-model', m) }}
+                              className={`px-2 py-1 rounded-lg text-[10px] font-medium ${selectedProvider === p.id && selectedModel === m ? 'btn-primary' : 'row-hover'}`}>
+                              {m}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    <button onClick={() => { setShowModelModal(false); onOpenSettings && onOpenSettings() }}
+                      className="w-full mt-1.5 pt-2 border-t border-[#e5e5e5] text-[10px] text-[var(--accent)] hover:underline flex items-center justify-center gap-1">
+                      API 配置
+                    </button>
+                  </div>
+                )}
+              </div>
               <button
                 onClick={handleSend}
                 disabled={isLoading}
@@ -623,60 +645,6 @@ const TEMPLATE_OPTIONS = [
           )}
         </div>
       </div>
-
-      {/* 模型设置弹窗：按厂家分组 */}
-      {showModelModal && (
-        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50"
-          onMouseDown={(e) => { if (e.target === e.currentTarget) setShowModelModal(false) }}>
-          <div className="card-lift w-[420px] max-h-[85vh] flex flex-col" onMouseDown={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-4 border-b border-[#e5e5e5] flex-shrink-0">
-              <h3 className="font-display text-lg">模型设置</h3>
-              <button onClick={() => setShowModelModal(false)} className="p-1 hover:bg-gray-100 rounded"><X size={18} /></button>
-            </div>
-            <div className="p-4 overflow-y-auto flex flex-col gap-3">
-              {MODEL_PROVIDERS.map(p => (
-                <div key={p.id} className={`border rounded-xl p-3 transition-colors ${selectedProvider === p.id ? 'border-[#1a1a1a]/40 bg-[#fafafa]' : 'border-[#e5e5e5]'}`}>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-bold">{p.name}</span>
-                    <span className="text-[10px] text-dim">{p.baseUrl}</span>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 mb-2">
-                    {p.models.map(m => (
-                      <button key={m}
-                        onClick={() => { setSelectedProvider(p.id); setSelectedModel(m); localStorage.setItem('coagent-provider', p.id); localStorage.setItem('coagent-model', m) }}
-                        className={`px-2 py-1 rounded-lg text-[10px] font-medium ${selectedProvider === p.id && selectedModel === m ? 'btn-primary' : 'row-hover'}`}>
-                        {m}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    {(providerKeys[p.id] || '').length > 8 ? (
-                      <span className="text-[10px] text-green-600">✓ 已配置 API Key</span>
-                    ) : (
-                      <>
-                        <span className="text-[10px] text-dim">未配置 API Key</span>
-                        <button
-                          onClick={() => { setShowModelModal(false); onOpenSettings && onOpenSettings() }}
-                          className="text-[10px] text-[var(--accent)] hover:underline flex-shrink-0">
-                          去设置填写
-                        </button>
-                      </>
-                    )}
-                    {selectedProvider === p.id && (
-                      <button
-                        onClick={() => setShowModelModal(false)}
-                        className="px-3 py-1.5 btn-primary text-xs font-semibold rounded-lg flex-shrink-0">
-                        使用此模型
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <p className="text-[10px] text-dim px-4 pb-3 flex-shrink-0">API Key 统一在「设置 → 模型与 API Key」中填写，此处仅选择模型。</p>
-          </div>
-        </div>
-      )}
     </main>
   )
 }
