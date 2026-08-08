@@ -115,31 +115,31 @@ const BLOCKS: Array<{ key: Block; icon: any; label: string }> = [
 /** 编排节点图：节点 + 箭头 */
 function FlowNode({ icon: Icon, name, sub }: { icon: any; name: string; sub?: string }) {
   return (
-    <div className="card-surface rounded-xl px-3 py-2 flex flex-col items-center gap-1 min-w-[76px] border-[var(--border-color)]">
-      {Icon && <Icon size={15} className="text-dim" />}
-      <span className="text-[11px] font-semibold">{name}</span>
-      {sub && <span className="text-[9px] text-dim">{sub}</span>}
+    <div className="card-surface rounded-xl px-4 py-3 flex flex-col items-center gap-1.5 min-w-[96px] border-[var(--border-color)]">
+      {Icon && <Icon size={18} className="text-dim" />}
+      <span className="text-xs font-bold">{name}</span>
+      {sub && <span className="text-[10px] text-dim text-center leading-snug">{sub}</span>}
     </div>
   )
 }
 const FlowArrow = () => <span className="text-dim flex-shrink-0 text-base">→</span>
 
-/** 4-Agent 编排节点图 */
+/** 4-Agent 编排节点图（节点内即介绍） */
 const FlowGraph = () => (
   <div className="flex items-center justify-center gap-2 flex-wrap">
-    <FlowNode icon={Workflow} name="规划" sub="主 Agent" />
+    <FlowNode icon={Workflow} name="规划" sub="输入处理·调度" />
     <FlowArrow />
     <div className="flex flex-col gap-1 items-center">
-      <FlowNode icon={Brain} name="学情与记忆" />
+      <FlowNode icon={Brain} name="学情与记忆" sub="画像·记忆" />
       <span className="text-[9px] text-dim">∥ 并行</span>
-      <FlowNode icon={Database} name="知识库" />
+      <FlowNode icon={Database} name="知识库" sub="检索·搜索" />
     </div>
     <FlowArrow />
-    <FlowNode icon={Workflow} name="生成" sub="主 Agent" />
+    <FlowNode icon={Workflow} name="生成" sub="讲义·指南·测试" />
     <FlowArrow />
-    <FlowNode icon={Scale} name="审核" />
+    <FlowNode icon={Scale} name="审核" sub="符实·难度·规范" />
     <FlowArrow />
-    <FlowNode icon={CheckCircle2} name="输出" />
+    <FlowNode icon={CheckCircle2} name="输出" sub="最终结果" />
   </div>
 )
 
@@ -643,14 +643,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                   </div>
                   <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
                     <FlowGraph />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    {t.agents.map(a => (
-                      <div key={a.id} className="flex items-center gap-2 text-[11px]">
-                        <span className="font-semibold w-28 flex-shrink-0">{a.name}</span>
-                        <span className="text-dim truncate">模型 {MODEL_LABEL[a.model || 'global']} · 模式 {a.mode}</span>
-                      </div>
-                    ))}
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => applyTemplate(t)}
