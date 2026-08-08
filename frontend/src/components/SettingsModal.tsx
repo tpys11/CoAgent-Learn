@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Sun, Moon, Monitor, Type, LampDesk, Sliders, Zap, MessageSquare, Key, Timer, Database, Plug, Bug, Check, Trash2, Plus, Download } from 'lucide-react'
+import { X, Sun, Moon, Monitor, Type, LampDesk, Sliders, Zap, MessageSquare, Key, Timer, Database, Plug, Bug, Check, Trash2, Plus, Download, Github } from 'lucide-react'
 import { getThemePref, setThemePref, type ThemePref } from '../theme'
 
 interface Props {
@@ -21,6 +21,9 @@ interface McpServer { id: string; name: string; type: 'stdio' | 'http' | 'sse'; 
 
 const get = (k: string, d: string) => { try { return localStorage.getItem(k) || d } catch { return d } }
 const getJSON = <T,>(k: string, d: T): T => { try { return JSON.parse(localStorage.getItem(k) || 'null') ?? d } catch { return d } }
+
+/** 当前版本号（与 package.json 同步） */
+const APP_VERSION = '0.2.0'
 
 /** 设置分区（Claude 风格左侧栏） */
 const GROUPS: Array<{ label: string; items: Array<{ key: string; label: string; icon: any }> }> = [
@@ -122,6 +125,9 @@ export default function SettingsModal({ onClose, projectId }: Props) {
   const [debug, setDebug] = useState(() => get('coagent-debug', '0') === '1')
   // 对话自动清理（0 = 关闭）
   const [dialogueLimit, setDialogueLimit] = useState(() => parseInt(get('coagent-dialogue-limit', '0')))
+  // 检查更新
+  const [updateState, setUpdateState] = useState<'idle' | 'checking' | 'latest' | 'new' | 'error'>('idle')
+  const [latestVersion, setLatestVersion] = useState('')
 
   useEffect(() => {
     document.documentElement.style.setProperty('--ui-font', `${fontSize}px`)
@@ -188,6 +194,25 @@ export default function SettingsModal({ onClose, projectId }: Props) {
   }
 
   const inputCls = 'w-full px-3 py-2 input-surface rounded-lg text-xs outline-none focus:border-[var(--accent)]'
+
+  /** 检查更新：对比 GitHub 最新 Release 版本号 */
+  const checkUpdate = async () => {
+    setUpdateState('checking')
+    try {
+      const r = await fetch('https://api.github.com/repos/tpys11/CoAgent-Learn/releases/latest')
+      if (!r.ok) throw new Error('bad status')
+      const d = await r.json()
+      const tag = String(d.tag_name || '').replace(/^v/, '')
+      if (!tag) throw new Error('no tag')
+      setLatestVersion(tag)
+      const cur = APP_VERSION.split('.').map(Number)
+      const lat = tag.split('.').map(Number)
+      const newer = lat.some((n, i) => n > (cur[i] || 0))
+      setUpdateState(newer ? 'new' : 'latest')
+    } catch {
+      setUpdateState('error')
+    }
+  }
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
@@ -450,14 +475,31 @@ export default function SettingsModal({ onClose, projectId }: Props) {
               </Section>
             )}
 
-            {/* 关于 */}
+            {/* 关于：只显示名字与版本号，可检查更新 */}
             {settingsTab === 'about' && (
               <Section icon={LampDesk} title="关于">
-                <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-1.5">
-                  <p className="text-xs font-semibold">CoAgent-Learn <span className="text-dim font-normal">v0.2.0</span></p>
-                  <p className="text-[11px] text-dim leading-relaxed">面向领域知识生成的多智能体协同学习平台：4-Agent 工作流 · 三层记忆 · 知识库 RAG · MCP 技术选型（HTTP/SSE）</p>
-                  <a href="https://github.com/tpys11/CoAgent-Learn" target="_blank" rel="noreferrer"
-                    className="text-[11px] text-[var(--accent)] hover:underline">GitHub: tpys11/CoAgent-Learn ↗</a>
+                <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-bold">CoAgent-Learn <span className="text-dim font-normal text-xs">v{APP_VERSION}</span></p>
+                    <a href="https://github.com/tpys11/CoAgent-Learn" target="_blank" rel="noreferrer"
+                      className="flex items-center gap-1 text-[11px] text-[var(--accent)] hover:underline">
+                      <Github size={12} /> GitHub
+                    </a>
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    <button onClick={checkUpdate} disabled={updateState === 'checking'}
+                      className="px-3 py-1.5 rounded-lg text-xs border hairline text-dim hover:bg-[var(--bg-hover)] disabled:opacity-50 transition-colors">
+                      {updateState === 'checking' ? '检查中…' : '检查更新'}
+                    </button>
+                    {updateState === 'latest' && <span className="text-[11px] text-green-600">已是最新版本</span>}
+                    {updateState === 'new' && (
+                      <a href="https://github.com/tpys11/CoAgent-Learn/releases" target="_blank" rel="noreferrer"
+                        className="text-[11px] text-[var(--accent)] hover:underline">
+                        发现新版本 v{latestVersion} →
+                      </a>
+                    )}
+                    {updateState === 'error' && <span className="text-[11px] text-red-500">检查失败，请检查网络</span>}
+                  </div>
                 </div>
               </Section>
             )}
