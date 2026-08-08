@@ -118,6 +118,8 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
     try { return JSON.parse(localStorage.getItem(SKILL_ENABLED_KEY) || '{}') } catch { return {} }
   })
   const [expandedSkill, setExpandedSkill] = useState<string | null>(null)
+  // 模板与编排：Agent 自定义选中的 Agent
+  const [templateAgentId, setTemplateAgentId] = useState(agents[0]?.id || '')
   // Skill 管理四区
   const [skillTab, setSkillTab] = useState('installed')
   const [mcpStep, setMcpStep] = useState(1)
@@ -229,6 +231,9 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   }
 
   const fieldLabel = 'text-xs font-semibold text-dim uppercase tracking-wider mb-2 block'
+  // 模板与编排：当前自定义 Agent + 保存
+  const tplAgent = agents.find(a => a.id === templateAgentId) || agents[0]
+  const commitTpl = (patch: Partial<AgentConfig>) => { if (tplAgent) onSave({ ...tplAgent, ...patch }) }
 
   return (
     <div className="flex-1 h-full min-w-0 flex panel rounded-3xl overflow-hidden">
@@ -269,86 +274,64 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
 
             {agent && (
               <>
-                {/* 职责说明卡 */}
+                {/* 标题行 */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-bold">{agent.name}</h2>
+                    <p className="text-[11px] text-dim mt-0.5">id: {agent.id} · 改动即时自动保存</p>
+                  </div>
+                  {agent.id === 'review' && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-dim">审核重试上限</span>
+                      <input type="number" min={1} max={5}
+                        value={agent.retryMax ?? 2}
+                        onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 1 && n <= 5) commit({ retryMax: n }) }}
+                        className="w-16 px-2 py-1.5 text-xs input-surface rounded-lg outline-none text-center" />
+                    </div>
+                  )}
+                </div>
+
+                {/* 职责说明 */}
                 {agent.role && (
-                  <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
-                    <p className={fieldLabel}>职责说明</p>
+                  <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
                     <p className="text-xs leading-relaxed text-[var(--text-muted)]">{agent.role}</p>
                   </div>
                 )}
 
-                {/* 启用 / 禁用 */}
-                <div className="flex items-center justify-between border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
-                  <div>
-                    <p className="text-xs font-semibold">启用该 Agent</p>
-                    <p className="text-[10px] text-dim mt-0.5">
-                      {agent.id === 'main' ? '主 Agent 为工作流核心，不可禁用' : '关闭后工作流将自动跳过该 Agent（如审核关闭则直接通过）'}
-                    </p>
+                {/* 网格：全局性提示词 + Skill 模块 */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="flex flex-col gap-2">
+                    <label className={fieldLabel}>全局性提示词</label>
+                    <textarea value={prompt} onChange={e => { setPrompt(e.target.value); commit({ systemPrompt: e.target.value }) }} rows={10}
+                      className="flex-1 w-full px-3 py-2 border hairline rounded-xl text-xs font-mono outline-none resize-none focus:border-[var(--border-strong)] bg-[var(--bg-input)]" />
                   </div>
-                  <Toggle checked={agent.enabled !== false} disabled={agent.id === 'main'}
-                    onChange={() => commit({ enabled: !(agent.enabled !== false) })} />
-                </div>
-
-                {/* 模型选择 */}
-                <div>
-                  <label className={fieldLabel}>模型选择</label>
-                  <div className="flex gap-2">
-                    {MODEL_OPTIONS.map(o => (
-                      <button key={o.key} onClick={() => commit({ model: o.key })}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                          (agent.model || 'global') === o.key ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'
-                        }`}>{o.label}</button>
-                    ))}
-                  </div>
-                  <p className="text-[10px] text-dim mt-1.5">跟随全局 = 节点默认（生成用强模型、决策用快模型）；强/快模型可单独覆盖。</p>
-                </div>
-
-                {/* 记忆注入（主 Agent / 学情） */}
-                {(agent.id === 'main' || agent.id === 'study') && (
-                  <div className="flex items-center justify-between border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
-                    <div>
-                      <p className="text-xs font-semibold">记忆注入</p>
-                      <p className="text-[10px] text-dim mt-0.5">
-                        {agent.id === 'study' ? '关闭后不读取已有记忆（仍做学情分析）' : '关闭后生成时不注入学情画像'}
-                      </p>
+                  <div className="flex flex-col gap-2">
+                    <label className={`${fieldLabel} flex items-center gap-1`}><Folder size={13} /> Skill 模块</label>
+                    <div className="flex flex-wrap gap-3">
+                      {allSkills.map(s => {
+                        const linked = linkedSkills.includes(s.name)
+                        const disabled = skillEnabled[s.name] === false
+                        return (
+                          <button key={s.name} onClick={() => toggleSkill(s.name)}
+                            title={s.description}
+                            className={`w-20 h-20 rounded-xl border-2 flex flex-col items-center justify-center gap-1 transition-all ${
+                              disabled ? 'opacity-30 cursor-not-allowed' :
+                              linked ? 'border-[#1a1a1a] bg-[var(--bg-hover)]' : 'border-dashed border-[var(--border-color)] hover:border-[var(--border-strong)]'
+                            }`}>
+                            <Square size={16} className={linked ? 'text-[#1a1a1a]' : 'text-dim'} />
+                            <span className="text-[10px] font-medium leading-tight text-center px-1 truncate w-full">{s.name}</span>
+                          </button>
+                        )
+                      })}
+                      <button className="w-20 h-20 rounded-xl border-2 border-dashed border-[var(--border-color)] flex flex-col items-center justify-center gap-1 hover:border-[var(--border-strong)] transition-colors"
+                        onClick={() => document.getElementById('agent-skill-upload')?.click()}>
+                        <Upload size={16} className="text-dim" />
+                        <span className="text-[10px] text-dim">上传</span>
+                        <input id="agent-skill-upload" type="file" className="hidden" {...({ webkitdirectory: '', directory: '' } as any)} />
+                      </button>
                     </div>
-                    <Toggle checked={agent.memoryEnabled !== false}
-                      onChange={() => commit({ memoryEnabled: !(agent.memoryEnabled !== false) })} />
+                    <p className="text-[10px] text-dim mt-2">在「Skill 管理」中可查看详情与全局启用/停用</p>
                   </div>
-                )}
-
-                {/* 审核重试上限 */}
-                {agent.id === 'review' && (
-                  <div className="flex items-center justify-between border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
-                    <div>
-                      <p className="text-xs font-semibold">审核重试上限</p>
-                      <p className="text-[10px] text-dim mt-0.5">生成未通过审核时，最多重试并重新生成的次数</p>
-                    </div>
-                    <input type="number" min={1} max={5}
-                      value={agent.retryMax ?? 2}
-                      onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 1 && n <= 5) commit({ retryMax: n }) }}
-                      className="w-16 px-2 py-1.5 text-xs input-surface rounded-lg outline-none text-center" />
-                  </div>
-                )}
-
-                {/* 模式 */}
-                <div>
-                  <label className={fieldLabel}>模式</label>
-                  <div className="flex gap-2">
-                    {agent.modes.map(m => (
-                      <button key={m.label} onClick={() => { setMode(m.label); commit({ mode: m.label }) }}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                          mode === m.label ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'
-                        }`}>{m.label}</button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 全局性提示词 */}
-                <div>
-                  <label className={fieldLabel}>全局性提示词</label>
-                  <textarea value={prompt} onChange={e => { setPrompt(e.target.value); commit({ systemPrompt: e.target.value }) }} rows={5}
-                    className="w-full px-3 py-2 border hairline rounded-xl text-xs font-mono outline-none resize-none focus:border-[var(--border-strong)] bg-[var(--bg-input)]" />
                 </div>
 
                 {/* 输入输出示例（few-shot） */}
@@ -357,35 +340,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                   <textarea value={example} onChange={e => { setExample(e.target.value); commit({ example: e.target.value }) }} rows={4}
                     placeholder="可选：粘贴一段 输入→输出 的 JSON 示例，帮助该 Agent 稳定输出格式"
                     className="w-full px-3 py-2 border hairline rounded-xl text-xs font-mono outline-none resize-none focus:border-[var(--border-strong)] bg-[var(--bg-input)]" />
-                </div>
-
-                {/* Skill 卡片 */}
-                <div>
-                  <label className={`${fieldLabel} flex items-center gap-1`}><Folder size={13} /> Skill 模块</label>
-                  <div className="flex flex-wrap gap-3">
-                    {allSkills.map(s => {
-                      const linked = linkedSkills.includes(s.name)
-                      const disabled = skillEnabled[s.name] === false
-                      return (
-                        <button key={s.name} onClick={() => toggleSkill(s.name)}
-                          title={s.description}
-                          className={`w-20 h-20 rounded-xl border-2 flex flex-col items-center justify-center gap-1 transition-all ${
-                            disabled ? 'opacity-30 cursor-not-allowed' :
-                            linked ? 'border-[#1a1a1a] bg-[var(--bg-hover)]' : 'border-dashed border-[var(--border-color)] hover:border-[var(--border-strong)]'
-                          }`}>
-                          <Square size={16} className={linked ? 'text-[#1a1a1a]' : 'text-dim'} />
-                          <span className="text-[10px] font-medium leading-tight text-center px-1 truncate w-full">{s.name}</span>
-                        </button>
-                      )
-                    })}
-                    <button className="w-20 h-20 rounded-xl border-2 border-dashed border-[var(--border-color)] flex flex-col items-center justify-center gap-1 hover:border-[var(--border-strong)] transition-colors"
-                      onClick={() => document.getElementById('agent-skill-upload')?.click()}>
-                      <Upload size={16} className="text-dim" />
-                      <span className="text-[10px] text-dim">上传</span>
-                      <input id="agent-skill-upload" type="file" className="hidden" {...({ webkitdirectory: '', directory: '' } as any)} />
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-dim mt-2">在「Skill 管理」中可查看详情与全局启用/停用</p>
                 </div>
 
                 {/* 该 Agent 运行监控 */}
@@ -587,6 +541,72 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                   </button>
                 </div>
               ))}
+            </div>
+
+            {/* Agent 自定义设置（启用/模型/记忆/模式） */}
+            <div className="flex flex-col gap-4">
+              <p className="text-xs font-semibold text-dim uppercase tracking-wider">Agent 自定义设置</p>
+              <div className="flex gap-2 flex-wrap">
+                {agents.map(a => (
+                  <button key={a.id} onClick={() => setTemplateAgentId(a.id)}
+                    className={`flex items-center gap-2 px-3.5 py-2 rounded-xl border text-xs font-medium transition-all ${
+                      a.id === templateAgentId
+                        ? 'border-[var(--border-strong)] bg-[#1a1a1a] text-white shadow-soft'
+                        : 'border hairline bg-[var(--bg-panel)] text-dim hover:bg-[var(--bg-hover)]'
+                    }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${a.enabled === false ? 'bg-red-400' : 'bg-green-500'}`} />
+                    {a.name}
+                  </button>
+                ))}
+              </div>
+              {tplAgent && (
+                <div className="flex flex-col gap-4">
+                  {/* 启用 */}
+                  <div className="flex items-center justify-between border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
+                    <div>
+                      <p className="text-xs font-semibold">启用该 Agent</p>
+                      <p className="text-[10px] text-dim mt-0.5">{tplAgent.id === 'main' ? '主 Agent 为工作流核心，不可禁用' : '关闭后工作流将自动跳过该 Agent（如审核关闭则直接通过）'}</p>
+                    </div>
+                    <Toggle checked={tplAgent.enabled !== false} disabled={tplAgent.id === 'main'}
+                      onChange={() => commitTpl({ enabled: !(tplAgent.enabled !== false) })} />
+                  </div>
+                  {/* 模型选择 */}
+                  <div>
+                    <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">模型选择</p>
+                    <div className="flex gap-2">
+                      {MODEL_OPTIONS.map(o => (
+                        <button key={o.key} onClick={() => commitTpl({ model: o.key })}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                            (tplAgent.model || 'global') === o.key ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'
+                          }`}>{o.label}</button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* 记忆注入 */}
+                  {(tplAgent.id === 'main' || tplAgent.id === 'study') && (
+                    <div className="flex items-center justify-between border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
+                      <div>
+                        <p className="text-xs font-semibold">记忆注入</p>
+                        <p className="text-[10px] text-dim mt-0.5">{tplAgent.id === 'study' ? '关闭后不读取已有记忆（仍做学情分析）' : '关闭后生成时不注入学情画像'}</p>
+                      </div>
+                      <Toggle checked={tplAgent.memoryEnabled !== false}
+                        onChange={() => commitTpl({ memoryEnabled: !(tplAgent.memoryEnabled !== false) })} />
+                    </div>
+                  )}
+                  {/* 模式 */}
+                  <div>
+                    <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">模式</p>
+                    <div className="flex gap-2">
+                      {tplAgent.modes.map(m => (
+                        <button key={m.label} onClick={() => commitTpl({ mode: m.label })}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                            tplAgent.mode === m.label ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'
+                          }`}>{m.label}</button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* 工作流编排示意 */}
