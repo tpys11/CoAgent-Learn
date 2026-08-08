@@ -562,17 +562,16 @@ const TEMPLATE_OPTIONS = [
                   </div>
                 )}
               </div>
-              <span className="w-px h-4 bg-[#e5e5e5] mx-1" />
-              <span className="flex-1" />
+              {/* 模板模式（挨着输出内容，选择框向上展开） */}
               <div className="relative" ref={tplRef}>
                 <button
                   onClick={() => setShowTplMenu(!showTplMenu)}
-                  className={`h-9 px-3 rounded-xl input-surface text-[11px] flex items-center gap-1.5 transition-colors ${showTplMenu ? 'opacity-90' : 'hover:opacity-90'}`}
+                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)]"
                   title="模板模式（均衡/质量优先/响应更快）">
-                  <LayoutTemplate size={14} /> {templateMode}
+                  <LayoutTemplate size={13} /> {templateMode} <ChevronDown size={9} />
                 </button>
                 {showTplMenu && (
-                  <div className="absolute right-0 top-11 z-30 panel rounded-2xl p-2 w-60 flex flex-col gap-1 shadow-soft">
+                  <div className="absolute bottom-full left-0 mb-1 panel rounded-2xl p-2 w-60 flex flex-col gap-1 shadow-soft z-30">
                     {TEMPLATE_OPTIONS.map(t => (
                       <button key={t.name}
                         onClick={() => { setTemplateMode(t.name); localStorage.setItem('coagent-template', t.name); setShowTplMenu(false) }}
@@ -584,6 +583,8 @@ const TEMPLATE_OPTIONS = [
                   </div>
                 )}
               </div>
+              <span className="w-px h-4 bg-[#e5e5e5] mx-1" />
+              <span className="flex-1" />
               <button
                 onClick={() => setShowModelModal(true)}
                 className="h-9 px-3 rounded-xl input-surface text-[11px] flex items-center gap-1.5 hover:opacity-90 transition-colors"
