@@ -523,7 +523,6 @@ const TEMPLATE_OPTIONS = [
                       <button key={label} onClick={() => { setInputOptMode(i) }}
                         className={`text-[11px] px-2 py-1 rounded-lg text-left w-full ${i === inputOptMode ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
                         <span className="font-medium">{label}</span>
-                        <span className="text-[10px] text-dim block">{i === 0 ? '先提出一些问题再回答' : '直接按已有信息回答'}</span>
                       </button>
                     ))}
                   </div>
