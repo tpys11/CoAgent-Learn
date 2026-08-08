@@ -441,6 +441,34 @@ const TEMPLATE_OPTIONS = [
                 className="w-8 h-8 flex items-center justify-center rounded-xl icon-btn border border-[var(--border-strong)] bg-[var(--bg-input)]">
                 <Upload size={15} />
               </button>
+              {/* 模板选择（挨着上传按钮右边，顶部带「使用模板」开关） */}
+              <div className="relative" ref={tplRef}>
+                <button
+                  onClick={() => setShowTplMenu(!showTplMenu)}
+                  className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
+                  title="模板模式（均衡/质量优先/响应更快）">
+                  <LayoutTemplate size={13} /> 模板选择 <ChevronDown size={9} />
+                </button>
+                {showTplMenu && (
+                  <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 230 }}>
+                    <div className="flex items-center justify-between gap-2 px-1 py-1.5 mb-1 border-b border-[#e5e5e5]">
+                      <span className="text-[11px] font-medium">使用模板</span>
+                      <button onClick={() => { const next = !useTemplate; setUseTemplate(next); localStorage.setItem('coagent-use-template', next ? '1' : '0') }}
+                        className={`w-9 h-5 rounded-full relative transition-colors flex-shrink-0 ${useTemplate ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`}
+                        title="使用模板开关">
+                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${useTemplate ? 'translate-x-4' : ''}`} />
+                      </button>
+                    </div>
+                    {TEMPLATE_OPTIONS.map(t => (
+                      <button key={t.name}
+                        onClick={() => { setTemplateMode(t.name); localStorage.setItem('coagent-template', t.name); setUseTemplate(true); localStorage.setItem('coagent-use-template', '1'); setShowTplMenu(false) }}
+                        className={`text-[11px] px-2 py-1.5 rounded-lg text-left w-full ${templateMode === t.name ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
+                        <span className="font-medium">{t.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
               {/* 输入信息优化 */}
               <div className="relative" ref={inputOptRef}>
                 <button
@@ -569,34 +597,6 @@ const TEMPLATE_OPTIONS = [
                       <button key={s} onClick={() => setDepth(i)}
                         className={`text-[11px] px-2 py-1 rounded-lg text-left ${i === depth ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
                         <span className="font-medium">{s}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {/* 模板选择（顶部带 Auto 开关：开启后前面按钮作废，基于所选模板自动选择） */}
-              <div className="relative" ref={tplRef}>
-                <button
-                  onClick={() => setShowTplMenu(!showTplMenu)}
-                  className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
-                  title="模板模式（均衡/质量优先/响应更快）">
-                  <LayoutTemplate size={13} /> 模板选择 <ChevronDown size={9} />
-                </button>
-                {showTplMenu && (
-                  <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 230 }}>
-                    <div className="flex items-center justify-between gap-2 px-1 py-1.5 mb-1 border-b border-[#e5e5e5]">
-                      <span className="text-[11px] font-medium">使用模板</span>
-                      <button onClick={() => { const next = !useTemplate; setUseTemplate(next); localStorage.setItem('coagent-use-template', next ? '1' : '0') }}
-                        className={`w-9 h-5 rounded-full relative transition-colors flex-shrink-0 ${useTemplate ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`}
-                        title="使用模板开关">
-                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${useTemplate ? 'translate-x-4' : ''}`} />
-                      </button>
-                    </div>
-                    {TEMPLATE_OPTIONS.map(t => (
-                      <button key={t.name}
-                        onClick={() => { setTemplateMode(t.name); localStorage.setItem('coagent-template', t.name); setUseTemplate(true); localStorage.setItem('coagent-use-template', '1'); setShowTplMenu(false) }}
-                        className={`text-[11px] px-2 py-1.5 rounded-lg text-left w-full ${templateMode === t.name ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
-                        <span className="font-medium">{t.name}</span>
                       </button>
                     ))}
                   </div>
