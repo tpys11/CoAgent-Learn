@@ -448,7 +448,7 @@ const TEMPLATE_OPTIONS = [
                   disabled={useTemplate || autoMode}
                   className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${useTemplate || autoMode ? 'opacity-40' : ''}`}
                 >
-                  <SlidersHorizontal size={13} /> <ChevronDown size={9} />
+                  <SlidersHorizontal size={13} /> 输入询问 <ChevronDown size={9} />
                 </button>
                 {showInputOpt && (
                   <div className="absolute bottom-full left-0 mb-1 card-lift p-1.5 z-10" style={{ width: 190 }}>
@@ -469,7 +469,7 @@ const TEMPLATE_OPTIONS = [
                   disabled={useTemplate || autoMode}
                   className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${useTemplate || autoMode ? 'opacity-40' : ''}`}
                 >
-                  <Search size={13} /> <ChevronDown size={9} />
+                  <Search size={13} /> 检索模式 <ChevronDown size={9} />
                 </button>
                 {showSearch && (
                   <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 205 }}>
