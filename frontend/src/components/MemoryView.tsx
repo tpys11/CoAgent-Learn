@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Brain, User, FolderTree, Check, Loader2 } from 'lucide-react'
+import { Brain, User, FolderTree, Check, Loader2, PenLine } from 'lucide-react'
 
 /** 个人全局性记忆：基础信息字段（固定，纵向表单） */
 const BASIC_FIELDS = [
@@ -16,6 +16,38 @@ const PROJECT_DIMS: Array<{ title: string; hint: string; keys: string[]; arrayKe
   { title: '实现进度', hint: '起点 → 当前水平 → 目标', keys: ['起点', '当前水平', '目标'], arrayKeys: [] },
 ]
 /** 记忆系统：两级（个人全局性记忆 / 项目记忆）完整界面 */
+
+/** 迷你 Markdown 渲染：段落 / 有序/无序列表 / **加粗**（行级，够用即可） */
+const renderInline = (s: string) => {
+  const parts = s.split(/\*\*([^*]+)\*\*/g)
+  return parts.map((p, i) => i % 2 === 1 ? <b key={i}>{p}</b> : p)
+}
+function MiniMD({ text }: { text: string }) {
+  const lines = text.split('\n')
+  const nodes: React.ReactNode[] = []
+  let listBuf: { ordered: boolean; items: string[] } | null = null
+  const flush = (key: string) => {
+    if (listBuf) {
+      nodes.push(listBuf.ordered
+        ? <ol key={key} className="list-decimal pl-4 flex flex-col gap-0.5">{listBuf.items.map((it, j) => <li key={j}>{renderInline(it)}</li>)}</ol>
+        : <ul key={key} className="list-disc pl-4 flex flex-col gap-0.5">{listBuf.items.map((it, j) => <li key={j}>{renderInline(it)}</li>)}</ul>)
+      listBuf = null
+    }
+  }
+  lines.forEach((ln, i) => {
+    const ul = ln.match(/^[-*]\s+(.+)/)
+    const ol = ln.match(/^\d+[.、]\s*(.+)/)
+    if (ul || ol) {
+      if (!listBuf || listBuf.ordered !== !!ol) { flush('l' + i); listBuf = { ordered: !!ol, items: [] } }
+      listBuf.items.push((ul || ol)![1])
+    } else if (ln.trim()) {
+      flush('l' + i)
+      nodes.push(<p key={'p' + i} className="leading-relaxed">{renderInline(ln)}</p>)
+    } else flush('l' + i)
+  })
+  flush('end')
+  return <div className="flex flex-col gap-1.5">{nodes}</div>
+}
 
 /** 日历热度图：真实月历，格子颜色深浅表示当天对话量（0/1-2/3-5/6-9/10+ 五档） */
 function CalendarHeatmap({ data, onPick }: { data: Record<string, number>; onPick?: (date: string) => void }) {
@@ -88,6 +120,9 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
   const [projectDays, setProjectDays] = useState<Record<string, any[]>>({})
   const [globalStats, setGlobalStats] = useState<{ count: number; latest: string }>({ count: 0, latest: '' })
   const [dayDetail, setDayDetail] = useState<{ date: string; items: any[] } | null>(null)
+  // 个人全局记忆卡片：编辑态（哪个模块 / 是否预览）
+  const [editKey, setEditKey] = useState<string | null>(null)
+  const [editPreview, setEditPreview] = useState(false)
   useEffect(() => { setDayDetail(null) }, [level])
   const [pLoading, setPLoading] = useState(false)
 
@@ -202,6 +237,10 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
     setGExtra(v)
     saveGlobal(gFields, v)
   }
+  const onGlobalCardEdit = (k: string, v: string) => {
+    if (k === '补充信息') { setGExtra(v); saveGlobal(gFields, v) }
+    else updateField(k, v)
+  }
   const updateP = (k: string, v: string) => {
     setPFields(prev => ({ ...prev, [k]: v }))
     saveProject()
@@ -258,32 +297,61 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
       <div className="flex-1 overflow-y-auto p-6">
         {/* ========== 个人全局性记忆 ========== */}
         {level === 'global' && (
-          <div className="max-w-3xl flex flex-col gap-6">
+          <div className="max-w-4xl flex flex-col gap-6">
             <h2 className="text-xl font-bold flex items-center gap-2"><User size={16} /> 个人全局性记忆</h2>
 
             {gLoading ? <p className="text-xs text-dim text-center py-10">加载中…</p> : (
               <>
-                {/* 基础信息 */}
-                <div>
-                  <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-3">基础信息</p>
-                  <div className="flex flex-col gap-3">
-                    {BASIC_FIELDS.map(f => (
-                      <div key={f.key} className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2">
-                        <span className="text-xs font-semibold">{f.label}</span>
-                        <input value={gFields[f.key] || ''} onChange={e => updateField(f.key, e.target.value)}
-                          placeholder={f.placeholder}
-                          className="w-full px-3 py-2 text-xs input-surface rounded-lg outline-none" />
+                {/* 个人记忆模块：资源式卡片展开（大矩形，内容支持一小段话 / 有序 / 无序列表） */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {[...BASIC_FIELDS, { key: '补充信息', label: '补充信息', placeholder: '自由补充想记录的内容……' }].map(c => {
+                    const editing = editKey === c.key
+                    const val = c.key === '补充信息' ? gExtra : (gFields[c.key] || '')
+                    return (
+                      <div key={c.key}
+                        onClick={() => { setEditKey(c.key); setEditPreview(false) }}
+                        className={`border hairline rounded-2xl p-5 bg-[var(--bg-panel)] flex flex-col gap-3 transition-all hover:shadow-md hover:-translate-y-0.5 ${editing ? 'shadow-md border-[var(--border-strong)]' : 'cursor-pointer'}`}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-semibold">{c.label}</span>
+                          {!editing && <PenLine size={13} className="text-dim opacity-60" />}
+                        </div>
+                        {editing ? (
+                          <div onClick={e => e.stopPropagation()} className="flex flex-col gap-2">
+                            {editPreview ? (
+                              <div className="min-h-[100px] text-xs text-[var(--text-muted)]">
+                                {val.trim() ? <MiniMD text={val} /> : <p className="text-[11px] text-dim">（空）</p>}
+                              </div>
+                            ) : (
+                              <textarea autoFocus value={val}
+                                onChange={e => onGlobalCardEdit(c.key, e.target.value)}
+                                placeholder={c.placeholder}
+                                rows={c.key === '补充信息' ? 6 : 4}
+                                className="w-full px-3 py-2 text-xs input-surface rounded-xl outline-none resize-none" />
+                            )}
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <button onClick={() => setEditPreview(!editPreview)}
+                                  className="text-[10px] px-2 py-1 rounded-lg bg-[var(--bg-hover)] text-dim hover:text-[var(--text)]">
+                                  {editPreview ? '编辑' : '预览'}
+                                </button>
+                                <span className="text-[10px] text-dim">{saved === 'saving' ? '保存中…' : saved === 'saved' ? '已保存' : '自动保存'}</span>
+                              </div>
+                              <button onClick={() => { setEditKey(null); setEditPreview(false) }}
+                                className="text-[10px] px-2.5 py-1 rounded-lg bg-[#1a1a1a] text-white">完成</button>
+                            </div>
+                          </div>
+                        ) : (
+                          val.trim() ? (
+                            <div className="max-h-40 overflow-hidden text-xs text-[var(--text-muted)]">
+                              <MiniMD text={val} />
+                            </div>
+                          ) : (
+                            <p className="text-[11px] text-dim">点击填写{c.key === '补充信息' ? '' : '，支持一小段话、有序/无序列表'}…</p>
+                          )
+                        )}
                       </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 补充信息 */}
-                <div>
-                  <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-3">补充信息</p>
-                  <textarea value={gExtra} onChange={e => updateExtra(e.target.value)} rows={6}
-                    placeholder="自由补充想记录的内容……"
-                    className="w-full px-3 py-3 text-xs input-surface rounded-xl outline-none resize-none" />
+                    )
+                  })}
                 </div>
 
                 {/* 时间：日历热度图 + 学习统计（所有项目） */}
