@@ -616,20 +616,24 @@ const TEMPLATE_OPTIONS = [
                 </button>
                 {showModelModal && (
                   <div className="absolute bottom-full right-0 mb-1 card-lift p-2 z-10" style={{ width: 230 }}>
-                    {MODEL_PROVIDERS.map(p => (
-                      <div key={p.id} className="mb-1.5">
-                        <div className="text-[10px] text-dim mb-1">{p.name}</div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {p.models.map(m => (
-                            <button key={m}
-                              onClick={() => { setSelectedProvider(p.id); setSelectedModel(m); localStorage.setItem('coagent-provider', p.id); localStorage.setItem('coagent-model', m) }}
-                              className={`px-2 py-1 rounded-lg text-[10px] font-medium ${selectedProvider === p.id && selectedModel === m ? 'btn-primary' : 'row-hover'}`}>
-                              {m}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
+                    <div className="flex items-center justify-between gap-2 px-1 py-1.5 mb-1 border-b border-[#e5e5e5]">
+                      <span className="text-[11px] font-medium">Auto 自动选择</span>
+                      <button onClick={() => { const next = !autoMode; setAutoMode(next); localStorage.setItem('coagent-auto', next ? '1' : '0') }}
+                        className={`w-9 h-5 rounded-full relative transition-colors flex-shrink-0 ${autoMode ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`}
+                        title="Auto 开关">
+                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${autoMode ? 'translate-x-4' : ''}`} />
+                      </button>
+                    </div>
+                    {/* 模型并列平铺（不按厂家分组） */}
+                    <div className="flex flex-col gap-0.5">
+                      {MODEL_PROVIDERS.flatMap(p => p.models.map(m => ({ name: m, provider: p.id }))).map(x => (
+                        <button key={x.name}
+                          onClick={() => { setSelectedProvider(x.provider); setSelectedModel(x.name); localStorage.setItem('coagent-provider', x.provider); localStorage.setItem('coagent-model', x.name) }}
+                          className={`text-[11px] px-2 py-1.5 rounded-lg text-left ${selectedProvider === x.provider && selectedModel === x.name ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
+                          <span className="font-medium">{x.name}</span>
+                        </button>
+                      ))}
+                    </div>
                     <button onClick={() => { setShowModelModal(false); onOpenSettings && onOpenSettings() }}
                       className="w-full mt-1.5 pt-2 border-t border-[#e5e5e5] text-[10px] text-[var(--accent)] hover:underline flex items-center justify-center gap-1">
                       API 配置
