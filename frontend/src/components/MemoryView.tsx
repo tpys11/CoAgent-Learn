@@ -16,6 +16,57 @@ const PROJECT_DIMS: Array<{ title: string; hint: string; keys: string[]; arrayKe
   { title: '实现进度', hint: '起点 → 当前水平 → 目标', keys: ['起点', '当前水平', '目标'], arrayKeys: [] },
 ]
 /** 记忆系统：两级（个人全局性记忆 / 项目记忆）完整界面 */
+
+/** 日历热度图：真实月历，格子颜色深浅表示当天对话量（0/1-2/3-5/6-9/10+ 五档） */
+function CalendarHeatmap({ data, onPick }: { data: Record<string, number>; onPick?: (date: string) => void }) {
+  const now = new Date()
+  const [ym, setYm] = useState({ y: now.getFullYear(), m: now.getMonth() })
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const first = new Date(ym.y, ym.m, 1)
+  const daysInMonth = new Date(ym.y, ym.m + 1, 0).getDate()
+  const lead = (first.getDay() + 6) % 7 // 周一开头
+  const cells: Array<{ date: string; day: number } | null> = []
+  for (let i = 0; i < lead; i++) cells.push(null)
+  for (let d = 1; d <= daysInMonth; d++) {
+    cells.push({ date: `${ym.y}-${String(ym.m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`, day: d })
+  }
+  const level = (c: number) => c <= 0 ? 'bg-[#ececec]' : c <= 2 ? 'bg-emerald-200' : c <= 5 ? 'bg-emerald-400' : c <= 9 ? 'bg-emerald-600' : 'bg-emerald-800'
+  const shift = (delta: number) => {
+    const d = new Date(ym.y, ym.m + delta, 1)
+    setYm({ y: d.getFullYear(), m: d.getMonth() })
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <button onClick={() => shift(-1)} className="w-6 h-6 flex items-center justify-center rounded-lg icon-btn text-sm leading-none">‹</button>
+        <span className="text-xs font-semibold">{ym.y}年{ym.m + 1}月</span>
+        <button onClick={() => shift(1)} className="w-6 h-6 flex items-center justify-center rounded-lg icon-btn text-sm leading-none">›</button>
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {['一', '二', '三', '四', '五', '六', '日'].map(w => (
+          <span key={w} className="text-[9px] text-dim text-center">{w}</span>
+        ))}
+        {cells.map((c, i) => c ? (
+          <button key={i} onClick={() => onPick?.(c.date)}
+            title={`${c.date}${data[c.date] ? ` · ${data[c.date]} 次对话` : ' · 无记录'}`}
+            className={`h-7 rounded-md text-[10px] flex items-center justify-center transition-colors ${level(data[c.date] || 0)} ${c.date === today ? 'ring-2 ring-[#1a1a1a] ring-offset-1' : ''} ${data[c.date] ? 'text-white font-medium' : 'text-dim'}`}>
+            {c.day}
+          </button>
+        ) : <span key={i} />)}
+      </div>
+      <div className="flex items-center justify-end gap-1 text-[9px] text-dim">
+        <span>少</span>
+        <span className="w-3.5 h-3.5 rounded bg-[#ececec]" />
+        <span className="w-3.5 h-3.5 rounded bg-emerald-200" />
+        <span className="w-3.5 h-3.5 rounded bg-emerald-400" />
+        <span className="w-3.5 h-3.5 rounded bg-emerald-600" />
+        <span className="w-3.5 h-3.5 rounded bg-emerald-800" />
+        <span>多</span>
+      </div>
+    </div>
+  )
+}
+
 export default function MemoryView({ projectId }: { projectId: string | null }) {
   const [level, setLevel] = useState<'global' | 'project'>('global')
   // 项目列表
@@ -32,6 +83,12 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
   const [pFields, setPFields] = useState<Record<string, string>>({})
   // 项目时间信息（只读统计）
   const [projectStats, setProjectStats] = useState<{ count: number; latest: string }>({ count: 0, latest: '' })
+  // 日历数据：date → 当天对话项列表（全局 / 项目）
+  const [globalDays, setGlobalDays] = useState<Record<string, any[]>>({})
+  const [projectDays, setProjectDays] = useState<Record<string, any[]>>({})
+  const [globalStats, setGlobalStats] = useState<{ count: number; latest: string }>({ count: 0, latest: '' })
+  const [dayDetail, setDayDetail] = useState<{ date: string; items: any[] } | null>(null)
+  useEffect(() => { setDayDetail(null) }, [level])
   const [pLoading, setPLoading] = useState(false)
 
   const [saved, setSaved] = useState<'saving' | 'saved' | ''>('')
@@ -65,6 +122,17 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
       })
       .catch(() => {})
       .finally(() => setGLoading(false))
+    // 全局学习统计 + 日历数据（所有项目）
+    fetch('/api/learning-log', { cache: 'no-store' })
+      .then(r => r.json()).then(dd => {
+        const days: any[] = dd.days || []
+        const map: Record<string, any[]> = {}
+        for (const d of days) map[d.date] = d.items || []
+        const count = days.reduce((s: number, x: any) => s + ((x.items || []).length || 0), 0)
+        const latest = days.length ? days.map((x: any) => x.date).sort().pop() : ''
+        setGlobalDays(map)
+        setGlobalStats({ count, latest })
+      }).catch(() => {})
   }
   useEffect(() => { loadGlobal() }, [level === 'global'])
 
@@ -85,12 +153,15 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
       })
       .catch(() => {})
       .finally(() => setPLoading(false))
-    // 时间统计（只读）：对话次数 + 最近学习日期
+    // 时间统计（只读）：对话次数 + 最近学习日期 + 日历数据
     fetch('/api/learning-log?project_id=' + encodeURIComponent(selectedProject), { cache: 'no-store' })
       .then(r => r.json()).then(dd => {
         const days: any[] = dd.days || []
+        const map: Record<string, any[]> = {}
+        for (const d of days) map[d.date] = d.items || []
         const count = days.reduce((s: number, x: any) => s + ((x.items || []).length || 0), 0)
         const latest = days.length ? days.map((x: any) => x.date).sort().pop() : ''
+        setProjectDays(map)
         setProjectStats({ count, latest })
       }).catch(() => {})
   }, [level, selectedProject])
@@ -215,6 +286,37 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
                     className="w-full px-3 py-3 text-xs input-surface rounded-xl outline-none resize-none" />
                 </div>
 
+                {/* 时间：日历热度图 + 学习统计（所有项目） */}
+                <div>
+                  <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-3">时间</p>
+                  <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-3">
+                    <CalendarHeatmap
+                      data={Object.fromEntries(Object.entries(globalDays).map(([d, items]) => [d, items.length]))}
+                      onPick={d => setDayDetail({ date: d, items: globalDays[d] || [] })}
+                    />
+                    <div className="flex items-center gap-4 text-[11px] text-dim">
+                      <span>累计 <b className="text-[var(--text)]">{globalStats.count}</b> 次对话</span>
+                      {globalStats.latest && <span>最近学习 <b className="text-[var(--text)]">{globalStats.latest}</b></span>}
+                    </div>
+                  </div>
+                  {dayDetail && (
+                    <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] mt-3 flex flex-col gap-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold">{dayDetail.date} 的对话</span>
+                        <button onClick={() => setDayDetail(null)} className="text-[10px] text-dim hover:text-[var(--text)]">关闭</button>
+                      </div>
+                      {dayDetail.items.length === 0 ? <p className="text-[11px] text-dim">无记录</p> : dayDetail.items.map((it, i) => (
+                        <div key={i} className="flex flex-col gap-0.5">
+                          <p className="text-[11px] font-medium">
+                            {it.project_name && it.project_name !== it.project_id ? `${it.project_name} · ` : ''}{it.dialogue_name}
+                          </p>
+                          {it.topic && <p className="text-[10px] text-dim">主题：{it.topic}</p>}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 {/* 项目摘要（只读） */}
                 {Object.keys(gSummary).length > 0 && (
                   <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
@@ -283,23 +385,43 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
                       </div>
                     ))}
 
-                    {/* 时间（只读统计） */}
+                    {/* 时间：日历热度图 + 项目统计 */}
                     <div className="flex flex-col gap-3">
                       <p className="text-xs font-semibold text-dim uppercase tracking-wider">时间</p>
-                      <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2.5 text-xs">
-                        <div className="flex items-center justify-between">
-                          <span className="text-dim">创建时间</span>
-                          <span className="font-medium">{(projects.find(p => p.id === selectedProject) as any)?.created_at ? String((projects.find(p => p.id === selectedProject) as any)?.created_at).slice(0, 10) : '—'}</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-dim">对话次数</span>
-                          <span className="font-medium">{projectStats.count} 次</span>
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-dim">最近学习</span>
-                          <span className="font-medium">{projectStats.latest || '暂无'}</span>
+                      <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-3">
+                        <CalendarHeatmap
+                          data={Object.fromEntries(Object.entries(projectDays).map(([d, items]) => [d, items.length]))}
+                          onPick={d => setDayDetail({ date: d, items: projectDays[d] || [] })}
+                        />
+                        <div className="flex flex-col gap-2 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="text-dim">创建时间</span>
+                            <span className="font-medium">{(projects.find(p => p.id === selectedProject) as any)?.created_at ? String((projects.find(p => p.id === selectedProject) as any)?.created_at).slice(0, 10) : '—'}</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-dim">对话次数</span>
+                            <span className="font-medium">{projectStats.count} 次</span>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-dim">最近学习</span>
+                            <span className="font-medium">{projectStats.latest || '暂无'}</span>
+                          </div>
                         </div>
                       </div>
+                      {dayDetail && (
+                        <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-semibold">{dayDetail.date} 的对话</span>
+                            <button onClick={() => setDayDetail(null)} className="text-[10px] text-dim hover:text-[var(--text)]">关闭</button>
+                          </div>
+                          {dayDetail.items.length === 0 ? <p className="text-[11px] text-dim">无记录</p> : dayDetail.items.map((it, i) => (
+                            <div key={i} className="flex flex-col gap-0.5">
+                              <p className="text-[11px] font-medium">{it.dialogue_name}</p>
+                              {it.topic && <p className="text-[10px] text-dim">主题：{it.topic}</p>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </>
                 )}
