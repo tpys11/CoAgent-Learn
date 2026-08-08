@@ -49,6 +49,8 @@ function App() {
   const [wizard, setWizard] = useState<{mode: 'project'|'dialogue'; id: string; name?: string} | null>(null)
   const [showGuide, setShowGuide] = useState(false)
   const [view, setView] = useState<ViewKey>('chat')
+  // 记忆修改预填：从记忆界面跳转时，输入框以 [模块名] 引用并提示补充想法
+  const [prefillInput, setPrefillInput] = useState('')
   // 首次进入：弹出项目介绍面板（localStorage 标记，只弹一次）
   const [showIntro, setShowIntro] = useState(() => !localStorage.getItem('coagent-intro-seen'))
   // 启动时应用保存的字体大小与主题（system 模式自动解析亮暗）
@@ -177,6 +179,12 @@ function App() {
   const handleRenameDialogue = useCallback((id: string, name: string) => {
     if (name.trim()) setDialogues(prev => prev.map(d => d.id === id ? { ...d, name: name.trim() } : d))
   }, [])
+  /** 记忆修改：跳转主对话界面，输入框预填 [模块名] 引用 + 修改引导 */
+  const handleRequestModify = (label: string) => {
+    setPrefillInput(`[${label}] 请帮我分析并修改这个记忆模块，我的想法：`)
+    setView('chat')
+  }
+
   const handleSendMessage = useCallback(async (text: string, settings?: Record<string, any>) => {
     let did = currentDialogueId
     if (!did && currentProjectId) {
@@ -347,7 +355,7 @@ function App() {
       )}
       {view === 'tutorial' && <TutorialView />}
       {view === 'resources' && <ResourceView projectId={currentProjectId} />}
-      {view === 'memory' && <MemoryView projectId={currentProjectId} />}
+      {view === 'memory' && <MemoryView projectId={currentProjectId} onRequestModify={handleRequestModify} />}
       {view === 'knowledge' && <KnowledgeView projectId={projectKBId ?? currentProjectId} onClose={() => setView('chat')} />}
       {view === 'agents' && <AgentsView agents={agents} onSave={handleSaveAgent} onReplace={handleReplaceAgents} projectId={currentProjectId} />}
       {view === 'chat' && (<>
@@ -384,6 +392,7 @@ function App() {
           onOpenGuide={() => setShowGuide(true)}
           onOpenSettings={() => setShowSettings(true)}
         projectInitialized={currentProject?.initialized !== false}
+        draft={prefillInput}
       />
       {/* 右侧栏 */}
       {rightCollapsed && (

@@ -15,10 +15,13 @@ interface CenterPanelProps {
   onOpenGuide?: () => void
   onOpenSettings?: () => void
   projectInitialized?: boolean
+  draft?: string
 }
 
-export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, statsCollapsed, onToggleStats, flowMindchain, onOpenGuide, onOpenSettings, projectInitialized }: CenterPanelProps) {
+export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, statsCollapsed, onToggleStats, flowMindchain, onOpenGuide, onOpenSettings, projectInitialized, draft }: CenterPanelProps) {
   const [input, setInput] = useState('')
+  // 记忆修改预填：draft 变化时写入输入框（从记忆界面跳转）
+  useEffect(() => { if (draft) setInput(draft) }, [draft])
   const [chatMode, setChatMode] = useState<'kb'|'free'>('kb')
   // 上次会话保存的三条追问（进入对话时展示，抢占注意力）
   const [followups, setFollowups] = useState<string[]>([])

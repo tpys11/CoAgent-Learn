@@ -99,7 +99,7 @@ function CalendarHeatmap({ data, onPick }: { data: Record<string, number>; onPic
   )
 }
 
-export default function MemoryView({ projectId }: { projectId: string | null }) {
+export default function MemoryView({ projectId, onRequestModify }: { projectId: string | null; onRequestModify?: (label: string) => void }) {
   const [level, setLevel] = useState<'global' | 'project'>('global')
   // 项目列表
   const [projects, setProjects] = useState<Array<{ id: string; name: string; is_default?: boolean; created_at?: string }>>([])
@@ -120,9 +120,8 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
   const [projectDays, setProjectDays] = useState<Record<string, any[]>>({})
   const [globalStats, setGlobalStats] = useState<{ count: number; latest: string }>({ count: 0, latest: '' })
   const [dayDetail, setDayDetail] = useState<{ date: string; items: any[] } | null>(null)
-  // 个人全局记忆卡片：编辑态（哪个模块 / 是否预览）
-  const [editKey, setEditKey] = useState<string | null>(null)
-  const [editPreview, setEditPreview] = useState(false)
+  // 记忆模块只读详情（修改记忆由 AI 处理：跳转主对话并以 [模块名] 引用）
+  const [detailCard, setDetailCard] = useState<{ key: string; label: string; val: string } | null>(null)
   useEffect(() => { setDayDetail(null) }, [level])
   const [pLoading, setPLoading] = useState(false)
 
@@ -237,10 +236,6 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
     setGExtra(v)
     saveGlobal(gFields, v)
   }
-  const onGlobalCardEdit = (k: string, v: string) => {
-    if (k === '补充信息') { setGExtra(v); saveGlobal(gFields, v) }
-    else updateField(k, v)
-  }
   const updateP = (k: string, v: string) => {
     setPFields(prev => ({ ...prev, [k]: v }))
     saveProject()
@@ -302,52 +297,24 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
 
             {gLoading ? <p className="text-xs text-dim text-center py-10">加载中…</p> : (
               <>
-                {/* 个人记忆模块：资源式卡片展开（大矩形，内容支持一小段话 / 有序 / 无序列表） */}
+                {/* 个人记忆模块：资源式卡片展开（只读预览，点开查看详情） */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {[...BASIC_FIELDS, { key: '补充信息', label: '补充信息', placeholder: '自由补充想记录的内容……' }].map(c => {
-                    const editing = editKey === c.key
                     const val = c.key === '补充信息' ? gExtra : (gFields[c.key] || '')
                     return (
                       <div key={c.key}
-                        onClick={() => { setEditKey(c.key); setEditPreview(false) }}
-                        className={`border hairline rounded-2xl p-5 bg-[var(--bg-panel)] flex flex-col gap-3 transition-all hover:shadow-md hover:-translate-y-0.5 ${editing ? 'shadow-md border-[var(--border-strong)]' : 'cursor-pointer'}`}>
+                        onClick={() => setDetailCard({ key: c.key, label: c.label, val })}
+                        className="border hairline rounded-2xl p-5 bg-[var(--bg-panel)] flex flex-col gap-3 cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5">
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-semibold">{c.label}</span>
-                          {!editing && <PenLine size={13} className="text-dim opacity-60" />}
+                          <PenLine size={13} className="text-dim opacity-60" />
                         </div>
-                        {editing ? (
-                          <div onClick={e => e.stopPropagation()} className="flex flex-col gap-2">
-                            {editPreview ? (
-                              <div className="min-h-[100px] text-xs text-[var(--text-muted)]">
-                                {val.trim() ? <MiniMD text={val} /> : <p className="text-[11px] text-dim">（空）</p>}
-                              </div>
-                            ) : (
-                              <textarea autoFocus value={val}
-                                onChange={e => onGlobalCardEdit(c.key, e.target.value)}
-                                placeholder={c.placeholder}
-                                rows={c.key === '补充信息' ? 6 : 4}
-                                className="w-full px-3 py-2 text-xs input-surface rounded-xl outline-none resize-none" />
-                            )}
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <button onClick={() => setEditPreview(!editPreview)}
-                                  className="text-[10px] px-2 py-1 rounded-lg bg-[var(--bg-hover)] text-dim hover:text-[var(--text)]">
-                                  {editPreview ? '编辑' : '预览'}
-                                </button>
-                                <span className="text-[10px] text-dim">{saved === 'saving' ? '保存中…' : saved === 'saved' ? '已保存' : '自动保存'}</span>
-                              </div>
-                              <button onClick={() => { setEditKey(null); setEditPreview(false) }}
-                                className="text-[10px] px-2.5 py-1 rounded-lg bg-[#1a1a1a] text-white">完成</button>
-                            </div>
+                        {val.trim() ? (
+                          <div className="max-h-40 overflow-hidden text-xs text-[var(--text-muted)]">
+                            <MiniMD text={val} />
                           </div>
                         ) : (
-                          val.trim() ? (
-                            <div className="max-h-40 overflow-hidden text-xs text-[var(--text-muted)]">
-                              <MiniMD text={val} />
-                            </div>
-                          ) : (
-                            <p className="text-[11px] text-dim">点击填写{c.key === '补充信息' ? '' : '，支持一小段话、有序/无序列表'}…</p>
-                          )
+                          <p className="text-[11px] text-dim">（暂无内容，点开查看）</p>
                         )}
                       </div>
                     )
@@ -498,6 +465,29 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
           </div>
         )}
       </div>
+
+      {/* 记忆模块只读详情（修改记忆由 AI 处理：跳转主对话并以 [模块名] 引用） */}
+      {detailCard && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-6" onClick={() => setDetailCard(null)}>
+          <div className="w-[440px] max-h-[75vh] overflow-y-auto panel rounded-3xl p-6 flex flex-col gap-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <span className="text-base font-bold">{detailCard.label}</span>
+              <button onClick={() => setDetailCard(null)} className="text-xs text-dim hover:text-[var(--text)]">关闭 ✕</button>
+            </div>
+            <div className="text-sm text-[var(--text-muted)]">
+              {detailCard.val.trim() ? <MiniMD text={detailCard.val} /> : <p className="text-xs text-dim">（暂无内容）</p>}
+            </div>
+            <div className="flex flex-col gap-2 pt-3 border-t hairline">
+              <button
+                onClick={() => { const lb = detailCard.label; setDetailCard(null); onRequestModify?.(lb) }}
+                className="py-2.5 rounded-xl bg-[#1a1a1a] text-white text-xs font-medium">
+                ✏️ 修改记忆
+              </button>
+              <p className="text-[10px] text-dim leading-relaxed">修改记忆由 AI 处理：点击后跳转到主对话界面，输入框会以 [模块名] 引用该记忆，补充你的修改想法后发送即可。</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
