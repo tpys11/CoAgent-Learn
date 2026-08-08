@@ -453,7 +453,7 @@ export default function ResourceView({ projectId }: { projectId: string | null }
       <div className="flex-shrink-0 px-8 pt-6 pb-6 bg-[var(--bg-panel)] border-b border-[var(--border-color)]">
         <div className="max-w-6xl mx-auto">
           {/* 领域选择（逻辑上最先选领域：置于最顶、加大醒目） */}
-          <div className="flex items-center gap-3 mb-5 flex-wrap">
+          <div className="flex items-center gap-3 mb-4 flex-wrap">
             <span className="text-sm font-bold text-[var(--text)] mr-1">选择领域</span>
             {DEFAULT_DOMAINS.map(d => (
               <button
@@ -470,11 +470,9 @@ export default function ResourceView({ projectId }: { projectId: string | null }
               </button>
             ))}
           </div>
-          <p className="text-[11px] font-bold text-[var(--accent)] tracking-widest uppercase mb-2">Resource Center</p>
-          <h1 className="text-2xl font-bold leading-snug">学习、理解、实践，与社区一起构建人工智能的未来</h1>
 
           {/* 功能入口大按钮 */}
-          <div className="flex flex-wrap gap-3 mt-6">
+          <div className="flex flex-wrap gap-3 mt-4">
             {NAV.map(({ key, icon: Icon, label }) => (
               <button
                 key={key}
