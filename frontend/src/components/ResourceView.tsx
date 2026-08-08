@@ -371,11 +371,6 @@ export default function ResourceView({ projectId }: { projectId: string | null }
                 <Icon size={17} />
               </span>
               <div className="flex items-center gap-1.5">
-                {item.kind === 'tutorial' && (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--bg-hover)] text-dim flex-shrink-0">
-                    {item.sub.split(' · ')[0]}
-                  </span>
-                )}
                 {item.deletable && (
                   <button
                     onClick={(e) => { e.stopPropagation(); removeItem(item) }}
@@ -386,8 +381,7 @@ export default function ResourceView({ projectId }: { projectId: string | null }
                 )}
               </div>
             </div>
-            <p className="text-sm font-semibold truncate">{item.title}</p>
-            <p className="text-xs text-dim line-clamp-2 min-h-[2.5em]">{item.body}</p>
+            <p className="text-sm font-semibold leading-snug">{item.title}</p>
           </div>
         )
       })}
@@ -454,7 +448,6 @@ export default function ResourceView({ projectId }: { projectId: string | null }
                       <Library size={17} />
                     </span>
                     <p className="text-sm font-semibold leading-snug">{w.name}</p>
-                    <p className="text-xs text-dim line-clamp-3">{w.intro}</p>
                   </div>
                 ))}
               </div>
