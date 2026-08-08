@@ -27,7 +27,7 @@ const NODE_BY_AGENT: Record<string, string[]> = {
 
 /** 预设模板库 */
 const PRESET_TEMPLATES: Array<{ name: string; desc: string; agents: AgentConfig[] }> = [
-  { name: '均衡 4-Agent 团队', desc: '与默认一致', agents: DEFAULT_AGENTS },
+  { name: '均衡模式', desc: '与默认一致', agents: DEFAULT_AGENTS },
   {
     name: '质量优先', desc: '审核更严格（重试 3 次、严格模式）',
     agents: DEFAULT_AGENTS.map(a => a.id === 'review' ? { ...a, retryMax: 3, mode: '严格' } : { ...a }),
