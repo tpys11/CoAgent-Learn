@@ -190,6 +190,15 @@ class SQLiteClient:
             )
         """)
         self.execute("""
+            CREATE TABLE IF NOT EXISTS task_stats (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id TEXT NOT NULL DEFAULT 'default',
+                dialogue_id TEXT DEFAULT 'default',
+                data TEXT DEFAULT '{}',
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        self.execute("""
             CREATE TABLE IF NOT EXISTS resources (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,

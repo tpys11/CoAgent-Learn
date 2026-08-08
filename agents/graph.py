@@ -1,9 +1,13 @@
 """LangGraph 多智能体协同工作流（4-Agent 结构）
 
 主Agent(规划调度) → [学情与记忆管理 ∥ 知识库管理] 并行 → 主Agent(生成) → 审核 → 输出/重试
+
+支持按 Agent 配置覆盖：模型选择(跟随全局/强模型/快模型)、重试上限、记忆注入开关、
+启用/禁用、few-shot 示例；并收集 task_stats（各节点耗时/LLM调用次数/token估算）。
 """
 import json
 import re
+import time
 from typing import TypedDict
 from langgraph.graph import StateGraph, END
 from core.base_llm import DeepSeekLLM
@@ -21,6 +25,9 @@ FAST_MODEL_BY_BASE = {
     'api.moonshot.cn': 'moonshot-v1-8k',
     'ark.cn-beijing.volces.com': 'doubao-lite-32k',
 }
+
+# Agent 配置 id → 节点名
+AGENT_NODE = {'main': 'main', 'study': 'study', 'kb': 'kb', 'review': 'review'}
 
 
 class AgentState(TypedDict):
@@ -43,10 +50,13 @@ class AgentState(TypedDict):
     steps: list
     _plan: list
     mindchain: list  # [{agent, content}]
+    task_stats: dict  # 运行监控：{node: {ms, llm_calls}, token_estimate}
 
 
-def create_workflow(api_key: str | None = None, settings: dict | None = None, on_token=None, model: str | None = None, base_url: str | None = None):
+def create_workflow(api_key: str | None = None, settings: dict | None = None, on_token=None,
+                    model: str | None = None, base_url: str | None = None, agents: list | None = None):
     settings = settings or {}
+    agents = agents or []
     # 主模型：生成节点使用（用户所选模型）
     llm_main = DeepSeekLLM(api_key=api_key, model=model, base_url=base_url)
     # 快模型：决策类节点（规划/学情/审核）使用
@@ -57,6 +67,37 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 fast_model = fm
                 break
     llm_fast = DeepSeekLLM(api_key=api_key, model=fast_model, base_url=base_url) if (fast_model and fast_model != model) else llm_main
+
+    def _agent_cfg(aid: str) -> dict:
+        """按 Agent id 取配置（缺失时返回空）"""
+        for a in agents:
+            if isinstance(a, dict) and a.get("id") == aid:
+                return a
+        return {}
+
+    def _pick_llm(cfg: dict, default_llm) -> object:
+        """模型选择：main=强模型 / fast=快模型 / global=跟随节点默认"""
+        choice = (cfg or {}).get("model") or "global"
+        if choice == "main":
+            return llm_main
+        if choice == "fast":
+            return llm_fast
+        return default_llm
+
+    def _append_example(cfg: dict, user_prompt: str) -> str:
+        """few-shot：追加该 Agent 的输入输出示例"""
+        ex = (cfg or {}).get("example") or ""
+        if ex:
+            user_prompt += "\n\n【输入输出示例】\n" + str(ex)
+        return user_prompt
+
+    def _stats(state: AgentState, node: str, ms: int, llm_calls: int = 0, tokens: int = 0):
+        st = state.setdefault("task_stats", {})
+        cur = st.get(node, {"ms": 0, "llm_calls": 0})
+        cur["ms"] += ms
+        cur["llm_calls"] += llm_calls
+        st[node] = cur
+        st["token_estimate"] = st.get("token_estimate", 0) + tokens
 
     def think_then_json(llm, system_prompt: str, user_prompt: str, agent_name: str) -> tuple[str, dict]:
         """流式思考：用chat_stream逐token推送，收集完整文本后提取JSON"""
@@ -110,37 +151,48 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         """主 Agent·规划调度：输入处理 + 一次规划出子 Agent 调用清单（可并行）"""
         state.setdefault("steps", []).append({"agent": "主Agent", "status": "running", "detail": "规划调度"})
         state.setdefault("mindchain", [])
+        t0 = time.time()
+        cfg = _agent_cfg("main")
         try:
-            thinking, result = think_then_json(llm_fast, _PLAN_PROMPT, state["user_input"], "主Agent")
+            thinking, result = think_then_json(_pick_llm(cfg, llm_fast), _PLAN_PROMPT,
+                _append_example(cfg, state["user_input"]), "主Agent")
             state["processed_input"] = result.get("processed", state["user_input"])
             state["_plan"] = result.get("plan", []) or []
         except Exception:
             thinking = "规划失败，使用原始输入"
             state["processed_input"] = state["user_input"]
             state["_plan"] = []
+        _stats(state, "plan", int((time.time() - t0) * 1000), 1, len(thinking) // 2)
         state["mindchain"].append({"agent": "主Agent", "content": thinking[:600]})
         state.setdefault("steps", []).append({"agent": "主Agent", "status": "done",
             "detail": f"规划完成，调用: {state['_plan'] if state['_plan'] else '无需子Agent'}"})
         return state
 
     def study_memory_node(state: AgentState) -> AgentState:
-        """学情与记忆管理：读取记忆 + 学情画像（快模型，一次调用）"""
+        """学情与记忆管理：读取记忆（可关）+ 学情画像（快模型，一次调用）"""
         state.setdefault("steps", []).append({"agent": "学情与记忆管理", "status": "running"})
+        t0 = time.time()
+        cfg = _agent_cfg("study")
         from skills.registry import registry
         memory_txt = ""
         try:
-            mem = registry.execute("memory_ops", action="read", layer="L2")
-            state["memory"] = mem.get("memory", {})
-            if state["memory"]:
-                memory_txt = "\n已有记忆: " + json.dumps(state["memory"], ensure_ascii=False)
+            if (cfg.get("memoryEnabled") is not False):
+                mem = registry.execute("memory_ops", action="read", layer="L2")
+                state["memory"] = mem.get("memory", {})
+                if state["memory"]:
+                    memory_txt = "\n已有记忆: " + json.dumps(state["memory"], ensure_ascii=False)
+            else:
+                state["memory"] = {}
         except Exception:
             state["memory"] = {}
         try:
-            thinking, result = think_then_json(llm_fast, STUDY_MEMORY_PROMPT,
-                state["user_input"] + memory_txt, "学情与记忆管理")
+            thinking, result = think_then_json(_pick_llm(cfg, llm_fast), STUDY_MEMORY_PROMPT,
+                _append_example(cfg, state["user_input"] + memory_txt), "学情与记忆管理")
             state["profile"] = result if isinstance(result, dict) else {}
         except Exception:
+            thinking = "学情分析异常"
             state["profile"] = {"level": "unknown"}
+        _stats(state, "study_memory", int((time.time() - t0) * 1000), 1, len(thinking) // 2)
         state["mindchain"].append({"agent": "学情与记忆管理", "content": thinking[:600]})
         state.setdefault("steps", []).append({"agent": "学情与记忆管理", "status": "done"})
         return state
@@ -148,6 +200,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
     def kb_node(state: AgentState) -> AgentState:
         """知识库管理：知识库检索 + 联网搜索（工具调用，不耗 LLM 推理）"""
         state.setdefault("steps", []).append({"agent": "知识库管理", "status": "running"})
+        t0 = time.time()
         from skills.registry import registry
         query = state.get("processed_input", state["user_input"])
         thinking = ""
@@ -164,6 +217,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             thinking += f"；联网搜索 {sres.get('total', 0)} 条"
         except Exception:
             state["search_results"] = []
+        _stats(state, "kb", int((time.time() - t0) * 1000), 0, 0)
         state["mindchain"].append({"agent": "知识库管理", "content": thinking})
         state.setdefault("steps", []).append({"agent": "知识库管理", "status": "done"})
         return state
@@ -171,6 +225,8 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
     def generate_node(state: AgentState) -> AgentState:
         """主 Agent·生成：基于学情/知识库/历史生成三种学习资源（强模型）"""
         state.setdefault("steps", []).append({"agent": "主Agent", "status": "running", "detail": "生成输出"})
+        t0 = time.time()
+        cfg = _agent_cfg("main")
         NL = chr(10)
         context = f"用户问题: {state['user_input']}" + NL
         # AI 回答时调用视觉分析（用户上传了图片）
@@ -187,7 +243,8 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             context += "【输出模式】知识库模式：请优先基于知识库内容回答；若知识库没有相关内容，回答第一句必须明确告知：⚠️ 未在知识库中检索到相关内容，以下为模型通识回答。" + NL
         else:
             context += "【输出模式】默认模式：可自由发挥回答，不限制。" + NL
-        if state.get("profile"): context += f"学情: {json.dumps(state['profile'], ensure_ascii=False)}" + NL
+        if state.get("profile") and (cfg.get("memoryEnabled") is not False):
+            context += f"学情: {json.dumps(state['profile'], ensure_ascii=False)}" + NL
         if state.get("knowledge"): context += f"知识库: {json.dumps(state['knowledge'], ensure_ascii=False)}" + NL
         if state.get("search_results"): context += f"联网搜索: {json.dumps(state['search_results'], ensure_ascii=False)}" + NL
         if state.get("review_feedback"): context += NL + "【审核修正要求】上一版未通过审核，请针对以下意见修改后再生成：" + NL + state["review_feedback"] + NL
@@ -206,7 +263,8 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         except Exception:
             pass
         try:
-            thinking, result = think_then_json(llm_main, _GENERATE_PROMPT, context, "主Agent")
+            thinking, result = think_then_json(_pick_llm(cfg, llm_main), _GENERATE_PROMPT,
+                _append_example(cfg, context), "主Agent")
             if isinstance(result, dict) and result.get("讲义"):
                 parts = ["## 📘 定制讲义", str(result.get("讲义", "")), "", "## 🛠 实操指南", str(result.get("实操指南", ""))]
                 tests = result.get("测试题") or []
@@ -226,6 +284,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 state["generated"] = (result.get("content", "") or "").replace("\n", NL)
         except Exception as e:
             state["generated"] = f"抱歉，生成内容时出现错误：{str(e)[:200]}"
+        _stats(state, "generate", int((time.time() - t0) * 1000), 1, len(thinking) // 2)
         state["mindchain"].append({"agent": "主Agent", "content": thinking[:800]})
         state.setdefault("steps", []).append({"agent": "主Agent", "status": "done", "detail": "生成完成"})
         return state
@@ -234,17 +293,21 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         """审核：一次调用完成符实性/难度适配/规范性三维审查 + 综合裁定（快模型）"""
         state["retry_count"] = state.get("retry_count", 0) + 1
         state.setdefault("steps", []).append({"agent": "审核", "status": "running"})
+        t0 = time.time()
+        cfg = _agent_cfg("review")
         generated = state.get("generated", "")
         profile_txt = json.dumps(state.get("profile", {}), ensure_ascii=False) if state.get("profile") else "未知学情"
         try:
-            thinking, result = think_then_json(llm_fast, REVIEW_PROMPT,
-                generated + chr(10) + "学情画像：" + profile_txt, "审核")
+            thinking, result = think_then_json(_pick_llm(cfg, llm_fast), REVIEW_PROMPT,
+                _append_example(cfg, generated + chr(10) + "学情画像：" + profile_txt), "审核")
             state["reviewed"] = result if isinstance(result, dict) else {"passed": True, "score": 80}
             if not state["reviewed"].get("passed", True):
                 issues = state["reviewed"].get("issues") or []
                 state["review_feedback"] = "审核意见：" + str(state["reviewed"].get("suggestion", "")) + " " + "；".join(str(i.get("fix", "")) for i in issues if isinstance(i, dict))
         except Exception:
+            thinking = "审核异常"
             state["reviewed"] = {"passed": True, "score": 80, "verdict": "审核异常，默认通过"}
+        _stats(state, "review", int((time.time() - t0) * 1000), 1, len(thinking) // 2)
         state["mindchain"].append({"agent": "审核", "content": thinking[:400]})
         state.setdefault("steps", []).append({"agent": "审核", "status": "done",
             "detail": f"score={state['reviewed'].get('score', 0)} passed={state['reviewed'].get('passed', True)}"})
@@ -264,19 +327,26 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
     # ---------------- 路由 ----------------
 
     def route_plan(state: AgentState) -> list[str]:
-        """一次规划 → 并行分发到需要的子 Agent（可同时触发多个）"""
+        """一次规划 → 并行分发到需要的子 Agent（跳过被禁用的节点）"""
         plan = state.get("_plan") or []
+        cfg_study = _agent_cfg("study")
+        cfg_kb = _agent_cfg("kb")
         targets = []
-        if "学情与记忆管理" in plan:
+        if "学情与记忆管理" in plan and (cfg_study.get("enabled") is not False):
             targets.append("study_memory")
-        if "知识库管理" in plan:
+        if "知识库管理" in plan and (cfg_kb.get("enabled") is not False):
             targets.append("kb")
         return targets or ["generate"]
 
     def route_review(state: AgentState) -> str:
+        # 审核 Agent 被禁用：直接通过
+        if _agent_cfg("review").get("enabled") is False:
+            state["reviewed"] = {"passed": True, "score": 80, "verdict": "审核已禁用"}
+            return "passed"
         if state.get("reviewed", {}).get("passed", True):
             return "passed"
-        if state.get("retry_count", 0) >= 2:
+        max_retry = int(_agent_cfg("review").get("retryMax") or 2)
+        if state.get("retry_count", 0) >= max_retry:
             return "max_retry"
         return "retry"
 

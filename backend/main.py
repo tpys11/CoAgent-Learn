@@ -351,6 +351,25 @@ async def get_stats(project_id: str = "default"):
     }
 
 
+@app.get("/api/task-stats")
+async def get_task_stats(project_id: str = "default", limit: int = 20):
+    """Agent 运行监控：最近 N 次任务的各节点耗时/调用次数/token 估算"""
+    import json as _json
+    from core.postgres_client import pg_client
+    rows = pg_client.execute(
+        "SELECT dialogue_id, data, created_at FROM task_stats WHERE project_id=%s ORDER BY id DESC LIMIT %s",
+        (project_id, min(max(limit, 1), 100)))
+    out = []
+    for r in rows:
+        d = r.get("data") or "{}"
+        try:
+            data = _json.loads(d) if isinstance(d, str) else (d or {})
+        except Exception:
+            data = {}
+        out.append({"dialogue_id": r.get("dialogue_id"), "created_at": r.get("created_at"), "data": data})
+    return {"tasks": out}
+
+
 # ---------- 画像 API ----------
 
 class ProfileData(BaseModel):
@@ -637,15 +656,13 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
     dialogue_id: str | None = None
     project_id: str | None = None
-    session_id: str | None = None
-    dialogue_id: str | None = None
-    project_id: str | None = None
     api_key: str | None = None
     model: str | None = None
     base_url: str | None = None
     settings: dict | None = None
     mode: str | None = None
     image: str | None = None
+    agents: list = []
 
 class ChatStep(BaseModel):
     agent: str
@@ -674,7 +691,7 @@ async def chat(req: ChatRequest):
 
             def run_workflow():
                 try:
-                    wf = create_workflow(req.api_key, req.settings, on_token, model=req.model, base_url=req.base_url)
+                    wf = create_workflow(req.api_key, req.settings, on_token, model=req.model, base_url=req.base_url, agents=req.agents)
                     pid = req.project_id or "default"
                     _did = req.dialogue_id or "default"
                     # 先存用户消息（invoke 时 generate_node 才能读到）
@@ -687,6 +704,16 @@ async def chat(req: ChatRequest):
                     except Exception as _e:
                         print("[存储]",_e)
                     result = wf.invoke({"user_input": req.message, "project_id": pid, "dialogue_id": _did, "session_id": req.session_id or "default", "mode": req.mode or "kb", "image": req.image or "", "steps": [], "mindchain": []})
+                    # 记录本次任务的运行统计（Agent 界面·运行监控）
+                    try:
+                        import json as _json
+                        from core.postgres_client import pg_client as _pg2
+                        _ts = result.get("task_stats") or {}
+                        if _ts:
+                            _pg2.execute("INSERT INTO task_stats(project_id,dialogue_id,data) VALUES(%s,%s,%s)",
+                                         (pid, _did, _json.dumps(_ts, ensure_ascii=False)))
+                    except Exception as _e:
+                        print("[task_stats]", _e)
                     # invoke 后存 AI 回复
                     try:
                         from core.postgres_client import pg_client as _pg

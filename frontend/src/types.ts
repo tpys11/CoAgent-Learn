@@ -18,11 +18,6 @@ export interface AgentMode {
   promptOverride: string
 }
 
-export interface AgentMode {
-  label: string
-  promptOverride: string
-}
-
 export interface AgentConfig {
   id: string
   name: string
@@ -34,6 +29,18 @@ export interface AgentConfig {
   skill: string
   defaultSkill: string
   skillEditable: boolean
+  /** 模型选择：global=跟随全局(节点默认) / main=强模型 / fast=快模型 */
+  model?: 'global' | 'main' | 'fast'
+  /** 重试上限（审核不通过时的重试次数，默认 2） */
+  retryMax?: number
+  /** 记忆注入开关（false 时不读取/注入记忆与学情） */
+  memoryEnabled?: boolean
+  /** 启用/禁用（false 时工作流跳过该 Agent） */
+  enabled?: boolean
+  /** 职责说明（只读展示） */
+  role?: string
+  /** 输入输出 JSON 示例（few-shot，可选） */
+  example?: string
 }
 
 export interface Message {
@@ -66,6 +73,12 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
     skill: '工作流：输入处理→一次规划→并行调用子Agent→汇总生成→提交审核→输出。',
     defaultSkill: '工作流：输入处理→一次规划→并行调用子Agent→汇总生成→提交审核→输出。',
     skillEditable: true,
+    model: 'global',
+    retryMax: 2,
+    memoryEnabled: true,
+    enabled: true,
+    role: '负责全局调度与最终生成：解析输入 → 一次规划调用学情/知识库子 Agent → 汇总学情画像与检索结果 → 生成讲义、实操指南、分阶测试题 → 提交审核。',
+    example: '',
   },
   {
     id: 'study',
@@ -78,6 +91,12 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
     skill: '记忆分层：L1事件追踪→L2精选事实→L3综合画像；学情诊断输出 level/strengths/gaps/suggestion。',
     defaultSkill: '记忆分层：L1事件追踪→L2精选事实→L3综合画像；学情诊断输出 level/strengths/gaps/suggestion。',
     skillEditable: true,
+    model: 'global',
+    retryMax: 2,
+    memoryEnabled: true,
+    enabled: true,
+    role: '读取并维护三层记忆（对话→项目→全局画像），分析用户知识水平，为生成节点提供结构化学情画像（level/strengths/gaps/suggestion）。',
+    example: '',
   },
   {
     id: 'kb',
@@ -90,6 +109,12 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
     skill: '知识库管理：文档切片→向量化→语义检索；联网搜索聚合多源权威信息。',
     defaultSkill: '知识库管理：文档切片→向量化→语义检索；联网搜索聚合多源权威信息。',
     skillEditable: true,
+    model: 'global',
+    retryMax: 2,
+    memoryEnabled: true,
+    enabled: true,
+    role: '检索知识库向量库中的相关片段并联网补充信息，为生成提供可溯源的参考资料（纯工具调用，不消耗 LLM 推理）。',
+    example: '',
   },
   {
     id: 'review',
@@ -105,6 +130,12 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
     skill: '交叉审核：比对知识库原文与生成内容，标注不匹配项，输出审核报告与综合 verdict。',
     defaultSkill: '交叉审核：比对知识库原文与生成内容，标注不匹配项，输出审核报告与综合 verdict。',
     skillEditable: true,
+    model: 'global',
+    retryMax: 2,
+    memoryEnabled: false,
+    enabled: true,
+    role: '对生成内容做符实性 / 难度适配 / 规范性三维审查并给出综合裁定；不通过时打回主 Agent 修改（重试上限可配）。',
+    example: '',
   },
 ]
 
