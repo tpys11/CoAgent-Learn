@@ -668,61 +668,11 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
               ) })()}
             </div>
 
-            {/* 编排框架设定（伴随编排，节点图内直接点击 Agent 展开设定） */}
+            {/* 编排框架设定（节点图内点击 Agent，右侧独立栏展开设定） */}
             <div className="flex flex-col gap-4">
               <p className="text-xs font-semibold text-dim uppercase tracking-wider">编排框架设定</p>
-              <div className="flex gap-4 items-stretch">
-                {/* 左：节点图 */}
-                <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex items-center justify-center flex-1">
-                  <FlowGraph agents={agents} templateAgentId={templateAgentId} onSelect={(id) => setTemplateAgentId(id)} />
-                </div>
-                {/* 右：选中 Agent 设定栏（淡边框 + 色块） */}
-                <div className="border border-[var(--border-color)] rounded-xl p-5 bg-[var(--bg-hover)] flex-1 flex flex-col gap-4">
-                  {tplAgent ? (
-                    <>
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-bold">{tplAgent.name}</p>
-                        {tplAgent.id === 'review' && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-dim">重试上限</span>
-                            <input type="number" min={1} max={5} value={tplAgent.retryMax ?? 2}
-                              onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 1 && n <= 5) commitTpl({ retryMax: n }) }}
-                              className="w-16 px-2 py-1.5 text-xs input-surface rounded-lg outline-none text-center" />
-                          </div>
-                        )}
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">模型选择</p>
-                        <div className="flex gap-2">
-                          {MODEL_OPTIONS.map(o => (
-                            <button key={o.key} onClick={() => commitTpl({ model: o.key })}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                                (tplAgent.model || 'global') === o.key ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-panel)] text-dim hover:bg-[var(--bg-active)]'
-                              }`}>{o.label}</button>
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">模式</p>
-                        <div className="flex gap-2">
-                          {tplAgent.modes.map(m => (
-                            <button key={m.label} onClick={() => commitTpl({ mode: m.label })}
-                              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                                tplAgent.mode === m.label ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-panel)] text-dim hover:bg-[var(--bg-active)]'
-                              }`}>{m.label}</button>
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">全局性提示词</p>
-                        <textarea value={tplAgent.systemPrompt} onChange={e => commitTpl({ systemPrompt: e.target.value })} rows={4}
-                          className="w-full px-3 py-2 border hairline rounded-xl text-xs font-mono outline-none resize-none focus:border-[var(--border-strong)] bg-[var(--bg-input)]" />
-                      </div>
-                    </>
-                  ) : (
-                    <p className="text-xs text-dim text-center py-10">点击左侧节点选择 Agent</p>
-                  )}
-                </div>
+              <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex items-center justify-center">
+                <FlowGraph agents={agents} templateAgentId={templateAgentId} onSelect={(id) => setTemplateAgentId(id)} />
               </div>
             </div>
 
@@ -741,6 +691,55 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
           </div>
         )}
       </div>
+      {/* 最右侧：选中 Agent 设定栏（仅模板与编排时显示，淡边框 + 色块） */}
+      {block === 'templates' && (
+        <div className="w-80 flex-shrink-0 border-l hairline bg-[var(--bg-hover)] p-5 flex flex-col gap-4 overflow-y-auto">
+          {tplAgent ? (
+            <>
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-bold">{tplAgent.name}</p>
+                {tplAgent.id === 'review' && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-dim">重试上限</span>
+                    <input type="number" min={1} max={5} value={tplAgent.retryMax ?? 2}
+                      onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 1 && n <= 5) commitTpl({ retryMax: n }) }}
+                      className="w-16 px-2 py-1.5 text-xs input-surface rounded-lg outline-none text-center" />
+                  </div>
+                )}
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">模型选择</p>
+                <div className="flex gap-2">
+                  {MODEL_OPTIONS.map(o => (
+                    <button key={o.key} onClick={() => commitTpl({ model: o.key })}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                        (tplAgent.model || 'global') === o.key ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-panel)] text-dim hover:bg-[var(--bg-active)]'
+                      }`}>{o.label}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">模式</p>
+                <div className="flex gap-2">
+                  {tplAgent.modes.map(m => (
+                    <button key={m.label} onClick={() => commitTpl({ mode: m.label })}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                        tplAgent.mode === m.label ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-panel)] text-dim hover:bg-[var(--bg-active)]'
+                      }`}>{m.label}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">全局性提示词</p>
+                <textarea value={tplAgent.systemPrompt} onChange={e => commitTpl({ systemPrompt: e.target.value })} rows={5}
+                  className="w-full px-3 py-2 border hairline rounded-xl text-xs font-mono outline-none resize-none focus:border-[var(--border-strong)] bg-[var(--bg-input)]" />
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-dim text-center py-10">点击节点选择 Agent</p>
+          )}
+        </div>
+      )}
       {/* 新建模板弹窗 */}
       {showNewTplModal && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setShowNewTplModal(false)}>
