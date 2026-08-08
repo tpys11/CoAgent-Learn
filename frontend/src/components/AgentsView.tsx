@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Settings, Square, Upload, Folder, Activity, Download, Layers, Wrench, Store, ExternalLink, FileCode, Plus, Trash2 } from 'lucide-react'
+import { Settings, Square, Upload, Folder, Activity, Download, Layers, Wrench, Store, ExternalLink, FileCode, Plus, Trash2, LayoutTemplate } from 'lucide-react'
 import type { AgentConfig } from '../types'
 import { DEFAULT_AGENTS } from '../types'
 
@@ -12,7 +12,7 @@ interface Props {
   projectId: string | null
 }
 
-type Block = 'agents' | 'skills'
+type Block = 'agents' | 'skills' | 'templates'
 
 const MODEL_OPTIONS = [
   { key: 'global', label: '跟随全局' },
@@ -88,6 +88,7 @@ const SKILL_TABS: Array<{ key: string; label: string }> = [
 const BLOCKS: Array<{ key: Block; icon: any; label: string }> = [
   { key: 'agents', icon: Settings, label: 'Agent 管理' },
   { key: 'skills', icon: Layers, label: 'Skill 管理' },
+  { key: 'templates', icon: LayoutTemplate, label: '模板与编排' },
 ]
 
 /** 开关 */
@@ -129,7 +130,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   // 该 Agent 的运行监控（最近任务中其节点的耗时/调用）
   const [agentRuns, setAgentRuns] = useState<Array<{ created_at: string; ms: number; calls: number }>>([])
   // 模板 / 导入导出
-  const [showTemplates, setShowTemplates] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -245,40 +245,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
           ))}
         </div>
         <div className="flex-1" />
-        {/* 底部：模板 + 导入导出 */}
-        <div className="p-2 border-t hairline flex flex-col gap-1.5">
-          <div className="relative">
-            <button onClick={() => setShowTemplates(v => !v)}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs text-dim hover:bg-[var(--bg-hover)] transition-colors">
-              <Layers size={13} /> 预设模板
-            </button>
-            {showTemplates && (
-              <div className="absolute bottom-full left-0 right-0 mb-1 bg-[var(--bg-panel)] border hairline rounded-xl shadow-xl z-10 p-1.5 flex flex-col gap-1">
-                {PRESET_TEMPLATES.map(t => (
-                  <button key={t.name}
-                    onClick={() => {
-                      if (window.confirm(`应用模板「${t.name}」？将覆盖当前全部 Agent 配置。`)) {
-                        onReplace(t.agents); setShowTemplates(false); setSelectedId(t.agents[0]?.id || '')
-                      }
-                    }}
-                    className="px-3 py-2 rounded-lg hover:bg-[var(--bg-hover)] text-left transition-colors">
-                    <span className="block text-[11px] font-semibold">{t.name}</span>
-                    <span className="block text-[10px] text-dim">{t.desc}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="flex gap-1.5">
-            <button onClick={exportConfig} className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-xl text-[11px] border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">
-              <Download size={12} /> 导出
-            </button>
-            <button onClick={() => fileInputRef.current?.click()} className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-xl text-[11px] border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">
-              <Upload size={12} /> 导入
-            </button>
-            <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={importConfig} />
-          </div>
-        </div>
       </div>
 
       {/* 右侧内容 */}
@@ -591,6 +557,60 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                 </button>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ========== 模板与编排 ========== */}
+        {block === 'templates' && (
+          <div className="max-w-2xl flex flex-col gap-5">
+            <div>
+              <h2 className="text-base font-bold flex items-center gap-2"><LayoutTemplate size={16} /> 模板与编排</h2>
+              <p className="text-[11px] text-dim mt-1">预设 Agent 团队模板一键应用；配置可导入/导出</p>
+            </div>
+
+            {/* 预设模板 */}
+            <div className="flex flex-col gap-2">
+              {PRESET_TEMPLATES.map(t => (
+                <div key={t.name} className="card-surface rounded-xl p-4 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold">{t.name}</p>
+                    <p className="text-[11px] text-dim mt-0.5">{t.desc}</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`应用模板「${t.name}」？将覆盖当前全部 Agent 配置。`)) {
+                        onReplace(t.agents); setSelectedId(t.agents[0]?.id || '')
+                      }
+                    }}
+                    className="px-3.5 py-2 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors flex-shrink-0">
+                    应用
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {/* 工作流编排示意 */}
+            <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
+              <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">工作流编排（4-Agent）</p>
+              <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                主 Agent（规划）→ <span className="text-[var(--text)]">学情与记忆管理</span> ∥ <span className="text-[var(--text)]">知识库管理</span>（并行）
+                → 主 Agent（生成）→ <span className="text-[var(--text)]">审核</span> → 输出
+                <span className="text-dim">（未通过则打回重试，上限可在审核 Agent 中配置；任一 Agent 可单独禁用）</span>
+              </p>
+            </div>
+
+            {/* 导入导出 */}
+            <div className="flex gap-2">
+              <button onClick={exportConfig}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">
+                <Download size={13} /> 导出配置
+              </button>
+              <button onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">
+                <Upload size={13} /> 导入配置
+              </button>
+              <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={importConfig} />
+            </div>
           </div>
         )}
       </div>
