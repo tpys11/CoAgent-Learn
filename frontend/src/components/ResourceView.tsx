@@ -340,12 +340,6 @@ export default function ResourceView({ projectId }: { projectId: string | null }
             </div>
             <p className="text-sm font-semibold truncate">{item.title}</p>
             <p className="text-xs text-dim line-clamp-2 min-h-[2.5em]">{item.body}</p>
-            <div className="flex items-center justify-between mt-auto pt-2 border-t border-[var(--border-color)]">
-              <span className="text-[10px] text-dim truncate">{item.sub.split(' · ')[1] || item.sub}</span>
-              {item.kind === 'tutorial' && item.url && (
-                <ExternalLink size={12} className="text-gray-300 group-hover:text-[var(--text)] transition-colors flex-shrink-0" />
-              )}
-            </div>
           </div>
         )
       })}
@@ -371,7 +365,6 @@ export default function ResourceView({ projectId }: { projectId: string | null }
           <h2 className="text-lg font-bold flex items-center gap-2">
             <FolderTree size={18} /> {selectedDomain} · {selectedCat}
           </h2>
-          <p className="text-xs text-dim mt-1">共 {tutorialList.length} 条 · {CATEGORIES.find(c => c.key === selectedCat)?.desc}</p>
         </div>
         {!showAddTutorial && (
           <button
@@ -419,7 +412,6 @@ export default function ResourceView({ projectId }: { projectId: string | null }
           <h2 className="text-lg font-bold flex items-center gap-2">
             <Library size={18} /> {selectedDomain} · 百科
           </h2>
-          <p className="text-xs text-dim mt-1">共 {wikiEntries.length} 个词条 · 点击词条查看详细介绍</p>
         </div>
       </div>
       {wikiEntries.length === 0 ? (
@@ -445,10 +437,6 @@ export default function ResourceView({ projectId }: { projectId: string | null }
                     </span>
                     <p className="text-sm font-semibold leading-snug">{w.name}</p>
                     <p className="text-xs text-dim line-clamp-3">{w.intro}</p>
-                    <div className="flex items-center justify-between mt-auto pt-2 border-t border-[var(--border-color)]">
-                      <span className="text-[10px] text-dim truncate">{w.theme}</span>
-                      <ExternalLink size={12} className="text-gray-300 group-hover:text-[var(--text)] transition-colors flex-shrink-0" />
-                    </div>
                   </div>
                 ))}
               </div>
@@ -462,7 +450,7 @@ export default function ResourceView({ projectId }: { projectId: string | null }
   return (
     <div className="flex-1 h-full min-w-0 flex flex-col panel rounded-3xl overflow-hidden">
       {/* 顶部 Hero：主题化配色（跟随 light/dark/warm） */}
-      <div className="flex-shrink-0 px-8 pt-7 pb-5 bg-[var(--bg-panel)] border-b border-[var(--border-color)]">
+      <div className="flex-shrink-0 px-8 pt-7 pb-6 bg-[var(--bg-panel)] border-b border-[var(--border-color)]">
         <div className="max-w-6xl mx-auto">
           <p className="text-[11px] font-bold text-[var(--accent)] tracking-widest uppercase mb-2">Resource Center</p>
           {/* 领域选择行（系统预设）：置于最顶（RESOURCE CENTER 之下、标题之上） */}
@@ -479,14 +467,12 @@ export default function ResourceView({ projectId }: { projectId: string | null }
                 {d}
               </button>
             ))}
-            <span className="text-[11px] text-dim ml-2">领域与分类为系统预设内容</span>
           </div>
           <h1 className="text-2xl font-bold leading-snug">学习、理解、实践，与社区一起构建人工智能的未来</h1>
-          <p className="text-[13px] text-dim mt-2">汇聚教程资源、AI 生成物与你保存的资料，沉淀每一次学习产出</p>
 
           {/* 功能入口大按钮 */}
           <div className="flex flex-wrap gap-3 mt-6">
-            {NAV.map(({ key, icon: Icon, label, desc }) => (
+            {NAV.map(({ key, icon: Icon, label }) => (
               <button
                 key={key}
                 onClick={() => { setTab(key); setDetail(null) }}
@@ -499,20 +485,17 @@ export default function ResourceView({ projectId }: { projectId: string | null }
                 <span className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-[#1a1a1a] text-white">
                   <Icon size={15} />
                 </span>
-                <span>
-                  <span className="block text-sm font-semibold">{label}</span>
-                  <span className="block text-[11px] text-dim">{desc}</span>
-                </span>
+                <span className="text-sm font-semibold">{label}</span>
               </button>
             ))}
           </div>
         </div>
       </div>
 
-      {/* 分类（竖向展开，无"分类"标签） */}
-      {tab === 'tutorials' && (
-        <div className="flex-shrink-0 px-8 py-3 border-b border-[var(--border-color)] bg-[var(--bg-panel)]">
-          <div className="max-w-6xl mx-auto flex flex-col gap-1">
+      {/* 主体：左侧分类栏 + 内容区 */}
+      <div className="flex-1 flex min-h-0">
+        {tab === 'tutorials' && (
+          <div className="w-40 flex-shrink-0 border-r hairline bg-[var(--bg-sidebar)] p-2.5 flex flex-col gap-1 overflow-y-auto">
             {CATEGORIES.map(c => {
               const Icon = CAT_ICONS[c.key]
               const active = selectedCat === c.key
@@ -520,31 +503,24 @@ export default function ResourceView({ projectId }: { projectId: string | null }
                 <button
                   key={c.key}
                   onClick={() => { setSelectedCat(c.key); setDetail(null) }}
-                  className={`flex items-center gap-2.5 px-3.5 py-2 rounded-xl text-xs font-medium text-left transition-colors ${
+                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-colors ${
                     active ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
                   }`}
                 >
                   {Icon && <Icon size={14} className={active ? 'text-white' : 'text-dim'} />}
-                  <span className="font-semibold flex-shrink-0">{c.key}</span>
-                  <span className={`text-[11px] ${active ? 'text-white/70' : 'text-dim'}`}>{c.desc}</span>
+                  <span className="font-semibold">{c.key}</span>
                 </button>
               )
             })}
           </div>
-        </div>
-      )}
-
-      {/* 内容区 */}
-      <div className="flex-1 overflow-y-auto px-8 py-6">
-        <div className="max-w-6xl mx-auto">
+        )}
+        <div className="flex-1 overflow-y-auto px-10 py-8">
+          <div className="max-w-6xl mx-auto">
           {tab === 'tutorials' && (selectedCat === WIKI_CAT ? wikiSection : tutorialSection)}
           {tab === 'generated' && (
             <>
               <div className="flex items-end justify-between mb-5">
-                <div>
-                  <h2 className="text-lg font-bold flex items-center gap-2"><Sparkles size={18} /> 我的生成</h2>
-                  <p className="text-xs text-dim mt-1">AI 生成的讲义 / 实操指南 / 测试题 · 共 {list.length} 条</p>
-                </div>
+                <h2 className="text-lg font-bold flex items-center gap-2"><Sparkles size={18} /> 我的生成</h2>
               </div>
               {loading && <p className="text-xs text-dim text-center py-16">加载中…</p>}
               {!loading && list.length === 0 && emptyState('暂无生成物', '对话生成讲义 / 指南 / 测试题后自动收录到这里')}
@@ -554,10 +530,7 @@ export default function ResourceView({ projectId }: { projectId: string | null }
           {tab === 'uploads' && (
             <>
               <div className="flex items-end justify-between mb-5">
-                <div>
-                  <h2 className="text-lg font-bold flex items-center gap-2"><Upload size={18} /> 我的上传</h2>
-                  <p className="text-xs text-dim mt-1">知识库文档与保存的资料 · 共 {list.length} 条</p>
-                </div>
+                <h2 className="text-lg font-bold flex items-center gap-2"><Upload size={18} /> 我的上传</h2>
                 {!showAddResource && (
                   <button
                     onClick={() => setShowAddResource(true)}
@@ -588,6 +561,7 @@ export default function ResourceView({ projectId }: { projectId: string | null }
               {!loading && list.length > 0 && cardGrid(list)}
             </>
           )}
+          </div>
         </div>
       </div>
 
