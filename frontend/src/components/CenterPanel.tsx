@@ -622,7 +622,7 @@ const TEMPLATE_OPTIONS = [
                 {showModelModal && (
                   <div className="absolute bottom-full right-0 mb-1 card-lift p-2 z-10" style={{ width: 230 }}>
                     <div className="flex items-center justify-between gap-2 px-1 py-1.5 mb-1 border-b border-[#e5e5e5]">
-                      <span className="text-[11px] font-medium">Auto 自动选择模型</span>
+                      <span className="text-[11px] font-medium">Auto</span>
                       <button onClick={() => { const next = !modelAuto; setModelAuto(next); localStorage.setItem('coagent-model-auto', next ? '1' : '0') }}
                         className={`w-9 h-5 rounded-full relative transition-colors flex-shrink-0 ${modelAuto ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`}
                         title="Auto 开关（自动选择模型）">
