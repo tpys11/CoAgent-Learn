@@ -668,57 +668,65 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
             {/* 编排框架设定（伴随编排，节点图内直接点击 Agent 展开设定） */}
             <div className="flex flex-col gap-4">
               <p className="text-xs font-semibold text-dim uppercase tracking-wider">编排框架设定</p>
-              <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
-                <FlowGraph agents={agents} templateAgentId={templateAgentId} onSelect={(id) => setTemplateAgentId(id)} />
-              </div>
-              {tplAgent && (
-                <div className="flex flex-col gap-4">
-                  <div>
-                    <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">模型选择</p>
-                    <div className="flex gap-2">
-                      {MODEL_OPTIONS.map(o => (
-                        <button key={o.key} onClick={() => commitTpl({ model: o.key })}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                            (tplAgent.model || 'global') === o.key ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'
-                          }`}>{o.label}</button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">模式</p>
-                    <div className="flex gap-2">
-                      {tplAgent.modes.map(m => (
-                        <button key={m.label} onClick={() => commitTpl({ mode: m.label })}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                            tplAgent.mode === m.label ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'
-                          }`}>{m.label}</button>
-                      ))}
-                    </div>
-                  </div>
-                  {tplAgent.id === 'review' && (
-                    <div className="flex items-center justify-between border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
-                      <div>
-                        <p className="text-xs font-semibold">审核重试上限</p>
-                        <p className="text-[10px] text-dim mt-0.5">生成未通过审核时最多重试的次数</p>
-                      </div>
-                      <input type="number" min={1} max={5} value={tplAgent.retryMax ?? 2}
-                        onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 1 && n <= 5) commitTpl({ retryMax: n }) }}
-                        className="w-16 px-2 py-1.5 text-xs input-surface rounded-lg outline-none text-center" />
-                    </div>
-                  )}
-                  <div>
-                    <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">全局性提示词</p>
-                    <textarea value={tplAgent.systemPrompt} onChange={e => commitTpl({ systemPrompt: e.target.value })} rows={4}
-                      className="w-full px-3 py-2 border hairline rounded-xl text-xs font-mono outline-none resize-none focus:border-[var(--border-strong)] bg-[var(--bg-input)]" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">输入输出示例（few-shot）</p>
-                    <textarea value={tplAgent.example || ''} onChange={e => commitTpl({ example: e.target.value })} rows={3}
-                      placeholder="可选：粘贴 输入→输出 JSON 示例"
-                      className="w-full px-3 py-2 border hairline rounded-xl text-xs font-mono outline-none resize-none focus:border-[var(--border-strong)] bg-[var(--bg-input)]" />
-                  </div>
+              <div className="flex gap-4 items-stretch">
+                {/* 左：节点图 */}
+                <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex items-center justify-center flex-1">
+                  <FlowGraph agents={agents} templateAgentId={templateAgentId} onSelect={(id) => setTemplateAgentId(id)} />
                 </div>
-              )}
+                {/* 右：选中 Agent 设定栏（淡边框 + 色块） */}
+                <div className="border border-[var(--border-color)] rounded-xl p-5 bg-[var(--bg-hover)] flex-1 flex flex-col gap-4">
+                  {tplAgent ? (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-bold">{tplAgent.name}</p>
+                        {tplAgent.id === 'review' && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] text-dim">重试上限</span>
+                            <input type="number" min={1} max={5} value={tplAgent.retryMax ?? 2}
+                              onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 1 && n <= 5) commitTpl({ retryMax: n }) }}
+                              className="w-16 px-2 py-1.5 text-xs input-surface rounded-lg outline-none text-center" />
+                          </div>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">模型选择</p>
+                        <div className="flex gap-2">
+                          {MODEL_OPTIONS.map(o => (
+                            <button key={o.key} onClick={() => commitTpl({ model: o.key })}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                                (tplAgent.model || 'global') === o.key ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-panel)] text-dim hover:bg-[var(--bg-active)]'
+                              }`}>{o.label}</button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">模式</p>
+                        <div className="flex gap-2">
+                          {tplAgent.modes.map(m => (
+                            <button key={m.label} onClick={() => commitTpl({ mode: m.label })}
+                              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                                tplAgent.mode === m.label ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-panel)] text-dim hover:bg-[var(--bg-active)]'
+                              }`}>{m.label}</button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">全局性提示词</p>
+                        <textarea value={tplAgent.systemPrompt} onChange={e => commitTpl({ systemPrompt: e.target.value })} rows={4}
+                          className="w-full px-3 py-2 border hairline rounded-xl text-xs font-mono outline-none resize-none focus:border-[var(--border-strong)] bg-[var(--bg-input)]" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">输入输出示例（few-shot）</p>
+                        <textarea value={tplAgent.example || ''} onChange={e => commitTpl({ example: e.target.value })} rows={3}
+                          placeholder="可选：粘贴 输入→输出 JSON 示例"
+                          className="w-full px-3 py-2 border hairline rounded-xl text-xs font-mono outline-none resize-none focus:border-[var(--border-strong)] bg-[var(--bg-input)]" />
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-xs text-dim text-center py-10">点击左侧节点选择 Agent</p>
+                  )}
+                </div>
+              </div>
               {/* 保存为自定义模板 */}
               <div className="flex gap-2 items-center">
                 <input value={saveTplName} onChange={e => setSaveTplName(e.target.value)} placeholder="自定义模板名称"
