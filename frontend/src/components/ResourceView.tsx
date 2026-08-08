@@ -420,13 +420,6 @@ const exportItem = (item: ListItem) => {
               </div>
             </div>
             <p className="text-base font-semibold leading-snug">{item.title}</p>
-            <p className="text-xs text-dim truncate">{item.body}</p>
-            <div className="mt-auto flex items-center gap-1.5 text-[11px] text-dim">
-              {(item.sub || item.time) && <>
-              <span className="truncate">{item.sub}</span>
-              {item.time && <><span className="flex-shrink-0">·</span><span className="flex-shrink-0">{item.time}</span></>}
-              </>}
-            </div>
           </div>
         )
       })}
@@ -509,7 +502,6 @@ const exportItem = (item: ListItem) => {
                 </div>
               </div>
               <p className="text-base font-semibold leading-snug">{w.name}</p>
-              <p className="text-xs text-dim truncate">{w.intro}</p>
             </div>
           ))}
         </div>
