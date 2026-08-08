@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { Brain, User, FolderTree, Check, Loader2, PenLine, ChevronDown } from 'lucide-react'
+﻿import { useState, useEffect, useRef } from 'react'
+import { Brain, User, FolderTree, Check, Loader2, PenLine } from 'lucide-react'
 
 /** 个人全局性记忆：基础信息字段（固定，纵向表单） */
 const BASIC_FIELDS = [
@@ -114,7 +114,8 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
   // 项目记忆（全部项目，默认展开显示）
   const [projData, setProjData] = useState<Record<string, { fields: Record<string, string>; count: number; latest: string; days: Record<string, any[]> }>>({})
   const [projLoading, setProjLoading] = useState(false)
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  // 当前查看的项目（点击项目按钮切换）
+  const [activeProject, setActiveProject] = useState<string | null>(null)
   // 日历数据：date → 当天对话项列表（全局）
   const [globalDays, setGlobalDays] = useState<Record<string, any[]>>({})
   const [globalStats, setGlobalStats] = useState<{ count: number; latest: string }>({ count: 0, latest: '' })
@@ -220,7 +221,7 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
           const count = daysArr.reduce((s: number, x: any) => s + ((x.items || []).length || 0), 0)
           const latest = daysArr.length ? daysArr.map((x: any) => x.date).sort().pop() : ''
           out[pid] = { fields, count, latest, days }
-          if (++done >= plist.length) { setProjData(out); setProjLoading(false) }
+          if (++done >= plist.length) { setProjData(out); setProjLoading(false); setActiveProject(prev => prev || (plist[0]?.id || null)) }
         })
       }
     }).catch(() => setProjLoading(false))
@@ -395,112 +396,123 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
             <div>
               <h2 className="text-base font-bold flex items-center gap-2">
                 <FolderTree size={16} /> 项目记忆
-                <span className="text-[10px] font-normal text-dim ml-1">全部项目默认展开 · 点击标题可折叠 · 字段只读，修改由 AI 处理</span>
+                <span className="text-[10px] font-normal text-dim ml-1">点击项目按钮查看记忆 · 字段只读，修改由 AI 处理</span>
               </h2>
             </div>
 
             {projLoading ? <p className="text-xs text-dim text-center py-10">加载中…</p> : projects.length === 0 ? (
               <p className="text-xs text-dim text-center py-10">暂无项目</p>
-            ) : projects.map(p => {
-              const data = projData[p.id]
-              const open = !collapsed[p.id]
-              return (
-                <div key={p.id} id={'proj-mem-' + p.id} className="border hairline rounded-2xl bg-[var(--bg-panel)] overflow-hidden">
-                  <button onClick={() => setCollapsed(prev => ({ ...prev, [p.id]: !prev[p.id] }))}
-                    className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-[var(--bg-hover)] transition-colors">
-                    <ChevronDown size={14} className={`transition-transform flex-shrink-0 ${open ? '' : '-rotate-90'}`} />
-                    <FolderTree size={14} className="flex-shrink-0" />
-                    <span className="text-sm font-bold truncate">{p.name || p.id}</span>
-                    {p.id === projectId && <span className="text-[9px] text-dim flex-shrink-0">当前</span>}
-                    <span className="text-[10px] text-dim ml-auto flex-shrink-0">
-                      {p.created_at ? String(p.created_at).slice(0, 10) : ''}{data ? ` · ${data.count} 次对话` : ''}
-                    </span>
-                  </button>
-                  {open && (
-                    <div className="px-4 pb-4 pt-1 flex flex-col gap-4">
-                      {/* 进度：标尺 + 快慢 + 具体内容 */}
-                      <div className="flex flex-col gap-2">
-                        <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">进度<span className="ml-1 text-[9px] font-normal text-dim/70">起点 → 当前 → 目标 · 快慢直观</span></p>
-                        <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2.5">
-                          {/* 进度标尺 */}
-                          <div className="relative h-2 rounded-full bg-[#ececec]">
-                            <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: pctOf(data?.fields || {}, data?.count || 0) + '%', background: 'var(--accent)' }} />
-                            <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white border-2" style={{ left: `calc(${pctOf(data?.fields || {}, data?.count || 0)}% - 6px)`, borderColor: 'var(--accent)' }} />
-                          </div>
-                          <div className="flex items-center justify-between gap-2 text-[10px] text-dim">
-                            <span className="truncate max-w-[38%]">起点：{(data?.fields['起点'] || '').trim() || '（空）'}</span>
-                            <span className="font-semibold text-[var(--text)] flex-shrink-0">{pctOf(data?.fields || {}, data?.count || 0)}%</span>
-                            <span className="truncate max-w-[38%] text-right">目标：{(data?.fields['目标'] || '').trim() || '（空）'}</span>
-                          </div>
-                          {/* 快慢 */}
-                          {(() => { const t = trendOf(data?.days || {}); return (
-                            <div className="flex items-center gap-3 text-[10px] text-dim pt-2 border-t hairline">
-                              <span>近7天 <b className="text-[var(--text)]">{t.w7}</b> 次</span>
-                              <span>近30天 <b className="text-[var(--text)]">{t.w30}</b> 次</span>
-                              <span className={`ml-auto font-medium ${t.up ? 'text-green-600' : t.down ? 'text-red-500' : 'text-dim'}`}>{t.trend}</span>
-                            </div>
-                          ) })()}
-                        </div>
-                        {/* 进度具体内容：概述 + 起点/当前/目标 + 知识点/难点 */}
-                        <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
-                          {['抽象目的', '抽象项目情况'].map(k => (
-                            <div key={k}>
-                              <div className="flex items-center justify-between mb-1">
-                                <label className="text-[10px] font-semibold text-dim uppercase tracking-wider">{k}</label>
-                                <button onClick={() => onRequestModify?.(k, p.id)} className="text-[9px] text-[var(--accent)] hover:underline">修改</button>
-                              </div>
-                              <div className="px-3 py-2 border hairline rounded-xl text-xs bg-[var(--bg-input)] text-[var(--text-muted)] leading-relaxed">
-                                {(data?.fields[k] || '').trim() ? <MiniMD text={data?.fields[k] || ''} /> : <span className="text-dim">（空）</span>}
-                              </div>
-                            </div>
-                          ))}
-                          {['起点', '当前水平', '目标'].map(k => (
-                            <div key={k}>
-                              <div className="flex items-center justify-between mb-1">
-                                <label className="text-[10px] font-semibold text-dim uppercase tracking-wider">{k}</label>
-                                <button onClick={() => onRequestModify?.(k, p.id)} className="text-[9px] text-[var(--accent)] hover:underline">修改</button>
-                              </div>
-                              <div className="px-3 py-2 border hairline rounded-xl text-xs bg-[var(--bg-input)] text-[var(--text-muted)] leading-relaxed">
-                                {(data?.fields[k] || '').trim() ? <MiniMD text={data?.fields[k] || ''} /> : <span className="text-dim">（空）</span>}
-                              </div>
-                            </div>
-                          ))}
-                          {(['知识点', '难点'] as const).map(k => (
-                            <div key={k}>
-                              <div className="flex items-center justify-between mb-1">
-                                <label className="text-[10px] font-semibold text-dim uppercase tracking-wider">{k}{k === '知识点' ? '（已掌握）' : '（待攻克）'}</label>
-                                <button onClick={() => onRequestModify?.(k, p.id)} className="text-[9px] text-[var(--accent)] hover:underline">修改</button>
-                              </div>
-                              {(data?.fields[k] || '').trim() ? (
-                                <div className="flex flex-wrap gap-1.5">
-                                  {(data?.fields[k] || '').split(/[,，、]/).map((s, i) => s.trim()).filter(Boolean).map((s, i) => (
-                                    <span key={i} className={`text-[10px] px-2 py-0.5 rounded-full ${k === '知识点' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>{s}</span>
-                                  ))}
-                                </div>
-                              ) : <span className="text-[11px] text-dim">（空）</span>}
-                            </div>
-                          ))}
-                        </div>
+            ) : (
+              <>
+                {/* 项目按钮：直接显示，点击查看该项目记忆 */}
+                <div className="flex flex-wrap gap-2">
+                  {projects.map(p => (
+                    <button key={p.id} onClick={() => setActiveProject(p.id)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium border transition-colors ${activeProject === p.id ? 'bg-[#1a1a1a] text-white border-[#1a1a1a] shadow-soft' : 'bg-[var(--bg-panel)] text-dim border-[var(--border-color)] hover:bg-[var(--bg-hover)]'}`}>
+                      <FolderTree size={13} />
+                      <span className="max-w-[150px] truncate">{p.name || p.id}</span>
+                      {p.id === projectId && <span className="text-[9px] opacity-70">当前</span>}
+                    </button>
+                  ))}
+                </div>
+
+                {/* 选中项目的记忆详情 */}
+                {activeProject && (() => {
+                  const p = projects.find(x => x.id === activeProject)
+                  const data = projData[activeProject]
+                  const pid = activeProject
+                  return (
+                    <div className="border hairline rounded-2xl bg-[var(--bg-panel)] overflow-hidden">
+                      <div className="flex items-center gap-2 px-4 py-3 border-b hairline">
+                        <FolderTree size={14} />
+                        <span className="text-sm font-bold">{p?.name || pid}</span>
+                        {p?.id === projectId && <span className="text-[9px] text-dim">当前</span>}
+                        <span className="text-[10px] text-dim ml-auto">
+                          {p?.created_at ? String(p.created_at).slice(0, 10) : ''}{data ? ` · ${data.count} 次对话` : ''}
+                        </span>
                       </div>
-                      {/* 时间：日历热度图 + 统计 */}
-                      <div className="flex flex-col gap-2">
-                        <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">时间</p>
-                        <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
-                          <CalendarHeatmap
-                            data={Object.fromEntries(Object.entries(data?.days || {}).map(([d, items]) => [d, items.length]))}
-                            onPick={d => setDayDetail({ date: d, items: (data?.days || {})[d] || [] })}
-                          />
-                          <div className="flex gap-4 text-[10px] text-dim mt-2">
-                            <span>累计 {data?.count || 0} 次对话</span>
-                            {data?.latest && <span>最近学习 {data.latest}</span>}
+                      <div className="px-4 py-3 flex flex-col gap-4">
+                        {/* 进度：标尺 + 快慢 + 具体内容 */}
+                        <div className="flex flex-col gap-2">
+                          <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">进度<span className="ml-1 text-[9px] font-normal text-dim/70">起点 → 当前 → 目标 · 快慢直观</span></p>
+                          <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2.5">
+                            <div className="relative h-2 rounded-full bg-[#ececec]">
+                              <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: pctOf(data?.fields || {}, data?.count || 0) + '%', background: 'var(--accent)' }} />
+                              <div className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white border-2" style={{ left: `calc(${pctOf(data?.fields || {}, data?.count || 0)}% - 6px)`, borderColor: 'var(--accent)' }} />
+                            </div>
+                            <div className="flex items-center justify-between gap-2 text-[10px] text-dim">
+                              <span className="truncate max-w-[38%]">起点：{(data?.fields['起点'] || '').trim() || '（空）'}</span>
+                              <span className="font-semibold text-[var(--text)] flex-shrink-0">{pctOf(data?.fields || {}, data?.count || 0)}%</span>
+                              <span className="truncate max-w-[38%] text-right">目标：{(data?.fields['目标'] || '').trim() || '（空）'}</span>
+                            </div>
+                            {(() => { const t = trendOf(data?.days || {}); return (
+                              <div className="flex items-center gap-3 text-[10px] text-dim pt-2 border-t hairline">
+                                <span>近7天 <b className="text-[var(--text)]">{t.w7}</b> 次</span>
+                                <span>近30天 <b className="text-[var(--text)]">{t.w30}</b> 次</span>
+                                <span className={`ml-auto font-medium ${t.up ? 'text-green-600' : t.down ? 'text-red-500' : 'text-dim'}`}>{t.trend}</span>
+                              </div>
+                            ) })()}
+                          </div>
+                          <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
+                            {['抽象目的', '抽象项目情况'].map(k => (
+                              <div key={k}>
+                                <div className="flex items-center justify-between mb-1">
+                                  <label className="text-[10px] font-semibold text-dim uppercase tracking-wider">{k}</label>
+                                  <button onClick={() => onRequestModify?.(k, pid)} className="text-[9px] text-[var(--accent)] hover:underline">修改</button>
+                                </div>
+                                <div className="px-3 py-2 border hairline rounded-xl text-xs bg-[var(--bg-input)] text-[var(--text-muted)] leading-relaxed">
+                                  {(data?.fields[k] || '').trim() ? <MiniMD text={data?.fields[k] || ''} /> : <span className="text-dim">（空）</span>}
+                                </div>
+                              </div>
+                            ))}
+                            {['起点', '当前水平', '目标'].map(k => (
+                              <div key={k}>
+                                <div className="flex items-center justify-between mb-1">
+                                  <label className="text-[10px] font-semibold text-dim uppercase tracking-wider">{k}</label>
+                                  <button onClick={() => onRequestModify?.(k, pid)} className="text-[9px] text-[var(--accent)] hover:underline">修改</button>
+                                </div>
+                                <div className="px-3 py-2 border hairline rounded-xl text-xs bg-[var(--bg-input)] text-[var(--text-muted)] leading-relaxed">
+                                  {(data?.fields[k] || '').trim() ? <MiniMD text={data?.fields[k] || ''} /> : <span className="text-dim">（空）</span>}
+                                </div>
+                              </div>
+                            ))}
+                            {(['知识点', '难点'] as const).map(k => (
+                              <div key={k}>
+                                <div className="flex items-center justify-between mb-1">
+                                  <label className="text-[10px] font-semibold text-dim uppercase tracking-wider">{k}{k === '知识点' ? '（已掌握）' : '（待攻克）'}</label>
+                                  <button onClick={() => onRequestModify?.(k, pid)} className="text-[9px] text-[var(--accent)] hover:underline">修改</button>
+                                </div>
+                                {(data?.fields[k] || '').trim() ? (
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {(data?.fields[k] || '').split(/[,，、]/).map((s, i) => s.trim()).filter(Boolean).map((s, i) => (
+                                      <span key={i} className={`text-[10px] px-2 py-0.5 rounded-full ${k === '知识点' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>{s}</span>
+                                    ))}
+                                  </div>
+                                ) : <span className="text-[11px] text-dim">（空）</span>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        {/* 时间：日历热度图 + 统计 */}
+                        <div className="flex flex-col gap-2">
+                          <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">时间</p>
+                          <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
+                            <CalendarHeatmap
+                              data={Object.fromEntries(Object.entries(data?.days || {}).map(([d, items]) => [d, items.length]))}
+                              onPick={d => setDayDetail({ date: d, items: (data?.days || {})[d] || [] })}
+                            />
+                            <div className="flex gap-4 text-[10px] text-dim mt-2">
+                              <span>累计 {data?.count || 0} 次对话</span>
+                              {data?.latest && <span>最近学习 {data.latest}</span>}
+                            </div>
                           </div>
                         </div>
                       </div>
                     </div>
-                  )}
-                </div>
-              )
-            })}
+                  )
+                })()}
+              </>
+            )}
 
             {/* 当天对话详情（点击日历日期） */}
             {dayDetail && (
