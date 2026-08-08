@@ -306,7 +306,6 @@ export default function MemoryView({ projectId }: { projectId: string | null }) 
                     <FolderTree size={16} /> 项目记忆
                     <span className="text-xs font-normal text-dim ml-1">{projects.find(p => p.id === selectedProject)?.name || selectedProject}</span>
                   </h2>
-                  <p className="text-[11px] text-dim mt-1">按项目拆分记录：项目概述、学习目标、知识点、薄弱点等，改动即时自动保存。</p>
                 </div>
 
                 {pLoading ? <p className="text-xs text-dim text-center py-10">加载中…</p> : (

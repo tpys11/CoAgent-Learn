@@ -361,7 +361,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                 <div className="flex items-center justify-between">
                   <div>
                     <h2 className="text-xl font-bold">{agent.name}</h2>
-                    <p className="text-[11px] text-dim mt-0.5">id: {agent.id} · 改动即时自动保存</p>
                   </div>
                   {agent.id === 'review' && (
                     <div className="flex items-center gap-2">
@@ -419,7 +418,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                         <input id="agent-skill-upload" type="file" className="hidden" {...({ webkitdirectory: '', directory: '' } as any)} />
                       </button>
                     </div>
-                    <p className="text-[10px] text-dim mt-2">在「Skill 管理」中可查看详情与全局启用/停用</p>
                   </div>
                 </div>
 
@@ -460,7 +458,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
           <div className="max-w-3xl flex flex-col gap-4">
             <div>
               <h2 className="text-base font-bold flex items-center gap-2"><Layers size={16} /> Skill 管理</h2>
-              <p className="text-[11px] text-dim mt-1">已注册的 Skill 模块：可查看详情、全局启用/停用</p>
             </div>
             {/* 四个接入区 tab */}
             <div className="flex gap-1.5 flex-wrap">
@@ -511,10 +508,9 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
               </div>
             )}
 
-            {/* 推荐市场：卡片网格（点击展开详情，无启用开关） */}
+            {/* 推荐市场：卡片网格（点击弹出详情） */}
             {skillTab === 'market' && (
               <div className="flex flex-col gap-2">
-                <p className="text-[11px] text-dim">预置常用 Skill，点击卡片查看详情；已注册即可在 Agent 的 Skill 卡片中勾选。</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                   {MARKET_SKILLS.map(s => {
                     const installed = allSkills.some(x => x.name === s.name)
