@@ -25,28 +25,33 @@ const getJSON = <T,>(k: string, d: T): T => { try { return JSON.parse(localStora
 /** 当前版本号（与 package.json 同步） */
 const APP_VERSION = '0.2.0'
 
-/** 设置分区（Claude 风格左侧栏） */
-const GROUPS: Array<{ label: string; items: Array<{ key: string; label: string; icon: any }> }> = [
-  { label: '外观', items: [{ key: 'font', label: '字体大小', icon: Type }, { key: 'theme', label: '页面主题', icon: Monitor }] },
+/** 设置分区（Claude 风格左侧栏）：基础分组收纳 外观/模型与API/数据 */
+const GROUPS: Array<{ label: string; subs: Array<{ label: string; items: Array<{ key: string; label: string; icon: any }> }> }> = [
+  {
+    label: '基础',
+    subs: [
+      { label: '外观', items: [{ key: 'font', label: '字体大小', icon: Type }, { key: 'theme', label: '页面主题', icon: Monitor }] },
+      {
+        label: '模型与 API',
+        items: [
+          { key: 'keys', label: '模型与 API Key', icon: Key },
+          { key: 'timeout', label: '请求超时', icon: Timer },
+        ],
+      },
+      { label: '数据', items: [{ key: 'data', label: '数据管理', icon: Database }, { key: 'reset', label: '恢复默认设置', icon: Database }] },
+    ],
+  },
   {
     label: '对话',
-    items: [
+    subs: [{ label: '', items: [
       { key: 'defaults', label: '默认对话参数', icon: Sliders },
       { key: 'actions', label: '生成后动作', icon: Zap },
       { key: 'context', label: '流式与上下文', icon: MessageSquare },
       { key: 'cleanup', label: '对话自动清理', icon: Trash2 },
-    ],
+    ] }],
   },
-  {
-    label: '模型与 API',
-    items: [
-      { key: 'keys', label: '模型与 API Key', icon: Key },
-      { key: 'timeout', label: '请求超时', icon: Timer },
-    ],
-  },
-  { label: '数据', items: [{ key: 'data', label: '数据管理', icon: Database }, { key: 'reset', label: '恢复默认设置', icon: Database }] },
-  { label: '高级', items: [{ key: 'mcp', label: 'MCP 配置', icon: Plug }, { key: 'debug', label: '调试模式', icon: Bug }] },
-  { label: '其他', items: [{ key: 'about', label: '关于', icon: LampDesk }] },
+  { label: '高级', subs: [{ label: '', items: [{ key: 'mcp', label: 'MCP 配置', icon: Plug }, { key: 'debug', label: '调试模式', icon: Bug }] }] },
+  { label: '其他', subs: [{ label: '', items: [{ key: 'about', label: '关于', icon: LampDesk }] }] },
 ]
 
 function Section({ icon: Icon, title, desc, children }: { icon: any; title: string; desc?: string; children: React.ReactNode }) {
@@ -231,13 +236,18 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             {GROUPS.map(g => (
               <div key={g.label}>
                 <p className="text-[10px] font-bold text-dim uppercase tracking-wider px-2.5 mt-3 mb-1">{g.label}</p>
-                {g.items.map(it => (
-                  <button key={it.key} onClick={() => setSettingsTab(it.key)}
-                    className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium text-left transition-colors ${
-                      settingsTab === it.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
-                    }`}>
-                    <it.icon size={13} /> {it.label}
-                  </button>
+                {g.subs.map(sub => (
+                  <div key={sub.label || g.label + '-' + sub.items[0]?.key}>
+                    {sub.label && <p className="text-[9px] text-dim px-2.5 mt-1.5 mb-0.5">{sub.label}</p>}
+                    {sub.items.map(it => (
+                      <button key={it.key} onClick={() => setSettingsTab(it.key)}
+                        className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-medium text-left transition-colors ${
+                          settingsTab === it.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
+                        }`}>
+                        <it.icon size={13} /> {it.label}
+                      </button>
+                    ))}
+                  </div>
                 ))}
               </div>
             ))}
