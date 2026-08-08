@@ -662,7 +662,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
               <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex items-center justify-center">
                 <FlowGraph agents={agents} templateAgentId={templateAgentId} onSelect={(id) => setTemplateAgentId(id)} />
               </div>
-              <p className="text-[10px] text-dim -mt-2">节点颜色越深表示该节点最近任务的耗时/质量越高（与主题色匹配）</p>
+              <p className="text-[10px] text-dim -mt-2">节点颜色越深表示该节点最近任务的耗时/质量越高</p>
             </div>
           </div>
         )}
