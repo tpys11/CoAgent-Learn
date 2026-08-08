@@ -172,8 +172,8 @@ const TEMPLATE_OPTIONS = [
   const searchRef = useRef<HTMLDivElement>(null)
   const [showInputOpt, setShowInputOpt] = useState(false)
   const inputOptRef = useRef<HTMLDivElement>(null)
-  const [inputOptMode, setInputOptMode] = useState(0) // 0=默认,1=详尽,2=不询问
-  const inputOptLabels = ['默认模式', '详尽模式', '不询问模式']
+  const [inputOptMode, setInputOptMode] = useState(0) // 0=开启优化,1=关闭优化
+  const inputOptLabels = ['开启优化', '关闭优化']
   const [webSearchMode, setWebSearchMode] = useState(0) // 0=默认,1=增强
   const [timeRange, setTimeRange] = useState('今天')
   const [showTimeRange, setShowTimeRange] = useState(false)
@@ -238,7 +238,7 @@ const TEMPLATE_OPTIONS = [
       thinking: thinking ? '开' : '关',
       outputVolume: ['精简', '适中', '拓展'][outputVolume],
       depth: ['浅', '中', '深'][depth],
-      inputOptMode: inputOptLabels[inputOptMode],
+      inputOptMode: inputOptMode === 0 ? '默认模式' : '不询问模式',
       webSearchMode: webSearchMode === 0 ? '默认' : '增强',
     })
     setInput('')
@@ -257,7 +257,7 @@ const TEMPLATE_OPTIONS = [
       thinking: thinking ? '开' : '关',
       outputVolume: ['精简', '适中', '拓展'][outputVolume],
       depth: ['浅', '中', '深'][depth],
-      inputOptMode: inputOptLabels[inputOptMode],
+      inputOptMode: inputOptMode === 0 ? '默认模式' : '不询问模式',
       webSearchMode: webSearchMode === 0 ? '默认' : '增强',
     })
   }
@@ -515,15 +515,15 @@ const TEMPLATE_OPTIONS = [
                   disabled={autoMode}
                   className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
                 >
-                  <SlidersHorizontal size={13} /> 输入询问 <ChevronDown size={9} />
+                  <SlidersHorizontal size={13} /> 输入优化 <ChevronDown size={9} />
                 </button>
                 {showInputOpt && (
-                  <div className="absolute bottom-full left-0 mb-1 card-lift p-1.5 z-10" style={{ width: 190 }}>
+                  <div className="absolute bottom-full left-0 mb-1 card-lift p-1.5 z-10" style={{ width: 150 }}>
                     {inputOptLabels.map((label, i) => (
                       <button key={label} onClick={() => { setInputOptMode(i) }}
-                        className={`text-[11px] px-2 py-1 rounded-lg text-left ${i === inputOptMode ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
+                        className={`text-[11px] px-2 py-1 rounded-lg text-left w-full ${i === inputOptMode ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
                         <span className="font-medium">{label}</span>
-              
+                        <span className="text-[10px] text-dim block">{i === 0 ? '先提出一些问题再回答' : '直接按已有信息回答'}</span>
                       </button>
                     ))}
                   </div>
