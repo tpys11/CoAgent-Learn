@@ -210,7 +210,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="card-lift w-full max-w-4xl mx-4 max-h-[88vh] flex flex-col" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="card-lift w-full max-w-4xl mx-4 h-[88vh] flex flex-col" onMouseDown={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b hairline flex-shrink-0">
           <h2 className="font-display text-lg">设置</h2>
           <div className="flex items-center gap-2">
