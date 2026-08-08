@@ -74,12 +74,12 @@ const DEFAULT_DOMAINS = ['Agent 应用与开发', 'Python 编程']
 const CATEGORIES: Array<{ key: string; desc: string }> = [
   { key: '系统学习', desc: '入门路线与系统性教程' },
   { key: '技术工具', desc: '框架、协议与 API 文档' },
-  { key: '百科', desc: '名词速览与深入介绍' },
+  { key: '百科词条', desc: '名词速览与深入介绍' },
 ]
-const WIKI_CAT = '百科'
+const WIKI_CAT = '百科词条'
 
 /** 分类图标（竖向展开列表用） */
-const CAT_ICONS: Record<string, any> = { '系统学习': BookOpen, '技术工具': Wrench, '百科': Library }
+const CAT_ICONS: Record<string, any> = { '系统学习': BookOpen, '技术工具': Wrench, '百科词条': Library }
 
 /** 旧数据分类名 → 新三类 */
 const LEGACY_CAT_MAP: Record<string, string> = {
@@ -328,7 +328,7 @@ export default function ResourceView({ projectId }: { projectId: string | null }
   const catTutorials = domainTutorials.filter(t => normalizeCat(t.category) === selectedCat)
   const tutorialList: ListItem[] = catTutorials.map(t => ({
     id: t.id, title: t.title,
-    sub: t.preset ? `预置 · ${t.category}` : `手动添加 · ${t.category}`,
+    sub: t.category,
     time: '',
     body: t.desc || '暂无简介', icon: BookOpen,
     kind: 'tutorial' as const, url: t.url,
@@ -439,7 +439,7 @@ export default function ResourceView({ projectId }: { projectId: string | null }
       <div className="flex items-end justify-between mb-5">
         <div>
           <h2 className="text-lg font-bold flex items-center gap-2">
-            <Library size={18} /> {selectedDomain} · 百科
+            <Library size={18} /> {selectedDomain} · 百科词条
           </h2>
         </div>
       </div>
