@@ -385,6 +385,7 @@ function App() {
         statsCollapsed={statsCollapsed} onToggleStats={() => setStatsCollapsed(!statsCollapsed)}
         flowMindchain={flowMindchain}
           onOpenGuide={() => setShowGuide(true)}
+          onOpenSettings={() => setShowSettings(true)}
         projectInitialized={currentProject?.initialized !== false}
       />
       {/* 右侧栏 */}

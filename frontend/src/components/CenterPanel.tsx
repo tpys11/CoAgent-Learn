@@ -13,10 +13,11 @@ interface CenterPanelProps {
   onToggleStats: () => void
   flowMindchain: Array<{agent: string; content: string}>
   onOpenGuide?: () => void
+  onOpenSettings?: () => void
   projectInitialized?: boolean
 }
 
-export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, statsCollapsed, onToggleStats, flowMindchain, onOpenGuide, projectInitialized }: CenterPanelProps) {
+export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, statsCollapsed, onToggleStats, flowMindchain, onOpenGuide, onOpenSettings, projectInitialized }: CenterPanelProps) {
   const [input, setInput] = useState('')
   const [chatMode, setChatMode] = useState<'kb'|'free'>('kb')
   // 上次会话保存的三条追问（进入对话时展示，抢占注意力）
@@ -140,7 +141,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   const [providerKeys, setProviderKeys] = useState<Record<string, string>>(() => {
     try { return JSON.parse(localStorage.getItem('coagent-provider-keys') || '{}') } catch { return {} }
   })
-  const [modelKeyInput, setModelKeyInput] = useState(() => (JSON.parse(localStorage.getItem('coagent-provider-keys') || '{}') || {})['deepseek'] || '')
+  const [modelKeyInput, setModelKeyInput] = useState('')
   const searchRef = useRef<HTMLDivElement>(null)
   const [showInputOpt, setShowInputOpt] = useState(false)
   const inputOptRef = useRef<HTMLDivElement>(null)
@@ -591,15 +592,19 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                       </button>
                     ))}
                   </div>
-                  <div className="flex gap-1.5">
-                    <input
-                      type="password"
-                      value={providerKeys[p.id] || ''}
-                      onChange={(e) => { const next = { ...providerKeys, [p.id]: e.target.value }; setProviderKeys(next); localStorage.setItem('coagent-provider-keys', JSON.stringify(next)) }}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      placeholder={`${p.name} API Key`}
-                      className="flex-1 px-2.5 py-1.5 input-surface rounded-lg text-xs outline-none"
-                    />
+                  <div className="flex items-center justify-between gap-2">
+                    {(providerKeys[p.id] || '').length > 8 ? (
+                      <span className="text-[10px] text-green-600">✓ 已配置 API Key</span>
+                    ) : (
+                      <>
+                        <span className="text-[10px] text-dim">未配置 API Key</span>
+                        <button
+                          onClick={() => { setShowModelModal(false); onOpenSettings && onOpenSettings() }}
+                          className="text-[10px] text-[var(--accent)] hover:underline flex-shrink-0">
+                          去设置填写
+                        </button>
+                      </>
+                    )}
                     {selectedProvider === p.id && (
                       <button
                         onClick={() => setShowModelModal(false)}
@@ -611,7 +616,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                 </div>
               ))}
             </div>
-            <p className="text-[10px] text-dim px-4 pb-3 flex-shrink-0">各厂家 API Key 分别保存在浏览器本地；选择模型后发送消息即使用对应厂家接口。</p>
+            <p className="text-[10px] text-dim px-4 pb-3 flex-shrink-0">API Key 统一在「设置 → 模型与 API Key」中填写，此处仅选择模型。</p>
           </div>
         </div>
       )}
