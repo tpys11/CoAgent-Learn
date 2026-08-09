@@ -128,12 +128,12 @@ function TreeNodeRow({ node, colorOf, depth, defaultOpen }: { node: any; colorOf
 }
 
 function KnowledgeTree({ treeDocs, progressItems }: { treeDocs: Array<{ source: string; tree: any[] }>; progressItems: any[] }) {
-  // 掌握度颜色：节点名与知识点/难点名双向包含匹配
+  // 掌握度颜色：节点名与知识点/难点名双向包含匹配；掌握越好颜色越深（主题色深浅），未提及灰色
   const colorOf = (name: string) => {
     const hit = (progressItems || []).find((it: any) => it.name && name && (name.includes(it.name) || it.name.includes(name)))
     if (!hit) return 'var(--text-dim)'
     const r = hit.retrievability || 0
-    return r >= 0.9 ? '#10b981' : r >= 0.7 ? '#f59e0b' : '#ef4444'
+    return `color-mix(in srgb, var(--accent) ${Math.round(30 + r * 70)}%, var(--bg-panel))`
   }
   const hasAny = (treeDocs || []).some(d => (d.tree || []).length > 0)
   if (!hasAny) {
@@ -602,9 +602,10 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                               <div className="flex flex-col gap-1.5">
                                 {kps.map((it: any) => {
                                   const r = it.retrievability || 0
-                                  const cls = r >= 0.9 ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : r >= 0.7 ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-red-50 text-red-700 border-red-200'
+                                  const bg = `color-mix(in srgb, var(--accent) ${Math.round(6 + r * 34)}%, var(--bg-panel))`
+                                  const bd = `color-mix(in srgb, var(--accent) ${Math.round(20 + r * 50)}%, transparent)`
                                   return (
-                                    <div key={it.name} className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-[10px] ${cls}`} style={{ opacity: 0.45 + r * 0.55 }}>
+                                    <div key={it.name} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-[10px]" style={{ background: bg, borderColor: bd }}>
                                       <span className="font-medium truncate">{it.name}</span>
                                       <span className="ml-auto text-dim flex-shrink-0">{it.daysSince >= 999 ? '未提及' : `${it.daysSince} 天前`} · {it.mastery}%</span>
                                       {it.forgotten && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 flex-shrink-0">待复习</span>}
