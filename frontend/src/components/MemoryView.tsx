@@ -890,7 +890,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
             <p className="text-xs text-[var(--text-muted)] leading-relaxed">进入对话界面后，AI 会重新分析该项目的对话与资料，并更新项目记忆（基本情况、知识图谱、进度等）。修改在对话中完成。</p>
             <div className="flex gap-2">
               <button onClick={() => setShowModifyTip(false)} className="flex-1 py-2 rounded-xl border hairline text-[11px] text-dim hover:bg-[var(--bg-hover)] transition-colors">取消</button>
-              <button onClick={() => { setShowModifyTip(false); onRequestAnalyze?.(p?.name || pid) }}
+              <button onClick={() => { setShowModifyTip(false); const ap = projects.find(x => x.id === activeProject); onRequestAnalyze?.(ap?.name || activeProject || '') }}
                 className="flex-1 py-2 rounded-xl text-[11px] font-medium text-white" style={{ background: 'var(--accent)' }}>进入对话</button>
             </div>
           </div>
