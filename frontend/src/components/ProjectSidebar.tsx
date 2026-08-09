@@ -49,7 +49,7 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
                 ? '暂无记忆，对话后自动分析生成。'
                 : memLines.map(([k, v]) => `${k}：${v}`).join('；')}
             </p>
-            <button onClick={onOpenMemory} className="text-[10px] font-semibold text-[var(--accent)] hover:underline w-fit">
+            <button onClick={onOpenMemory} className="text-[10px] font-semibold text-[var(--accent)] hover:underline ml-auto">
               查看更多
             </button>
           </div>
