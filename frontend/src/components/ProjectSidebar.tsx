@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
-import { ArrowLeft, MessageSquare, FileText, X, Plus, ChevronDown } from 'lucide-react'
+import { ArrowLeft, MessageSquare, FileText, X, Plus, ChevronDown, PanelLeftClose, SlidersHorizontal } from 'lucide-react'
 
 interface Dialogue { id: string; name: string }
 
 /** 项目专属侧栏：项目记忆 / 项目资源 / 对话（不再与其他项目并列） */
-export default function ProjectSidebar({ project, dialogues, currentDialogueId, onHome, onSelectDialogue, onCreateDialogue, onArchiveDialogue, onOpenMemory, onOpenResource }: {
+export default function ProjectSidebar({ project, dialogues, currentDialogueId, onHome, onSelectDialogue, onCreateDialogue, onArchiveDialogue, onOpenMemory, onOpenResource, onCollapse }: {
   project: { id: string; name: string } | null
   dialogues: Dialogue[]
   currentDialogueId: string | null
@@ -14,12 +14,30 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
   onArchiveDialogue: (id: string) => void
   onOpenMemory: () => void
   onOpenResource: () => void
+  onCollapse: () => void
 }) {
   const [memSummary, setMemSummary] = useState<Record<string, any>>({})
   const [kbDocs, setKbDocs] = useState<Array<{ source: string; chunks: number }>>([])
   // 区块折叠：记忆与进程 / 资源 / 对话（点击标题栏展开/收起，与右侧栏一致）
   const [collapsed, setCollapsed] = useState<Record<'memory' | 'resource' | 'chat', boolean>>({ memory: false, resource: false, chat: false })
   const toggle = (k: 'memory' | 'resource' | 'chat') => setCollapsed(prev => ({ ...prev, [k]: !prev[k] }))
+  // 栏目展示开关（与右侧栏一致，持久化）
+  const [visible, setVisible] = useState<Record<'memory' | 'resource' | 'chat', boolean>>(() => {
+    try { return { memory: true, resource: true, chat: true, ...(JSON.parse(localStorage.getItem('coagent-project-sidebar-v') || '{}')) } } catch { return { memory: true, resource: true, chat: true } }
+  })
+  const [showSettings, setShowSettings] = useState(false)
+  const toggleVisible = (k: 'memory' | 'resource' | 'chat') => {
+    setVisible(prev => {
+      const next = { ...prev, [k]: !prev[k] }
+      localStorage.setItem('coagent-project-sidebar-v', JSON.stringify(next))
+      return next
+    })
+  }
+  const SECTIONS: Array<{ key: 'memory' | 'resource' | 'chat'; label: string }> = [
+    { key: 'memory', label: '记忆与进程' },
+    { key: 'resource', label: '资源' },
+    { key: 'chat', label: '对话' },
+  ]
   useEffect(() => {
     if (!project) { setMemSummary({}); setKbDocs([]); return }
     fetch('/api/project-memory/' + encodeURIComponent(project.id), { cache: 'no-store' })
@@ -35,15 +53,40 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* 顶部：返回主页 + 项目名 */}
+      {/* 顶部：返回主页 + 项目名 + 展示设置/折叠按钮 */}
       <div className="p-3.5 border-b hairline flex flex-col gap-2.5 flex-shrink-0">
         <button onClick={onHome} className="flex items-center gap-1.5 text-[11px] text-dim hover:text-[var(--text)] transition-colors w-fit">
           <ArrowLeft size={13} /> 返回主页
         </button>
-        <p className="text-sm font-bold truncate">{project?.name || '项目'}</p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm font-bold truncate">{project?.name || '项目'}</p>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <div className="relative">
+              <button onClick={() => setShowSettings(!showSettings)} className="w-6 h-6 flex items-center justify-center rounded-lg icon-btn" title="左侧栏展示设置">
+                <SlidersHorizontal size={13} />
+              </button>
+              {showSettings && (
+                <div className="absolute right-0 top-full mt-1 card-lift p-2 z-30 w-48">
+                  <p className="text-[10px] font-semibold text-dim uppercase tracking-wider px-2 mb-1">在此处展示</p>
+                  {SECTIONS.map(s => (
+                    <label key={s.key} className="flex items-center gap-2 px-2 py-1.5 rounded-lg row-hover cursor-pointer">
+                      <input type="checkbox" checked={visible[s.key]} onChange={() => toggleVisible(s.key)}
+                        className="w-3.5 h-3.5 accent-[var(--accent)]" />
+                      <span className="text-[11px]">{s.label}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button onClick={onCollapse} className="w-6 h-6 flex items-center justify-center rounded-lg icon-btn" title="收起侧栏">
+              <PanelLeftClose size={14} />
+            </button>
+          </div>
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-4">
         {/* 记忆与进程：点击标题展开/收起 */}
+        {visible.memory && (
         <div className="flex flex-col gap-2">
           <button onClick={() => toggle('memory')} className="flex items-center gap-1.5 text-xs font-semibold text-dim uppercase tracking-wider">
             记忆与进程
@@ -62,7 +105,9 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
             </div>
           )}
         </div>
+        )}
         {/* 资源：点击标题展开/收起 */}
+        {visible.resource && (
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <button onClick={() => toggle('resource')} className="flex items-center gap-1.5 text-xs font-semibold text-dim uppercase tracking-wider">
@@ -87,7 +132,9 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
             </div>
           )}
         </div>
+        )}
         {/* 对话：点击标题展开/收起 */}
+        {visible.chat && (
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
             <button onClick={() => toggle('chat')} className="flex items-center gap-1.5 text-xs font-semibold text-dim uppercase tracking-wider">
@@ -118,6 +165,7 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
             </div>
           )}
         </div>
+        )}
       </div>
     </div>
   )

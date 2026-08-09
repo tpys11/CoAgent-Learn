@@ -409,6 +409,7 @@ function App() {
             onArchiveDialogue={handleArchiveDialogue}
             onOpenMemory={() => { setProjectConfigTab('memory'); setShowProjectConfig(true) }}
             onOpenResource={() => { setProjectConfigTab('resource'); setShowProjectConfig(true) }}
+            onCollapse={() => setSidebarCollapsed(true)}
           />
         </div>
         {/* 左侧拖拽手柄 */}
