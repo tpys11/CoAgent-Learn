@@ -202,9 +202,6 @@ function KnowledgeTree({ treeDocs, progressItems }: { treeDocs: Array<{ source: 
           <rect x="70" y="44" width="16" height="12" rx="3" stroke="#d4d4d4" strokeDasharray="3 3" />
           <circle cx="45" cy="50" r="6" stroke="#d4d4d4" strokeDasharray="3 3" />
         </svg>
-        <div className="flex flex-col gap-1 text-[11px] text-dim">
-          <span>暂无知识图谱</span>
-        </div>
       </div>
     )
   }
@@ -718,7 +715,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                                 <section>
                                   <h3 className="text-[11px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--accent)' }}>基本情况</h3>
                                   <div className="border hairline rounded-xl px-5 py-4 bg-[var(--bg-input)] min-h-[120px] text-[13px] leading-7 text-[var(--text)]">
-                                    {(data?.fields['抽象项目情况'] || '').trim() ? <MiniMD text={data?.fields['抽象项目情况'] || ''} /> : <span className="text-dim">（待 AI 分析）</span>}
+                                    {(data?.fields['抽象项目情况'] || '').trim() ? <MiniMD text={data?.fields['抽象项目情况'] || ''} /> : null}
                                   </div>
                                 </section>
                                 {/* 第三栏：大框内三个横向矩形（目的 / 初始情况 / 当前情况） */}
@@ -729,7 +726,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                                         <div key={k} className="rounded-xl border hairline bg-[var(--bg-panel)] px-4 py-3.5 flex flex-col gap-2 min-h-[110px]">
                                           <span className="text-[10px] font-semibold uppercase tracking-wider text-dim">{title}</span>
                                           <div className="text-xs leading-relaxed text-[var(--text)] line-clamp-5">
-                                            {(data?.fields[k] || '').trim() ? <MiniMD text={data?.fields[k] || ''} /> : <span className="text-dim">（待 AI 分析）</span>}
+                                            {(data?.fields[k] || '').trim() ? <MiniMD text={data?.fields[k] || ''} /> : null}
                                           </div>
                                         </div>
                                       ))}
