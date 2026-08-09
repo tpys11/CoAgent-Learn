@@ -50,6 +50,8 @@ function App() {
   const [showSettings, setShowSettings] = useState(false)
   // 项目配置弹窗（Sidebar 项目三点进入：项目记忆 / 项目资源）
   const [showProjectConfig, setShowProjectConfig] = useState(false)
+  // 弹窗默认页签（记忆与进程 / 资源）
+  const [projectConfigTab, setProjectConfigTab] = useState<'memory' | 'resource'>('memory')
   const [projectKBId, setProjectKBId] = useState<string | null>(null)
   const [wizard, setWizard] = useState<{mode: 'project'|'dialogue'; id: string; name?: string} | null>(null)
   const [showGuide, setShowGuide] = useState(false)
@@ -405,8 +407,8 @@ function App() {
             onSelectDialogue={handleSelectDialogue}
             onCreateDialogue={() => currentProjectId && handleCreateDialogue(currentProjectId)}
             onArchiveDialogue={handleArchiveDialogue}
-            onOpenMemory={() => setShowProjectConfig(true)}
-            onOpenResource={() => setShowProjectConfig(true)}
+            onOpenMemory={() => { setProjectConfigTab('memory'); setShowProjectConfig(true) }}
+            onOpenResource={() => { setProjectConfigTab('resource'); setShowProjectConfig(true) }}
             onCollapse={() => setSidebarCollapsed(true)}
           />
         </div>
@@ -463,6 +465,7 @@ function App() {
       {showProjectConfig && (
         <ProjectConfigModal
           projectId={projectKBId ?? currentProjectId}
+          initialTab={projectConfigTab}
           onRequestModify={handleRequestModify}
           onRequestAnalyze={handleRequestAnalyze}
           onClose={() => setShowProjectConfig(false)}

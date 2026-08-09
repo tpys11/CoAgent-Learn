@@ -3,30 +3,32 @@ import { FileText, BookOpen, Upload, Trash2 } from 'lucide-react'
 import MemoryView from './MemoryView'
 import ResourceView from './ResourceView'
 
-/** 项目记忆与资源窗口：左右两栏——左为记忆与进程，右为资源（分别展示对应界面） */
-export default function ProjectConfigModal({ projectId, onRequestModify, onRequestAnalyze, onClose }: {
+/** 项目记忆与资源窗口：点击侧栏对应「查看更多」进入（initialTab 决定默认展示），页签可切换 */
+export default function ProjectConfigModal({ projectId, onRequestModify, onRequestAnalyze, onClose, initialTab = 'memory' }: {
   projectId: string | null
   onRequestModify?: (label: string, pid?: string) => void
   onRequestAnalyze?: (projectName: string) => void
   onClose: () => void
+  initialTab?: 'memory' | 'resource'
 }) {
+  const [tab, setTab] = useState<'memory' | 'resource'>(initialTab)
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-6" onClick={onClose}>
-      <div className="w-[min(1500px,96vw)] h-[92vh] panel rounded-3xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center gap-2 px-4 py-2.5 border-b hairline flex-shrink-0">
-          <h3 className="text-sm font-bold">记忆与资源</h3>
+      <div className="w-[min(1400px,96vw)] h-[92vh] panel rounded-3xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-1 px-4 py-2.5 border-b hairline flex-shrink-0">
+          {([['memory', '记忆与进程'], ['resource', '资源']] as const).map(([key, label]) => (
+            <button key={key} onClick={() => setTab(key)}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${tab === key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'}`}>
+              {label}
+            </button>
+          ))}
           <span className="flex-1" />
           <button onClick={onClose} className="w-7 h-7 rounded-lg icon-btn flex items-center justify-center text-xs" title="关闭">✕</button>
         </div>
-        <div className="flex-1 min-h-0 flex overflow-hidden">
-          {/* 左栏：记忆与进程 */}
-          <div className="w-1/2 min-w-0 border-r hairline overflow-hidden">
-            <MemoryView projectId={projectId} projectOnly onRequestModify={onRequestModify} onRequestAnalyze={onRequestAnalyze} />
-          </div>
-          {/* 右栏：资源 */}
-          <div className="w-1/2 min-w-0 overflow-hidden">
-            <ProjectResources projectId={projectId} />
-          </div>
+        <div className="flex-1 min-h-0 overflow-hidden">
+          {tab === 'memory'
+            ? <MemoryView projectId={projectId} projectOnly onRequestModify={onRequestModify} onRequestAnalyze={onRequestAnalyze} />
+            : <ProjectResources projectId={projectId} />}
         </div>
       </div>
     </div>
