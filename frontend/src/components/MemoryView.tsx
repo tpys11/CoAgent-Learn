@@ -338,8 +338,8 @@ function TimeLineChart({ days, height = 90 }: { days: Record<string, any[]>; hei
   )
 }
 
-export default function MemoryView({ projectId, onRequestModify, onRequestAnalyze }: { projectId: string | null; onRequestModify?: (label: string, pid?: string) => void; onRequestAnalyze?: (projectName: string) => void }) {
-  const [level, setLevel] = useState<'global' | 'project'>('global')
+export default function MemoryView({ projectId, onRequestModify, onRequestAnalyze, projectOnly }: { projectId: string | null; onRequestModify?: (label: string, pid?: string) => void; onRequestAnalyze?: (projectName: string) => void; projectOnly?: boolean }) {
+  const [level, setLevel] = useState<'global' | 'project'>(projectOnly ? 'project' : 'global')
   // 项目列表
   const [projects, setProjects] = useState<Array<{ id: string; name: string; is_default?: boolean; created_at?: string }>>([])
   const [selectedProject, setSelectedProject] = useState<string | null>(projectId)
@@ -524,7 +524,8 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
 
   return (
     <div className="flex-1 h-full min-w-0 flex panel rounded-3xl overflow-hidden">
-      {/* 左侧：两级导航 + 项目列表 */}
+      {/* 左侧：两级导航 + 项目列表（projectOnly 时不显示，仅项目记忆） */}
+      {!projectOnly && (
       <div className="w-52 bg-[var(--bg-sidebar)] border-r hairline flex flex-col flex-shrink-0">
         <div className="p-3 border-b hairline flex items-center justify-between">
           <h2 className="text-sm font-bold flex items-center gap-1.5"><Brain size={15} /> 记忆系统</h2>
@@ -546,6 +547,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
         </div>
         <div className="flex-1" />
       </div>
+      )}
 
       {/* 右侧内容 */}
       <div className="flex-1 overflow-y-auto p-6">

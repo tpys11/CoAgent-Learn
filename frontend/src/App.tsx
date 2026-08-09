@@ -438,6 +438,7 @@ function App() {
           projectId={projectKBId ?? currentProjectId}
           onRequestModify={handleRequestModify}
           onRequestAnalyze={handleRequestAnalyze}
+          onOpenResources={() => { setShowProjectConfig(false); setView('resources') }}
           onClose={() => setShowProjectConfig(false)}
         />
       )}
