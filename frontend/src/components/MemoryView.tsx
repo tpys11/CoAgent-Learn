@@ -314,16 +314,17 @@ function TimeLineChart({ days, height = 90 }: { days: Record<string, any[]>; hei
           <text x={W / 2} y={H / 2} textAnchor="middle" fontSize="4.5" fill="#b5b5b5">暂无对话数据</text>
         )}
       </svg>
+      {/* 时间显示（最早 | 今天）：位于滑块之上 */}
+      <div className="flex items-center justify-between text-[9px] text-dim">
+        <span>{allDates[0]?.slice(5)}</span>
+        <span>今天</span>
+      </div>
       {/* 范围滑块：轨道 + 可变长滑块（最左 = 最早，最右 = 今天；滑块长度 = 当前跨度比例，拖动平移） */}
       <div ref={trackRef} className="relative h-5 flex items-center select-none" style={{ touchAction: 'none' }}
         onPointerDown={onTrackDown} onPointerMove={onTrackMove} onPointerUp={onTrackUp} onPointerLeave={onTrackUp}>
         <div className="absolute left-0 right-0 h-[3px] rounded-full bg-[#e5e5e5]" />
         <div className="absolute h-3.5 rounded-md cursor-grab active:cursor-grabbing shadow transition-[width] duration-150"
           style={{ background: 'var(--accent)', left: (start / total) * 100 + '%', width: Math.max(4, (span / total) * 100) + '%' }} />
-      </div>
-      <div className="flex items-center justify-between text-[9px] text-dim">
-        <span>{allDates[0]?.slice(5)}</span>
-        <span>今天</span>
       </div>
       {/* 显示范围滑块：越往右显示范围越小（放大细节） */}
       <div className="flex items-center gap-2 text-[9px] text-dim">
