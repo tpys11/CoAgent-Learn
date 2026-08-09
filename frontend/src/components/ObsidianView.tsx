@@ -226,18 +226,20 @@ function TreeGraph({ nodes, rootName, open, onToggle, onOpen, currentPath }: {
   viewRef.current = view
   const dragRef = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null)
 
-  // 子树高度（折叠/叶子 = 单节点高；展开 = 子块和 + 间距）
+  // 子树高度（根节点始终展开；折叠/叶子 = 单节点高；展开 = 子块和 + 间距）
+  const isRootNode = (n: TreeNode) => n.path === '/'
   const subtreeH = (n: TreeNode): number => {
-    if (n.kind !== 'dir' || !open.has(n.path) || !n.children?.length) return NODE_H
+    if (n.kind !== 'dir' || !n.children?.length) return NODE_H
+    if (!isRootNode(n) && !open.has(n.path)) return NODE_H
     return n.children.reduce((s, c) => s + subtreeH(c), 0) + YGAP * (n.children.length - 1)
   }
   const rootNode: TreeNode = { name: rootName || '库', path: '/', kind: 'dir', children: nodes }
   const positions: Array<{ node: TreeNode; x: number; y: number; px: number | null; py: number | null }> = []
   let maxDepth = 0
-  // 递归放置：父节点垂直居中于其子树，子块依次堆叠
+  // 递归放置：父节点垂直居中于其子树，子块依次堆叠（根节点始终展开）
   const place = (n: TreeNode, x: number, topY: number, depth: number, px: number | null, py: number | null): number => {
     if (depth > maxDepth) maxDepth = depth
-    if (n.kind !== 'dir' || !open.has(n.path) || !n.children?.length) {
+    if (n.kind !== 'dir' || !n.children?.length || (!isRootNode(n) && !open.has(n.path))) {
       positions.push({ node: n, x, y: topY, px, py })
       return topY + NODE_H
     }
