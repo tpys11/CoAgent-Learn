@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { marked } from 'marked'
-import { BookOpen, FileText, FolderOpen, FolderClosed } from 'lucide-react'
+import { BookOpen, FileText, FolderOpen, FolderClosed, List, Network } from 'lucide-react'
 
 marked.setOptions({ breaks: true })
 
@@ -97,6 +97,35 @@ function TreeItem({ node, open, onToggle, onOpen, depth }: {
   )
 }
 
+/** 树状图展开：缩进 + 竖直连接线 + 每行横向短线（父子层级连线可见） */
+function TreeChart({ node, open, onToggle, onOpen }: {
+  node: TreeNode
+  open: Set<string>
+  onToggle: (p: string) => void
+  onOpen: (n: TreeNode) => void
+}) {
+  const isDir = node.kind === 'dir'
+  const expanded = open.has(node.path)
+  return (
+    <div className="tree-node">
+      <button onClick={() => isDir ? onToggle(node.path) : onOpen(node)}
+        className={`tree-row w-full flex items-center gap-1.5 pr-2 py-1.5 rounded-lg text-left text-xs transition-colors hover:bg-[var(--bg-hover)] ${!isDir ? 'text-[var(--text-muted)]' : 'font-medium'}`}>
+        {isDir
+          ? (expanded ? <FolderOpen size={13} className="text-dim flex-shrink-0" /> : <FolderClosed size={13} className="text-dim flex-shrink-0" />)
+          : <FileText size={12} className="text-dim flex-shrink-0" />}
+        <span className="truncate">{node.name.replace(/\.md$/, '')}</span>
+      </button>
+      {isDir && expanded && node.children && node.children.length > 0 && (
+        <div className="tree-children">
+          {node.children.map(c => (
+            <TreeChart key={c.path} node={c} open={open} onToggle={onToggle} onOpen={onOpen} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** Obsidian 界面：连接本机 Obsidian 库文件夹（File System Access API，零后端），文件树 + 文章阅读 */
 export default function ObsidianView() {
   const [rootHandle, setRootHandle] = useState<FileSystemDirectoryHandle | null>(null)
@@ -104,6 +133,8 @@ export default function ObsidianView() {
   const [tree, setTree] = useState<TreeNode[]>([])
   const [open, setOpen] = useState<Set<string>>(new Set())
   const [current, setCurrent] = useState<{ path: string; content: string } | null>(null)
+  // 展开方式：列表（缩进列表）/ 树状图（带连接线），持久化记忆
+  const [expandMode, setExpandMode] = useState<'list' | 'tree'>(() => localStorage.getItem('coagent-obsidian-mode') === 'tree' ? 'tree' : 'list')
 
   // 恢复上次连接
   useEffect(() => {
@@ -135,6 +166,10 @@ export default function ObsidianView() {
   }
   const toggle = (p: string) => {
     setOpen(prev => { const n = new Set(prev); n.has(p) ? n.delete(p) : n.add(p); return n })
+  }
+  const switchMode = (m: 'list' | 'tree') => {
+    setExpandMode(m)
+    localStorage.setItem('coagent-obsidian-mode', m)
   }
   const openFile = async (node: TreeNode) => {
     if (!rootHandle) return
@@ -170,12 +205,31 @@ export default function ObsidianView() {
         ) : (
           <>
             <div className="px-4 py-2 border-b hairline text-[11px] font-medium truncate">{rootName}</div>
+            {/* 展开方式切换 */}
+            <div className="px-3 py-1.5 border-b hairline flex items-center gap-1">
+              <button onClick={() => switchMode('list')}
+                className={`px-2.5 py-1 rounded-lg text-[10px] flex items-center gap-1 transition-colors ${expandMode === 'list' ? 'bg-[#1a1a1a] text-white' : 'text-dim hover:bg-[var(--bg-hover)]'}`}>
+                <List size={11} /> 列表
+              </button>
+              <button onClick={() => switchMode('tree')}
+                className={`px-2.5 py-1 rounded-lg text-[10px] flex items-center gap-1 transition-colors ${expandMode === 'tree' ? 'bg-[#1a1a1a] text-white' : 'text-dim hover:bg-[var(--bg-hover)]'}`}>
+                <Network size={11} /> 树状图
+              </button>
+            </div>
             <div className="flex-1 overflow-y-auto p-2">
               {tree.length === 0 ? (
                 <p className="text-[11px] text-dim text-center py-6">未找到 .md 文件</p>
-              ) : tree.map(n => (
-                <TreeItem key={n.path} node={n} open={open} onToggle={toggle} onOpen={openFile} depth={0} />
-              ))}
+              ) : expandMode === 'list' ? (
+                tree.map(n => (
+                  <TreeItem key={n.path} node={n} open={open} onToggle={toggle} onOpen={openFile} depth={0} />
+                ))
+              ) : (
+                <div className="tree-root">
+                  {tree.map(n => (
+                    <TreeChart key={n.path} node={n} open={open} onToggle={toggle} onOpen={openFile} />
+                  ))}
+                </div>
+              )}
             </div>
           </>
         )}
@@ -189,6 +243,25 @@ export default function ObsidianView() {
         )}
       </div>
       <style>{`
+        .tree-children {
+          margin-left: 11px;
+          padding-left: 12px;
+          border-left: 1px solid var(--border-color);
+          display: flex;
+          flex-direction: column;
+        }
+        .tree-children > .tree-node > .tree-row {
+          position: relative;
+        }
+        .tree-children > .tree-node > .tree-row::before {
+          content: '';
+          position: absolute;
+          left: -12px;
+          top: 50%;
+          width: 12px;
+          height: 1px;
+          background: var(--border-color);
+        }
         .obsidian-prose { font-size: 15px; line-height: 1.75; color: var(--text); word-break: break-word; }
         .obsidian-prose h1, .obsidian-prose h2, .obsidian-prose h3, .obsidian-prose h4, .obsidian-prose h5, .obsidian-prose h6 {
           font-weight: 700; margin: 1.6em 0 0.6em; line-height: 1.4;
