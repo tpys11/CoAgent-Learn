@@ -14,12 +14,6 @@ interface Props {
 
 type Block = 'agents' | 'skills' | 'templates'
 
-const MODEL_OPTIONS = [
-  { key: 'global', label: '跟随全局' },
-  { key: 'main', label: '强模型' },
-  { key: 'fast', label: '快模型' },
-] as const
-
 /** Agent id → 其工作流节点（运行监控按节点过滤） */
 const NODE_BY_AGENT: Record<string, string[]> = {
   main: ['plan', 'generate'], study: ['study_memory'], kb: ['kb'], review: ['review'],
@@ -311,9 +305,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   const [skillDetail, setSkillDetail] = useState<{ name: string; description: string; folder: string; category: string } | null>(null)
   // 模板与编排：Agent 自定义选中的 Agent
   const [templateAgentId, setTemplateAgentId] = useState(agents[0]?.id || '')
-  // 右侧设定栏可拖拽宽度
-  const [tplPanelWidth, setTplPanelWidth] = useState(520)
-  const dragPanelRef = useRef<{ startX: number; startW: number } | null>(null)
   // 模板与编排：选中模板（展开详情）、自定义模板、保存名称
   const [selectedTpl, setSelectedTpl] = useState<string | null>(null)
   const [customTemplates, setCustomTemplates] = useState<Array<{ name: string; desc: string; agents: AgentConfig[] }>>(() => {
@@ -343,24 +334,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   })
   // 该 Agent 的运行监控（最近任务中其节点的耗时/调用）
   const [agentRuns, setAgentRuns] = useState<Array<{ created_at: string; ms: number; calls: number }>>([])
-  // 右侧设定栏拖拽
-  const startDragPanel = (e: React.MouseEvent) => {
-    e.preventDefault()
-    dragPanelRef.current = { startX: e.clientX, startW: tplPanelWidth }
-    document.body.style.userSelect = 'none'
-  }
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      const d = dragPanelRef.current
-      if (!d) return
-      const w = Math.max(240, Math.min(520, d.startW - (e.clientX - d.startX)))
-      setTplPanelWidth(w)
-    }
-    const onUp = () => { dragPanelRef.current = null; document.body.style.userSelect = '' }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
-  }, [])
 
   useEffect(() => {
     setMode(agent?.mode || '均衡')
@@ -430,9 +403,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   }
 
   const fieldLabel = 'text-xs font-semibold text-dim uppercase tracking-wider mb-2 block'
-  // 模板与编排：当前自定义 Agent + 保存
-  const tplAgent = agents.find(a => a.id === templateAgentId) || agents[0]
-  const commitTpl = (patch: Partial<AgentConfig>) => { if (tplAgent) onSave({ ...tplAgent, ...patch }) }
   // 模板与编排：模板集合（预设 + 自定义）、保存自定义
   const allTemplates = [...PRESET_TEMPLATES, ...customTemplates]
   const saveCustomTemplate = () => {
@@ -807,85 +777,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
           </div>
         )}
       </div>
-      {/* 最右侧：拖拽手柄 + 选中 Agent 设定栏（仅模板与编排时显示） */}
-      {block === 'templates' && (
-        <>
-          <div onMouseDown={startDragPanel} title="拖拽调整宽度"
-            className="w-1.5 flex-shrink-0 cursor-ew-resize group flex items-center justify-center">
-            <span className="w-0.5 h-16 rounded-full bg-[var(--border-color)] opacity-0 group-hover:opacity-100 transition-opacity" />
-          </div>
-          <div className="flex-shrink-0 border-l hairline bg-[var(--bg-hover)] p-5 flex flex-col gap-4 overflow-y-auto" style={{ width: tplPanelWidth }}>
-          {tplAgent ? (
-            <>
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-bold">{tplAgent.name}</p>
-                {tplAgent.id === 'review' && (
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-dim">重试上限</span>
-                    <input type="number" min={1} max={5} value={tplAgent.retryMax ?? 2}
-                      onChange={e => { const n = parseInt(e.target.value, 10); if (!isNaN(n) && n >= 1 && n <= 5) commitTpl({ retryMax: n }) }}
-                      className="w-16 px-2 py-1.5 text-xs input-surface rounded-lg outline-none text-center" />
-                  </div>
-                )}
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">模型选择</p>
-                <div className="flex gap-2">
-                  {MODEL_OPTIONS.map(o => (
-                    <button key={o.key} onClick={() => commitTpl({ model: o.key })}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                        (tplAgent.model || 'global') === o.key ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-panel)] text-dim hover:bg-[var(--bg-active)]'
-                      }`}>{o.label}</button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">模式</p>
-                <div className="flex gap-2">
-                  {tplAgent.modes.map(m => (
-                    <button key={m.label} onClick={() => commitTpl({ mode: m.label })}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                        tplAgent.mode === m.label ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-panel)] text-dim hover:bg-[var(--bg-active)]'
-                      }`}>{m.label}</button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-2">全局性提示词</p>
-                <textarea value={tplAgent.systemPrompt} onChange={e => commitTpl({ systemPrompt: e.target.value })} rows={5}
-                  className="w-full px-3 py-2 border hairline rounded-xl text-xs font-mono outline-none resize-none focus:border-[var(--border-strong)] bg-[var(--bg-input)]" />
-              </div>
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-semibold text-dim uppercase tracking-wider">子 Agent</p>
-                  <button onClick={() => { setSubName(''); setSubForm(''); setSubPrompt(''); setShowSubAdd(true) }}
-                    className="text-[10px] px-2 py-1 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">＋ 添加</button>
-                </div>
-                {tplAgent.subAgents && tplAgent.subAgents.length > 0 ? (
-                  <div className="flex flex-col gap-2">
-                    {tplAgent.subAgents.map(s => (
-                      <div key={s.id} className="border hairline rounded-xl p-2.5 bg-[var(--bg-input)] flex flex-col gap-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[11px] font-medium truncate">{s.name}</span>
-                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--bg-panel)] text-dim flex-shrink-0">{s.form}</span>
-                          <button onClick={() => commitTpl({ subAgents: (tplAgent.subAgents || []).filter(x => x.id !== s.id) })}
-                            className="ml-auto text-dim hover:text-red-500 text-[10px] px-1" title="删除">✕</button>
-                        </div>
-                        <p className="text-[9px] text-dim leading-snug line-clamp-2">{s.subPrompt}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-[10px] text-dim">无</p>
-                )}
-              </div>
-            </>
-          ) : (
-            <p className="text-xs text-dim text-center py-10">点击节点选择 Agent</p>
-          )}
-        </div>
-        </>
-      )}
       {/* 中间层 Agent 设定弹窗（点击图中圆心节点打开） */}
       {showMidAgent && agent && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setShowMidAgent(false)}>
@@ -950,10 +841,9 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
               <button onClick={() => setShowSubAdd(false)} className="px-4 py-2 text-xs text-dim row-hover rounded-lg">取消</button>
               <button onClick={() => {
                 if (!subName.trim() || !subPrompt.trim()) return
-                const base = block === 'agents' ? agent : tplAgent
-                const next = [...(base?.subAgents || []), { id: 'sub-' + Date.now(), name: subName.trim(), subPrompt: subPrompt.trim(), form: subForm.trim() }]
-                if (block === 'agents') commit({ subAgents: next })
-                else commitTpl({ subAgents: next })
+                if (block !== 'agents' || !agent) return
+                const next = [...(agent.subAgents || []), { id: 'sub-' + Date.now(), name: subName.trim(), subPrompt: subPrompt.trim(), form: subForm.trim() }]
+                commit({ subAgents: next })
                 setShowSubAdd(false)
               }} className="px-4 py-2 text-xs bg-[#1a1a1a] text-white rounded-lg font-semibold">添加</button>
             </div>
