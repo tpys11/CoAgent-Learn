@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useRef } from 'react'
-import { Brain, User, FolderTree, Check, Loader2, PenLine } from 'lucide-react'
+import { Brain, User, FolderTree, Check, Loader2, PenLine, ChevronRight, ChevronDown } from 'lucide-react'
 
 /** 个人全局性记忆：基础信息字段（固定，纵向表单） */
 const BASIC_FIELDS = [
@@ -99,6 +99,123 @@ function CalendarHeatmap({ data, onPick }: { data: Record<string, number>; onPic
   )
 }
 
+/** 知识图谱（树）：复用上传资料自身的标题层级；节点颜色 = 基于对话估计的掌握状态
+ *  绿=掌握良好(≥0.9) 黄=一般(≥0.7) 红=薄弱/待复习；未提及节点灰色 */
+function TreeNodeRow({ node, colorOf, depth, defaultOpen }: { node: any; colorOf: (name: string) => string; depth: number; defaultOpen: boolean }) {
+  const [open, setOpen] = useState(defaultOpen || depth < 1)
+  const hasKids = (node.children || []).length > 0
+  const c = colorOf(node.name || '')
+  return (
+    <div className="flex flex-col">
+      <div className="flex items-center gap-1.5 py-0.5 min-h-[22px]" style={{ paddingLeft: depth * 16 }}>
+        {hasKids ? (
+          <button onClick={() => setOpen(!open)} className="flex-shrink-0 text-dim hover:text-[var(--text)]">
+            {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+          </button>
+        ) : <span className="w-[11px] flex-shrink-0" />}
+        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: c }} />
+        <span className="text-[11px] leading-snug truncate" style={{ color: c === 'var(--text-dim)' ? 'var(--text-muted)' : 'var(--text)' }}>{node.name}</span>
+      </div>
+      {hasKids && open && (
+        <div className="flex flex-col">
+          {(node.children || []).map((kid: any, i: number) => (
+            <TreeNodeRow key={i} node={kid} colorOf={colorOf} depth={depth + 1} defaultOpen={defaultOpen} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function KnowledgeTree({ treeDocs, progressItems }: { treeDocs: Array<{ source: string; tree: any[] }>; progressItems: any[] }) {
+  // 掌握度颜色：节点名与知识点/难点名双向包含匹配
+  const colorOf = (name: string) => {
+    const hit = (progressItems || []).find((it: any) => it.name && name && (name.includes(it.name) || it.name.includes(name)))
+    if (!hit) return 'var(--text-dim)'
+    const r = hit.retrievability || 0
+    return r >= 0.9 ? '#10b981' : r >= 0.7 ? '#f59e0b' : '#ef4444'
+  }
+  const hasAny = (treeDocs || []).some(d => (d.tree || []).length > 0)
+  if (!hasAny) {
+    // 空态：小空树占位（将来保存树状图的位置）
+    return (
+      <div className="min-h-[120px] border border-dashed hairline rounded-xl p-4 flex items-center justify-center gap-4">
+        <svg width="90" height="70" viewBox="0 0 90 70" fill="none">
+          <circle cx="45" cy="12" r="7" stroke="#d4d4d4" strokeDasharray="3 3" />
+          <path d="M45 19 V30 M45 30 H12 V44 M45 30 H78 V44" stroke="#d4d4d4" strokeDasharray="3 3" />
+          <rect x="4" y="44" width="16" height="12" rx="3" stroke="#d4d4d4" strokeDasharray="3 3" />
+          <rect x="70" y="44" width="16" height="12" rx="3" stroke="#d4d4d4" strokeDasharray="3 3" />
+          <circle cx="45" cy="50" r="6" stroke="#d4d4d4" strokeDasharray="3 3" />
+        </svg>
+        <div className="flex flex-col gap-1 text-[11px] text-dim">
+          <span>暂无知识图谱</span>
+          <span className="text-[10px]">上传带标题结构的资料后，自动按资料自身的章节层级生成树</span>
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-2.5">
+      {(treeDocs || []).map(d => (
+        <div key={d.source} className="border hairline rounded-xl px-3 py-2 bg-[var(--bg-input)] flex flex-col gap-0.5">
+          <div className="flex items-center gap-1.5 text-[10px] font-semibold text-dim mb-0.5">
+            <FolderTree size={11} /> {d.source}
+            <span className="ml-auto font-normal text-[9px]">（按资料章节层级）</span>
+          </div>
+          {(d.tree || []).map((n: any, i: number) => (
+            <TreeNodeRow key={i} node={n} colorOf={colorOf} depth={0} defaultOpen={false} />
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** 时间折线图：纵轴 = 当日内容量（对话产出条数），表示进度快慢 */
+function TimeLineChart({ days, height = 90 }: { days: Record<string, any[]>; height?: number }) {
+  const key = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const N = 14
+  const dates: string[] = []
+  const now = new Date()
+  for (let i = N - 1; i >= 0; i--) dates.push(key(new Date(now.getTime() - i * 86400000)))
+  const vals = dates.map(d => ((days || {})[d] || []).length)
+  const max = Math.max(1, ...vals)
+  const W = 100, H = 40
+  const pts = vals.map((v, i) => `${(i / (N - 1)) * W},${H - 6 - (v / max) * (H - 14)}`)
+  const hasData = vals.some(v => v > 0)
+  const last = dates[dates.length - 1]
+  return (
+    <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-1.5">
+      <div className="flex items-center justify-between text-[10px] text-dim">
+        <span className="font-semibold uppercase tracking-wider">内容量趋势<span className="ml-1 font-normal text-[9px] text-dim/70">近 {N} 天 · 纵轴为当日产出内容量</span></span>
+        {hasData && <span>今日 {vals[vals.length - 1]} 条 · 峰值 {max} 条</span>}
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height }} preserveAspectRatio="none">
+        {/* 网格线 */}
+        {[0.25, 0.5, 0.75].map(g => (
+          <line key={g} x1="0" y1={H - (H - 14) * g - 6} x2={W} y2={H - (H - 14) * g - 6} stroke="#ececec" strokeWidth="0.3" strokeDasharray="1.5 2" />
+        ))}
+        <line x1="0" y1={H - 6} x2={W} y2={H - 6} stroke="#d4d4d4" strokeWidth="0.4" />
+        {hasData ? (
+          <>
+            <polygon points={`${pts.join(' ')} ${W},${H - 6} 0,${H - 6}`} fill="var(--accent)" opacity="0.08" />
+            <polyline points={pts.join(' ')} fill="none" stroke="var(--accent)" strokeWidth="1.2" strokeLinejoin="round" strokeLinecap="round" />
+            {pts.map((p, i) => (
+              <circle key={i} cx={p.split(',')[0]} cy={p.split(',')[1]} r="1.3" fill={vals[i] > 0 ? 'var(--accent)' : '#d4d4d4'} />
+            ))}
+          </>
+        ) : (
+          <text x={W / 2} y={H / 2} textAnchor="middle" fontSize="4.5" fill="#b5b5b5">暂无对话数据 — 对话后按日产出量生成趋势</text>
+        )}
+      </svg>
+      <div className="flex items-center justify-between text-[9px] text-dim">
+        <span>{dates[0]?.slice(5)}</span>
+        <span>{last?.slice(5)}</span>
+      </div>
+    </div>
+  )
+}
+
 export default function MemoryView({ projectId, onRequestModify }: { projectId: string | null; onRequestModify?: (label: string, pid?: string) => void }) {
   const [level, setLevel] = useState<'global' | 'project'>('global')
   // 项目列表
@@ -112,7 +229,7 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
   const [gLoading, setGLoading] = useState(false)
 
   // 项目记忆（全部项目，默认展开显示）
-  const [projData, setProjData] = useState<Record<string, { fields: Record<string, string>; count: number; latest: string; days: Record<string, any[]>; progress: { items: any[]; daily: Array<{ date: string; count: number }>; pace: string } }>>({})
+  const [projData, setProjData] = useState<Record<string, { fields: Record<string, string>; count: number; latest: string; days: Record<string, any[]>; progress: { items: any[]; daily: Array<{ date: string; count: number }>; pace: string }; treeDocs: Array<{ source: string; tree: any[] }> }>>({})
   const [projLoading, setProjLoading] = useState(false)
   // 当前查看的项目（点击项目按钮切换）
   const [activeProject, setActiveProject] = useState<string | null>(null)
@@ -187,7 +304,7 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
       const plist = (Array.isArray(arr) ? arr : []) as Array<{ id: string; name: string; created_at?: string }>
       setProjects(plist)
       if (plist.length === 0) { setProjLoading(false); return }
-      const out: Record<string, { fields: Record<string, string>; count: number; latest: string; days: Record<string, any[]>; progress: { items: any[]; daily: Array<{ date: string; count: number }>; pace: string } }> = {}
+      const out: Record<string, { fields: Record<string, string>; count: number; latest: string; days: Record<string, any[]>; progress: { items: any[]; daily: Array<{ date: string; count: number }>; pace: string }; treeDocs: Array<{ source: string; tree: any[] }> }> = {}
       let done = 0
       // 加载超时兜底：任何接口挂起也不让页面卡在「加载中…」
       const timer = window.setTimeout(() => {
@@ -204,7 +321,8 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
           fetch('/api/project-memory/' + encodeURIComponent(pid), { cache: 'no-store' }).then(r => r.json()).catch(() => ({})),
           fetch('/api/learning-log?project_id=' + encodeURIComponent(pid), { cache: 'no-store' }).then(r => r.json()).catch(() => ({ days: [] })),
           fetch('/api/memory/progress?project_id=' + encodeURIComponent(pid), { cache: 'no-store' }).then(r => r.json()).catch(() => ({ items: [], daily: [], pace: '' })),
-        ]).then(([m, lg, pg]: [any, any, any]) => {
+          fetch('/api/kb/' + encodeURIComponent(pid), { cache: 'no-store' }).then(r => r.json()).catch(() => []),
+        ]).then(([m, lg, pg, kb]: [any, any, any, any]) => {
           const mem = (m as any).memory || {}
           const fields: Record<string, string> = {}
           for (const dim of PROJECT_DIMS) {
@@ -217,7 +335,8 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
           const count = daysArr.reduce((s: number, x: any) => s + ((x.items || []).length || 0), 0)
           const latest = daysArr.length ? daysArr.map((x: any) => x.date).sort().pop() : ''
           const progress = { items: (pg.items || []), daily: (pg.daily || []), pace: (pg.pace || '') }
-          out[pid] = { fields, count, latest, days, progress }
+          const treeDocs = (Array.isArray(kb) ? kb : []).map((x: any) => ({ source: x.source || '未命名', tree: Array.isArray(x.tree) ? x.tree : [] }))
+          out[pid] = { fields, count, latest, days, progress, treeDocs }
           finish()
         })
       }
@@ -448,6 +567,12 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                             ⚠️ 该项目暂无记忆数据：与 AI 对话后会自动分析生成；也可点击右上角「↻ 重新分析」立即从现有对话生成记忆。
                           </div>
                         )}
+                        {/* 知识图谱：树状结构（复用资料章节层级，节点颜色=掌握状态） */}
+                        <div className="flex flex-col gap-2">
+                          <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">知识图谱<span className="ml-1 text-[9px] font-normal text-dim/70">节点颜色 = 基于对话估计的掌握状态（绿好 · 黄一般 · 红薄弱）</span></p>
+                          <KnowledgeTree treeDocs={data?.treeDocs || []} progressItems={data?.progress.items || []} />
+                        </div>
+
                         {/* 进度：标尺 + 快慢 + 具体内容 */}
                         <div className="flex flex-col gap-2">
                           <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">进度<span className="ml-1 text-[9px] font-normal text-dim/70">起点 → 当前 → 目标 · 快慢直观</span></p>
@@ -461,22 +586,14 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                               <span className="font-semibold text-[var(--text)] flex-shrink-0">{pctOf(data?.fields || {}, data?.count || 0)}%</span>
                               <span className="truncate max-w-[38%] text-right">目标：{(data?.fields['目标'] || '').trim() || '（待填写）'}</span>
                             </div>
-                            {(() => { const dl = data?.progress.daily || []; const w7 = dl.slice(-7).reduce((s: number, d: any) => s + (d.count || 0), 0); const maxC = Math.max(1, ...dl.map((d: any) => d.count || 0)); return (
-                              <>
-                                {/* 推进节奏：最近 14 天柱状图（昨天多今天少一目了然） */}
-                                <div className="flex items-end gap-1 h-10 pt-2 border-t hairline">
-                                  {dl.map((d: any) => (
-                                    <div key={d.date} className="flex-1 flex items-end" title={`${d.date} ${d.count} 次对话`}>
-                                      <div className="w-full rounded-t" style={{ height: Math.max(2, Math.round((d.count || 0) / maxC * 32)) + 'px', background: 'var(--accent)', opacity: d.count ? 0.35 + Math.min(0.65, (d.count || 0) / maxC) : 0.08 }} />
-                                    </div>
-                                  ))}
-                                </div>
-                                <div className="flex items-center gap-3 text-[10px] text-dim">
-                                  <span>近7天 <b className="text-[var(--text)]">{w7}</b> 次</span>
-                                  <span className="ml-auto font-medium">{data?.progress.pace || '—'}</span>
-                                </div>
-                              </>
-                            ) })()}
+                            <div className="flex items-center justify-between text-[10px] text-dim pt-1.5 border-t hairline">
+                              <span>近7天 <b className="text-[var(--text)]">{(() => { const dl = data?.progress.daily || []; return dl.slice(-7).reduce((s: number, d: any) => s + (d.count || 0), 0) })()}</b> 次</span>
+                              <span className="font-medium">{data?.progress.pace || '—'}</span>
+                            </div>
+                          </div>
+                          {/* 时间折线图：内容量趋势 */}
+                          <div className="flex flex-col gap-2">
+                            <TimeLineChart days={data?.days || {}} />
                           </div>
                           {/* 遗忘面板：知识点掌握度（独立区域，空时也保留明确的填充区域） */}
                           <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
