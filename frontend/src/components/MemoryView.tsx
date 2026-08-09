@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from 'react'
+﻿import { useState, useEffect, useRef, useMemo } from 'react'
 import { Brain, User, FolderTree, Check, Loader2, PenLine, ChevronRight, ChevronDown } from 'lucide-react'
 
 /** 个人全局性记忆：基础信息字段（固定，纵向表单） */
@@ -213,26 +213,63 @@ function KnowledgeTree({ treeDocs, progressItems }: { treeDocs: Array<{ source: 
   )
 }
 
-/** 时间折线图：纵轴 = 当日内容量（对话产出条数），表示进度快慢（无外层边框，作为子块嵌入） */
+/** 时间折线图：纵轴 = 当日内容量（对话产出条数）。支持拖拽左右平移时间窗口、滚轮缩放时间跨度。 */
 function TimeLineChart({ days, height = 90 }: { days: Record<string, any[]>; height?: number }) {
   const key = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  const N = 14
-  const dates: string[] = []
-  const now = new Date()
-  for (let i = N - 1; i >= 0; i--) dates.push(key(new Date(now.getTime() - i * 86400000)))
-  const vals = dates.map(d => ((days || {})[d] || []).length)
+  // 全量日期序列：最早有记录日 → 今天
+  const allDates = useMemo(() => {
+    const ks = Object.keys(days || {})
+    const min = ks.length ? ks.slice().sort()[0] : key(new Date())
+    const out: string[] = []
+    const cur = new Date(min + 'T00:00:00')
+    const today = new Date()
+    while (key(cur) <= key(today)) {
+      out.push(key(cur))
+      cur.setDate(cur.getDate() + 1)
+    }
+    return out
+  }, [days])
+  const total = allDates.length
+  // 时间窗口：center（日期索引）+ span（天数）
+  const [center, setCenter] = useState(total - 1)
+  const [span, setSpan] = useState(14)
+  useEffect(() => { setCenter(total - 1); setSpan(Math.min(14, total)) }, [total])
+  const clampCenter = (c: number) => Math.min(Math.max(c, Math.floor(span / 2)), Math.max(Math.floor(span / 2), total - 1 - Math.ceil(span / 2)))
+  const start = Math.min(Math.max(Math.round(center - span / 2), 0), Math.max(0, total - span))
+  const end = Math.min(start + span, total)
+  const seg = allDates.slice(start, end)
+  const vals = seg.map(d => ((days || {})[d] || []).length)
   const max = Math.max(1, ...vals)
   const W = 100, H = 40
-  const pts = vals.map((v, i) => `${(i / (N - 1)) * W},${H - 6 - (v / max) * (H - 14)}`)
+  const pts = vals.map((v, i) => `${(i / Math.max(1, seg.length - 1)) * W},${H - 6 - (v / max) * (H - 14)}`)
   const hasData = vals.some(v => v > 0)
-  const last = dates[dates.length - 1]
+  // 拖拽平移
+  const dragRef = useRef<{ x: number } | null>(null)
+  const onDown = (e: React.PointerEvent) => { (e.target as Element).setPointerCapture?.(e.pointerId); dragRef.current = { x: e.clientX } }
+  const onMove = (e: React.PointerEvent) => {
+    if (!dragRef.current) return
+    const dx = e.clientX - dragRef.current.x
+    dragRef.current.x = e.clientX
+    const w = (e.currentTarget as Element).clientWidth || 1
+    setCenter(c => clampCenter(c - Math.round((dx / w) * span)))
+  }
+  const onUp = () => { dragRef.current = null }
+  // 滚轮伸缩（以窗口中心为锚）
+  const onWheel = (e: React.WheelEvent) => {
+    const next = Math.min(Math.max(span + (e.deltaY > 0 ? 4 : -4), 7), total)
+    setSpan(next)
+    setCenter(c => clampCenter(c))
+  }
   return (
-    <div className="flex flex-col gap-1.5 flex-1">
+    <div className="flex flex-col gap-1.5 flex-1 select-none" style={{ touchAction: 'none' }}>
       <div className="flex items-center justify-between text-[10px] text-dim">
         <span className="font-semibold uppercase tracking-wider">内容量趋势</span>
-        {hasData && <span>今日 {vals[vals.length - 1]} 条 · 峰值 {max} 条</span>}
+        {hasData && <span>今日 {vals[vals.length - 1]} 条 · 峰值 {max} 条 · 跨度 {span} 天</span>}
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height }} preserveAspectRatio="none">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full cursor-grab active:cursor-grabbing" style={{ height }}
+        preserveAspectRatio="none"
+        onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={onUp}
+        onWheel={onWheel}>
         {/* 网格线 */}
         {[0.25, 0.5, 0.75].map(g => (
           <line key={g} x1="0" y1={H - (H - 14) * g - 6} x2={W} y2={H - (H - 14) * g - 6} stroke="#ececec" strokeWidth="0.3" strokeDasharray="1.5 2" />
@@ -251,8 +288,8 @@ function TimeLineChart({ days, height = 90 }: { days: Record<string, any[]>; hei
         )}
       </svg>
       <div className="flex items-center justify-between text-[9px] text-dim">
-        <span>{dates[0]?.slice(5)}</span>
-        <span>{last?.slice(5)}</span>
+        <span>{seg[0]?.slice(5)}</span>
+        <span>{seg[seg.length - 1]?.slice(5)}</span>
       </div>
     </div>
   )
