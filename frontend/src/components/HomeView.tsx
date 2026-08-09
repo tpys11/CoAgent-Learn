@@ -58,7 +58,7 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
   const strOf = (v: any) => Array.isArray(v) ? v.join('、') : v ? String(v) : ''
   const short = (s: string, n = 34) => s.length > n ? s.slice(0, n) + '…' : s
 
-  // ---------- 快速引导：系统提示建议（课程 / 资源 / 记忆 / Agent） ----------
+  // ---------- 快速引导：系统提示建议（课程 / 资源） ----------
   const totalCount = Object.values(stats).reduce((s, n) => s + n, 0)
   const totalDocs = Object.values(kbCount).reduce((s, n) => s + n, 0)
   const latestDate = Object.keys(trendDays).sort().pop() || ''
@@ -79,12 +79,6 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
     } else {
       tips.push({ title: '资源', text: `知识库已收录 ${totalDocs} 份文档。建议定期补充或更新资料（如教程更新、新文档发布），让回答持续贴合最新内容。` })
     }
-    if (totalCount === 0) {
-      tips.push({ title: '记忆', text: '系统会在每次对话后自动提炼记忆（画像、进度、薄弱点）。多与系统对话，记忆会越来越准确。' })
-    } else {
-      tips.push({ title: '记忆', text: `已有 ${totalCount} 次对话沉淀记忆。若间隔较久未学习，可在侧栏「记忆与进程」查看记忆，并让 AI 根据新进展更新记忆。` })
-    }
-    tips.push({ title: 'Agent', text: '可随时在 Agent 管理中调整模型、模式与 Skill。若生成质量遇到瓶颈，可考虑接入更强的新模型，或开启「输出增强」模板获得结构化产出。' })
     return tips
   }
   const tips = buildTips()
