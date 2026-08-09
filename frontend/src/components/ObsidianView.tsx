@@ -4,7 +4,7 @@ import container from 'markdown-it-container'
 import katexPlugin from 'markdown-it-katex'
 import 'katex/dist/katex.min.css'
 import mermaid from 'mermaid'
-import { BookOpen, FileText, FolderOpen, FolderClosed, List, Network, ChevronRight, Pencil, Save, X } from 'lucide-react'
+import { FileText, FolderOpen, FolderClosed, List, Network, ChevronRight, Pencil, Save, X } from 'lucide-react'
 
 // ---------- 渲染引擎：markdown-it（与 Obsidian 同源）+ callout/mermaid/KaTeX/双链嵌入 ----------
 mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', theme: 'default' })
@@ -559,7 +559,7 @@ function ObsidianViewInner() {
       {/* 左侧：连接 + 文件树（宽度可拖拽，树状图模式默认更宽） */}
       <div className="relative bg-[var(--bg-sidebar)] border-r hairline flex flex-col flex-shrink-0" style={{ width: effectiveW }}>
         <div className="p-3 border-b hairline flex items-center justify-between">
-          <h2 className="text-sm font-bold flex items-center gap-1.5"><BookOpen size={15} /> Obsidian</h2>
+          <h2 className="text-sm font-bold flex items-center gap-1.5"><FolderOpen size={15} /> 本地文档</h2>
           {rootHandle && (
             <button onClick={disconnect} className="text-[10px] text-dim hover:text-red-500 px-2 py-1 rounded-lg hover:bg-[var(--bg-hover)]">断开</button>
           )}
@@ -569,9 +569,9 @@ function ObsidianViewInner() {
             <button onClick={connect}
               className="py-3 rounded-xl text-xs font-semibold text-white shadow-soft transition-transform hover:scale-105"
               style={{ background: 'var(--accent)' }}>
-              连接 Obsidian 文件夹
+              连接本地文档文件夹
             </button>
-            <p className="text-[10px] text-dim leading-relaxed">选择电脑上的 Obsidian 库文件夹，文件树与文章将直接展示。</p>
+            <p className="text-[10px] text-dim leading-relaxed">选择电脑上的本地文档文件夹，文件树与文章将直接展示。</p>
           </div>
         ) : (
           <>
@@ -720,7 +720,7 @@ class OBSafe extends Component<{ children: React.ReactNode }, { err: string | nu
   static getDerivedStateFromError(e: any) { return { err: String(e?.message || e) } }
   render() {
     if (this.state.err) {
-      return <div className="flex-1 p-6 text-xs text-red-600">Obsidian 界面渲染出错：{this.state.err}</div>
+      return <div className="flex-1 p-6 text-xs text-red-600">本地文档界面渲染出错：{this.state.err}</div>
     }
     return this.props.children
   }

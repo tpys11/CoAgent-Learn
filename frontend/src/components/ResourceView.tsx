@@ -304,7 +304,7 @@ export default function ResourceView({ projectId, onUseItem }: { projectId: stri
     try {
       const h = await obsLoadRoot()
       if (!h) {
-        setObsErr('尚未连接 Obsidian 库：请先在最左侧栏的 Obsidian 界面点「连接 Obsidian 文件夹」')
+        setObsErr('尚未连接本地文档库：请先在最左侧栏的「本地文档」界面点「连接本地文档文件夹」')
         setObsOpen(true)
         return
       }
@@ -828,7 +828,7 @@ const exportItem = (item: ListItem) => {
                 <div className="flex items-center gap-2">
                   <button onClick={openObsPicker}
                     className="flex items-center gap-1.5 px-4 py-2 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors">
-                    <BookOpen size={13} /> 从 Obsidian 导入
+                    <BookOpen size={13} /> 从本地文档导入
                   </button>
                   {isCustomUploadCat ? (
                   !showNewGenItem && (
@@ -940,7 +940,7 @@ const exportItem = (item: ListItem) => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
           <div className="w-[540px] max-h-[72vh] flex flex-col rounded-2xl panel shadow-xl overflow-hidden">
             <div className="px-5 py-4 border-b hairline flex items-center justify-between flex-shrink-0">
-              <h3 className="text-sm font-bold flex items-center gap-2"><BookOpen size={16} /> 从 Obsidian 导入</h3>
+              <h3 className="text-sm font-bold flex items-center gap-2"><BookOpen size={16} /> 从本地文档导入</h3>
               <button onClick={() => setObsOpen(false)} className="w-7 h-7 flex items-center justify-center rounded-lg text-dim hover:bg-[var(--bg-hover)]">
                 <X size={14} />
               </button>
