@@ -149,14 +149,14 @@ function TimeLineChart({ days, height = 90 }: { days: Record<string, any[]>; hei
   )
 }
 
-/** 主页横栏：内容量趋势 + 日历（与记忆界面逻辑和形式一致） */
+/** 主页右栏：内容量趋势 + 日历，竖向平行展开（与记忆界面逻辑和形式一致） */
 export default function TrendCalendar({ days }: { days: Record<string, any[]> }) {
   const data: Record<string, number> = {}
   for (const [d, items] of Object.entries(days || {})) data[d] = items.length
   const count = Object.values(data).reduce((s, n) => s + n, 0)
   const latest = Object.keys(data).sort().pop() || ''
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+    <div className="flex flex-col gap-5">
       <div className="border hairline rounded-2xl p-4 bg-[var(--bg-panel)] flex flex-col">
         <TimeLineChart days={days} />
       </div>

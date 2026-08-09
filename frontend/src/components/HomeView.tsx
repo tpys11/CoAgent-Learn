@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from 'react'
-import { Home, Plus, X, FolderOpen, Clock } from 'lucide-react'
+import { Home, Plus, X, FolderOpen, Clock, Library, GraduationCap } from 'lucide-react'
 import TrendCalendar from './TrendCalendar'
 
 /** 系统预设领域 → 预存图片（非系统自带领域无图，显示首字占位） */
@@ -17,11 +17,12 @@ interface HomeProject {
 }
 
 /** 主页：按课程展开的大卡片（上 70% 图片/名称/进度，下 30% 三方面描述），点击进入该课程对话 */
-export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
+export default function HomeView({ projects, onEnter, onCreate, onDelete, onNavigate }: {
   projects: HomeProject[]
   onEnter: (id: string) => void
   onCreate: (name: string) => void
   onDelete: (id: string) => void
+  onNavigate?: (v: string) => void
 }) {
   const [stats, setStats] = useState<Record<string, number>>({})
   const [mems, setMems] = useState<Record<string, Record<string, any>>>({})
@@ -57,11 +58,29 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
   return (
     <div className="flex-1 h-full min-w-0 flex panel rounded-3xl overflow-hidden">
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-6xl px-10 py-10 flex flex-col gap-8">
+        <div className="max-w-6xl px-10 py-10 flex gap-10">
+          {/* 左：主内容 */}
+          <div className="flex-1 min-w-0 flex flex-col gap-8">
           {/* 左上角：我的主页 */}
           <h1 className="text-2xl font-bold flex items-center gap-2"><Home size={22} /> 我的主页</h1>
-          {/* 横栏：内容量趋势 + 日历 */}
-          <TrendCalendar days={trendDays} />
+          {/* 快速引导 */}
+          <div className="flex flex-col gap-3">
+            <h2 className="text-lg font-bold">快速引导</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[
+                { icon: Plus, label: '新建课程', fn: newProject },
+                { icon: Library, label: '资源中心', fn: () => onNavigate?.('resources') },
+                { icon: GraduationCap, label: '使用引导', fn: () => onNavigate?.('tutorial') },
+                { icon: FolderOpen, label: '本地文档', fn: () => onNavigate?.('obsidian') },
+              ].map(({ icon: Icon, label, fn }) => (
+                <button key={label} onClick={fn}
+                  className="card-surface rounded-2xl p-5 flex flex-col items-center gap-2.5 hover:shadow-soft hover:border-[var(--accent)] transition-all">
+                  <Icon size={20} className="text-dim" />
+                  <span className="text-xs font-semibold">{label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
           {/* 课程区块 */}
           <div className="flex flex-col gap-6">
             <h2 className="text-xl font-bold">课程</h2>
@@ -126,6 +145,11 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
               <NewCourseCard onClick={newProject} />
             </div>
           )}
+          </div>
+          </div>
+          {/* 右：内容量趋势 + 日历（竖向平行展开） */}
+          <div className="w-[360px] flex-shrink-0">
+            <TrendCalendar days={trendDays} />
           </div>
         </div>
       </div>
