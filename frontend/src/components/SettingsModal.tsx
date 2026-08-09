@@ -147,13 +147,13 @@ export default function SettingsModal({ onClose, projectId }: Props) {
   const flash = (msg: string) => { setFeedback(msg); setTimeout(() => setFeedback(''), 2000) }
 
   const doClearDialogues = async () => {
-    if (!projectId) { flash('暂无项目'); return }
-    if (!window.confirm('确定清空当前项目的全部对话？消息将不可恢复（项目与记忆保留）。')) return
+    if (!projectId) { flash('暂无课程'); return }
+    if (!window.confirm('确定清空当前课程的全部对话？消息将不可恢复（课程与记忆保留）。')) return
     const r = await fetch('/api/projects/' + encodeURIComponent(projectId) + '/dialogues', { method: 'DELETE' })
     if (r.ok) flash('对话已清空') ; else flash('清空失败')
   }
   const doClearMemories = async () => {
-    if (!window.confirm('确定清空全部记忆（个人全局 / 项目 / 对话记忆）？')) return
+    if (!window.confirm('确定清空全部记忆（个人全局 / 课程 / 对话记忆）？')) return
     const r = await fetch('/api/memories', { method: 'DELETE' })
     if (r.ok) flash('记忆已清空') ; else flash('清空失败')
   }

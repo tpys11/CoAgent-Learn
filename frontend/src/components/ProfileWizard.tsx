@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { ClipboardList, PenLine } from 'lucide-react'
 
 interface Props {
@@ -34,9 +34,9 @@ export default function ProfileWizard({ mode, projectName, inheritedProfile, onC
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60]" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="bg-white rounded-2xl shadow-lift w-full max-w-md mx-4 p-6">
-        <h2 className="font-display text-lg mb-1 flex items-center gap-2">{isProject ? <><ClipboardList size={17} /> 项目画像向导</> : <><PenLine size={17} /> 对话画像向导</>}</h2>
+        <h2 className="font-display text-lg mb-1 flex items-center gap-2">{isProject ? <><ClipboardList size={17} /> 课程画像向导</> : <><PenLine size={17} /> 对话画像向导</>}</h2>
         <p className="text-[11px] text-gray-400 mb-4">
-          {isProject ? `为项目「${projectName || ''}」建立学情画像，AI 将据此调整学习内容` : '补充本次学习画像（已继承项目画像）'}
+          {isProject ? `为课程「${projectName || ''}」建立学情画像，AI 将据此调整学习内容` : '补充本次学习画像（已继承课程画像）'}
         </p>
         <div className="flex flex-col gap-3">
           {isProject && (
@@ -58,8 +58,8 @@ export default function ProfileWizard({ mode, projectName, inheritedProfile, onC
                 </div>
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-600">③ 项目学习目标</label>
-                <input value={goal} onChange={e => setGoal(e.target.value)} placeholder="如：掌握 PLC 编程，能独立完成小项目" className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-[#1a1a1a]" />
+                <label className="text-xs font-medium text-gray-600">③ 课程学习目标</label>
+                <input value={goal} onChange={e => setGoal(e.target.value)} placeholder="如：掌握 PLC 编程，能独立完成小课程" className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-[#1a1a1a]" />
               </div>
             </>
           )}

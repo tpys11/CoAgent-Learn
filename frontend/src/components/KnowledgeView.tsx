@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { Database, Clock, X } from 'lucide-react'
 import DragDropInput from './DragDropInput'
 
-/** 项目配置（知识库 + 项目记忆）：居中显示、占主区域 90%、左侧列表导航，右上角可关闭 */
+/** 课程配置（知识库 + 课程记忆）：居中显示、占主区域 90%、左侧列表导航，右上角可关闭 */
 export default function KnowledgeView({ projectId, onClose }: { projectId: string | null; onClose: () => void }) {
   const [tab, setTab] = useState<'knowledge' | 'memory'>('knowledge')
   const [kbInput, setKbInput] = useState('')
@@ -13,7 +13,7 @@ export default function KnowledgeView({ projectId, onClose }: { projectId: strin
   const defaultResources = ['书籍', '百科', '论文', '官方文档', '教程', '视频', '代码仓库', '课件/PPT']
   const [selectedResources, setSelectedResources] = useState<Set<string>>(new Set(['书籍', '官方文档']))
 
-  // 加载项目记忆（永久化：按项目取最新一条）并解析对话概要列表
+  // 加载课程记忆（永久化：按课程取最新一条）并解析对话概要列表
   useEffect(() => {
     if (!projectId) return
     fetch('/api/project-memory/' + encodeURIComponent(projectId), { cache: 'no-store' })
@@ -23,7 +23,7 @@ export default function KnowledgeView({ projectId, onClose }: { projectId: strin
           const NL = String.fromCharCode(10)
           const mem = d.memory
           let txt = ''
-          if (mem.项目概述) txt += '项目概述: ' + mem.项目概述 + NL
+          if (mem.课程概述) txt += '课程概述: ' + mem.课程概述 + NL
           if (mem.当前进度) txt += '当前进度: ' + mem.当前进度 + NL
           if (mem.领域) txt += '领域: ' + mem.领域 + NL
           if (mem.背景) txt += '背景: ' + mem.背景 + NL
@@ -43,7 +43,7 @@ export default function KnowledgeView({ projectId, onClose }: { projectId: strin
               txt2 += '  ' + (i + 1) + '. ' + (mem.对话摘要[i].摘要 || '') + NL
             }
           }
-          // 对话概要：本项目各对话的记忆，区分显示（挂项目记忆下）
+          // 对话概要：本课程各对话的记忆，区分显示（挂课程记忆下）
           setDialogueSummaries(mem.对话概要 || [])
           if (txt2) setProjectMemory(txt2.trim())
         }
@@ -53,16 +53,16 @@ export default function KnowledgeView({ projectId, onClose }: { projectId: strin
 
   const NAV = [
     { key: 'knowledge', icon: Database, label: '知识库' },
-    { key: 'memory', icon: Clock, label: '项目记忆' },
+    { key: 'memory', icon: Clock, label: '课程记忆' },
   ] as const
 
   return (
     <div className="flex-1 h-full min-w-0 flex items-center justify-center p-8">
       <div className="w-[90%] h-[90%] flex flex-col panel rounded-3xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3 border-b border-[#e5e5e5] flex-shrink-0">
-          <h2 className="text-base font-bold flex items-center gap-2"><Database size={18} className="text-green-500" /> 项目配置</h2>
+          <h2 className="text-base font-bold flex items-center gap-2"><Database size={18} className="text-green-500" /> 课程配置</h2>
           <div className="flex items-center gap-3">
-            <span className="text-[10px] text-gray-400">{projectId ? `项目 ID: ${projectId}` : '未选择项目'}</span>
+            <span className="text-[10px] text-gray-400">{projectId ? `课程 ID: ${projectId}` : '未选择课程'}</span>
             <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-[#ededed] text-gray-400 hover:text-[#1a1a1a] transition-colors" title="关闭">
               <X size={16} />
             </button>
@@ -118,7 +118,7 @@ export default function KnowledgeView({ projectId, onClose }: { projectId: strin
             {tab === 'memory' && (
               <div className="flex flex-col gap-5">
                 <div className="border border-indigo-200 rounded-xl p-4 bg-indigo-50/20">
-                  <h3 className="text-sm font-bold flex items-center gap-1.5 text-indigo-700 mb-2"><Clock size={14} /> 项目记忆</h3>
+                  <h3 className="text-sm font-bold flex items-center gap-1.5 text-indigo-700 mb-2"><Clock size={14} /> 课程记忆</h3>
                   <p className="text-[10px] text-gray-400 mb-2">基于用户与AI对话内容的简要概述（≤1000字）。</p>
                   <textarea value={episodicMemory} onChange={e => setEpisodicMemory(e.target.value)}
                     placeholder="例：用户询问了LangGraph的状态管理机制……"
@@ -126,9 +126,9 @@ export default function KnowledgeView({ projectId, onClose }: { projectId: strin
                     className="w-full px-3 py-2 border border-indigo-200 rounded-lg text-xs outline-none resize-none focus:border-indigo-400 bg-white" />
                 </div>
                 <div className="border border-[#e5e5e5] rounded-xl p-4">
-                  <h3 className="text-sm font-bold mb-2">项目上下文记忆</h3>
+                  <h3 className="text-sm font-bold mb-2">课程上下文记忆</h3>
                   <textarea value={projectMemory} onChange={e => setProjectMemory(e.target.value)}
-                    placeholder="例：本项目聚焦多智能体系统开发……"
+                    placeholder="例：本课程聚焦多智能体系统开发……"
                     rows={4}
                     className="w-full px-3 py-2 border border-[#d0d0d0] rounded-lg text-xs outline-none resize-none focus:border-[#1a1a1a] bg-[#fafafa]" />
                 </div>

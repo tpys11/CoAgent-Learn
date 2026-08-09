@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { ArrowLeft, MessageSquare, FileText, X, Plus, ChevronDown, PanelLeftClose, SlidersHorizontal } from 'lucide-react'
 
 interface Dialogue { id: string; name: string }
 
-/** 项目专属侧栏：项目记忆 / 项目资源 / 对话（不再与其他项目并列） */
+/** 课程专属侧栏：课程记忆 / 课程资源 / 对话（不再与其他课程并列） */
 export default function ProjectSidebar({ project, dialogues, currentDialogueId, onHome, onSelectDialogue, onCreateDialogue, onArchiveDialogue, onOpenMemory, onOpenResource, onCollapse }: {
   project: { id: string; name: string } | null
   dialogues: Dialogue[]
@@ -53,13 +53,13 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* 顶部：返回主页 + 项目名 + 展示设置/折叠按钮 */}
+      {/* 顶部：返回主页 + 课程名 + 展示设置/折叠按钮 */}
       <div className="p-3.5 border-b hairline flex flex-col gap-2.5 flex-shrink-0">
         <button onClick={onHome} className="flex items-center gap-1.5 text-[11px] text-dim hover:text-[var(--text)] transition-colors w-fit">
           <ArrowLeft size={13} /> 返回主页
         </button>
         <div className="flex items-center justify-between gap-2">
-          <p className="text-sm font-bold truncate">{project?.name || '项目'}</p>
+          <p className="text-sm font-bold truncate">{project?.name || '课程'}</p>
           <div className="flex items-center gap-1 flex-shrink-0">
             <div className="relative">
               <button onClick={() => setShowSettings(!showSettings)} className="w-6 h-6 flex items-center justify-center rounded-lg icon-btn" title="左侧栏展示设置">

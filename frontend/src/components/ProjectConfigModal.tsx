@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+﻿import { useCallback, useEffect, useRef, useState } from 'react'
 import { FileText, BookOpen, Upload, Trash2 } from 'lucide-react'
 import MemoryView from './MemoryView'
 import ResourceView from './ResourceView'
 
-/** 项目记忆与资源窗口：点击侧栏对应「查看更多」进入，只展示对应界面（initialTab 决定展示哪个） */
+/** 课程记忆与资源窗口：点击侧栏对应「查看更多」进入，只展示对应界面（initialTab 决定展示哪个） */
 export default function ProjectConfigModal({ projectId, onRequestModify, onRequestAnalyze, onClose, initialTab = 'memory' }: {
   projectId: string | null
   onRequestModify?: (label: string, pid?: string) => void
@@ -28,7 +28,7 @@ export default function ProjectConfigModal({ projectId, onRequestModify, onReque
   )
 }
 
-/** 项目资源：栏目一为项目资源（可上传文件、拖入文件或系统资源），栏目二为系统内置资源（可拖入/加入） */
+/** 课程资源：栏目一为课程资源（可上传文件、拖入文件或系统资源），栏目二为系统内置资源（可拖入/加入） */
 function ProjectResources({ projectId }: { projectId: string | null }) {
   const [docs, setDocs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -71,7 +71,7 @@ function ProjectResources({ projectId }: { projectId: string | null }) {
     setTimeout(load, 2000)
   }
   const removeDoc = (source: string) => {
-    if (!window.confirm(`从项目资源移除「${source}」？`)) return
+    if (!window.confirm(`从课程资源移除「${source}」？`)) return
     fetch('/api/knowledge/delete?project_id=' + encodeURIComponent(projectId || 'default') + '&source=' + encodeURIComponent(source), { method: 'DELETE' })
       .then(() => setDocs(prev => prev.filter(d => d.source !== source)))
   }
@@ -89,13 +89,13 @@ function ProjectResources({ projectId }: { projectId: string | null }) {
   }
   return (
     <div className="h-full p-6 flex flex-col gap-5 overflow-hidden">
-      {/* 上：项目资源（可上传 / 拖入） */}
+      {/* 上：课程资源（可上传 / 拖入） */}
       <div className="flex-shrink-0 flex flex-col gap-2.5"
         onDragOver={e => { e.preventDefault(); setDragOver(true) }}
         onDragLeave={() => setDragOver(false)}
         onDrop={onDrop}>
         <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold text-dim uppercase tracking-wider">项目资源</p>
+          <p className="text-xs font-semibold text-dim uppercase tracking-wider">课程资源</p>
           <div className="flex items-center gap-2">
             {uploading && <span className="text-[11px] text-dim">处理中：{uploading}</span>}
             <button onClick={() => fileRef.current?.click()}
@@ -127,9 +127,9 @@ function ProjectResources({ projectId }: { projectId: string | null }) {
           ))}
         </div>
       </div>
-      {/* 下：系统内置资源（可拖入 / 加入项目），撑满剩余空间 */}
+      {/* 下：系统内置资源（可拖入 / 加入课程），撑满剩余空间 */}
       <div className="flex-1 min-h-0 flex flex-col gap-2.5 overflow-hidden">
-        <p className="text-xs font-semibold text-dim uppercase tracking-wider flex items-center gap-1.5 flex-shrink-0"><BookOpen size={13} /> 系统内置资源<span className="font-normal text-[10px] text-dim">（卡片可拖入上方，或点卡片详情「加入项目」）</span></p>
+        <p className="text-xs font-semibold text-dim uppercase tracking-wider flex items-center gap-1.5 flex-shrink-0"><BookOpen size={13} /> 系统内置资源<span className="font-normal text-[10px] text-dim">（卡片可拖入上方，或点卡片详情「加入课程」）</span></p>
         <div className="flex-1 min-h-0 border hairline rounded-2xl overflow-hidden">
           <ResourceView projectId={projectId} onUseItem={addPreset} />
         </div>

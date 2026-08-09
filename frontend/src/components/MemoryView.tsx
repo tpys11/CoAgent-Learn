@@ -10,9 +10,9 @@ const BASIC_FIELDS = [
   { key: '兴趣方向', label: '兴趣方向', placeholder: '如：Agent、RAG' },
 ]
 
-/** 项目记忆：按维度展开（概述 → 实现进度 → 时间） */
+/** 课程记忆：按维度展开（概述 → 实现进度 → 时间） */
 const PROJECT_DIMS: Array<{ title: string; hint: string; keys: string[]; arrayKeys: string[] }> = [
-  { title: '概述', hint: '抽象项目目的与整体情况', keys: ['抽象目的', '抽象项目情况'], arrayKeys: ['偏好', '知识点', '难点', '薄弱点', '兴趣'] },
+  { title: '概述', hint: '抽象课程目的与整体情况', keys: ['抽象目的', '抽象项目情况'], arrayKeys: ['偏好', '知识点', '难点', '薄弱点', '兴趣'] },
   { title: '实现进度', hint: '起点 → 当前水平 → 目标', keys: ['起点', '当前水平', '目标'], arrayKeys: [] },
 ]
 /** 里程碑节点：进度条上的可交互节点（起点/当前/目标固定，系统预分析重要节点，用户自定义可增删） */
@@ -78,7 +78,7 @@ const nodeBorder = (m: Milestone, mastery: number | null) => {
   return `color-mix(in srgb, var(--accent) ${base}%, transparent)`
 }
 
-/** 记忆系统：两级（个人全局性记忆 / 项目记忆）完整界面 */
+/** 记忆系统：两级（个人全局性记忆 / 课程记忆）完整界面 */
 
 /** 迷你 Markdown 渲染：段落 / 有序/无序列表 / **加粗**（行级，够用即可） */
 const renderInline = (s: string) => {
@@ -340,20 +340,20 @@ function TimeLineChart({ days, height = 90 }: { days: Record<string, any[]>; hei
 
 export default function MemoryView({ projectId, onRequestModify, onRequestAnalyze, projectOnly }: { projectId: string | null; onRequestModify?: (label: string, pid?: string) => void; onRequestAnalyze?: (projectName: string) => void; projectOnly?: boolean }) {
   const [level, setLevel] = useState<'global' | 'project'>(projectOnly ? 'project' : 'global')
-  // 项目列表
+  // 课程列表
   const [projects, setProjects] = useState<Array<{ id: string; name: string; is_default?: boolean; created_at?: string }>>([])
   const [selectedProject, setSelectedProject] = useState<string | null>(projectId)
 
   // 个人全局记忆
   const [gFields, setGFields] = useState<Record<string, string>>({})
   const [gExtra, setGExtra] = useState('')
-  const [gSummary, setGSummary] = useState<Record<string, any>>({}) // 项目摘要（只读）
+  const [gSummary, setGSummary] = useState<Record<string, any>>({}) // 课程摘要（只读）
   const [gLoading, setGLoading] = useState(false)
 
-  // 项目记忆（全部项目，默认展开显示）
+  // 课程记忆（全部课程，默认展开显示）
   const [projData, setProjData] = useState<Record<string, { fields: Record<string, string>; count: number; latest: string; days: Record<string, any[]>; progress: { items: any[]; daily: Array<{ date: string; count: number }>; pace: string }; treeDocs: Array<{ source: string; tree: any[] }> }>>({})
   const [projLoading, setProjLoading] = useState(false)
-  // 当前查看的项目（点击项目按钮切换）
+  // 当前查看的课程（点击课程按钮切换）
   const [activeProject, setActiveProject] = useState<string | null>(projectOnly ? projectId : null)
   // 日历数据：date → 当天对话项列表（全局）
   const [globalDays, setGlobalDays] = useState<Record<string, any[]>>({})
@@ -361,7 +361,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
   const [dayDetail, setDayDetail] = useState<{ date: string; items: any[] } | null>(null)
   // 里程碑弹层：查看/编辑节点（null 不显示；{ mode:'new' } 为新增节点）
   const [msNode, setMsNode] = useState<Milestone | { mode: 'new' } | null>(null)
-  // 项目详情页签：基本情况 | 进度与细节
+  // 课程详情页签：基本情况 | 进度与细节
   const [detailTab, setDetailTab] = useState<'base' | 'progress'>('base')
   // 修改记忆介绍弹窗
   const [showModifyTip, setShowModifyTip] = useState(false)
@@ -383,7 +383,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
     return Math.min(80, 15 + count * 3)
   }
 
-  // ---------- 项目列表 ----------
+  // ---------- 课程列表 ----------
   useEffect(() => {
     fetch('/api/projects', { cache: 'no-store' }).then(r => r.json()).then(d => {
       const arr = d.projects || d || []
@@ -391,7 +391,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
     }).catch(() => {})
   }, [])
 
-  // 切到项目层级时加载全部项目记忆（默认展开显示）
+  // 切到课程层级时加载全部课程记忆（默认展开显示）
   useEffect(() => { if (level === 'project') setSelectedProject(selectedProject || projectId) }, [level])
 
   // ---------- 个人全局记忆加载 ----------
@@ -405,11 +405,11 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
         for (const b of BASIC_FIELDS) f[b.key] = p[b.key] ? String(p[b.key]) : ''
         setGFields(f)
         setGExtra(p['补充信息'] ? String(p['补充信息']) : '')
-        setGSummary((p['项目摘要'] as Record<string, any>) || {})
+        setGSummary((p['课程摘要'] as Record<string, any>) || {})
       })
       .catch(() => {})
       .finally(() => setGLoading(false))
-    // 全局学习统计 + 日历数据（所有项目）
+    // 全局学习统计 + 日历数据（所有课程）
     fetch('/api/learning-log', { cache: 'no-store' })
       .then(r => r.json()).then(dd => {
         const days: any[] = dd.days || []
@@ -423,7 +423,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
   }
   useEffect(() => { loadGlobal() }, [level === 'global'])
 
-  // ---------- 项目记忆加载（全部项目） ----------
+  // ---------- 课程记忆加载（全部课程） ----------
   useEffect(() => {
     if (level !== 'project') return
     setProjLoading(true)
@@ -499,7 +499,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
     saveGlobal(gFields, v)
   }
 
-  // 重新分析记忆：携带前端有效 key，后台从现有对话重新提炼（空 projectId = 全部项目）
+  // 重新分析记忆：携带前端有效 key，后台从现有对话重新提炼（空 projectId = 全部课程）
   const runRebuild = (pid?: string) => {
     let key = ''
     try {
@@ -524,7 +524,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
 
   return (
     <div className="flex-1 h-full min-w-0 flex panel rounded-3xl overflow-hidden">
-      {/* 左侧：两级导航 + 项目列表（projectOnly 时不显示，仅项目记忆） */}
+      {/* 左侧：两级导航 + 课程列表（projectOnly 时不显示，仅课程记忆） */}
       {!projectOnly && (
       <div className="w-52 bg-[var(--bg-sidebar)] border-r hairline flex flex-col flex-shrink-0">
         <div className="p-3 border-b hairline flex items-center justify-between">
@@ -542,7 +542,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
             className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-left transition-colors ${
               level === 'project' ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
             }`}>
-            <FolderTree size={14} /> 项目记忆
+            <FolderTree size={14} /> 课程记忆
           </button>
         </div>
         <div className="flex-1" />
@@ -557,7 +557,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
             <h2 className="text-xl font-bold flex items-center gap-2"><User size={16} /> 个人全局性记忆</h2>
             <button onClick={() => runRebuild()}
               className="self-end -mt-9 px-3 py-1.5 rounded-xl text-[11px] font-medium border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors"
-              title="用当前 API Key 重新分析所有对话，生成全局画像与项目记忆">
+              title="用当前 API Key 重新分析所有对话，生成全局画像与课程记忆">
               ↻ 重新分析记忆
             </button>
 
@@ -620,10 +620,10 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                     </div>
                   )}
 
-                {/* 项目摘要（只读） */}
+                {/* 课程摘要（只读） */}
                 {Object.keys(gSummary).length > 0 && (
                   <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
-                    <p className={fieldLabel}>跨项目摘要</p>
+                    <p className={fieldLabel}>跨课程摘要</p>
                     <div className="flex flex-col gap-2">
                       {Object.entries(gSummary).map(([pid, info]: [string, any]) => (
                         <div key={pid} className="text-xs text-[var(--text-muted)] leading-relaxed">
@@ -646,12 +646,12 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
           </div>
         )}
 
-        {/* ========== 项目记忆 ========== */}
+        {/* ========== 课程记忆 ========== */}
         {level === 'project' && (
           <div className="w-full flex flex-col gap-4">
             <div>
               <h2 className="text-base font-bold flex items-center gap-2">
-                <FolderTree size={16} /> 项目记忆
+                <FolderTree size={16} /> 课程记忆
                 {projectOnly && (
                   <button onClick={() => setShowModifyTip(true)}
                     className="ml-2 px-3 py-1.5 rounded-lg text-[11px] font-semibold text-white shadow-soft transition-transform hover:scale-105"
@@ -661,10 +661,10 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
             </div>
 
             {projLoading ? <p className="text-xs text-dim text-center py-10">加载中…</p> : projects.length === 0 ? (
-              <p className="text-xs text-dim text-center py-10">暂无项目</p>
+              <p className="text-xs text-dim text-center py-10">暂无课程</p>
             ) : (
               <>
-                {/* 项目按钮：直接显示，点击查看该项目记忆（projectOnly 时固定当前项目，不显示） */}
+                {/* 课程按钮：直接显示，点击查看该课程记忆（projectOnly 时固定当前课程，不显示） */}
                 {!projectOnly && (
                 <div className="flex flex-wrap gap-2">
                   {projects.map(p => (
@@ -678,7 +678,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                 </div>
                 )}
 
-                {/* 选中项目的记忆详情 */}
+                {/* 选中课程的记忆详情 */}
                 {activeProject && (() => {
                   const p = projects.find(x => x.id === activeProject)
                   const data = projData[activeProject]
@@ -895,7 +895,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowModifyTip(false)}>
           <div className="card-lift rounded-2xl p-5 w-[340px] flex flex-col gap-3" onClick={e => e.stopPropagation()}>
             <p className="text-sm font-bold">修改记忆</p>
-            <p className="text-xs text-[var(--text-muted)] leading-relaxed">进入对话界面后，AI 会重新分析该项目的对话与资料，并更新项目记忆（基本情况、知识图谱、进度等）。修改在对话中完成。</p>
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed">进入对话界面后，AI 会重新分析该课程的对话与资料，并更新课程记忆（基本情况、知识图谱、进度等）。修改在对话中完成。</p>
             <div className="flex gap-2">
               <button onClick={() => setShowModifyTip(false)} className="flex-1 py-2 rounded-xl border hairline text-[11px] text-dim hover:bg-[var(--bg-hover)] transition-colors">取消</button>
               <button onClick={() => { setShowModifyTip(false); const ap = projects.find(x => x.id === activeProject); onRequestAnalyze?.(ap?.name || activeProject || '') }}

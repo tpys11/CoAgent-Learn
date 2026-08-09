@@ -1,4 +1,4 @@
-import { Map, Search, Send, MessagesSquare, PanelRightClose, Workflow, ChevronUp, ChevronDown, SlidersHorizontal, FileText } from 'lucide-react'
+﻿import { Map, Search, Send, MessagesSquare, PanelRightClose, Workflow, ChevronUp, ChevronDown, SlidersHorizontal, FileText } from 'lucide-react'
 import { useState, useEffect, useRef, Fragment } from 'react'
 import * as echarts from 'echarts'
 import AgentFlow from './AgentFlow'
@@ -233,7 +233,7 @@ export default function RightPanel({ messageCount, projectId, onCollapse, flowAg
     })
   }
 
-  // 加载项目知识图谱
+  // 加载课程知识图谱
   useEffect(() => {
     if (!projectId) return
     fetch('/api/graph?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' })

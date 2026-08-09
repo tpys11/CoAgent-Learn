@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+﻿import { useState, useCallback, useRef, useEffect } from 'react'
 import { PanelLeftOpen, PanelRightOpen, Github } from 'lucide-react'
 
 // 模块级 session：页面刷新(JS重载)时重新生成一次；组件重挂载不改变
@@ -28,7 +28,7 @@ import type { Project, Dialogue, AgentConfig, Message } from './types'
 import { DEFAULT_AGENTS } from './types'
 
 function generateId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }
-// 项目 ID 固定：首次生成后存 localStorage，刷新复用（保证知识库/图谱数据不因刷新丢失）
+// 课程 ID 固定：首次生成后存 localStorage，刷新复用（保证知识库/图谱数据不因刷新丢失）
 const defaultProjectId = (() => {
   const k = 'coagent-default-project'
   const old = localStorage.getItem(k)
@@ -48,7 +48,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(false)
   const [agents, setAgents] = useState<AgentConfig[]>(DEFAULT_AGENTS)
   const [showSettings, setShowSettings] = useState(false)
-  // 项目配置弹窗（Sidebar 项目三点进入：项目记忆 / 项目资源）
+  // 课程配置弹窗（Sidebar 课程三点进入：课程记忆 / 课程资源）
   const [showProjectConfig, setShowProjectConfig] = useState(false)
   // 弹窗默认页签（记忆与进程 / 资源）
   const [projectConfigTab, setProjectConfigTab] = useState<'memory' | 'resource'>('memory')
@@ -56,13 +56,13 @@ function App() {
   const [wizard, setWizard] = useState<{mode: 'project'|'dialogue'; id: string; name?: string} | null>(null)
   const [showGuide, setShowGuide] = useState(false)
   const [view, setView] = useState<ViewKey>('chat')
-  // 主页模式：view=chat 时默认显示主页（按项目展开），进入项目后才显示对话界面
+  // 主页模式：view=chat 时默认显示主页（按课程展开），进入课程后才显示对话界面
   const [chatOpen, setChatOpen] = useState(false)
   // 记忆修改预填：从记忆界面跳转时，输入框以 [模块名] 引用并提示补充想法
   const [prefillInput, setPrefillInput] = useState('')
-  // 项目记忆分析持久提示：从记忆界面跳转对话时显示（label 区分分析/修改基本情况）
+  // 课程记忆分析持久提示：从记忆界面跳转对话时显示（label 区分分析/修改基本情况）
   const [analyzeHint, setAnalyzeHint] = useState<{ label: string; project: string } | null>(null)
-  // 首次进入：弹出项目介绍面板（localStorage 标记，只弹一次）
+  // 首次进入：弹出课程介绍面板（localStorage 标记，只弹一次）
   const [showIntro, setShowIntro] = useState(() => !localStorage.getItem('coagent-intro-seen'))
   // 启动时应用保存的字体大小与主题（system 模式自动解析亮暗）
   useEffect(() => {
@@ -71,7 +71,7 @@ function App() {
     initTheme()
   }, [])
 
-  // 从后端加载项目/对话（持久化）
+  // 从后端加载课程/对话（持久化）
   useEffect(() => {
     let cancelled = false
     fetch('/api/projects')
@@ -80,7 +80,7 @@ function App() {
         if (cancelled) return
         const projs: Project[] = (d.projects || []).map((p: any) => ({ id: p.id, name: p.name, domain: p.domain || '' }))
         setProjects(projs)
-        // 加载每个项目下的对话
+        // 加载每个课程下的对话
         const allD: Dialogue[] = []
         for (const p of projs) {
           const r2 = await fetch('/api/projects/' + p.id + '/dialogues')
@@ -89,7 +89,7 @@ function App() {
         }
         if (cancelled) return
         setDialogues(allD)
-        // 默认选中第一个项目
+        // 默认选中第一个课程
         if (projs.length > 0) {
           setCurrentProjectId(projs[0].id)
           const first = allD.find(d => d.projectId === projs[0].id)
@@ -143,7 +143,7 @@ function App() {
       })
   }, [])
   const handleDeleteProject = useCallback((id: string) => {
-    if (!window.confirm('确定删除该项目及其所有对话/知识库/图谱？')) return
+    if (!window.confirm('确定删除该课程及其所有对话/知识库/图谱？')) return
     fetch('/api/projects/' + id, { method: 'DELETE' })
       .then(() => {
         setProjects(prev => prev.filter(p => p.id !== id))
@@ -172,7 +172,7 @@ function App() {
     setDialogues(prev => [...prev, d])
     setCurrentDialogueId(d.id)
     setAllMessages(prev => ({ ...prev, [d.id]: [] }))
-    // 无画像（[简]）项目：不弹对话画像向导
+    // 无画像（[简]）课程：不弹对话画像向导
     const proj = projects.find(p => p.id === projectId)
     if (!(proj && proj.simple)) {
       setWizard({ mode: 'dialogue', id: d.id, name: d.name })
@@ -190,7 +190,7 @@ function App() {
   const handleRenameDialogue = useCallback((id: string, name: string) => {
     if (name.trim()) setDialogues(prev => prev.map(d => d.id === id ? { ...d, name: name.trim() } : d))
   }, [])
-  /** 记忆修改：跳转主对话界面，输入框预填 [模块名] 引用 + 修改引导（可指定项目） */
+  /** 记忆修改：跳转主对话界面，输入框预填 [模块名] 引用 + 修改引导（可指定课程） */
   const handleRequestModify = (label: string, pid?: string) => {
     setShowProjectConfig(false)
     if (pid) setCurrentProjectId(pid)
@@ -199,10 +199,10 @@ function App() {
     setChatOpen(true)
   }
 
-  /** 项目记忆重新分析：跳转对话界面，显示持久提示「项目记忆分析」 */
+  /** 课程记忆重新分析：跳转对话界面，显示持久提示「课程记忆分析」 */
   const handleRequestAnalyze = (projectName: string) => {
     setShowProjectConfig(false)
-    setAnalyzeHint({ label: '项目记忆分析', project: projectName })
+    setAnalyzeHint({ label: '课程记忆分析', project: projectName })
     setView('chat')
     setChatOpen(true)
   }
@@ -473,7 +473,7 @@ function App() {
       )}
       {showGuide && <GuideModal onClose={() => setShowGuide(false)} />}
       {wizard && <ProfileWizard mode={wizard.mode} projectName={wizard.name} onClose={() => {
-        // 跳过：项目标记为无画像（simple），名字加 [简]，后续对话不弹向导
+        // 跳过：课程标记为无画像（simple），名字加 [简]，后续对话不弹向导
         if (wizard.mode === 'project') {
           fetch('/api/projects/' + wizard.id + '/profile', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ profile: {} }) })
           fetch('/api/projects/' + wizard.id, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name: '[简] ' + (wizard.name || ''), simple: true }) })

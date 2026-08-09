@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+﻿import { useState, useEffect, useCallback, useRef } from 'react'
 import { BookOpen, Sparkles, Upload, FileText, Trash2, Wrench, ExternalLink, Plus, X, FolderTree, FolderOpen, Library, Download, ChevronRight } from 'lucide-react'
 
 interface Artifact {
@@ -90,7 +90,7 @@ const normalizeCat = (c?: string) => (c && LEGACY_CAT_MAP[c]) || c || CATEGORIES
 
 /** 预置第三方教程（领域 + 分类归位） */
 const PRESET_TUTORIALS: Tutorial[] = [
-  { id: 'preset-hello-agent', title: 'Hello Agent 入门教程', url: '', desc: 'GitHub 上的 Hello Agent 经典入门项目：从零理解并搭建一个 Agent 的最小实现（链接待补充）', category: '系统学习', domain: 'Agent 应用与开发', preset: true },
+  { id: 'preset-hello-agent', title: 'Hello Agent 入门教程', url: '', desc: 'GitHub 上的 Hello Agent 经典入门课程：从零理解并搭建一个 Agent 的最小实现（链接待补充）', category: '系统学习', domain: 'Agent 应用与开发', preset: true },
   { id: 'preset-libo-jie', title: '李博杰的教程', url: '', desc: '系统性 AI / 智能体学习教程，覆盖从基础到实践的学习路线（链接待补充）', category: '系统学习', domain: 'Agent 应用与开发', preset: true },
   { id: 'preset-langgraph', title: 'LangGraph 官方文档', url: 'https://langchain-ai.github.io/langgraph/', desc: '多智能体工作流编排框架官方文档：StateGraph、节点、条件边', category: '技术工具', domain: 'Agent 应用与开发', preset: true },
   { id: 'preset-mcp', title: 'MCP 官方文档', url: 'https://modelcontextprotocol.io/', desc: 'Model Context Protocol：Agent 与外部工具连接的标准协议', category: '技术工具', domain: 'Agent 应用与开发', preset: true },
@@ -110,43 +110,43 @@ const WIKI_ENTRIES: WikiEntry[] = [
     detail: 'LLM（Large Language Model）基于 Transformer 架构，在海量文本上通过"预测下一个词"预训练获得语言能力，再经指令微调与人类反馈对齐（RLHF）变得"听话"。它的能力来自统计规律而非真正的理解，因此既强大也会产生幻觉。它是当前所有 Agent 应用的核心基座。' },
   { name: '多智能体系统', theme: '核心概念', domain: 'Agent 应用与开发',
     intro: '多个各司其职的 Agent 协同协作解决复杂任务',
-    detail: '多智能体系统（Multi-Agent System）将一个复杂任务拆给多个角色化 Agent：如本项目中的主 Agent（规划与生成）、学情与记忆管理、知识库管理、审核。它们通过"编排"（流程调度）与"协作"（传递中间产物、互相评审）实现单 Agent 难以完成的复杂目标。编排方式有顺序、并行、图式（如 LangGraph）等。' },
+    detail: '多智能体系统（Multi-Agent System）将一个复杂任务拆给多个角色化 Agent：如本课程中的主 Agent（规划与生成）、学情与记忆管理、知识库管理、审核。它们通过"编排"（流程调度）与"协作"（传递中间产物、互相评审）实现单 Agent 难以完成的复杂目标。编排方式有顺序、并行、图式（如 LangGraph）等。' },
   { name: 'RAG（检索增强生成）', theme: '核心概念', domain: 'Agent 应用与开发',
     intro: '先从知识库检索相关内容，再交给大模型生成回答',
     detail: 'RAG（Retrieval-Augmented Generation）解决"大模型不知道私有知识、容易编造"的问题：先把用户问题转成向量，从向量数据库检索最相关的文档片段，与问题一起拼进提示词让模型"照着资料回答"。流程为：文档切片 → 向量化 → 语义检索 → 生成。它让回答可溯源、降低幻觉，是知识库类产品的核心。' },
   { name: 'Prompt（提示词）', theme: '核心概念', domain: 'Agent 应用与开发',
     intro: '引导大模型行为的输入文本，Agent 的"说明书"',
-    detail: '提示词（Prompt）是与大模型沟通的输入文本。好的提示词明确 角色、任务、约束、输出格式，能显著提升效果。本项目每个 Agent 都有专属 system prompt：如规划节点的"输出 JSON"、生成节点的"强制引用来源"。工程上通过"少样本示例""思维链""结构化输出"等技巧进一步约束模型行为。' },
+    detail: '提示词（Prompt）是与大模型沟通的输入文本。好的提示词明确 角色、任务、约束、输出格式，能显著提升效果。本课程每个 Agent 都有专属 system prompt：如规划节点的"输出 JSON"、生成节点的"强制引用来源"。工程上通过"少样本示例""思维链""结构化输出"等技巧进一步约束模型行为。' },
   { name: '工具调用（Tool Use）', theme: '核心概念', domain: 'Agent 应用与开发',
     intro: '大模型通过调用外部函数/API 获取实时信息并执行动作',
-    detail: '工具调用（Function Calling）让大模型不只输出文字，还能按需调用预定义的函数：搜索网页、查数据库、执行代码、调 API。模型根据任务选工具并生成参数，程序执行后把结果回传给模型继续推理。本项目通过 Skill 注册中心统一管理工具（知识检索、联网搜索等），为将来接入 MCP 标准协议预留了路径。' },
+    detail: '工具调用（Function Calling）让大模型不只输出文字，还能按需调用预定义的函数：搜索网页、查数据库、执行代码、调 API。模型根据任务选工具并生成参数，程序执行后把结果回传给模型继续推理。本课程通过 Skill 注册中心统一管理工具（知识检索、联网搜索等），为将来接入 MCP 标准协议预留了路径。' },
   { name: '记忆系统', theme: '核心概念', domain: 'Agent 应用与开发',
     intro: '让 Agent 记住上下文与用户画像的分层存储机制',
-    detail: '记忆让 Agent 在多次对话间保持连续。本项目采用三层记忆：对话记忆（原子画像）→ 项目记忆（项目级汇总）→ 全局画像（跨项目简历式融合）。记忆经后台提炼（LLM 总结）写入数据库，需要时读回注入提示词，形成"记得住、用得对"的长效体验。' },
+    detail: '记忆让 Agent 在多次对话间保持连续。本课程采用三层记忆：对话记忆（原子画像）→ 课程记忆（课程级汇总）→ 全局画像（跨课程简历式融合）。记忆经后台提炼（LLM 总结）写入数据库，需要时读回注入提示词，形成"记得住、用得对"的长效体验。' },
   { name: '幻觉（Hallucination）', theme: '核心概念', domain: 'Agent 应用与开发',
     intro: '大模型一本正经地编造不存在的答案',
-    detail: '幻觉指大模型生成看似合理实则错误或虚构的内容，源于其"统计续写"本质——它不知道事实，只追求"像"。缓解手段：接入知识库（RAG）强制引用来源、要求回答标注不确定、增加审核节点校验、降低模型温度。本项目审核 Agent 的职责之一就是检查生成内容与知识库的一致性。' },
+    detail: '幻觉指大模型生成看似合理实则错误或虚构的内容，源于其"统计续写"本质——它不知道事实，只追求"像"。缓解手段：接入知识库（RAG）强制引用来源、要求回答标注不确定、增加审核节点校验、降低模型温度。本课程审核 Agent 的职责之一就是检查生成内容与知识库的一致性。' },
   { name: 'MCP（模型上下文协议）', theme: '协议与框架', domain: 'Agent 应用与开发',
     intro: '大模型与外部工具之间连接的标准协议',
-    detail: 'MCP（Model Context Protocol）由 Anthropic 提出，是"AI 界的 USB 接口"：它定义了大模型应用与工具/数据源之间的统一通信协议。服务端暴露 资源、工具、提示 三类能力，客户端（Agent）通过 HTTP/SSE 或 stdio 连接。本项目技术选型采用 MCP + HTTP/SSE，当前以进程内 Skill 注册中心实现，后续可无缝升级为独立 MCP Server。' },
+    detail: 'MCP（Model Context Protocol）由 Anthropic 提出，是"AI 界的 USB 接口"：它定义了大模型应用与工具/数据源之间的统一通信协议。服务端暴露 资源、工具、提示 三类能力，客户端（Agent）通过 HTTP/SSE 或 stdio 连接。本课程技术选型采用 MCP + HTTP/SSE，当前以进程内 Skill 注册中心实现，后续可无缝升级为独立 MCP Server。' },
   { name: 'LangGraph', theme: '协议与框架', domain: 'Agent 应用与开发',
     intro: '用图（StateGraph）编排多智能体工作流的框架',
-    detail: 'LangGraph 是 LangChain 生态的工作流编排框架：把 Agent 流程建模为 节点 + 条件边 的有向图，支持并行、循环、状态共享。本项目后端用它实现 4-Agent 工作流：plan（规划）→ study_memory/kb（并行）→ generate → review → output，一次规划并行执行，大幅减少 LLM 调用次数。' },
+    detail: 'LangGraph 是 LangChain 生态的工作流编排框架：把 Agent 流程建模为 节点 + 条件边 的有向图，支持并行、循环、状态共享。本课程后端用它实现 4-Agent 工作流：plan（规划）→ study_memory/kb（并行）→ generate → review → output，一次规划并行执行，大幅减少 LLM 调用次数。' },
   { name: 'API Base URL', theme: '协议与框架', domain: 'Agent 应用与开发',
     intro: '大模型 API 的服务地址，决定请求发往哪个模型厂商',
-    detail: 'Base URL 是大模型 API 的根地址（如 https://api.deepseek.com/v1），OpenAI 兼容 SDK 用它 + api_key + model 发起请求。本项目支持多厂家（DeepSeek/OpenAI/通义/智谱/月之暗面/豆包），模型卡里选择厂家即自动带出对应 Base URL，方便切换不同模型服务。' },
+    detail: 'Base URL 是大模型 API 的根地址（如 https://api.deepseek.com/v1），OpenAI 兼容 SDK 用它 + api_key + model 发起请求。本课程支持多厂家（DeepSeek/OpenAI/通义/智谱/月之暗面/豆包），模型卡里选择厂家即自动带出对应 Base URL，方便切换不同模型服务。' },
   { name: '流式输出（Streaming）', theme: '协议与框架', domain: 'Agent 应用与开发',
     intro: '答案逐字逐句实时返回，无需等待完整生成',
-    detail: '流式输出让模型边生成边把 Token 推给前端（SSE 或 chunked 流），用户看到"打字机"效果，首字延迟大幅降低。本项目 /api/chat 返回流式响应，前端用 ReadableStream 逐段读取渲染；同时在工作流节点间传递时仍保留完整结构化数据供审核与记忆使用。' },
+    detail: '流式输出让模型边生成边把 Token 推给前端（SSE 或 chunked 流），用户看到"打字机"效果，首字延迟大幅降低。本课程 /api/chat 返回流式响应，前端用 ReadableStream 逐段读取渲染；同时在工作流节点间传递时仍保留完整结构化数据供审核与记忆使用。' },
   { name: 'Embedding（向量化）', theme: '协议与框架', domain: 'Agent 应用与开发',
     intro: '把文本转成高维向量，用"距离"衡量语义相似度',
     detail: 'Embedding 模型把文本映射到高维向量空间，语义相近的文本向量距离也近。它是 RAG 的基石：文档切片向量化后存入向量库，查询时把问题向量化做相似度检索。常见模型如 bge、text-embedding；向量库如 Chroma、FAISS、pgvector。' },
   { name: '向量数据库', theme: '协议与框架', domain: 'Agent 应用与开发',
     intro: '专为向量相似度检索优化的存储引擎',
-    detail: '向量数据库以向量为索引核心，提供高效的近似最近邻（ANN）检索。相比普通数据库按字段匹配，它按"语义距离"召回内容。本项目知识库文档切片后向量化存入向量库，检索时支持 Small-to-Big 两阶段重排，保证"强制引用来源"。' },
+    detail: '向量数据库以向量为索引核心，提供高效的近似最近邻（ANN）检索。相比普通数据库按字段匹配，它按"语义距离"召回内容。本课程知识库文档切片后向量化存入向量库，检索时支持 Small-to-Big 两阶段重排，保证"强制引用来源"。' },
   { name: 'Token 与上下文窗口', theme: '协议与框架', domain: 'Agent 应用与开发',
     intro: '模型处理文本的基本单位及其单次输入上限',
-    detail: 'Token 是模型处理文本的最小单位（中文约 1 字 ≈ 1-2 Token）。上下文窗口是模型单次能容纳的输入+输出上限，超出会被截断。因此 Agent 需管理上下文：只注入相关记忆与检索结果、压缩历史对话，避免"爆窗"。本项目在生成节点组装上下文时做了裁剪（历史取最近 10 条等）。' },
+    detail: 'Token 是模型处理文本的最小单位（中文约 1 字 ≈ 1-2 Token）。上下文窗口是模型单次能容纳的输入+输出上限，超出会被截断。因此 Agent 需管理上下文：只注入相关记忆与检索结果、压缩历史对话，避免"爆窗"。本课程在生成节点组装上下文时做了裁剪（历史取最近 10 条等）。' },
 
   // ---- Python 编程 ----
   { name: 'GIL（全局解释器锁）', theme: '语言基础', domain: 'Python 编程',
@@ -163,10 +163,10 @@ const WIKI_ENTRIES: WikiEntry[] = [
     detail: '上下文管理器通过 __enter__ / __exit__ 协议实现，配合 with 语句确保资源无论正常或异常都被清理：文件自动关闭、数据库连接提交/回滚、锁释放。也可用 contextlib.contextmanager 装饰器把生成器函数快速变成上下文管理器。是 Python 最常用的"确定性资源管理"手段。' },
   { name: '类型注解（Type Hints）', theme: '语言基础', domain: 'Python 编程',
     intro: '在代码中标注变量与函数的类型，配合工具静态检查',
-    detail: '类型注解（def add(a: int, b: int) -> int）运行时无开销，但能被 mypy、pyright 等静态检查器发现类型错误，也让 IDE 提供补全与跳转。配合 typing 模块（Optional、List、Union、TypedDict）可表达复杂结构。大型项目（尤其 API 层、数据模型）强烈推荐，本项目前后端类型即靠此协作。' },
+    detail: '类型注解（def add(a: int, b: int) -> int）运行时无开销，但能被 mypy、pyright 等静态检查器发现类型错误，也让 IDE 提供补全与跳转。配合 typing 模块（Optional、List、Union、TypedDict）可表达复杂结构。大型课程（尤其 API 层、数据模型）强烈推荐，本课程前后端类型即靠此协作。' },
   { name: '虚拟环境（venv）', theme: '语言基础', domain: 'Python 编程',
-    intro: '为每个项目隔离独立的 Python 依赖环境',
-    detail: '虚拟环境（python -m venv .venv）创建项目专属的 site-packages，避免不同项目依赖版本冲突（如 A 要 Django 4、B 要 Django 5）。激活后 pip 安装的包只进当前环境。进阶工具有 poetry/uv 管理依赖锁定；容器化项目则把依赖装进镜像（requirements.txt + Dockerfile）。' },
+    intro: '为每个课程隔离独立的 Python 依赖环境',
+    detail: '虚拟环境（python -m venv .venv）创建课程专属的 site-packages，避免不同课程依赖版本冲突（如 A 要 Django 4、B 要 Django 5）。激活后 pip 安装的包只进当前环境。进阶工具有 poetry/uv 管理依赖锁定；容器化课程则把依赖装进镜像（requirements.txt + Dockerfile）。' },
   { name: '包管理（pip）', theme: '语言基础', domain: 'Python 编程',
     intro: '安装、卸载、管理 Python 第三方库的标准工具',
     detail: 'pip 是 Python 官方包管理器：pip install 从 PyPI 安装包，可用 -i 指定镜像（国内常用清华源加速）。最佳实践：requirements.txt 记录依赖、用 pip freeze 锁定版本、虚拟环境中使用避免污染全局。新趋势是 uv（Rust 编写）速度提升数十倍。' },
@@ -920,7 +920,7 @@ const exportItem = (item: ListItem) => {
                   <button onClick={() => onUseItem(detail.title, detail.body)}
                     className="flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-white rounded-xl shadow-soft hover:scale-105 transition-transform"
                     style={{ background: 'var(--accent)' }}>
-                    <Plus size={14} /> 加入项目
+                    <Plus size={14} /> 加入课程
                   </button>
                 )}
                 {detail.deletable && (

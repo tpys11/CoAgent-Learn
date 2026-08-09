@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import { Home, Plus, X, FolderOpen, Clock } from 'lucide-react'
 
 /** 系统预设领域 → 预存图片（非系统自带领域无图，显示首字占位） */
@@ -15,7 +15,7 @@ interface HomeProject {
   created_at?: string
 }
 
-/** 主页：按项目展开的大卡片（上 70% 图片/名称/进度，下 30% 三方面描述），点击进入该项目对话 */
+/** 主页：按课程展开的大卡片（上 70% 图片/名称/进度，下 30% 三方面描述），点击进入该课程对话 */
 export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
   projects: HomeProject[]
   onEnter: (id: string) => void
@@ -38,7 +38,7 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
   }, [projects])
 
   const newProject = () => {
-    const name = window.prompt('项目名称：')
+    const name = window.prompt('课程名称：')
     if (name && name.trim()) onCreate(name.trim())
   }
   const strOf = (v: any) => Array.isArray(v) ? v.join('、') : v ? String(v) : ''
@@ -51,17 +51,17 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
           <div className="flex items-center justify-between mb-8">
             <div>
               <h1 className="text-2xl font-bold flex items-center gap-2"><Home size={22} /> 我的主页</h1>
-              <p className="text-xs text-dim mt-1.5">选择项目进入对话，或创建新项目开始学习</p>
+              <p className="text-xs text-dim mt-1.5">选择课程进入对话，或创建新课程开始学习</p>
             </div>
             <button onClick={newProject}
               className="flex items-center gap-1.5 px-4 py-2.5 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors">
-              <Plus size={14} /> 新建项目
+              <Plus size={14} /> 新建课程
             </button>
           </div>
           {projects.length === 0 ? (
             <div className="border border-dashed hairline rounded-3xl py-20 flex flex-col items-center gap-3 text-dim">
               <FolderOpen size={36} className="opacity-50" />
-              <p className="text-sm">还没有项目，点击「新建项目」开始</p>
+              <p className="text-sm">还没有课程，点击「新建课程」开始</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -89,8 +89,8 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
                       <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/70 to-transparent">
                         <div className="flex items-center justify-between gap-2">
                           <p className="text-base font-bold text-white truncate">{p.name}</p>
-                          <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`删除项目「${p.name}」？`)) onDelete(p.id) }}
-                            className="p-1 rounded-lg text-white/70 opacity-0 group-hover:opacity-100 hover:text-red-400 transition-all flex-shrink-0" title="删除项目">
+                          <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`删除课程「${p.name}」？`)) onDelete(p.id) }}
+                            className="p-1 rounded-lg text-white/70 opacity-0 group-hover:opacity-100 hover:text-red-400 transition-all flex-shrink-0" title="删除课程">
                             <X size={14} />
                           </button>
                         </div>

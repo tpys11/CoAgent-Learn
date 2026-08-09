@@ -1,4 +1,4 @@
-import { useState } from 'react'
+﻿import { useState } from 'react'
 import { Zap, BookOpen, Compass } from 'lucide-react'
 
 type Section = 'basic' | 'detail' | 'philosophy'
@@ -22,7 +22,7 @@ function Placeholder({ hint }: { hint: string }) {
 function BasicTutorial() {
   const steps: Array<{ n: string; title: string; text: string }> = [
     { n: '01', title: '配置 API Key', text: '（待补充：一句话说明）' },
-    { n: '02', title: '新建项目', text: '（待补充：一句话说明）' },
+    { n: '02', title: '新建课程', text: '（待补充：一句话说明）' },
     { n: '03', title: '输入问题', text: '（待补充：一句话说明）' },
     { n: '04', title: '查看生成物', text: '（待补充：一句话说明）' },
   ]
@@ -49,7 +49,7 @@ function DetailTutorial() {
       title: '主对话界面',
       filled: true,
       sections: [
-        { name: '界面概览', desc: '主对话界面是完成学习提问的主要场所：顶部为统计信息条，中部为对话消息流与思考链，底部为输入框。左侧项目树用于切换项目与对话，右侧栏提供多智能体协作流程、知识图谱与第二对话窗口。' },
+        { name: '界面概览', desc: '主对话界面是完成学习提问的主要场所：顶部为统计信息条，中部为对话消息流与思考链，底部为输入框。左侧课程树用于切换课程与对话，右侧栏提供多智能体协作流程、知识图谱与第二对话窗口。' },
         { name: '输入框 · 输入优化', desc: '控制模型提问策略：默认模式由模型自行判断是否需要追问（通常问 1-3 个问题）；详尽模式会继续追问直到信息足够；不询问模式直接按已有信息生成，适合快速提问。' },
         { name: '输入框 · 检索与搜索', desc: '知识库检索控制回答的知识来源：自由模式由模型自行决定，知识库模式优先从知识库检索；联网搜索在需要补充外部资料时启用，增强模式会寻找权威信息源。' },
         { name: '输入框 · 输出形式', desc: '结构化程度决定内容排版：低结构化以段落为主，高结构化增加列表与表格；输出格式可选完整 Markdown 文档，或以对话消息形式直接输出。' },

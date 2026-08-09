@@ -312,7 +312,7 @@ const TEMPLATE_OPTIONS = [
       {/* 消息流：内容限宽居中 */}
       <div ref={msgScrollRef} className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-6 py-6 flex flex-col gap-6">
-          {/* 持久提示：项目记忆分析/基本情况修改（从记忆界面跳转进入时显示） */}
+          {/* 持久提示：课程记忆分析/基本情况修改（从记忆界面跳转进入时显示） */}
           {analyzeHint && (
             <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border hairline"
               style={{ background: 'color-mix(in srgb, var(--accent) 8%, var(--bg-panel))', borderColor: 'color-mix(in srgb, var(--accent) 30%, transparent)' }}>
@@ -327,7 +327,7 @@ const TEMPLATE_OPTIONS = [
                 <Bot size={26} className="text-dim" strokeWidth={1.5} />
               </div>
               <h1 className="font-display text-3xl tracking-wide">CoAgent-Learn</h1>
-              {!currentProject && <p className="text-xs text-dim">选择或新建一个项目开始学习</p>}
+              {!currentProject && <p className="text-xs text-dim">选择或新建一个课程开始学习</p>}
             </div>
           )}
 
@@ -417,7 +417,7 @@ const TEMPLATE_OPTIONS = [
 
           {projectInitialized === false ? (
             <div className="px-3 py-2 border border-dashed border-orange-400 rounded-xl bg-orange-50 text-xs text-orange-600 flex items-center gap-2">
-              <AlertTriangle size={13} /> 项目未初始化
+              <AlertTriangle size={13} /> 课程未初始化
             </div>
           ) : (
           <>

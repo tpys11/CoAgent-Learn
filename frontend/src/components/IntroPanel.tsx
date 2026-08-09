@@ -1,10 +1,10 @@
-import { GraduationCap, X } from 'lucide-react'
+﻿import { GraduationCap, X } from 'lucide-react'
 
 interface Props {
   onClose: () => void
 }
 
-/** 首次进入系统自动弹出的项目介绍面板：从左侧教程按钮方向张开，约占界面 60% */
+/** 首次进入系统自动弹出的课程介绍面板：从左侧教程按钮方向张开，约占界面 60% */
 export default function IntroPanel({ onClose }: Props) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-start" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
@@ -22,7 +22,7 @@ export default function IntroPanel({ onClose }: Props) {
             <GraduationCap size={18} />
           </span>
           <div className="flex-1 min-w-0">
-            <p className="font-display text-[15px]">项目介绍与基础教程</p>
+            <p className="font-display text-[15px]">课程介绍与基础教程</p>
             <p className="text-[10px] text-gray-400">来自左侧「教程与设计思想」，之后可随时点击该图标查看完整版</p>
           </div>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-[#ededed] text-gray-400 hover:text-[#1a1a1a]" title="关闭">
@@ -32,7 +32,7 @@ export default function IntroPanel({ onClose }: Props) {
         <div className="flex-1 overflow-y-auto px-8 py-6">
           <div className="max-w-xl flex flex-col gap-6">
             <section>
-              <h3 className="font-display text-lg mb-2">项目基础介绍</h3>
+              <h3 className="font-display text-lg mb-2">课程基础介绍</h3>
               <div className="border border-dashed border-[#d0d0d0] rounded-xl px-4 py-6 text-center">
                 <p className="text-xs text-gray-400">（待补充：CoAgent-Learn 是什么、解决什么问题、多智能体协同学习的一句话介绍）</p>
               </div>
@@ -40,7 +40,7 @@ export default function IntroPanel({ onClose }: Props) {
             <section>
               <h3 className="font-display text-lg mb-2">基础使用教程</h3>
               <div className="flex flex-col gap-2">
-                {['配置 API Key', '新建项目', '输入问题', '查看生成物'].map((t, i) => (
+                {['配置 API Key', '新建课程', '输入问题', '查看生成物'].map((t, i) => (
                   <div key={t} className="flex items-center gap-4 px-4 py-3 bg-[#fafafa] border border-[#e5e5e5] rounded-xl shadow-soft">
                     <span className="text-lg font-bold text-gray-300 w-8 flex-shrink-0">{String(i + 1).padStart(2, '0')}</span>
                     <div className="min-w-0">
