@@ -377,7 +377,7 @@ function TreeGraph({ nodes, rootName, open, onToggle, onOpen, currentPath }: {
                       ? 'border-[var(--accent)] text-white shadow-soft font-medium'
                       : 'card-surface border-[var(--border-color)] hover:border-[var(--accent)] hover:shadow-soft'
                 }`}
-                style={{ background: isRoot || active ? 'var(--accent)' : undefined }}>
+                style={{ background: isRoot || active ? 'var(--accent)' : !isDir ? 'color-mix(in srgb, var(--accent) 12%, var(--bg-panel))' : undefined }}>
                 <span className="truncate">{n.name.replace(/\.md$/, '')}</span>
                 {isDir && <ChevronRight size={12} className={`flex-shrink-0 ml-auto transition-transform ${expanded ? 'rotate-90' : ''}`} />}
               </button>
