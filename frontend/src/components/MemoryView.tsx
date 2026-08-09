@@ -354,7 +354,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
   const [projData, setProjData] = useState<Record<string, { fields: Record<string, string>; count: number; latest: string; days: Record<string, any[]>; progress: { items: any[]; daily: Array<{ date: string; count: number }>; pace: string }; treeDocs: Array<{ source: string; tree: any[] }> }>>({})
   const [projLoading, setProjLoading] = useState(false)
   // 当前查看的项目（点击项目按钮切换）
-  const [activeProject, setActiveProject] = useState<string | null>(null)
+  const [activeProject, setActiveProject] = useState<string | null>(projectOnly ? projectId : null)
   // 日历数据：date → 当天对话项列表（全局）
   const [globalDays, setGlobalDays] = useState<Record<string, any[]>>({})
   const [globalStats, setGlobalStats] = useState<{ count: number; latest: string }>({ count: 0, latest: '' })
@@ -438,10 +438,10 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
       const timer = window.setTimeout(() => {
         setProjData(out)
         setProjLoading(false)
-        setActiveProject(prev => prev || (plist[0]?.id || null))
+        setActiveProject(prev => prev || (projectOnly ? (projectId || plist[0]?.id) : (plist[0]?.id || null)))
       }, 8000)
       const finish = () => {
-        if (++done >= plist.length) { window.clearTimeout(timer); setProjData(out); setProjLoading(false); setActiveProject(prev => prev || (plist[0]?.id || null)) }
+        if (++done >= plist.length) { window.clearTimeout(timer); setProjData(out); setProjLoading(false); setActiveProject(prev => prev || (projectOnly ? (projectId || plist[0]?.id) : (plist[0]?.id || null))) }
       }
       for (const p of plist) {
         const pid = p.id
@@ -664,7 +664,8 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
               <p className="text-xs text-dim text-center py-10">暂无项目</p>
             ) : (
               <>
-                {/* 项目按钮：直接显示，点击查看该项目记忆 */}
+                {/* 项目按钮：直接显示，点击查看该项目记忆（projectOnly 时固定当前项目，不显示） */}
+                {!projectOnly && (
                 <div className="flex flex-wrap gap-2">
                   {projects.map(p => (
                     <button key={p.id} onClick={() => setActiveProject(p.id)}
@@ -675,6 +676,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                     </button>
                   ))}
                 </div>
+                )}
 
                 {/* 选中项目的记忆详情 */}
                 {activeProject && (() => {
