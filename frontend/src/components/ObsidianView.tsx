@@ -4,7 +4,7 @@ import container from 'markdown-it-container'
 import katexPlugin from 'markdown-it-katex'
 import 'katex/dist/katex.min.css'
 import mermaid from 'mermaid'
-import { BookOpen, FileText, FolderOpen, FolderClosed, List, Network } from 'lucide-react'
+import { BookOpen, FileText, FolderOpen, FolderClosed, List, Network, ChevronRight, Pencil, Save, X } from 'lucide-react'
 
 // ---------- 渲染引擎：markdown-it（与 Obsidian 同源）+ callout/mermaid/KaTeX/双链嵌入 ----------
 mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', theme: 'default' })
@@ -152,6 +152,17 @@ async function readFile(h: FileSystemDirectoryHandle, relPath: string): Promise<
   const fh = await cur.getFileHandle(parts[parts.length - 1])
   const f = await fh.getFile()
   return f.text()
+}
+
+/** 写回文件（编辑保存） */
+async function writeFile(h: FileSystemDirectoryHandle, relPath: string, content: string) {
+  const parts = relPath.split('/').filter(Boolean)
+  let cur: any = h
+  for (const p of parts.slice(0, -1)) cur = await cur.getDirectoryHandle(p)
+  const fh = await cur.getFileHandle(parts[parts.length - 1], { create: true })
+  const w = await fh.createWritable()
+  await w.write(content)
+  await w.close()
 }
 
 function TreeItem({ node, open, onToggle, onOpen, depth }: {
@@ -367,6 +378,7 @@ function TreeGraph({ nodes, rootName, open, onToggle, onOpen, currentPath }: {
                       : 'card-surface border-[var(--border-color)] hover:border-[var(--accent)] hover:shadow-soft'
                 }`}
                 style={{ background: isRoot || active ? 'var(--accent)' : undefined }}>
+                {isDir && <ChevronRight size={12} className={`flex-shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} />}
                 {isDir
                   ? (expanded ? <FolderOpen size={14} className="flex-shrink-0 opacity-70" /> : <FolderClosed size={14} className="flex-shrink-0 opacity-70" />)
                   : <FileText size={13} className="flex-shrink-0 opacity-70" />}
@@ -397,6 +409,10 @@ function ObsidianViewInner() {
   const [tree, setTree] = useState<TreeNode[]>([])
   const [open, setOpen] = useState<Set<string>>(new Set())
   const [current, setCurrent] = useState<{ path: string; content: string } | null>(null)
+  // 编辑模式：编辑 markdown 原文（保存后写回文件）
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [saveMsg, setSaveMsg] = useState('')
   // 展开方式：列表（缩进列表）/ 树状图（带连接线），持久化记忆
   const [expandMode, setExpandMode] = useState<'list' | 'tree'>(() => localStorage.getItem('coagent-obsidian-mode') === 'tree' ? 'tree' : 'list')
   const articleRef = useRef<HTMLDivElement>(null)
@@ -415,7 +431,7 @@ function ObsidianViewInner() {
 
   const connect = async () => {
     try {
-      const h = await (window as any).showDirectoryPicker({ mode: 'read' })
+      const h = await (window as any).showDirectoryPicker({ mode: 'readwrite' })
       setRootHandle(h)
       setRootName(h.name)
       await saveRootHandle(h)
@@ -438,12 +454,35 @@ function ObsidianViewInner() {
   }
   const openFile = async (node: TreeNode) => {
     if (!rootHandle) return
+    setEditing(false)
     setCurrent({ path: node.path, content: '加载中…' })
     try {
       const text = await readFile(rootHandle, node.path)
       setCurrent({ path: node.path, content: text })
     } catch {
       setCurrent({ path: node.path, content: '读取失败' })
+    }
+  }
+  const startEdit = () => {
+    if (!current) return
+    setDraft(current.content)
+    setSaveMsg('')
+    setEditing(true)
+  }
+  const cancelEdit = () => {
+    setEditing(false)
+    setSaveMsg('')
+  }
+  const saveEdit = async () => {
+    if (!current || !rootHandle) return
+    setSaveMsg('保存中…')
+    try {
+      await writeFile(rootHandle, current.path, draft)
+      setCurrent({ path: current.path, content: draft })
+      setEditing(false)
+      setSaveMsg('已保存')
+    } catch (e) {
+      setSaveMsg('保存失败：' + String(e))
     }
   }
 
@@ -553,9 +592,37 @@ function ObsidianViewInner() {
           </>
         )}
       </div>
-      {/* 右侧：文章阅读 */}
-      <div className="flex-1 overflow-y-auto">
-        {current ? (
+      {/* 右侧：文章阅读 / 编辑 */}
+      <div className="flex-1 relative overflow-y-auto">
+        {current && (
+          <div className="absolute top-3 right-4 z-10 flex items-center gap-1.5">
+            {!editing ? (
+              <button onClick={startEdit} title="编辑原文"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-medium text-white shadow-soft transition-transform hover:scale-105"
+                style={{ background: 'var(--accent)' }}>
+                <Pencil size={12} /> 编辑
+              </button>
+            ) : (
+              <>
+                <span className="text-[11px] text-dim">{saveMsg}</span>
+                <button onClick={saveEdit} title="保存"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-medium text-white shadow-soft transition-transform hover:scale-105"
+                  style={{ background: 'var(--accent)' }}>
+                  <Save size={12} /> 保存
+                </button>
+                <button onClick={cancelEdit} title="取消"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-medium border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">
+                  <X size={12} /> 取消
+                </button>
+              </>
+            )}
+          </div>
+        )}
+        {editing && current ? (
+          <textarea value={draft} onChange={e => setDraft(e.target.value)}
+            spellCheck={false}
+            className="w-full h-full p-6 font-mono text-[13px] leading-relaxed outline-none resize-none bg-[var(--bg-panel)] text-[var(--text)]" />
+        ) : current ? (
           <article ref={articleRef} onClick={onArticleClick}
             className="max-w-3xl mx-auto px-10 py-8 obsidian-prose" dangerouslySetInnerHTML={{ __html: html }} />
         ) : (
