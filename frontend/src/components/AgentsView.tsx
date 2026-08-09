@@ -532,13 +532,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                   )}
                 </div>
 
-                {/* 职责说明 */}
-                {agent.role && (
-                  <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
-                    <p className="text-xs leading-relaxed text-[var(--text-muted)]">{agent.role}</p>
-                  </div>
-                )}
-
                 {/* 网格：全局性提示词 + Skill 模块 */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <div className="flex flex-col gap-2">
@@ -561,6 +554,14 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                             }`}>
                             <Square size={16} className={linked ? 'text-[#1a1a1a]' : 'text-dim'} />
                             <span className="text-[10px] font-medium leading-tight text-center px-1 truncate w-full">{s.name}</span>
+                            {/* 右上角红色叉：删除该 Skill 链接 */}
+                            {linked && (
+                              <button onClick={(e) => { e.stopPropagation(); toggleSkill(s.name) }}
+                                className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center shadow hover:bg-red-600 transition-colors"
+                                title="删除该 Skill">
+                                <X size={9} />
+                              </button>
+                            )}
                             {/* 右下角 radio：选中实心、未选中空心 */}
                             <span className={`absolute right-1.5 bottom-1.5 w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center transition-colors ${
                               linked ? 'border-[#1a1a1a]' : 'border-[var(--border-color)]'
