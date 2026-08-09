@@ -52,6 +52,7 @@ class AgentState(TypedDict):
     mindchain: list  # [{agent, content}]
     task_stats: dict  # 运行监控：{node: {ms, llm_calls}, token_estimate}
     sub_outputs: dict  # 子Agent产出：{kb: str, gen: str}
+    _output_subs: list  # 输出增强模板：主Agent规划时按需选择的输出子Agent列表
 
 
 # 检索增强模板的内置默认子 Agent（知识库与搜索 Agent 强制调用；用户配置了 subAgents 则用自定义）
@@ -59,6 +60,21 @@ _DEFAULT_KB_SUBS = [
     {"id": "kb-manage", "name": "知识库管理", "subPrompt": "你是知识库检索整理助手。把检索到的知识库片段整理为「来源→核心观点→关键数据」的条目，只输出整理结果本身。", "form": "检索"},
     {"id": "search", "name": "搜索", "subPrompt": "你是搜索整理助手。把联网搜索到的资料整理为「来源→核心观点→关键数据」的条目并标注来源网址，只输出整理结果本身。", "form": "搜索"},
 ]
+
+
+def _build_out_cand(agents: list, tpl: str) -> str:
+    """输出增强模板：构造主 Agent 可选的输出子 Agent 候选提示；非输出增强或无子 Agent 时返回空串"""
+    if tpl != "输出增强":
+        return ""
+    _cfg = next((a for a in agents if isinstance(a, dict) and a.get("id") == "main"), {})
+    _subs = _cfg.get("subAgents") or []
+    if not _subs:
+        return ""
+    _cand = "；".join(f"{s.get('id')}={s.get('name')}({s.get('form', '')})" for s in _subs)
+    return (
+        f"\n输出增强模板：请根据用户问题按需选择 0-3 个输出子Agent，在返回 JSON 中额外给出 \"output_subs\": [子Agent id 数组]。"
+        f"候选：{_cand}。若用户问题不需要结构化输出则返回空数组。"
+    )
 
 
 def create_workflow(api_key: str | None = None, settings: dict | None = None, on_token=None,
@@ -152,6 +168,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
     )
     _PLAN_PROMPT = MAIN_PLAN_PROMPT + (
         f"\n用户设定了'输入优化-{input_mode}'模式，请据此决定询问策略。"
+        + (_OUT_CAND_PROMPT if (_OUT_CAND_PROMPT := _build_out_cand(agents, tpl)) else "")
     )
 
     # ---------------- 节点 ----------------
@@ -167,6 +184,13 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 _append_example(cfg, state["user_input"]), "主Agent")
             state["processed_input"] = result.get("processed", state["user_input"])
             state["_plan"] = result.get("plan", []) or []
+            # 输出增强模板：解析主 Agent 按需选择的输出子 Agent
+            if tpl == "输出增强":
+                _all_subs = cfg.get("subAgents") or []
+                _sel = result.get("output_subs") or []
+                state["_output_subs"] = [s for s in _all_subs if s.get("id") in _sel][:3]
+            else:
+                state["_output_subs"] = []
         except Exception:
             thinking = "规划失败，使用原始输入"
             state["processed_input"] = state["user_input"]
@@ -303,9 +327,12 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             pass
         # 输出增强模板：调用主 Agent 的子 Agent（如 树状结构/要点卡片）产出专项内容，主 Agent 基于其生成
         main_subs = cfg.get("subAgents") or []
+        # 输出增强模板：按主 Agent 规划时选择的子 Agent 调用（按需）
         if tpl == "输出增强" and main_subs:
+            sel_ids = [s.get("id") for s in (state.get("_output_subs") or [])]
+            subs = [s for s in main_subs if s.get("id") in sel_ids] if sel_ids else []
             sub_parts = []
-            for sub in main_subs:
+            for sub in subs:
                 try:
                     _sp = (sub.get("subPrompt") or "") + "\n只输出该形式的内容本身。"
                     _form = sub.get("form") or ""
