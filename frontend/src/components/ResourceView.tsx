@@ -202,12 +202,6 @@ const GEN_CATS = [
 ]
 const GEN_MATCH: Record<string, string[]> = { '讲义': ['讲义'], '实操指南': ['实操指南'], '测试题': ['测试题'] }
 
-const NAV: Array<{ key: Tab; icon: any; label: string; desc: string }> = [
-  { key: 'tutorials', icon: BookOpen, label: '教程资源', desc: '按领域与分类组织的学习资料与百科' },
-  { key: 'generated', icon: Sparkles, label: '我的生成', desc: 'AI 生成的讲义 / 实操指南 / 测试题' },
-  { key: 'uploads', icon: Upload, label: '我的上传', desc: '知识库文档与保存的资料' },
-]
-
 /** 资源界面：hyper.ai 风格——顶部 Hero + 领域/分类选择 + 分区卡片流（配色跟随主题变量） */
 // ---------- Obsidian 文件夹导入（复用 Obsidian 界面的 IndexedDB 连接句柄） ----------
 interface DirNode { name: string; path: string; children: DirNode[] }
@@ -704,22 +698,27 @@ const exportItem = (item: ListItem) => {
             ))}
           </div>
 
-          {/* 功能入口大按钮 */}
-          <div className="flex flex-wrap gap-3 mt-4">
-            {NAV.map(({ key, icon: Icon, label }) => (
+          {/* 三个区域选择（教程资源 / 我的生成 / 我的上传） */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+            {[
+              { key: 'tutorials', icon: BookOpen, label: '教程资源', desc: '系统整理的学习教程与主题词条' },
+              { key: 'generated', icon: Sparkles, label: '我的生成', desc: 'AI 生成的内容，可查看与导出' },
+              { key: 'uploads', icon: Upload, label: '我的上传', desc: '上传的文档与知识库资料' },
+            ].map(({ key, icon: Icon, label, desc }) => (
               <button
                 key={key}
                 onClick={() => { setTab(key); setDetail(null) }}
-                className={`flex items-center gap-3 px-5 py-3 rounded-2xl border text-left transition-all ${
-                  tab === key
-                    ? 'border-[var(--border-strong)] bg-[var(--bg-hover)]'
-                    : 'border-[var(--border-color)] bg-[var(--bg-panel)] hover:bg-[var(--bg-hover)]'
+                className={`card-surface rounded-2xl p-5 flex flex-col gap-2 text-left transition-all hover:shadow-soft ${
+                  tab === key ? 'border-[var(--accent)] bg-[var(--bg-hover)]' : ''
                 }`}
               >
-                <span className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 bg-[#1a1a1a] text-white">
-                  <Icon size={15} />
+                <span className="flex items-center gap-2">
+                  <span className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 bg-[#1a1a1a] text-white">
+                    <Icon size={14} />
+                  </span>
+                  <span className="text-sm font-semibold">{label}</span>
                 </span>
-                <span className="text-sm font-semibold">{label}</span>
+                <span className="text-[11px] text-dim leading-relaxed">{desc}</span>
               </button>
             ))}
           </div>
