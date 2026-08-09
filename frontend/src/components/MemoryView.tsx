@@ -149,7 +149,6 @@ function KnowledgeTree({ treeDocs, progressItems }: { treeDocs: Array<{ source: 
         </svg>
         <div className="flex flex-col gap-1 text-[11px] text-dim">
           <span>暂无知识图谱</span>
-          <span className="text-[10px]">上传带标题结构的资料后，自动按资料自身的章节层级生成树</span>
         </div>
       </div>
     )
@@ -160,7 +159,6 @@ function KnowledgeTree({ treeDocs, progressItems }: { treeDocs: Array<{ source: 
         <div key={d.source} className="border hairline rounded-xl px-3 py-2 bg-[var(--bg-input)] flex flex-col gap-0.5">
           <div className="flex items-center gap-1.5 text-[10px] font-semibold text-dim mb-0.5">
             <FolderTree size={11} /> {d.source}
-            <span className="ml-auto font-normal text-[9px]">（按资料章节层级）</span>
           </div>
           {(d.tree || []).map((n: any, i: number) => (
             <TreeNodeRow key={i} node={n} colorOf={colorOf} depth={0} defaultOpen={false} />
@@ -187,7 +185,7 @@ function TimeLineChart({ days, height = 90 }: { days: Record<string, any[]>; hei
   return (
     <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-1.5">
       <div className="flex items-center justify-between text-[10px] text-dim">
-        <span className="font-semibold uppercase tracking-wider">内容量趋势<span className="ml-1 font-normal text-[9px] text-dim/70">近 {N} 天 · 纵轴为当日产出内容量</span></span>
+        <span className="font-semibold uppercase tracking-wider">内容量趋势</span>
         {hasData && <span>今日 {vals[vals.length - 1]} 条 · 峰值 {max} 条</span>}
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height }} preserveAspectRatio="none">
@@ -205,7 +203,7 @@ function TimeLineChart({ days, height = 90 }: { days: Record<string, any[]>; hei
             ))}
           </>
         ) : (
-          <text x={W / 2} y={H / 2} textAnchor="middle" fontSize="4.5" fill="#b5b5b5">暂无对话数据 — 对话后按日产出量生成趋势</text>
+          <text x={W / 2} y={H / 2} textAnchor="middle" fontSize="4.5" fill="#b5b5b5">暂无对话数据</text>
         )}
       </svg>
       <div className="flex items-center justify-between text-[9px] text-dim">
@@ -495,7 +493,7 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                     <div className="flex flex-col gap-2">
                       {Object.entries(gSummary).map(([pid, info]: [string, any]) => (
                         <div key={pid} className="text-xs text-[var(--text-muted)] leading-relaxed">
-                          <span className="font-semibold text-[var(--text)]">📁 {pid}</span>
+                          <span className="font-semibold text-[var(--text)]">{pid}</span>
                           {info && (info.抽象项目情况 || info.当前水平 || (info.偏好 || []).length || (info.薄弱点 || []).length) && (
                             <span className="ml-1">
                               {info.抽象项目情况 && `概况: ${info.抽象项目情况}；`}
@@ -520,7 +518,6 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
             <div>
               <h2 className="text-base font-bold flex items-center gap-2">
                 <FolderTree size={16} /> 项目记忆
-                <span className="text-[10px] font-normal text-dim ml-1">点击项目按钮查看记忆 · 字段只读，修改由 AI 处理</span>
                 <button onClick={() => runRebuild(activeProject || undefined)}
                   className="ml-auto px-3 py-1.5 rounded-xl text-[11px] font-medium border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors"
                   title="用当前 API Key 重新分析对话，生成该项目的记忆">
@@ -564,18 +561,18 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                         {/* 空数据引导 */}
                         {data && !Object.values(data.fields).some(v => (v || '').trim()) && (data.progress.items || []).length === 0 && (
                           <div className="px-3 py-2.5 rounded-xl bg-amber-50 text-amber-800 text-[11px] border border-amber-200 leading-relaxed">
-                            ⚠️ 该项目暂无记忆数据：与 AI 对话后会自动分析生成；也可点击右上角「↻ 重新分析」立即从现有对话生成记忆。
+                            该项目暂无记忆数据：对话后会自动分析生成，或点「↻ 重新分析」立即生成。
                           </div>
                         )}
                         {/* 知识图谱：树状结构（复用资料章节层级，节点颜色=掌握状态） */}
                         <div className="flex flex-col gap-2">
-                          <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">知识图谱<span className="ml-1 text-[9px] font-normal text-dim/70">节点颜色 = 基于对话估计的掌握状态（绿好 · 黄一般 · 红薄弱）</span></p>
+                          <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">知识图谱</p>
                           <KnowledgeTree treeDocs={data?.treeDocs || []} progressItems={data?.progress.items || []} />
                         </div>
 
                         {/* 进度：标尺 + 快慢 + 具体内容 */}
                         <div className="flex flex-col gap-2">
-                          <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">进度<span className="ml-1 text-[9px] font-normal text-dim/70">起点 → 当前 → 目标 · 快慢直观</span></p>
+                          <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">进度</p>
                           <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2.5">
                             <div className="relative h-2 rounded-full bg-[#ececec]">
                               <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: pctOf(data?.fields || {}, data?.count || 0) + '%', background: 'var(--accent)' }} />
@@ -595,10 +592,10 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                           <div className="flex flex-col gap-2">
                             <TimeLineChart days={data?.days || {}} />
                           </div>
-                          {/* 遗忘面板：知识点掌握度（独立区域，空时也保留明确的填充区域） */}
+                          {/* 遗忘面板 */}
                           <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
                             <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-semibold text-dim uppercase tracking-wider">🧠 遗忘面板 · 知识点掌握度<span className="ml-1 text-[9px] font-normal text-dim/70">久未复习颜色变淡</span></span>
+                              <span className="text-[10px] font-semibold text-dim uppercase tracking-wider">遗忘面板</span>
                               <button onClick={() => onRequestModify?.('知识点', pid)} className="text-[9px] text-[var(--accent)] hover:underline">修改</button>
                             </div>
                             {(() => { const kps = (data?.progress.items || []).filter((x: any) => x.kind === '知识点'); return kps.length ? (
@@ -617,10 +614,7 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                               </div>
                             ) : (
                               <div className="min-h-[90px] border border-dashed hairline rounded-xl flex items-center justify-center px-3">
-                                <div className="flex flex-col gap-1 text-[11px] text-dim text-center">
-                                  <span>暂无知识点数据</span>
-                                  <span className="text-[10px]">与 AI 对话后自动分析填充，或点「↻ 重新分析」立即生成</span>
-                                </div>
+                                <span className="text-[11px] text-dim">暂无知识点数据</span>
                               </div>
                             ) })()}
                           </div>
