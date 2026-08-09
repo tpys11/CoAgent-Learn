@@ -42,7 +42,7 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
       <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-4">
         {/* 项目记忆：一小段介绍 + 「查看更多」进入独立界面 */}
         <div className="flex flex-col gap-2">
-          <p className="text-xs font-semibold text-dim uppercase tracking-wider">项目记忆</p>
+          <p className="text-xs font-semibold text-dim uppercase tracking-wider">记忆与进程</p>
           <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
             <p className="text-[10px] leading-relaxed text-[var(--text-muted)]">
               {memLines.length === 0
@@ -57,7 +57,7 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
         {/* 项目资源：列表 + 上传独立界面 */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-dim uppercase tracking-wider">项目资源</p>
+            <p className="text-xs font-semibold text-dim uppercase tracking-wider">资源</p>
             <button onClick={onOpenResource} className="text-[10px] px-2.5 py-1 rounded-lg bg-[#1a1a1a] text-white hover:bg-[#333333] transition-colors">上传资源</button>
           </div>
           <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-1.5">
