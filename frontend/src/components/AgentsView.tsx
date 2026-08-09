@@ -478,6 +478,44 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                   </div>
                 </div>
 
+                {/* 子 Agent 层级图：当前 Agent（中心）→ 增强模板中间层 → 具体子 Agent */}
+                {agent.subAgents && agent.subAgents.length > 0 && (
+                  <div className="border hairline rounded-xl p-5 bg-[var(--bg-panel)] flex items-center justify-center overflow-x-auto">
+                    <div className="flex items-center gap-0 flex-shrink-0">
+                      {/* 当前 Agent */}
+                      <div className="px-4 py-3 rounded-xl border-2 text-xs font-bold whitespace-nowrap"
+                        style={{ borderColor: 'var(--accent)', background: 'color-mix(in srgb, var(--accent) 30%, var(--bg-panel))' }}>
+                        {agent.name}
+                      </div>
+                      {/* 曲线 → 模板中间层（main→输出增强 / kb→检索增强；其他 Agent 无中间层） */}
+                      <svg width="50" height="44" viewBox="0 0 50 44" className="flex-shrink-0">
+                        <path d="M 0 22 C 18 22, 32 22, 50 22" stroke="#d4d4d4" strokeWidth="1.5" fill="none" />
+                      </svg>
+                      {agent.id === 'main' || agent.id === 'kb' ? (
+                        <>
+                          <div className="px-3.5 py-2 rounded-xl border-2 border-dashed text-[11px] font-medium whitespace-nowrap text-dim"
+                            style={{ borderColor: 'var(--border-strong)' }}>
+                            {agent.id === 'main' ? '输出增强' : '检索增强'}
+                          </div>
+                          <svg width="50" height="44" viewBox="0 0 50 44" className="flex-shrink-0">
+                            <path d="M 0 22 C 18 22, 32 22, 50 22" stroke="#d4d4d4" strokeWidth="1.5" fill="none" />
+                          </svg>
+                        </>
+                      ) : null}
+                      {/* 子 Agent 列：顶部汇入线 + 每个子 Agent 横向短线连接 */}
+                      <div className="flex flex-col">
+                        <span className="mx-auto w-px h-2 bg-[#d4d4d4]" />
+                        {agent.subAgents.map(s => (
+                          <div key={s.id} className="flex items-center gap-2 py-1">
+                            <span className="w-4 h-px bg-[#d4d4d4] flex-shrink-0" />
+                            <SubNode name={s.name} active={false} />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* 子 Agent */}
                 <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
                   <div className="flex items-center justify-between mb-2">
