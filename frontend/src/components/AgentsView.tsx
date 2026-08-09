@@ -262,36 +262,20 @@ const DownArrow = () => (
 /** 父节点 + 左右两侧子 Agent 横向连接（≥2 个子 Agent 左右平分；1 个放右侧） */
 function AgentRow({ node, subs }: { node: React.ReactNode; subs?: string[] }) {
   if (!subs || subs.length === 0) return <>{node}</>
-  const left = subs.length >= 2 ? subs.slice(0, Math.ceil(subs.length / 2)) : []
-  const right = subs.slice(left.length)
-  // 子 Agent 绝对定位在父节点两侧（不参与布局，父节点位置不变）；容器上下预留间隙避免与相邻节点重叠；连接线为直线
+  // 子 Agent 全部放在父节点右侧，整列以父节点横向中线为轴对称分布（上下对称）；绝对定位不参与布局
   return (
     <div className="relative py-7">
       {node}
-      {left.length > 0 && (
-        <div className="absolute right-full top-1/2 -translate-y-1/2 mr-4 flex flex-col gap-4 items-end">
-          {left.map(s => (
-            <div key={s} className="flex items-center">
-              <SubNode name={s} />
-              <svg width="50" height="48" viewBox="0 0 50 48" className="flex-shrink-0">
-                <path d="M 50 24 L 0 24" stroke="#d4d4d4" strokeWidth="1.5" fill="none" strokeDasharray="4 3" />
-              </svg>
-            </div>
-          ))}
-        </div>
-      )}
-      {right.length > 0 && (
-        <div className="absolute left-full top-1/2 -translate-y-1/2 ml-4 flex flex-col gap-4 items-start">
-          {right.map(s => (
-            <div key={s} className="flex items-center">
-              <svg width="50" height="48" viewBox="0 0 50 48" className="flex-shrink-0">
-                <path d="M 0 24 L 50 24" stroke="#d4d4d4" strokeWidth="1.5" fill="none" strokeDasharray="4 3" />
-              </svg>
-              <SubNode name={s} />
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="absolute left-full top-1/2 -translate-y-1/2 ml-4 flex flex-col gap-4 items-start">
+        {subs.map(s => (
+          <div key={s} className="flex items-center">
+            <svg width="50" height="48" viewBox="0 0 50 48" className="flex-shrink-0">
+              <path d="M 0 24 L 50 24" stroke="#d4d4d4" strokeWidth="1.5" fill="none" strokeDasharray="4 3" />
+            </svg>
+            <SubNode name={s} />
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
