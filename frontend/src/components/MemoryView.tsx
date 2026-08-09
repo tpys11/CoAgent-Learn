@@ -292,7 +292,7 @@ function TimeLineChart({ days, height = 90 }: { days: Record<string, any[]>; hei
     <div className="flex flex-col gap-1.5 flex-1 select-none" style={{ touchAction: 'none' }}>
       <div className="flex items-center justify-between text-[10px] text-dim">
         <span className="font-semibold uppercase tracking-wider">内容量趋势</span>
-        {hasData && <span>今日 {vals[vals.length - 1]} 条 · 峰值 {max} 条 · 跨度 {span} 天</span>}
+        {hasData && <span>今日 {vals[vals.length - 1]} 条 · 峰值 {max} 条 · 显示范围 {span} 天</span>}
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} className="w-full cursor-grab active:cursor-grabbing" style={{ height }}
         preserveAspectRatio="none"
@@ -326,17 +326,13 @@ function TimeLineChart({ days, height = 90 }: { days: Record<string, any[]>; hei
         <span>{allDates[0]?.slice(5)}</span>
         <span>今天</span>
       </div>
-      {/* 跨度滑块：越往右显示范围越小（放大细节） */}
+      {/* 显示范围滑块：越往右显示范围越小（放大细节） */}
       <div className="flex items-center gap-2 text-[9px] text-dim">
-        <span className="flex-shrink-0 w-6">跨度</span>
+        <span className="flex-shrink-0 w-10">显示范围</span>
         <input type="range" min={7} max={Math.max(7, total)} value={total + 7 - span}
           onChange={e => setSpan(Math.max(7, total + 7 - Number(e.target.value)))}
-          className="flex-1 accent-[var(--accent)]" aria-label="时间跨度" />
+          className="flex-1 accent-[var(--accent)]" aria-label="显示范围" />
         <span className="w-9 text-right flex-shrink-0">{span} 天</span>
-      </div>
-      <div className="flex items-center justify-between text-[9px] text-dim">
-        <span>{seg[0]?.slice(5)}</span>
-        <span>{seg[seg.length - 1]?.slice(5)}</span>
       </div>
     </div>
   )
