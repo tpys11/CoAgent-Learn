@@ -330,7 +330,7 @@ function TimeLineChart({ days, height = 90 }: { days: Record<string, any[]>; hei
       </div>
       {/* 显示范围滑块：越往右显示范围越小（放大细节） */}
       <div className="flex items-center gap-2 text-[9px] text-dim">
-        <span className="flex-shrink-0 w-10">显示范围</span>
+        <span className="flex-shrink-0 w-14 whitespace-nowrap">显示范围</span>
         <input type="range" min={7} max={Math.max(7, total)} value={total + 7 - span}
           onChange={e => setSpan(Math.max(7, total + 7 - Number(e.target.value)))}
           className="flex-1 accent-[var(--accent)]" aria-label="显示范围" />
