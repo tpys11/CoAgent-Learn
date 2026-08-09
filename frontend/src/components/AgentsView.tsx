@@ -158,6 +158,7 @@ const FlowGraph = ({ agents, templateName, templateAgentId, onSelect }: { agents
   const lv = (n: string) => levels[n] || 0
   // 子 Agent：kb（检索增强模板调用）/ main（输出增强模板调用）
   const subOf = (id: string) => ((agents || []).find(a => a.id === id)?.subAgents || []).map(s => s.name)
+  const nameOf = (id: string, fallback: string) => (agents || []).find(a => a.id === id)?.name || fallback
   const kbSubs = subOf('kb')
   const mainSubs = subOf('main')
   const kbSubActive = templateName === '检索增强'
@@ -169,7 +170,7 @@ const FlowGraph = ({ agents, templateName, templateAgentId, onSelect }: { agents
       <div className="flex flex-col gap-1 items-center">
         <FlowNode icon={Brain} name="学情与记忆" level={lv('study_memory')} active={act('study')} onClick={pick('study')} />
         <span className="text-[9px] text-dim">∥ 并行</span>
-        <FlowNode icon={Database} name="知识库" level={lv('kb')} active={act('kb')} onClick={pick('kb')} subs={kbSubs} subActive={kbSubActive} />
+        <FlowNode icon={Database} name={nameOf('kb', '知识库与搜索')} level={lv('kb')} active={act('kb')} onClick={pick('kb')} subs={kbSubs} subActive={kbSubActive} />
       </div>
       <FlowArrow />
       <FlowNode icon={Workflow} name="生成" level={lv('generate')} active={act('main')} onClick={pick('main')} subs={mainSubs} subActive={mainSubActive} />
