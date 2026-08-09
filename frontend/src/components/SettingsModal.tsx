@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { X, Sun, Moon, Monitor, Type, LampDesk, Sliders, Zap, MessageSquare, Key, Timer, Database, Plug, Bug, Check, Trash2, Plus, Download, Github } from 'lucide-react'
 import { getThemePref, setThemePref, type ThemePref } from '../theme'
 
@@ -36,17 +36,17 @@ const GROUPS: Array<{ key: string; label: string; icon: any }> = [
 /** 分组 → 其下设置项 */
 const GROUP_TABS: Record<string, string[]> = {
   base: ['font', 'theme', 'keys', 'timeout', 'data', 'reset'],
-  chat: ['defaults', 'actions', 'context', 'cleanup'],
+  chat: ['actions', 'context', 'cleanup'],
   advanced: ['mcp', 'debug'],
   other: ['about'],
 }
 
 function Section({ icon: Icon, title, desc, children }: { icon: any; title: string; desc?: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-3.5">
+    <div className="flex flex-col gap-4">
       <div>
         <p className="text-xs font-semibold text-dim uppercase tracking-wider flex items-center gap-1.5"><Icon size={13} /> {title}</p>
-        {desc && <p className="text-[10px] text-dim mt-0.5">{desc}</p>}
+        {desc && <p className="text-[10px] text-dim mt-1">{desc}</p>}
       </div>
       {children}
     </div>
@@ -95,8 +95,6 @@ export default function SettingsModal({ onClose, projectId }: Props) {
   const [feedback, setFeedback] = useState('')
   const [settingsGroup, setSettingsGroup] = useState('base')
 
-  // 默认对话参数
-  const [defSettings, setDefSettings] = useState<Record<string, string>>(() => getJSON('coagent-default-settings', { chatMode: 'kb', outputFormat: '高结构化', outputVolume: '适中', depth: '中' }))
   // 生成后动作
   const [postActions, setPostActions] = useState(() => getJSON('coagent-post-actions', { autoSaveResource: true, autoFollowups: true }))
   // 流式与上下文
@@ -126,7 +124,6 @@ export default function SettingsModal({ onClose, projectId }: Props) {
     localStorage.setItem('coagent-fontSize', String(fontSize))
   }, [fontSize])
   useEffect(() => { setThemePref(theme) }, [theme])
-  useEffect(() => { localStorage.setItem('coagent-default-settings', JSON.stringify(defSettings)) }, [defSettings])
   useEffect(() => { localStorage.setItem('coagent-post-actions', JSON.stringify(postActions)) }, [postActions])
   useEffect(() => { localStorage.setItem('coagent-context-settings', JSON.stringify(context)) }, [context])
   useEffect(() => { localStorage.setItem('coagent-provider', provider) }, [provider])
@@ -141,7 +138,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
   /** 恢复默认设置：清除设置类键（保留 API Key / 模型 / 数据）后刷新 */
   const resetSettings = () => {
     if (!window.confirm('确定恢复默认设置？字体、主题、默认参数等将还原（API Key、对话与记忆数据不受影响）。')) return
-    ;['coagent-fontSize', 'coagent-default-settings', 'coagent-post-actions', 'coagent-context-settings',
+    ;['coagent-fontSize', 'coagent-post-actions', 'coagent-context-settings',
       'coagent-timeout', 'coagent-debug', 'coagent-provider', 'coagent-mcp-servers', 'coagent-dialogue-limit',
       'coagent-last-settings', 'coagent-tutorial-cats', 'coagent-tutorials'].forEach(k => localStorage.removeItem(k))
     window.location.reload()
@@ -211,7 +208,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
       <div className="card-lift w-full max-w-4xl mx-4 h-[88vh] flex flex-col" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 py-4 border-b hairline flex-shrink-0">
+        <div className="flex items-center justify-between px-6 py-5 border-b hairline flex-shrink-0">
           <h2 className="font-display text-lg">设置</h2>
           <div className="flex items-center gap-2">
             {feedback && <span className="text-[11px] text-green-600 flex items-center gap-1"><Check size={11} /> {feedback}</span>}
@@ -221,7 +218,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
 
         {/* 左侧分类栏 + 右侧内容（Claude 风格） */}
         <div className="flex-1 flex min-h-0">
-          <div className="w-40 flex-shrink-0 border-r hairline bg-[var(--bg-sidebar)] p-2.5 flex flex-col gap-1 overflow-y-auto">
+          <div className="w-44 flex-shrink-0 border-r hairline bg-[var(--bg-sidebar)] p-3 flex flex-col gap-1.5 overflow-y-auto">
             {GROUPS.map(g => (
               <button key={g.key} onClick={() => setSettingsGroup(g.key)}
                 className={`w-full flex items-center gap-2 px-2.5 py-2.5 rounded-lg text-sm font-medium text-left transition-colors active:transform-none ${
@@ -232,7 +229,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             ))}
           </div>
 
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto p-8 flex flex-col gap-8">
             {/* 字体大小 */}
             {show('font') && (
               <Section icon={Type} title="字体大小">
@@ -268,38 +265,10 @@ export default function SettingsModal({ onClose, projectId }: Props) {
               </Section>
             )}
 
-            {/* 默认对话参数 */}
-            {show('defaults') && (
-              <Section icon={Sliders} title="默认对话参数" desc="新对话自动套用；输入框内仍可逐次调整">
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-dim w-16 flex-shrink-0">模式</span>
-                    <PillGroup options={['kb', '默认']} value={defSettings.chatMode}
-                      onChange={v => setDefSettings({ ...defSettings, chatMode: v })} />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-dim w-16 flex-shrink-0">结构化</span>
-                    <PillGroup options={['高结构化', '自然']} value={defSettings.outputFormat}
-                      onChange={v => setDefSettings({ ...defSettings, outputFormat: v })} />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-dim w-16 flex-shrink-0">输出量</span>
-                    <PillGroup options={['精简', '适中', '拓展']} value={defSettings.outputVolume}
-                      onChange={v => setDefSettings({ ...defSettings, outputVolume: v })} />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-dim w-16 flex-shrink-0">深度</span>
-                    <PillGroup options={['浅', '中', '深']} value={defSettings.depth}
-                      onChange={v => setDefSettings({ ...defSettings, depth: v })} />
-                  </div>
-                </div>
-              </Section>
-            )}
-
             {/* 生成后动作 */}
             {show('actions') && (
               <Section icon={Zap} title="生成后动作">
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-4">
                   <SwitchRow label="自动保存生成物到「我的上传」" desc="对话结束后将回复存入资料列表" checked={postActions.autoSaveResource}
                     onChange={v => setPostActions({ ...postActions, autoSaveResource: v })} />
                   <SwitchRow label="自动生成追问" desc="对话结束后生成推荐追问（右侧栏展示）" checked={postActions.autoFollowups}
@@ -311,7 +280,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             {/* 流式与上下文 */}
             {show('context') && (
               <Section icon={MessageSquare} title="流式输出与上下文策略">
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-4">
                   <SwitchRow label="打字机渲染效果" desc="回复逐字显示；关闭则整段一次显示" checked={context.typing}
                     onChange={v => setContext({ ...context, typing: v })} />
                   <div className="flex flex-col gap-1.5 border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
@@ -335,14 +304,14 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             {/* 模型与 API Key */}
             {show('keys') && (
               <Section icon={Key} title="模型与 API Key" desc="与模型卡共用同一份配置（localStorage）">
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-4">
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] text-dim w-20 flex-shrink-0">默认厂家</span>
                     <select value={provider} onChange={e => setProvider(e.target.value)} className={inputCls}>
                       {PROVIDERS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </select>
                   </div>
-                  <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-3">
+                  <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-4">
                     {PROVIDERS.map(p => (
                       <div key={p.id} className="flex items-center gap-2">
                         <span className="text-[11px] text-dim w-20 flex-shrink-0">{p.name}</span>
@@ -396,7 +365,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             {/* MCP 配置 */}
             {show('mcp') && (
               <Section icon={Plug} title="MCP 配置" desc="连接配置已保存；实际连接与工具调用能力正在开发中">
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-4">
                   {mcpServers.length > 0 && (
                     <div className="flex flex-col gap-1.5">
                       {mcpServers.map(s => (
@@ -410,7 +379,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
                     </div>
                   )}
                   {mcpShow ? (
-                    <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-3">
+                    <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-4">
                       <input autoFocus value={mcpName} onChange={e => setMcpName(e.target.value)} placeholder="名称（如 my-tools）" className={inputCls} />
                       <div className="flex gap-1.5">
                         {(['stdio', 'http', 'sse'] as const).map(t => (
@@ -467,7 +436,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             {/* 关于：只显示名字与版本号，可检查更新 */}
             {show('about') && (
               <Section icon={LampDesk} title="关于">
-                <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-3">
+                <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-4">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-bold">CoAgent-Learn <span className="text-dim font-normal text-xs">v{APP_VERSION}</span></p>
                     <a href="https://github.com/tpys11/CoAgent-Learn" target="_blank" rel="noreferrer"
