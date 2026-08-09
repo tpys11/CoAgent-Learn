@@ -597,9 +597,9 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                   className="text-[10px] px-2 py-1 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">＋ 添加能力</button>
               </div>
               <div className="border hairline rounded-xl bg-[var(--bg-panel)] overflow-hidden">
-                {/* 子 Agent 卡片头（点击展开/收起） */}
+                {/* 子 Agent 卡片头（点击展开/收起，上下留白为常规三倍） */}
                 <button onClick={() => setSubExpanded(!subExpanded)}
-                  className="w-full flex items-center gap-2 px-3.5 py-3 hover:bg-[var(--bg-hover)] transition-colors">
+                  className="w-full flex items-center gap-2 px-3.5 py-9 hover:bg-[var(--bg-hover)] transition-colors">
                   <ChevronRight size={12} className={`flex-shrink-0 transition-transform ${subExpanded ? 'rotate-90' : ''}`} />
                   <span className="text-xs font-bold">{agent.id === 'main' ? '输出增强' : agent.id === 'kb' ? '检索增强' : agent.name}</span>
                   <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--bg-hover)] text-dim flex-shrink-0">子 Agent</span>
@@ -634,6 +634,8 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                   </div>
                 )}
               </div>
+              {/* 卡片下一句话介绍 */}
+              <p className="text-[11px] text-dim leading-relaxed">输出增强：按需调用各能力 Agent 产出结构化内容（树状图生成、要点卡片、思维导图等），选择「输出增强」模板后才会调用。</p>
             </div>
           )}
           </div>
