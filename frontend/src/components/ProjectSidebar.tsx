@@ -40,21 +40,18 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
         <p className="text-sm font-bold truncate">{project?.name || '项目'}</p>
       </div>
       <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-4">
-        {/* 项目记忆：摘要 + 展开独立窗口 */}
+        {/* 项目记忆：一小段介绍 + 「查看更多」进入独立界面 */}
         <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-dim uppercase tracking-wider">项目记忆</p>
-            <button onClick={onOpenMemory} className="text-[10px] px-2.5 py-1 rounded-lg bg-[#1a1a1a] text-white hover:bg-[#333333] transition-colors">展开窗口</button>
-          </div>
-          <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-1.5">
-            {memLines.length === 0 ? (
-              <p className="text-[10px] text-dim">暂无记忆，对话后自动生成</p>
-            ) : memLines.map(([k, v]) => (
-              <p key={k} className="text-[10px] leading-relaxed">
-                <span className="font-semibold">{k}</span>
-                <span className="text-dim">：{v.length > 60 ? v.slice(0, 60) + '…' : v}</span>
-              </p>
-            ))}
+          <p className="text-xs font-semibold text-dim uppercase tracking-wider">项目记忆</p>
+          <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
+            <p className="text-[10px] leading-relaxed text-[var(--text-muted)]">
+              {memLines.length === 0
+                ? '暂无记忆，对话后自动分析生成。'
+                : memLines.map(([k, v]) => `${k}：${v}`).join('；')}
+            </p>
+            <button onClick={onOpenMemory} className="text-[10px] font-semibold text-[var(--accent)] hover:underline w-fit">
+              查看更多
+            </button>
           </div>
         </div>
         {/* 项目资源：列表 + 上传独立界面 */}
