@@ -754,7 +754,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                                             {m.important && <span className="absolute -top-3 -right-2.5 text-[10px] leading-none text-amber-500">★</span>}
                                           </span>
                                           {/* 小三角：提示可点击查看内容 */}
-                                          <span className="w-0 h-0 border-l-[4px] border-r-[4px] border-t-[5px] border-l-transparent border-r-transparent" style={{ borderTopColor: nodeColor(m) }} />
+                                          <span className="w-0 h-0 border-l-[4px] border-r-[4px] border-b-[5px] border-l-transparent border-r-transparent" style={{ borderBottomColor: nodeColor(m) }} />
                                           {m.type !== 'start' && m.type !== 'current' && m.type !== 'goal' && (
                                             <span className="max-w-[56px] truncate text-[9px] text-dim group-hover:text-[var(--text)]">{m.label}</span>
                                           )}
