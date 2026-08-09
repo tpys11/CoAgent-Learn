@@ -209,6 +209,69 @@ function TreeChart({ node, open, onToggle, onOpen }: {
   )
 }
 
+/** 树状图：节点卡片横向展开（父在左、子向右分支），SVG 曲线连接，根节点为库名 */
+function TreeGraph({ nodes, rootName, open, onToggle, onOpen, currentPath }: {
+  nodes: TreeNode[]
+  rootName: string
+  open: Set<string>
+  onToggle: (p: string) => void
+  onOpen: (n: TreeNode) => void
+  currentPath: string | null
+}) {
+  const NODE_W = 148, NODE_H = 46, XGAP = 168, YGAP = 60, X0 = 20, Y0 = 20
+  const positions: Array<{ node: TreeNode; x: number; y: number; depth: number; px: number | null; py: number | null }> = []
+  const rootNode: TreeNode = { name: rootName || '库', path: '/', kind: 'dir', children: nodes }
+  let y = Y0
+  let maxDepth = 0
+  const walk = (ns: TreeNode[], depth: number, px: number | null, py: number | null) => {
+    const x = X0 + depth * XGAP
+    if (depth > maxDepth) maxDepth = depth
+    for (const n of ns) {
+      positions.push({ node: n, x, y, depth, px, py })
+      if (n.kind === 'dir' && open.has(n.path) && n.children && n.children.length > 0) {
+        walk(n.children, depth + 1, x + NODE_W, y + NODE_H / 2)
+      }
+      y += YGAP
+    }
+  }
+  walk([rootNode], 0, null, null)
+  const W = X0 + maxDepth * XGAP + NODE_W + 24
+  const H = positions.length * YGAP + NODE_H + Y0
+  return (
+    <div className="relative flex-shrink-0" style={{ width: W, height: H }}>
+      <svg className="absolute inset-0" width={W} height={H}>
+        {positions.filter(p => p.px !== null).map((p, i) => {
+          const x1 = p.px!, y1 = p.py!
+          const x2 = p.x, y2 = p.y + NODE_H / 2
+          const mx = (x1 + x2) / 2
+          return <path key={'ln' + i} d={`M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`} stroke="#d4d4d4" strokeWidth="1.5" fill="none" />
+        })}
+      </svg>
+      {positions.map(p => {
+        const n = p.node
+        const isDir = n.kind === 'dir'
+        const expanded = isDir && open.has(n.path)
+        const active = !isDir && currentPath === n.path
+        return (
+          <div key={n.path + '-' + p.y} className="absolute" style={{ left: p.x, top: p.y, width: NODE_W, height: NODE_H }}>
+            <button onClick={() => isDir ? onToggle(n.path) : onOpen(n)}
+              title={n.name}
+              className={`w-full h-full flex items-center gap-2 px-3 rounded-xl border text-xs transition-all cursor-pointer ${active
+                ? 'border-[var(--accent)] text-white shadow-soft'
+                : 'card-surface border-[var(--border-color)] hover:border-[var(--accent)] hover:shadow-soft'}`}
+              style={{ background: active ? 'var(--accent)' : undefined }}>
+              {isDir
+                ? (expanded ? <FolderOpen size={14} className="text-dim flex-shrink-0" /> : <FolderClosed size={14} className="text-dim flex-shrink-0" />)
+                : <FileText size={13} className="text-dim flex-shrink-0" />}
+              <span className="truncate font-medium">{n.name.replace(/\.md$/, '')}</span>
+            </button>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 /** Obsidian 界面：连接本机 Obsidian 库文件夹（File System Access API，零后端），文件树 + 文章阅读 */
 export default function ObsidianView() {
   const [rootHandle, setRootHandle] = useState<FileSystemDirectoryHandle | null>(null)
@@ -316,8 +379,8 @@ export default function ObsidianView() {
 
   return (
     <div className="flex-1 h-full min-w-0 flex panel rounded-3xl overflow-hidden">
-      {/* 左侧：连接 + 文件树 */}
-      <div className="w-72 bg-[var(--bg-sidebar)] border-r hairline flex flex-col flex-shrink-0">
+      {/* 左侧：连接 + 文件树（树状图模式宽度翻倍） */}
+      <div className={`${expandMode === 'tree' ? 'w-[576px]' : 'w-72'} bg-[var(--bg-sidebar)] border-r hairline flex flex-col flex-shrink-0 transition-all duration-200`}>
         <div className="p-3 border-b hairline flex items-center justify-between">
           <h2 className="text-sm font-bold flex items-center gap-1.5"><BookOpen size={15} /> Obsidian</h2>
           {rootHandle && (
@@ -355,10 +418,8 @@ export default function ObsidianView() {
                   <TreeItem key={n.path} node={n} open={open} onToggle={toggle} onOpen={openFile} depth={0} />
                 ))
               ) : (
-                <div className="tree-root">
-                  {tree.map(n => (
-                    <TreeChart key={n.path} node={n} open={open} onToggle={toggle} onOpen={openFile} />
-                  ))}
+                <div className="overflow-auto">
+                  <TreeGraph nodes={tree} rootName={rootName} open={open} onToggle={toggle} onOpen={openFile} currentPath={current?.path || null} />
                 </div>
               )}
             </div>
