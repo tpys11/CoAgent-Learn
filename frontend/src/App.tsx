@@ -7,7 +7,7 @@ const SESSION_ID = (() => {
   sessionStorage.setItem('coagent-s', s)
   return s
 })()
-import Sidebar from './components/Sidebar'
+import ProjectSidebar from './components/ProjectSidebar'
 import CenterPanel from './components/CenterPanel'
 import RightPanel from './components/RightPanel'
 import SettingsModal, { ApiKeyPrompt } from './components/SettingsModal'
@@ -50,6 +50,8 @@ function App() {
   const [showSettings, setShowSettings] = useState(false)
   // 项目配置弹窗（Sidebar 项目三点进入：项目记忆 / 项目资源）
   const [showProjectConfig, setShowProjectConfig] = useState(false)
+  // 项目配置弹窗初始页签（记忆 / 资源）
+  const [projectConfigTab, setProjectConfigTab] = useState<'memory' | 'resource'>('memory')
   const [projectKBId, setProjectKBId] = useState<string | null>(null)
   const [wizard, setWizard] = useState<{mode: 'project'|'dialogue'; id: string; name?: string} | null>(null)
   const [showGuide, setShowGuide] = useState(false)
@@ -397,16 +399,16 @@ function App() {
       {!sidebarCollapsed && (
         <>
           <div style={{ width: sidebarWidth, minWidth: 200 }} className="h-full flex-shrink-0 relative panel rounded-3xl overflow-hidden">
-          <Sidebar
-            projects={projects} dialogues={dialogues}
-            currentProjectId={currentProjectId} currentDialogueId={currentDialogueId}
-                        onCreateProject={handleCreateProject} onDeleteProject={handleDeleteProject}
-            onSelectProject={handleSelectProject} onCreateDialogue={handleCreateDialogue}
-            onSelectDialogue={handleSelectDialogue} onArchiveDialogue={handleArchiveDialogue}
-            onRenameDialogue={handleRenameDialogue}
-            onRenameProject={handleRenameProject}
-            onProjectKnowledge={handleProjectKB}
-            onCollapse={() => setSidebarCollapsed(true)}
+          <ProjectSidebar
+            project={projects.find(p => p.id === currentProjectId) || null}
+            dialogues={dialogues}
+            currentDialogueId={currentDialogueId}
+            onHome={() => setChatOpen(false)}
+            onSelectDialogue={handleSelectDialogue}
+            onCreateDialogue={() => currentProjectId && handleCreateDialogue(currentProjectId)}
+            onArchiveDialogue={handleArchiveDialogue}
+            onOpenMemory={() => { setProjectConfigTab('memory'); setShowProjectConfig(true) }}
+            onOpenResource={() => { setProjectConfigTab('resource'); setShowProjectConfig(true) }}
           />
         </div>
         {/* 左侧拖拽手柄 */}
@@ -462,6 +464,7 @@ function App() {
       {showProjectConfig && (
         <ProjectConfigModal
           projectId={projectKBId ?? currentProjectId}
+          initialTab={projectConfigTab}
           onRequestModify={handleRequestModify}
           onRequestAnalyze={handleRequestAnalyze}
           onClose={() => setShowProjectConfig(false)}

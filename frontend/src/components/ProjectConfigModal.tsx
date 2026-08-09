@@ -4,13 +4,14 @@ import MemoryView from './MemoryView'
 import ResourceView from './ResourceView'
 
 /** 项目配置弹窗：项目记忆 / 项目资源 两个页签 */
-export default function ProjectConfigModal({ projectId, onRequestModify, onRequestAnalyze, onClose }: {
+export default function ProjectConfigModal({ projectId, onRequestModify, onRequestAnalyze, onClose, initialTab = 'memory' }: {
   projectId: string | null
   onRequestModify?: (label: string, pid?: string) => void
   onRequestAnalyze?: (projectName: string) => void
   onClose: () => void
+  initialTab?: 'memory' | 'resource'
 }) {
-  const [tab, setTab] = useState<'memory' | 'resource'>('memory')
+  const [tab, setTab] = useState<'memory' | 'resource'>(initialTab)
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-6" onClick={onClose}>
       <div className="w-[min(1200px,94vw)] h-[90vh] panel rounded-3xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
