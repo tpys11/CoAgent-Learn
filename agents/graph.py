@@ -157,7 +157,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
     # 根据设置构建 Agent 专属约束
     output_format = settings.get('outputFormat', '高结构化')
     output_style = settings.get('outputStyle', 'MD文档')
-    thinking_on = settings.get('thinking', '关') == '开'
+    thinking_on = settings.get('thinking', '开') == '开'
     volume = settings.get('outputVolume', '适中')
     depth = settings.get('depth', '中')
     input_mode = settings.get('inputOptMode', '默认模式')
