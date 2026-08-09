@@ -654,7 +654,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                 <FolderTree size={16} /> 项目记忆
                 {projectOnly && (
                   <button onClick={() => setShowModifyTip(true)}
-                    className="ml-auto px-3 py-1.5 rounded-lg text-[11px] font-semibold text-white shadow-soft transition-transform hover:scale-105"
+                    className="ml-2 px-3 py-1.5 rounded-lg text-[11px] font-semibold text-white shadow-soft transition-transform hover:scale-105"
                     style={{ background: 'var(--accent)' }}>修改记忆</button>
                 )}
               </h2>
