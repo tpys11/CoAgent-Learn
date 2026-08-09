@@ -11,6 +11,7 @@ import Sidebar from './components/Sidebar'
 import CenterPanel from './components/CenterPanel'
 import RightPanel from './components/RightPanel'
 import SettingsModal, { ApiKeyPrompt } from './components/SettingsModal'
+import ProjectConfigModal from './components/ProjectConfigModal'
 import ProfileWizard from './components/ProfileWizard'
 import GuideModal from './components/GuideModal'
 import ActivityBar, { type ViewKey } from './components/ActivityBar'
@@ -45,6 +46,8 @@ function App() {
   const [isLoading, setIsLoading] = useState(false)
   const [agents, setAgents] = useState<AgentConfig[]>(DEFAULT_AGENTS)
   const [showSettings, setShowSettings] = useState(false)
+  // 项目配置弹窗（Sidebar 项目三点进入：项目记忆 / 项目资源）
+  const [showProjectConfig, setShowProjectConfig] = useState(false)
   const [projectKBId, setProjectKBId] = useState<string | null>(null)
   const [wizard, setWizard] = useState<{mode: 'project'|'dialogue'; id: string; name?: string} | null>(null)
   const [showGuide, setShowGuide] = useState(false)
@@ -154,7 +157,7 @@ function App() {
 
   const handleProjectKB = useCallback((id: string) => {
     setProjectKBId(id)
-    setView('knowledge')
+    setShowProjectConfig(true)
   }, [])
 
   const handleCreateDialogue = useCallback((projectId: string) => {
@@ -183,6 +186,7 @@ function App() {
   }, [])
   /** 记忆修改：跳转主对话界面，输入框预填 [模块名] 引用 + 修改引导（可指定项目） */
   const handleRequestModify = (label: string, pid?: string) => {
+    setShowProjectConfig(false)
     if (pid) setCurrentProjectId(pid)
     setPrefillInput(`[${label}] 请帮我分析并修改这个记忆模块，我的想法：`)
     setView('chat')
@@ -190,6 +194,7 @@ function App() {
 
   /** 项目记忆重新分析：跳转对话界面，显示持久提示「项目记忆分析」 */
   const handleRequestAnalyze = (projectName: string) => {
+    setShowProjectConfig(false)
     setAnalyzeHint({ label: '项目记忆分析', project: projectName })
     setView('chat')
   }
@@ -428,6 +433,14 @@ function App() {
 
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} projectId={currentProjectId} />}
+      {showProjectConfig && (
+        <ProjectConfigModal
+          projectId={projectKBId ?? currentProjectId}
+          onRequestModify={handleRequestModify}
+          onRequestAnalyze={handleRequestAnalyze}
+          onClose={() => setShowProjectConfig(false)}
+        />
+      )}
       {showGuide && <GuideModal onClose={() => setShowGuide(false)} />}
       {wizard && <ProfileWizard mode={wizard.mode} projectName={wizard.name} onClose={() => {
         // 跳过：项目标记为无画像（simple），名字加 [简]，后续对话不弹向导
