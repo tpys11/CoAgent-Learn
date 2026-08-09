@@ -156,22 +156,20 @@ function SubNode({ name, active, onClick }: { name: string; active?: boolean; on
 /** 父 Agent 节点 + 弯曲连线 + 子 Agent 独立矩形（每条线从父节点底中心弯曲到对应子节点） */
 function AgentWithSubs({ node, subs, subActive }: { node: React.ReactNode; subs?: string[]; subActive?: boolean }) {
   if (!subs || subs.length === 0) return <>{node}</>
-  const n = subs.length
   return (
-    <div className="flex flex-col items-center">
+    <div className="flex items-center">
       {node}
-      <div className="flex gap-2 justify-center" style={{ maxWidth: 300 }}>
-        {subs.map((s, i) => {
-          const mid = ((i + 0.5) / n) * 100
-          return (
-            <div key={s} className="flex-1 flex flex-col items-center">
-              <svg width="100%" height="20" viewBox="0 0 100 20" preserveAspectRatio="none">
-                <path d={`M 50 0 C 50 8, ${mid} 10, ${mid} 20`} stroke="#d4d4d4" strokeWidth="1.5" fill="none" />
-              </svg>
-              <SubNode name={s} active={subActive} />
-            </div>
-          )
-        })}
+      {/* 父节点右侧曲线 → 子 Agent 竖列（与输出增强展示统一：子节点在右侧） */}
+      <svg width="44" height="44" viewBox="0 0 44 44" className="flex-shrink-0">
+        <path d="M 0 22 C 16 22, 28 22, 44 22" stroke="#d4d4d4" strokeWidth="1.5" fill="none" />
+      </svg>
+      <div className="flex flex-col gap-2">
+        {subs.map(s => (
+          <div key={s} className="flex items-center">
+            <span className="w-3 h-px bg-[#d4d4d4] flex-shrink-0" />
+            <SubNode name={s} active={subActive} />
+          </div>
+        ))}
       </div>
     </div>
   )
