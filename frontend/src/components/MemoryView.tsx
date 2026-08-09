@@ -562,7 +562,7 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
 
         {/* ========== 项目记忆 ========== */}
         {level === 'project' && (
-          <div className="max-w-3xl flex flex-col gap-4">
+          <div className="w-full flex flex-col gap-4">
             <div>
               <h2 className="text-base font-bold flex items-center gap-2">
                 <FolderTree size={16} /> 项目记忆
