@@ -310,6 +310,9 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         if state.get("sub_outputs") and state["sub_outputs"].get("kb"):
             context += NL + "【知识库子Agent整理】" + NL + state["sub_outputs"]["kb"] + NL
         if state.get("review_feedback"): context += NL + "【审核修正要求】上一版未通过审核，请针对以下意见修改后再生成：" + NL + state["review_feedback"] + NL
+        # 可用 Skill：让主 Agent 知道自己可调用的技能（来自 Agent 配置的 skill 字段）
+        if cfg.get("skill"):
+            context += NL + "【可用 Skill】" + NL + str(cfg["skill"]) + NL
         # 读最近对话历史（历史条数可配置）
         try:
             from core.sqlite_client import get_db
