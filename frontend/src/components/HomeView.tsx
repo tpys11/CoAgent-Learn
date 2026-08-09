@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from 'react'
-import { Home, Plus, X, FolderOpen, Clock, ChevronDown } from 'lucide-react'
+import { Home, Plus, X, FolderOpen, Clock } from 'lucide-react'
 import TrendCalendar from './TrendCalendar'
 
 /** 系统预设领域 → 预存图片（非系统自带领域无图，显示首字占位） */
@@ -88,10 +88,6 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
     return tips
   }
   const tips = buildTips()
-  const [openTips, setOpenTips] = useState<Set<string>>(() => new Set(['课程', '资源', '记忆', 'Agent']))
-  const toggleTip = (t: string) => {
-    setOpenTips(prev => { const n = new Set(prev); n.has(t) ? n.delete(t) : n.add(t); return n })
-  }
 
   return (
     <div className="flex-1 h-full min-w-0 flex panel rounded-3xl overflow-hidden">
@@ -101,20 +97,14 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
           <div className="flex-1 min-w-0 flex flex-col gap-10">
           {/* 左上角：我的主页 */}
           <h1 className="text-2xl font-bold flex items-center gap-2"><Home size={22} /> 我的主页</h1>
-          {/* 快速引导：系统提示建议（点击小标题展开/收起） */}
+          {/* 快速引导：系统提示建议（一栏直展，无折叠） */}
           <div className="flex flex-col gap-3">
             <h2 className="text-lg font-bold">快速引导</h2>
-            <div className="flex flex-col gap-2">
+            <div className="border hairline rounded-2xl p-5 bg-[var(--bg-panel)] flex flex-col gap-4">
               {tips.map(t => (
-                <div key={t.title} className="border hairline rounded-xl bg-[var(--bg-panel)] overflow-hidden">
-                  <button onClick={() => toggleTip(t.title)}
-                    className="w-full flex items-center gap-2 px-4 py-3 hover:bg-[var(--bg-hover)] transition-colors">
-                    <ChevronDown size={12} className={`flex-shrink-0 transition-transform ${openTips.has(t.title) ? 'rotate-180' : ''}`} />
-                    <span className="text-xs font-semibold">{t.title}</span>
-                  </button>
-                  {openTips.has(t.title) && (
-                    <p className="px-4 pb-3.5 text-[11px] leading-relaxed text-[var(--text-muted)]">{t.text}</p>
-                  )}
+                <div key={t.title} className="flex flex-col gap-1">
+                  <span className="text-[13px] font-bold">{t.title}</span>
+                  <p className="text-[11px] leading-relaxed text-[var(--text-muted)]">{t.text}</p>
                 </div>
               ))}
             </div>
