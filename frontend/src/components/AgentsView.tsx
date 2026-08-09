@@ -142,13 +142,14 @@ function FlowNode({ icon: Icon, name, level = 0, active, onClick }: { icon: any;
 const FlowArrow = () => <span className="text-dim flex-shrink-0 text-base">→</span>
 
 /** 子 Agent 独立矩形节点 */
-function SubNode({ name, active }: { name: string; active?: boolean }) {
+function SubNode({ name, active, onClick }: { name: string; active?: boolean; onClick?: () => void }) {
   return (
-    <div className={`px-3.5 py-2 rounded-xl border-2 text-[11px] font-medium whitespace-nowrap transition-colors ${
-      active ? 'bg-[#1a1a1a] text-white border-[#1a1a1a]' : 'bg-[var(--bg-panel)] text-dim border-[var(--border-color)]'
-    }`}>
+    <button onClick={onClick}
+      className={`px-3.5 py-2 rounded-xl border-2 text-[11px] font-medium whitespace-nowrap transition-colors ${
+        onClick ? 'cursor-pointer hover:border-[var(--accent)]' : ''
+      } ${active ? 'bg-[#1a1a1a] text-white border-[#1a1a1a]' : 'bg-[var(--bg-panel)] text-dim border-[var(--border-color)]'}`}>
       {name}
-    </div>
+    </button>
   )
 }
 
@@ -256,6 +257,8 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   const [subName, setSubName] = useState('')
   const [subForm, setSubForm] = useState('')
   const [subPrompt, setSubPrompt] = useState('')
+  // 子 Agent 编辑弹窗（点击图中节点进入设定）
+  const [subEditing, setSubEditing] = useState<{ id: string; name: string; form: string; subPrompt: string } | null>(null)
   // Skill 管理四区
   const [skillTab, setSkillTab] = useState('installed')
   const [skillCat, setSkillCat] = useState('all')
@@ -398,7 +401,8 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
       <div className="flex-1 overflow-y-auto p-5">
         {/* ========== Agent 管理 ========== */}
         {block === 'agents' && (
-          <div className="max-w-2xl flex flex-col gap-5">
+          <div className="flex items-start gap-5">
+          <div className="max-w-2xl flex flex-col gap-5 flex-1 min-w-0">
             {/* 横向 Agent 按钮 */}
             <div className="flex gap-2 flex-wrap">
               {agents.map(a => (
@@ -480,70 +484,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                   </div>
                 </div>
 
-                {/* 子 Agent 层级图：当前 Agent（中心）→ 增强模板中间层 → 具体子 Agent */}
-                {agent.subAgents && agent.subAgents.length > 0 && (
-                  <div className="border hairline rounded-xl p-5 bg-[var(--bg-panel)] flex items-center justify-center overflow-x-auto">
-                    <div className="flex items-center gap-0 flex-shrink-0">
-                      {/* 当前 Agent */}
-                      <div className="px-4 py-3 rounded-xl border-2 text-xs font-bold whitespace-nowrap"
-                        style={{ borderColor: 'var(--accent)', background: 'color-mix(in srgb, var(--accent) 30%, var(--bg-panel))' }}>
-                        {agent.name}
-                      </div>
-                      {/* 曲线 → 模板中间层（main→输出增强 / kb→检索增强；其他 Agent 无中间层） */}
-                      <svg width="50" height="44" viewBox="0 0 50 44" className="flex-shrink-0">
-                        <path d="M 0 22 C 18 22, 32 22, 50 22" stroke="#d4d4d4" strokeWidth="1.5" fill="none" />
-                      </svg>
-                      {agent.id === 'main' || agent.id === 'kb' ? (
-                        <>
-                          <div className="px-3.5 py-2 rounded-xl border-2 border-dashed text-[11px] font-medium whitespace-nowrap text-dim"
-                            style={{ borderColor: 'var(--border-strong)' }}>
-                            {agent.id === 'main' ? '输出增强' : '检索增强'}
-                          </div>
-                          <svg width="50" height="44" viewBox="0 0 50 44" className="flex-shrink-0">
-                            <path d="M 0 22 C 18 22, 32 22, 50 22" stroke="#d4d4d4" strokeWidth="1.5" fill="none" />
-                          </svg>
-                        </>
-                      ) : null}
-                      {/* 子 Agent 列：顶部汇入线 + 每个子 Agent 横向短线连接 */}
-                      <div className="flex flex-col">
-                        <span className="mx-auto w-px h-2 bg-[#d4d4d4]" />
-                        {agent.subAgents.map(s => (
-                          <div key={s.id} className="flex items-center gap-2 py-1">
-                            <span className="w-4 h-px bg-[#d4d4d4] flex-shrink-0" />
-                            <SubNode name={s.name} active={false} />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* 子 Agent */}
-                <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-semibold text-dim uppercase tracking-wider">子 Agent</p>
-                    <button onClick={() => { setSubName(''); setSubForm(''); setSubPrompt(''); setShowSubAdd(true) }}
-                      className="text-[10px] px-2 py-1 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">＋ 添加</button>
-                  </div>
-                  {agent.subAgents && agent.subAgents.length > 0 ? (
-                    <div className="flex flex-col gap-2">
-                      {agent.subAgents.map(s => (
-                        <div key={s.id} className="border hairline rounded-xl p-2.5 bg-[var(--bg-input)] flex flex-col gap-1">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[11px] font-medium truncate">{s.name}</span>
-                            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--bg-panel)] text-dim flex-shrink-0">{s.form}</span>
-                            <button onClick={() => commit({ subAgents: (agent.subAgents || []).filter(x => x.id !== s.id) })}
-                              className="ml-auto text-dim hover:text-red-500 text-[10px] px-1" title="删除">✕</button>
-                          </div>
-                          <p className="text-[9px] text-dim leading-snug line-clamp-2">{s.subPrompt}</p>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-[10px] text-dim">无</p>
-                  )}
-                </div>
-
                 {/* 该 Agent 运行监控 */}
                 <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
                   <p className={`${fieldLabel} flex items-center gap-1`}><Activity size={13} /> 运行监控（该 Agent 最近任务）</p>
@@ -565,6 +505,48 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                 </div>
               </>
             )}
+          </div>
+          {/* 右侧：子 Agent 层级图（点击节点进入子 Agent 设定） */}
+          {agent && agent.subAgents && agent.subAgents.length > 0 && (
+            <div className="w-[300px] flex-shrink-0 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-dim uppercase tracking-wider">子 Agent</p>
+                <button onClick={() => { setSubName(''); setSubForm(''); setSubPrompt(''); setShowSubAdd(true) }}
+                  className="text-[10px] px-2 py-1 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">＋ 添加</button>
+              </div>
+              <div className="border hairline rounded-xl p-5 bg-[var(--bg-panel)] flex items-center justify-center">
+                <div className="flex items-center gap-0 flex-shrink-0">
+                  {/* 当前 Agent */}
+                  <div className="px-4 py-3 rounded-xl border-2 text-xs font-bold whitespace-nowrap"
+                    style={{ borderColor: 'var(--accent)', background: 'color-mix(in srgb, var(--accent) 30%, var(--bg-panel))' }}>
+                    {agent.name}
+                  </div>
+                  <svg width="46" height="44" viewBox="0 0 46 44" className="flex-shrink-0">
+                    <path d="M 0 22 C 18 22, 28 22, 46 22" stroke="#d4d4d4" strokeWidth="1.5" fill="none" />
+                  </svg>
+                  {(agent.id === 'main' || agent.id === 'kb') && (
+                    <>
+                      <div className="px-3 py-2 rounded-xl border-2 border-dashed text-[11px] font-medium whitespace-nowrap text-dim" style={{ borderColor: 'var(--border-strong)' }}>
+                        {agent.id === 'main' ? '输出增强' : '检索增强'}
+                      </div>
+                      <svg width="46" height="44" viewBox="0 0 46 44" className="flex-shrink-0">
+                        <path d="M 0 22 C 18 22, 28 22, 46 22" stroke="#d4d4d4" strokeWidth="1.5" fill="none" />
+                      </svg>
+                    </>
+                  )}
+                  <div className="flex flex-col">
+                    <span className="mx-auto w-px h-2 bg-[#d4d4d4]" />
+                    {agent.subAgents.map(s => (
+                      <div key={s.id} className="flex items-center gap-2 py-1">
+                        <span className="w-4 h-px bg-[#d4d4d4] flex-shrink-0" />
+                        <SubNode name={s.name} onClick={() => setSubEditing({ id: s.id, name: s.name, form: s.form, subPrompt: s.subPrompt })} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           </div>
         )}
 
@@ -853,6 +835,33 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
           )}
         </div>
         </>
+      )}
+      {/* 子 Agent 编辑弹窗（点击图中节点进入设定） */}
+      {subEditing && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setSubEditing(null)}>
+          <div className="bg-[var(--bg-panel)] rounded-2xl shadow-xl w-full max-w-md p-5 mx-4 flex flex-col gap-3" onClick={e => e.stopPropagation()}>
+            <p className="text-base font-bold">编辑子 Agent</p>
+            <input autoFocus value={subEditing.name} onChange={e => setSubEditing({ ...subEditing, name: e.target.value })} placeholder="名称"
+              className="w-full px-3 py-2 text-xs input-surface rounded-lg outline-none" />
+            <input value={subEditing.form} onChange={e => setSubEditing({ ...subEditing, form: e.target.value })} placeholder="输出形式"
+              className="w-full px-3 py-2 text-xs input-surface rounded-lg outline-none" />
+            <textarea value={subEditing.subPrompt} onChange={e => setSubEditing({ ...subEditing, subPrompt: e.target.value })} rows={4}
+              className="w-full px-3 py-2 text-xs input-surface rounded-lg outline-none resize-none" />
+            <div className="flex gap-2 justify-between items-center">
+              <button onClick={() => { if (agent) commit({ subAgents: (agent.subAgents || []).filter(x => x.id !== subEditing.id) }); setSubEditing(null) }}
+                className="px-4 py-2 text-xs text-red-500 row-hover rounded-lg">删除</button>
+              <div className="flex gap-2">
+                <button onClick={() => setSubEditing(null)} className="px-4 py-2 text-xs text-dim row-hover rounded-lg">取消</button>
+                <button onClick={() => {
+                  if (!agent) return
+                  if (!subEditing.name.trim() || !subEditing.subPrompt.trim()) return
+                  commit({ subAgents: (agent.subAgents || []).map(x => x.id === subEditing.id ? { ...x, name: subEditing.name.trim(), form: subEditing.form.trim(), subPrompt: subEditing.subPrompt.trim() } : x) })
+                  setSubEditing(null)
+                }} className="px-4 py-2 text-xs bg-[#1a1a1a] text-white rounded-lg font-semibold">保存</button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
       {/* 子 Agent 添加弹窗 */}
       {showSubAdd && (
