@@ -94,9 +94,9 @@ function ProjectResources({ projectId }: { projectId: string | null }) {
     if (e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files)
   }
   return (
-    <div className="h-full overflow-y-auto p-6 flex flex-col gap-6 max-w-3xl">
-      {/* 栏目一：项目资源（可上传 / 拖入） */}
-      <div className="flex flex-col gap-3"
+    <div className="h-full p-6 flex gap-6 overflow-hidden">
+      {/* 左栏：项目资源（可上传 / 拖入） */}
+      <div className="w-[380px] flex-shrink-0 flex flex-col gap-3 overflow-y-auto"
         onDragOver={e => { e.preventDefault(); setDragOver(true) }}
         onDragLeave={() => setDragOver(false)}
         onDrop={onDrop}>
@@ -112,13 +112,13 @@ function ProjectResources({ projectId }: { projectId: string | null }) {
               onChange={e => { if (e.target.files?.length) uploadFiles(e.target.files); e.target.value = '' }} />
           </div>
         </div>
-        <div className={`border rounded-2xl p-4 flex flex-col gap-2 transition-colors ${dragOver ? 'border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_6%,var(--bg-panel))]' : 'border-dashed hairline'}`}>
+        <div className={`border rounded-2xl p-3 flex flex-col gap-2 transition-colors ${dragOver ? 'border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_6%,var(--bg-panel))]' : 'border-dashed hairline'}`}>
           {loading ? (
             <div className="p-6 flex items-center justify-center text-xs text-dim">加载中…</div>
           ) : docs.length === 0 ? (
             <div className="p-6 flex flex-col items-center justify-center gap-1.5 text-xs text-dim">
               <Upload size={18} className="opacity-50" />
-              <span>暂无资源 — 上传文件，或从下方系统资源拖入</span>
+              <span>暂无资源 — 上传文件，或从右侧系统资源拖入</span>
             </div>
           ) : docs.map(d => (
             <div key={d.source} className="flex items-center gap-3 border hairline rounded-xl px-3.5 py-2.5 bg-[var(--bg-panel)]">
@@ -133,10 +133,10 @@ function ProjectResources({ projectId }: { projectId: string | null }) {
           ))}
         </div>
       </div>
-      {/* 栏目二：系统内置资源（可拖入 / 加入项目） */}
-      <div className="flex flex-col gap-3">
-        <p className="text-xs font-semibold text-dim uppercase tracking-wider flex items-center gap-1.5"><BookOpen size={13} /> 系统内置资源<span className="font-normal text-[10px] text-dim">（卡片可拖入上方，或点卡片详情「加入项目」）</span></p>
-        <div className="h-[55vh] border hairline rounded-2xl overflow-hidden">
+      {/* 右栏：系统内置资源（可拖入 / 加入项目） */}
+      <div className="flex-1 min-w-0 flex flex-col gap-3 overflow-hidden">
+        <p className="text-xs font-semibold text-dim uppercase tracking-wider flex items-center gap-1.5 flex-shrink-0"><BookOpen size={13} /> 系统内置资源<span className="font-normal text-[10px] text-dim">（卡片可拖入左侧，或点卡片详情「加入项目」）</span></p>
+        <div className="flex-1 min-h-0 border hairline rounded-2xl overflow-hidden">
           <ResourceView projectId={projectId} onUseItem={addPreset} />
         </div>
       </div>
