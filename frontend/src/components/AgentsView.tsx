@@ -174,11 +174,11 @@ const FlowGraph = ({ agents, templateName, templateAgentId, onSelect }: { agents
   // 当前模板对应的节点职责负载分布（未选中模板时按基础模板）
   const levels = TEMPLATE_LEVELS[templateName || '基础'] || TEMPLATE_LEVELS['基础']
   const lv = (n: string) => levels[n] || 0
-  // 子 Agent：kb（检索增强模板调用）/ main（输出增强模板调用）
+  // 子 Agent：按模板差异化展示——检索增强只显示知识库与搜索的子 Agent，输出增强只显示主 Agent 的子 Agent，其余模板不显示子 Agent
   const subOf = (id: string) => ((agents || []).find(a => a.id === id)?.subAgents || []).map(s => s.name)
   const nameOf = (id: string, fallback: string) => (agents || []).find(a => a.id === id)?.name || fallback
-  const kbSubs = subOf('kb')
-  const mainSubs = subOf('main')
+  const kbSubs = templateName === '检索增强' ? subOf('kb') : []
+  const mainSubs = templateName === '输出增强' ? subOf('main') : []
   const kbSubActive = templateName === '检索增强'
   const mainSubActive = templateName === '输出增强'
   return (
