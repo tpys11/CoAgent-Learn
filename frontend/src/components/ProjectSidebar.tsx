@@ -106,29 +106,23 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
           )}
         </div>
         )}
-        {/* 资源：点击标题展开/收起 */}
+        {/* 资源：点击标题展开/收起，一段介绍 + 「查看更多」 */}
         {visible.resource && (
         <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <button onClick={() => toggle('resource')} className="flex items-center gap-1.5 text-xs font-semibold text-dim uppercase tracking-wider">
-              资源
-              <ChevronDown size={12} className={`transition-transform ${collapsed.resource ? '' : 'rotate-180'}`} />
-            </button>
-            {!collapsed.resource && (
-              <button onClick={onOpenResource} className="text-[10px] px-2.5 py-1 rounded-lg bg-[#1a1a1a] text-white hover:bg-[#333333] transition-colors">上传资源</button>
-            )}
-          </div>
+          <button onClick={() => toggle('resource')} className="flex items-center gap-1.5 text-xs font-semibold text-dim uppercase tracking-wider">
+            资源
+            <ChevronDown size={12} className={`transition-transform ${collapsed.resource ? '' : 'rotate-180'}`} />
+          </button>
           {!collapsed.resource && (
-            <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-1.5">
-              {kbDocs.length === 0 ? (
-                <p className="text-[10px] text-dim">暂无资源，点「上传资源」添加</p>
-              ) : kbDocs.map(d => (
-                <div key={d.source} className="flex items-center gap-2">
-                  <FileText size={11} className="text-dim flex-shrink-0" />
-                  <span className="text-[10px] truncate flex-1">{d.source}</span>
-                  <span className="text-[9px] text-dim flex-shrink-0">{d.chunks}块</span>
-                </div>
-              ))}
+            <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
+              <p className="text-[10px] leading-relaxed text-[var(--text-muted)]">
+                {kbDocs.length === 0
+                  ? '暂无资源，可在独立界面中上传文件或加入系统资源。'
+                  : `已收录 ${kbDocs.length} 份文档${kbDocs.length > 0 ? '：' + kbDocs.slice(0, 2).map(d => d.source).join('、') + (kbDocs.length > 2 ? ' 等' : '') : ''}，共 ${kbDocs.reduce((s, d) => s + (d.chunks || 0), 0)} 个内容块。`}
+              </p>
+              <button onClick={onOpenResource} className="text-[10px] font-semibold text-[var(--accent)] hover:underline ml-auto">
+                查看更多
+              </button>
             </div>
           )}
         </div>
