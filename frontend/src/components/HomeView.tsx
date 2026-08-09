@@ -115,15 +115,12 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
                         </div>
                       </div>
                     </div>
-                    {/* 下 30%：进度 / 上次 / 后续 三列平行排列 */}
+                    {/* 下 30%：进度 / 上次 / 后续 三横平行（每行标签+内容） */}
                     <div className="h-[30%] p-3.5 bg-[var(--bg-panel)] flex flex-col justify-center gap-1.5">
-                      <div className="grid grid-cols-3 gap-3">
-                        {[['进度', progressTxt], ['上次', unsolved], ['后续', toLearn]].map(([t, v]) => (
-                          <div key={t} className="flex flex-col gap-0.5 min-w-0">
-                            <span className="text-[9px] font-semibold uppercase tracking-wider text-dim">{t}</span>
-                            <span className="text-[10px] leading-relaxed text-[var(--text-muted)] line-clamp-3">{short(String(v), 26)}</span>
-                          </div>
-                        ))}
+                      <div className="flex flex-col gap-1">
+                        <p className="text-[10px] leading-relaxed text-[var(--text-muted)]"><span className="font-semibold text-[var(--text)]">进度</span>：{short(progressTxt)}</p>
+                        <p className="text-[10px] leading-relaxed text-[var(--text-muted)]"><span className="font-semibold text-[var(--text)]">上次</span>：{short(unsolved)}</p>
+                        <p className="text-[10px] leading-relaxed text-[var(--text-muted)]"><span className="font-semibold text-[var(--text)]">后续</span>：{short(toLearn)}</p>
                       </div>
                       <p className="text-[9px] text-dim flex items-center gap-1">
                         <Clock size={9} /> {p.created_at ? String(p.created_at).slice(0, 10) : '—'}{p.domain ? ` · ${p.domain}` : ''}
