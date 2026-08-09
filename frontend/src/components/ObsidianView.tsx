@@ -209,7 +209,7 @@ function TreeChart({ node, open, onToggle, onOpen }: {
   )
 }
 
-/** 树状图：节点卡片横向展开（父在左、子向右分支），SVG 曲线连接，根节点为库名 */
+/** 树状图：节点卡片横向展开（根节点居中于整棵子树，子节点向右分支），画布可拖拽平移 / 滚轮缩放，点阵背景 */
 function TreeGraph({ nodes, rootName, open, onToggle, onOpen, currentPath }: {
   nodes: TreeNode[]
   rootName: string
@@ -218,61 +218,147 @@ function TreeGraph({ nodes, rootName, open, onToggle, onOpen, currentPath }: {
   onOpen: (n: TreeNode) => void
   currentPath: string | null
 }) {
-  const NODE_W = 148, NODE_H = 46, XGAP = 168, YGAP = 60, X0 = 20, Y0 = 20
-  const positions: Array<{ node: TreeNode; x: number; y: number; depth: number; px: number | null; py: number | null }> = []
-  const rootNode: TreeNode = { name: rootName || '库', path: '/', kind: 'dir', children: nodes }
-  let y = Y0
-  let maxDepth = 0
-  const walk = (ns: TreeNode[], depth: number, px: number | null, py: number | null) => {
-    const x = X0 + depth * XGAP
-    if (depth > maxDepth) maxDepth = depth
-    for (const n of ns) {
-      positions.push({ node: n, x, y, depth, px, py })
-      if (n.kind === 'dir' && open.has(n.path) && n.children && n.children.length > 0) {
-        walk(n.children, depth + 1, x + NODE_W, y + NODE_H / 2)
-      }
-      y += YGAP
-    }
+  const NODE_W = 148, NODE_H = 46, XGAP = 180, YGAP = 64, X0 = 28, Y0 = 20
+  const wrapRef = useRef<HTMLDivElement>(null)
+  // 视图变换：scale + 平移
+  const [view, setView] = useState({ s: 1, tx: 0, ty: 0 })
+  const viewRef = useRef(view)
+  viewRef.current = view
+  const dragRef = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null)
+
+  // 子树高度（折叠/叶子 = 单节点高；展开 = 子块和 + 间距）
+  const subtreeH = (n: TreeNode): number => {
+    if (n.kind !== 'dir' || !open.has(n.path) || !n.children?.length) return NODE_H
+    return n.children.reduce((s, c) => s + subtreeH(c), 0) + YGAP * (n.children.length - 1)
   }
-  walk([rootNode], 0, null, null)
-  const W = X0 + maxDepth * XGAP + NODE_W + 24
-  const H = positions.length * YGAP + NODE_H + Y0
+  const rootNode: TreeNode = { name: rootName || '库', path: '/', kind: 'dir', children: nodes }
+  const positions: Array<{ node: TreeNode; x: number; y: number; px: number | null; py: number | null }> = []
+  let maxDepth = 0
+  // 递归放置：父节点垂直居中于其子树，子块依次堆叠
+  const place = (n: TreeNode, x: number, topY: number, depth: number, px: number | null, py: number | null): number => {
+    if (depth > maxDepth) maxDepth = depth
+    if (n.kind !== 'dir' || !open.has(n.path) || !n.children?.length) {
+      positions.push({ node: n, x, y: topY, px, py })
+      return topY + NODE_H
+    }
+    const kids = n.children
+    let cursor = topY
+    const tops = kids.map(c => { const t = cursor; cursor += subtreeH(c) + YGAP; return t })
+    const centerY = (tops[0] + (cursor - YGAP)) / 2
+    positions.push({ node: n, x, y: centerY - NODE_H / 2, px, py })
+    kids.forEach((c, i) => place(c, x + XGAP, tops[i], depth + 1, x + NODE_W, centerY))
+    return cursor - YGAP
+  }
+  const totalH = subtreeH(rootNode)
+  place(rootNode, X0, Y0, 0, null, null)
+  const W = X0 + maxDepth * XGAP + NODE_W + 28
+  const H = totalH + Y0 + 24
+
+  // 缩放（以鼠标为中心）
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault()
+      const rect = el.getBoundingClientRect()
+      const mx = e.clientX - rect.left, my = e.clientY - rect.top
+      const v = viewRef.current
+      const ns = Math.min(2, Math.max(0.4, v.s * (e.deltaY < 0 ? 1.12 : 0.88)))
+      const k = ns / v.s
+      setView({ s: ns, tx: mx - (mx - v.tx) * k, ty: my - (my - v.ty) * k })
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
+
+  const zoomAt = (f: number) => {
+    const el = wrapRef.current
+    const rect = el?.getBoundingClientRect()
+    const mx = rect ? rect.width / 2 : 0, my = rect ? rect.height / 2 : 0
+    const v = viewRef.current
+    const ns = Math.min(2, Math.max(0.4, v.s * f))
+    const k = ns / v.s
+    setView({ s: ns, tx: mx - (mx - v.tx) * k, ty: my - (my - v.ty) * k })
+  }
+  const resetView = () => setView({ s: 1, tx: 0, ty: 0 })
+  const fitView = () => {
+    const el = wrapRef.current
+    if (!el) return
+    const s = Math.min(1, Math.min((el.clientWidth - 24) / W, (el.clientHeight - 24) / H))
+    setView({ s, tx: Math.max(0, (el.clientWidth - W * s) / 2), ty: Math.max(0, (el.clientHeight - H * s) / 2) })
+  }
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    dragRef.current = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty }
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  }
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = dragRef.current
+    if (!d) return
+    setView(v => ({ ...v, tx: d.tx + (e.clientX - d.x), ty: d.ty + (e.clientY - d.y) }))
+  }
+  const onPointerUp = () => { dragRef.current = null }
+
   return (
-    <div className="relative flex-shrink-0" style={{ width: W, height: H }}>
-      <svg className="absolute inset-0" width={W} height={H}>
-        {positions.filter(p => p.px !== null).map((p, i) => {
-          const x1 = p.px!, y1 = p.py!
-          const x2 = p.x, y2 = p.y + NODE_H / 2
-          const mx = (x1 + x2) / 2
-          return <path key={'ln' + i} d={`M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`} stroke="#d4d4d4" strokeWidth="1.5" fill="none" />
+    <div ref={wrapRef}
+      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp}
+      className="relative w-full h-full overflow-hidden select-none"
+      style={{ cursor: dragRef.current ? 'grabbing' : 'grab' }}>
+      {/* 点阵背景 */}
+      <div className="absolute inset-0 pointer-events-none opacity-60"
+        style={{ backgroundImage: 'radial-gradient(circle, var(--border-color) 1px, transparent 1px)', backgroundSize: '22px 22px' }} />
+      {/* 变换层 */}
+      <div className="absolute" style={{ width: W, height: H, transform: `translate(${view.tx}px, ${view.ty}px) scale(${view.s})`, transformOrigin: '0 0' }}>
+        <svg className="absolute inset-0" width={W} height={H}>
+          {positions.filter(p => p.px !== null).map((p, i) => {
+            const x1 = p.px!, y1 = p.py!
+            const x2 = p.x, y2 = p.y + NODE_H / 2
+            const mx = (x1 + x2) / 2
+            return <path key={'ln' + i} d={`M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`} stroke="var(--border-strong)" strokeWidth="1.5" fill="none" />
+          })}
+        </svg>
+        {positions.map((p, i) => {
+          const n = p.node
+          const isDir = n.kind === 'dir'
+          const isRoot = p.px === null
+          const expanded = isDir && open.has(n.path)
+          const active = !isDir && currentPath === n.path
+          return (
+            <div key={i} className="absolute" style={{ left: p.x, top: p.y, width: NODE_W, height: NODE_H }}>
+              <button onClick={() => isDir ? onToggle(n.path) : onOpen(n)}
+                title={n.name}
+                className={`w-full h-full flex items-center gap-2 px-3 rounded-xl border text-xs transition-all cursor-pointer ${
+                  isRoot
+                    ? 'text-white shadow-soft font-semibold'
+                    : active
+                      ? 'border-[var(--accent)] text-white shadow-soft font-medium'
+                      : 'card-surface border-[var(--border-color)] hover:border-[var(--accent)] hover:shadow-soft'
+                }`}
+                style={{ background: isRoot || active ? 'var(--accent)' : undefined }}>
+                {isDir
+                  ? (expanded ? <FolderOpen size={14} className="flex-shrink-0 opacity-70" /> : <FolderClosed size={14} className="flex-shrink-0 opacity-70" />)
+                  : <FileText size={13} className="flex-shrink-0 opacity-70" />}
+                <span className="truncate">{n.name.replace(/\.md$/, '')}</span>
+              </button>
+            </div>
+          )
         })}
-      </svg>
-      {positions.map(p => {
-        const n = p.node
-        const isDir = n.kind === 'dir'
-        const expanded = isDir && open.has(n.path)
-        const active = !isDir && currentPath === n.path
-        return (
-          <div key={n.path + '-' + p.y} className="absolute" style={{ left: p.x, top: p.y, width: NODE_W, height: NODE_H }}>
-            <button onClick={() => isDir ? onToggle(n.path) : onOpen(n)}
-              title={n.name}
-              className={`w-full h-full flex items-center gap-2 px-3 rounded-xl border text-xs transition-all cursor-pointer ${active
-                ? 'border-[var(--accent)] text-white shadow-soft'
-                : 'card-surface border-[var(--border-color)] hover:border-[var(--accent)] hover:shadow-soft'}`}
-              style={{ background: active ? 'var(--accent)' : undefined }}>
-              {isDir
-                ? (expanded ? <FolderOpen size={14} className="text-dim flex-shrink-0" /> : <FolderClosed size={14} className="text-dim flex-shrink-0" />)
-                : <FileText size={13} className="text-dim flex-shrink-0" />}
-              <span className="truncate font-medium">{n.name.replace(/\.md$/, '')}</span>
-            </button>
-          </div>
-        )
-      })}
+      </div>
+      {/* 工具条：放大 / 缩小 / 适应 / 重置 */}
+      <div className="absolute top-2 right-2 z-10 flex items-center gap-0.5 bg-[var(--bg-panel)] border hairline rounded-lg p-1 shadow-soft">
+        <button onClick={() => zoomAt(1.2)} title="放大"
+          className="w-7 h-7 flex items-center justify-center rounded-md text-sm text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)]">＋</button>
+        <button onClick={() => zoomAt(1 / 1.2)} title="缩小"
+          className="w-7 h-7 flex items-center justify-center rounded-md text-sm text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)]">－</button>
+        <button onClick={fitView} title="适应画布"
+          className="w-7 h-7 flex items-center justify-center rounded-md text-xs text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)]">⤢</button>
+        <button onClick={resetView} title="重置视图"
+          className="w-7 h-7 flex items-center justify-center rounded-md text-xs text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)]">⟲</button>
+      </div>
     </div>
   )
 }
 
-/** Obsidian 界面：连接本机 Obsidian 库文件夹（File System Access API，零后端），文件树 + 文章阅读 */
 export default function ObsidianView() {
   const [rootHandle, setRootHandle] = useState<FileSystemDirectoryHandle | null>(null)
   const [rootName, setRootName] = useState('')
@@ -418,7 +504,7 @@ export default function ObsidianView() {
                   <TreeItem key={n.path} node={n} open={open} onToggle={toggle} onOpen={openFile} depth={0} />
                 ))
               ) : (
-                <div className="overflow-auto">
+                <div className="flex-1 overflow-hidden">
                   <TreeGraph nodes={tree} rootName={rootName} open={open} onToggle={toggle} onOpen={openFile} currentPath={current?.path || null} />
                 </div>
               )}
