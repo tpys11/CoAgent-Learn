@@ -494,8 +494,8 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                   )}
                 </div>
 
-                {/* 网格：全局性提示词 + Skill 模块 */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {/* 上下结构：全局性提示词 + Skill 模块 */}
+                <div className="flex flex-col gap-5">
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center justify-between">
                       <label className={fieldLabel}>全局性提示词</label>
