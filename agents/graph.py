@@ -55,7 +55,11 @@ class AgentState(TypedDict):
     _output_subs: list  # 输出增强模板：主Agent规划时按需选择的输出子Agent列表
 
 
-# 输出增强模板：主Agent规划时按需选择输出子Agent列表
+# 检索增强模板的内置默认子 Agent（知识库与搜索 Agent 强制调用；用户配置了 subAgents 则用自定义）
+_DEFAULT_KB_SUBS = [
+    {"id": "kb-manage", "name": "知识库管理", "subPrompt": "你是知识库检索整理助手。把检索到的知识库片段整理为「来源→核心观点→关键数据」的条目，只输出整理结果本身。", "form": "检索"},
+    {"id": "search", "name": "搜索", "subPrompt": "你是搜索整理助手。把联网搜索到的资料整理为「来源→核心观点→关键数据」的条目并标注来源网址，只输出整理结果本身。", "form": "搜索"},
+]
 
 
 def _build_out_cand(agents: list, tpl: str) -> str:
@@ -68,8 +72,8 @@ def _build_out_cand(agents: list, tpl: str) -> str:
         return ""
     _cand = "；".join(f"{s.get('id')}={s.get('name')}({s.get('form', '')})" for s in _subs)
     return (
-        f"\n输出增强模板：如需要结构化产出，调用输出子Agent（{_cand}）产出结构化内容，在返回 JSON 中给出 \"output_subs\": [子Agent id]。"
-        "若不需要结构化输出则返回空数组。"
+        f"\n输出增强模板：请根据用户问题按需选择 0-3 个输出子Agent，在返回 JSON 中额外给出 \"output_subs\": [子Agent id 数组]。"
+        f"候选：{_cand}。若用户问题不需要结构化输出则返回空数组。"
     )
 
 
@@ -246,6 +250,33 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             thinking += f"；联网搜索 {sres.get('total', 0)} 条"
         except Exception:
             state["search_results"] = []
+        # 检索增强模板：强制调用知识库与搜索 Agent 的子 Agent（内置默认：知识库管理/搜索；用户自定义则用自定义）
+        kb_cfg = _agent_cfg("kb")
+        kb_subs = kb_cfg.get("subAgents") or _DEFAULT_KB_SUBS
+        if tpl == "检索增强" and kb_subs:
+            sub_parts = []
+            for sub in kb_subs:
+                try:
+                    _sp = (sub.get("subPrompt") or "") + "\n请只输出整理结果本身。"
+                    _sid = sub.get("id") or ""
+                    # 分工：知识库管理子Agent 只整理知识库片段，搜索子Agent 只整理联网结果，其余子Agent 喂全部
+                    if _sid == "kb-manage":
+                        _feed = {"knowledge": state.get("knowledge", [])}
+                    elif _sid == "search":
+                        _feed = {"search": state.get("search_results", [])}
+                    else:
+                        _feed = {"knowledge": state.get("knowledge", []), "search": state.get("search_results", [])}
+                    _in = "检索材料：\n" + json.dumps(_feed, ensure_ascii=False)[:4000]
+                    _t, _r = think_then_json(llm_fast, _sp, _in, sub.get("name") or "资料解析")
+                    _c = (_r.get("content") if isinstance(_r, dict) and _r.get("content") else _t) or ""
+                    if _c:
+                        sub_parts.append(f"【{sub.get('name')}】\n" + str(_c)[:1200])
+                except Exception:
+                    pass
+            if sub_parts:
+                state["sub_outputs"] = {**(state.get("sub_outputs") or {}), "kb": "\n".join(sub_parts)}
+                state.setdefault("mindchain", []).append({"agent": "知识库与搜索·子Agent", "content": f"强制调用 {len(sub_parts)} 个子Agent整理资料"})
+                thinking += f"；子Agent整理 {len(sub_parts)} 项"
         _stats(state, "kb", int((time.time() - t0) * 1000), 0, 0)
         state["mindchain"].append({"agent": "知识库管理", "content": thinking})
         state.setdefault("steps", []).append({"agent": "知识库管理", "status": "done"})
