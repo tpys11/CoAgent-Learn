@@ -423,7 +423,7 @@ function ObsidianViewInner() {
   const onResizeMove = (e: React.PointerEvent) => {
     const r = resizeRef.current
     if (!r) return
-    setPanelW(Math.min(680, Math.max(240, r.startW + (e.clientX - r.startX))))
+    setPanelW(Math.min(900, Math.max(240, r.startW + (e.clientX - r.startX))))
   }
   const onResizeUp = () => { resizeRef.current = null }
   const articleRef = useRef<HTMLDivElement>(null)
