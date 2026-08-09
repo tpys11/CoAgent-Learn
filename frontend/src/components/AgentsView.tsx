@@ -145,7 +145,7 @@ const FlowArrow = () => <span className="text-dim flex-shrink-0 text-base">→</
 function SubNode({ name, active, onClick }: { name: string; active?: boolean; onClick?: () => void }) {
   return (
     <button onClick={onClick}
-      className={`px-4 py-3 rounded-xl border-2 text-xs font-bold whitespace-nowrap transition-colors ${
+      className={`min-w-[96px] min-h-[46px] flex items-center justify-center px-4 py-3 rounded-xl border-2 text-xs font-bold whitespace-nowrap transition-colors ${
         onClick ? 'cursor-pointer hover:border-[var(--accent)]' : ''
       } ${active ? 'bg-[#1a1a1a] text-white border-[#1a1a1a]' : 'bg-[var(--bg-panel)] text-dim border-[var(--border-color)]'}`}>
       {name}
@@ -264,17 +264,17 @@ function AgentRow({ node, subs }: { node: React.ReactNode; subs?: string[] }) {
   if (!subs || subs.length === 0) return <>{node}</>
   const left = subs.length >= 2 ? subs.slice(0, Math.ceil(subs.length / 2)) : []
   const right = subs.slice(left.length)
-  // 子 Agent 绝对定位在父节点两侧，不参与布局（父节点位置不变）；连接线为拱形曲线
+  // 子 Agent 绝对定位在父节点两侧（不参与布局，父节点位置不变）；容器上下预留间隙避免与相邻节点重叠；连接线为直线
   return (
-    <div className="relative">
+    <div className="relative py-7">
       {node}
       {left.length > 0 && (
         <div className="absolute right-full top-1/2 -translate-y-1/2 mr-4 flex flex-col gap-4 items-end">
-          {left.map((s, i) => (
+          {left.map(s => (
             <div key={s} className="flex items-center">
               <SubNode name={s} />
               <svg width="50" height="48" viewBox="0 0 50 48" className="flex-shrink-0">
-                <path d={`M 50 24 C 40 24, 36 ${i % 2 === 0 ? 6 : 42}, 26 ${i % 2 === 0 ? 6 : 42} C 20 ${i % 2 === 0 ? 6 : 42}, 16 24, 0 24`} stroke="#d4d4d4" strokeWidth="1.5" fill="none" strokeDasharray="4 3" />
+                <path d="M 50 24 L 0 24" stroke="#d4d4d4" strokeWidth="1.5" fill="none" strokeDasharray="4 3" />
               </svg>
             </div>
           ))}
@@ -282,10 +282,10 @@ function AgentRow({ node, subs }: { node: React.ReactNode; subs?: string[] }) {
       )}
       {right.length > 0 && (
         <div className="absolute left-full top-1/2 -translate-y-1/2 ml-4 flex flex-col gap-4 items-start">
-          {right.map((s, i) => (
+          {right.map(s => (
             <div key={s} className="flex items-center">
               <svg width="50" height="48" viewBox="0 0 50 48" className="flex-shrink-0">
-                <path d={`M 0 24 C 10 24, 14 ${i % 2 === 0 ? 6 : 42}, 24 ${i % 2 === 0 ? 6 : 42} C 30 ${i % 2 === 0 ? 6 : 42}, 34 24, 50 24`} stroke="#d4d4d4" strokeWidth="1.5" fill="none" strokeDasharray="4 3" />
+                <path d="M 0 24 L 50 24" stroke="#d4d4d4" strokeWidth="1.5" fill="none" strokeDasharray="4 3" />
               </svg>
               <SubNode name={s} />
             </div>
