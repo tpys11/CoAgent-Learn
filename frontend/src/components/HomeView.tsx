@@ -59,22 +59,15 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-6xl px-10 py-10 flex flex-col gap-8">
           {/* 左上角：我的主页 */}
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold flex items-center gap-2"><Home size={22} /> 我的主页</h1>
-            <button onClick={newProject}
-              className="flex items-center gap-1.5 px-4 py-2.5 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors">
-              <Plus size={14} /> 新建课程
-            </button>
-          </div>
+          <h1 className="text-2xl font-bold flex items-center gap-2"><Home size={22} /> 我的主页</h1>
           {/* 横栏：内容量趋势 + 日历 */}
           <TrendCalendar days={trendDays} />
           {/* 课程区块 */}
           <div className="flex flex-col gap-6">
             <h2 className="text-xl font-bold">课程</h2>
           {projects.length === 0 ? (
-            <div className="border border-dashed hairline rounded-3xl py-20 flex flex-col items-center gap-3 text-dim">
-              <FolderOpen size={36} className="opacity-50" />
-              <p className="text-sm">还没有课程，点击「新建课程」开始</p>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <NewCourseCard onClick={newProject} />
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -129,11 +122,26 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
                   </div>
                 )
               })}
+              {/* 新建课程卡片（与课程卡片同尺寸） */}
+              <NewCourseCard onClick={newProject} />
             </div>
           )}
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+/** 新建课程卡片：虚线边框 + 加号 + 文字，与课程卡片同尺寸 */
+function NewCourseCard({ onClick }: { onClick: () => void }) {
+  return (
+    <div onClick={onClick}
+      className="group card-surface rounded-2xl border-2 border-dashed border-[var(--border-color)] hover:border-[var(--accent)] hover:shadow-soft transition-all cursor-pointer flex flex-col items-center justify-center gap-3.5 h-[330px]">
+      <span className="w-14 h-14 rounded-2xl bg-[var(--bg-hover)] group-hover:bg-[color-mix(in_srgb,var(--accent)_12%,var(--bg-hover))] group-hover:scale-105 transition-all flex items-center justify-center text-dim group-hover:text-[var(--accent)]">
+        <Plus size={26} />
+      </span>
+      <span className="text-sm font-semibold text-dim group-hover:text-[var(--text)] transition-colors">新建课程</span>
     </div>
   )
 }
