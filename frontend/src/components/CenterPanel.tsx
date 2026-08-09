@@ -117,9 +117,13 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   const [time, setTime] = useState(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }))
   const [searchMode, setSearchMode] = useState(1)
   const [showFormat, setShowFormat] = useState(false)
+  const [showContent, setShowContent] = useState(false)
   const formatRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
   const [outputFormat, setOutputFormat] = useState(0)
   const [outputStyle, setOutputStyle] = useState(0)
+  const [outputVolume, setOutputVolume] = useState(1)
+  const [depth, setDepth] = useState(1)
   const [thinkingCollapsed, setThinkingCollapsed] = useState(true)
   const [showSearch, setShowSearch] = useState(false)
   const [showModelModal, setShowModelModal] = useState(false)
@@ -191,6 +195,7 @@ const TEMPLATE_OPTIONS = [
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (formatRef.current && !formatRef.current.contains(e.target as Node)) setShowFormat(false)
+      if (contentRef.current && !contentRef.current.contains(e.target as Node)) setShowContent(false)
       if (searchRef.current && !searchRef.current.contains(e.target as Node)) setShowSearch(false)
       if (timeRangeRef.current && !timeRangeRef.current.contains(e.target as Node)) setShowTimeRange(false)
       if (inputOptRef.current && !inputOptRef.current.contains(e.target as Node)) setShowInputOpt(false)
@@ -233,8 +238,8 @@ const TEMPLATE_OPTIONS = [
       outputFormat: outputFormat === 0 ? '低结构化' : '高结构化',
       outputStyle: outputStyle === 0 ? 'MD文档' : '对话形式',
       thinking: '开',
-      outputVolume: '适中',
-      depth: '中',
+      outputVolume: ['精简', '适中', '拓展'][outputVolume],
+      depth: ['浅', '中', '深'][depth],
       inputOptMode: inputOptMode === 0 ? '默认模式' : '不询问模式',
       webSearchMode: webSearchMode === 0 ? '默认' : '增强',
     })
@@ -252,8 +257,8 @@ const TEMPLATE_OPTIONS = [
       outputFormat: outputFormat === 0 ? '低结构化' : '高结构化',
       outputStyle: outputStyle === 0 ? 'MD文档' : '对话形式',
       thinking: '开',
-      outputVolume: '适中',
-      depth: '中',
+      outputVolume: ['精简', '适中', '拓展'][outputVolume],
+      depth: ['浅', '中', '深'][depth],
       inputOptMode: inputOptMode === 0 ? '默认模式' : '不询问模式',
       webSearchMode: webSearchMode === 0 ? '默认' : '增强',
     })
@@ -516,7 +521,7 @@ const TEMPLATE_OPTIONS = [
               {useDetail && (<>
               <div className="relative" ref={inputOptRef}>
                 <button
-                  onClick={() => { setShowInputOpt(!showInputOpt); setShowSearch(false); setShowFormat(false) }}
+                  onClick={() => { setShowInputOpt(!showInputOpt); setShowSearch(false); setShowFormat(false); setShowContent(false) }}
                   disabled={autoMode}
                   className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
                 >
@@ -536,7 +541,7 @@ const TEMPLATE_OPTIONS = [
               {/* 检索与搜索 */}
               <div className="relative" ref={searchRef}>
                 <button
-                  onClick={() => { setShowSearch(!showSearch); setShowFormat(false) }}
+                  onClick={() => { setShowSearch(!showSearch); setShowFormat(false); setShowContent(false) }}
                   disabled={autoMode}
                   className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
                 >
@@ -568,7 +573,7 @@ const TEMPLATE_OPTIONS = [
               {/* 输出形式 */}
               <div className="relative" ref={formatRef}>
                 <button
-                  onClick={() => { setShowFormat(!showFormat) }}
+                  onClick={() => { setShowFormat(!showFormat); setShowContent(false) }}
                   disabled={autoMode}
                   className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
                 >
@@ -593,6 +598,42 @@ const TEMPLATE_OPTIONS = [
                     ] as const).map(([s, desc], i) => (
                       <button key={s} onClick={() => setOutputStyle(i)}
                         className={`text-[11px] px-2 py-1 rounded-lg text-left ${i === outputStyle ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
+                        <span className="font-medium">{s}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {/* 输出内容（思考链固定开启，仅输出量/学习深度可选） */}
+              <div className="relative" ref={contentRef}>
+                <button
+                  onClick={() => { setShowContent(!showContent); setShowFormat(false) }}
+                  disabled={autoMode}
+                  className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
+                >
+                  输出内容 <ChevronDown size={9} />
+                </button>
+                {showContent && (
+                  <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 175 }}>
+                    <div className="text-[10px] text-dim mb-1">输出量：</div>
+                    {([
+                      ['精简', '只输出核心观点'],
+                      ['适中', '观点加论证过程'],
+                      ['拓展', '补充拓展性相关内容'],
+                    ] as const).map(([s, desc], i) => (
+                      <button key={s} onClick={() => setOutputVolume(i)}
+                        className={`text-[11px] px-2 py-1 rounded-lg text-left ${i === outputVolume ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
+                        <span className="font-medium">{s}</span>
+                      </button>
+                    ))}
+                    <div className="text-[10px] text-dim mb-1 mt-2">学习深度：</div>
+                    {([
+                      ['浅', '基础概念层面'],
+                      ['中', '概念+原理层面'],
+                      ['深', '原理+推导+前沿'],
+                    ] as const).map(([s, desc], i) => (
+                      <button key={s} onClick={() => setDepth(i)}
+                        className={`text-[11px] px-2 py-1 rounded-lg text-left ${i === depth ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
                         <span className="font-medium">{s}</span>
                       </button>
                     ))}
