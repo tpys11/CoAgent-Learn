@@ -58,15 +58,15 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onNavi
   return (
     <div className="flex-1 h-full min-w-0 flex panel rounded-3xl overflow-hidden">
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-6xl px-10 py-10 flex gap-10">
+        <div className="px-14 py-12 flex gap-14">
           {/* 左：主内容 */}
-          <div className="flex-1 min-w-0 flex flex-col gap-8">
+          <div className="flex-1 min-w-0 flex flex-col gap-10">
           {/* 左上角：我的主页 */}
           <h1 className="text-2xl font-bold flex items-center gap-2"><Home size={22} /> 我的主页</h1>
           {/* 快速引导 */}
           <div className="flex flex-col gap-3">
             <h2 className="text-lg font-bold">快速引导</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
               {[
                 { icon: Plus, label: '新建课程', fn: newProject },
                 { icon: Library, label: '资源中心', fn: () => onNavigate?.('resources') },
@@ -74,7 +74,7 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onNavi
                 { icon: FolderOpen, label: '本地文档', fn: () => onNavigate?.('obsidian') },
               ].map(({ icon: Icon, label, fn }) => (
                 <button key={label} onClick={fn}
-                  className="card-surface rounded-2xl p-5 flex flex-col items-center gap-2.5 hover:shadow-soft hover:border-[var(--accent)] transition-all">
+                  className="card-surface rounded-2xl p-6 flex flex-col items-center gap-3 hover:shadow-soft hover:border-[var(--accent)] transition-all">
                   <Icon size={20} className="text-dim" />
                   <span className="text-xs font-semibold">{label}</span>
                 </button>
@@ -85,11 +85,11 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onNavi
           <div className="flex flex-col gap-6">
             <h2 className="text-xl font-bold">课程</h2>
           {projects.length === 0 ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
               <NewCourseCard onClick={newProject} />
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
               {projects.map(p => {
                 const img = p.domain ? DOMAIN_IMAGES[p.domain] : undefined
                 const count = stats[p.id] ?? 0
@@ -148,7 +148,7 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onNavi
           </div>
           </div>
           {/* 右：内容量趋势 + 日历（竖向平行展开） */}
-          <div className="w-[360px] flex-shrink-0">
+          <div className="w-[380px] flex-shrink-0">
             <TrendCalendar days={trendDays} />
           </div>
         </div>
