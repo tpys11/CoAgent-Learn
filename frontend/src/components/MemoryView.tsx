@@ -252,8 +252,27 @@ function TimeLineChart({ days, height = 90 }: { days: Record<string, any[]>; hei
   const W = 100, H = 40
   const pts = vals.map((v, i) => `${(i / Math.max(1, seg.length - 1)) * W},${H - 6 - (v / max) * (H - 14)}`)
   const hasData = vals.some(v => v > 0)
-  // 拖拽平移
+  // 拖拽平移（图表）
   const dragRef = useRef<{ x: number } | null>(null)
+  // 范围滑块拖拽（轨道上拉动）
+  const trackRef = useRef<HTMLDivElement>(null)
+  const sliderDrag = useRef<{ x: number; c0: number } | null>(null)
+  const onTrackDown = (e: React.PointerEvent) => {
+    ;(e.currentTarget as Element).setPointerCapture?.(e.pointerId)
+    const rect = trackRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const ratio = (e.clientX - rect.left) / rect.width
+    const c = clampCenter(ratio * total)
+    setCenter(c)
+    sliderDrag.current = { x: e.clientX, c0: c }
+  }
+  const onTrackMove = (e: React.PointerEvent) => {
+    if (!sliderDrag.current || !trackRef.current) return
+    const w = trackRef.current.clientWidth || 1
+    const days = ((e.clientX - sliderDrag.current.x) / w) * total
+    setCenter(clampCenter(sliderDrag.current.c0 + days))
+  }
+  const onTrackUp = () => { sliderDrag.current = null }
   const onDown = (e: React.PointerEvent) => { (e.target as Element).setPointerCapture?.(e.pointerId); dragRef.current = { x: e.clientX } }
   const onMove = (e: React.PointerEvent) => {
     if (!dragRef.current) return
@@ -296,11 +315,12 @@ function TimeLineChart({ days, height = 90 }: { days: Record<string, any[]>; hei
           <text x={W / 2} y={H / 2} textAnchor="middle" fontSize="4.5" fill="#b5b5b5">暂无对话数据</text>
         )}
       </svg>
-      {/* 范围滑块：最左 = 最早（项目建立），最右 = 今天；左右滑动平移时间窗口 */}
-      <div className="flex items-center gap-2">
-        <input type="range" min={0} max={Math.max(0, total - 1)} value={Math.min(center, Math.max(0, total - 1))}
-          onChange={e => setCenter(clampCenter(Number(e.target.value)))}
-          className="flex-1 accent-[var(--accent)]" aria-label="时间范围" />
+      {/* 范围滑块：轨道 + 可变长滑块（最左 = 最早，最右 = 今天；滑块长度 = 当前跨度比例，拖动平移） */}
+      <div ref={trackRef} className="relative h-5 flex items-center select-none" style={{ touchAction: 'none' }}
+        onPointerDown={onTrackDown} onPointerMove={onTrackMove} onPointerUp={onTrackUp} onPointerLeave={onTrackUp}>
+        <div className="absolute left-0 right-0 h-[3px] rounded-full bg-[#e5e5e5]" />
+        <div className="absolute h-3.5 rounded-md cursor-grab active:cursor-grabbing shadow transition-[width] duration-150"
+          style={{ background: 'var(--accent)', left: (start / total) * 100 + '%', width: Math.max(4, (span / total) * 100) + '%' }} />
       </div>
       <div className="flex items-center justify-between text-[9px] text-dim">
         <span>{allDates[0]?.slice(5)}</span>
