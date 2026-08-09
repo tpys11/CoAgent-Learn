@@ -257,7 +257,7 @@ async function collectObsFiles(h: FileSystemDirectoryHandle, depth: number, out:
   }
 }
 
-export default function ResourceView({ projectId }: { projectId: string | null }) {
+export default function ResourceView({ projectId, onUseItem }: { projectId: string | null; onUseItem?: (title: string, body: string) => void }) {
   const [tab, setTab] = useState<Tab>('tutorials')
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
   const [resources, setResources] = useState<Resource[]>([])
@@ -518,6 +518,8 @@ const exportItem = (item: ListItem) => {
           <div
             key={item.id}
             onClick={() => setDetail(item)}
+            draggable={!!onUseItem}
+            onDragStart={onUseItem ? (e) => { e.dataTransfer.setData('text/obs-item', JSON.stringify({ title: item.title, body: item.body || '' })); e.dataTransfer.effectAllowed = 'copy' } : undefined}
             className="group card-surface rounded-2xl p-6 flex flex-col gap-4 cursor-pointer transition-all hover:shadow-lg hover:-translate-y-1 hover:border-[var(--border-strong)]"
           >
             <div className="flex items-start justify-between">
@@ -913,12 +915,21 @@ const exportItem = (item: ListItem) => {
               {detail.kind === 'wiki' ? (
                 <span className="text-[11px] text-dim">百科词条 · 由系统内置</span>
               ) : <span />}
-              {detail.deletable && (
-                <button onClick={() => removeItem(detail)}
-                  className="flex items-center gap-1.5 px-3.5 py-2 text-sm text-red-500 hover:bg-red-50 rounded-xl transition-colors">
-                  <Trash2 size={14} /> 删除
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {onUseItem && detail.body && (
+                  <button onClick={() => onUseItem(detail.title, detail.body)}
+                    className="flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-white rounded-xl shadow-soft hover:scale-105 transition-transform"
+                    style={{ background: 'var(--accent)' }}>
+                    <Plus size={14} /> 加入项目
+                  </button>
+                )}
+                {detail.deletable && (
+                  <button onClick={() => removeItem(detail)}
+                    className="flex items-center gap-1.5 px-3.5 py-2 text-sm text-red-500 hover:bg-red-50 rounded-xl transition-colors">
+                    <Trash2 size={14} /> 删除
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
