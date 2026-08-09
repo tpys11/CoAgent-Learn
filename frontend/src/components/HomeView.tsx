@@ -113,7 +113,7 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
                         <span className="font-semibold text-[var(--text)]">还需学习</span>：{short(toLearn, 40)}
                       </p>
                       <p className="text-[9px] text-dim flex items-center gap-1 mt-0.5">
-                        <Clock size={9} /> {p.created_at ? String(p.created_at).slice(0, 10) : '—'} · {count} 次对话{p.domain ? ` · ${p.domain}` : ''}
+                        <Clock size={9} /> {p.created_at ? String(p.created_at).slice(0, 10) : '—'}{p.domain ? ` · ${p.domain}` : ''}
                       </p>
                     </div>
                   </div>
