@@ -578,7 +578,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                             <MiniMD text={val} />
                           </div>
                         ) : (
-                          <p className="text-[11px] text-dim">（暂无内容，点开查看）</p>
+                          <p className="text-[11px] text-dim">（暂无内容）</p>
                         )}
                       </div>
                     )
@@ -883,7 +883,6 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                 className="py-2.5 rounded-xl bg-[#1a1a1a] text-white text-xs font-medium">
                 修改记忆
               </button>
-              <p className="text-[10px] text-dim leading-relaxed">修改记忆由 AI 处理：点击后跳转到主对话界面，输入框会以 [模块名] 引用该记忆，补充你的修改想法后发送即可。</p>
             </div>
           </div>
         </div>

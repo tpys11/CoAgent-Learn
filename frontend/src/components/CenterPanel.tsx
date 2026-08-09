@@ -316,8 +316,7 @@ const TEMPLATE_OPTIONS = [
           {analyzeHint && (
             <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border hairline"
               style={{ background: 'color-mix(in srgb, var(--accent) 8%, var(--bg-panel))', borderColor: 'color-mix(in srgb, var(--accent) 30%, transparent)' }}>
-              <span className="text-xs font-semibold flex-shrink-0">{analyzeHint.label}</span>
-              <span className="text-[11px] text-dim truncate">正在处理「{analyzeHint.project}」，可在下方对话中直接提出要求</span>
+              <span className="text-xs font-semibold flex-shrink-0">{analyzeHint.label} · {analyzeHint.project}</span>
               <button onClick={onClearAnalyzeHint} className="ml-auto flex-shrink-0 text-dim hover:text-[var(--text)] text-xs px-1">✕</button>
             </div>
           )}
