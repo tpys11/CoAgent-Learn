@@ -51,8 +51,8 @@ function App() {
   const [view, setView] = useState<ViewKey>('chat')
   // 记忆修改预填：从记忆界面跳转时，输入框以 [模块名] 引用并提示补充想法
   const [prefillInput, setPrefillInput] = useState('')
-  // 项目记忆分析持久提示：从记忆界面点「重新分析」跳转对话时显示
-  const [analyzeHint, setAnalyzeHint] = useState<string | null>(null)
+  // 项目记忆分析持久提示：从记忆界面跳转对话时显示（label 区分分析/修改基本情况）
+  const [analyzeHint, setAnalyzeHint] = useState<{ label: string; project: string } | null>(null)
   // 首次进入：弹出项目介绍面板（localStorage 标记，只弹一次）
   const [showIntro, setShowIntro] = useState(() => !localStorage.getItem('coagent-intro-seen'))
   // 启动时应用保存的字体大小与主题（system 模式自动解析亮暗）
@@ -190,7 +190,13 @@ function App() {
 
   /** 项目记忆重新分析：跳转对话界面，显示持久提示「项目记忆分析」 */
   const handleRequestAnalyze = (projectName: string) => {
-    setAnalyzeHint(projectName)
+    setAnalyzeHint({ label: '项目记忆分析', project: projectName })
+    setView('chat')
+  }
+
+  /** 基本情况修改：跳转对话界面，显示持久提示「项目基本情况」 */
+  const handleRequestEditBase = (projectName: string) => {
+    setAnalyzeHint({ label: '项目基本情况', project: projectName })
     setView('chat')
   }
 
@@ -364,7 +370,7 @@ function App() {
       )}
       {view === 'tutorial' && <TutorialView />}
       {view === 'resources' && <ResourceView projectId={currentProjectId} />}
-      {view === 'memory' && <MemoryView projectId={currentProjectId} onRequestModify={handleRequestModify} onRequestAnalyze={handleRequestAnalyze} />}
+      {view === 'memory' && <MemoryView projectId={currentProjectId} onRequestModify={handleRequestModify} onRequestAnalyze={handleRequestAnalyze} onRequestEditBase={handleRequestEditBase} />}
       {view === 'knowledge' && <KnowledgeView projectId={projectKBId ?? currentProjectId} onClose={() => setView('chat')} />}
       {view === 'agents' && <AgentsView agents={agents} onSave={handleSaveAgent} onReplace={handleReplaceAgents} projectId={currentProjectId} />}
       {view === 'chat' && (<>

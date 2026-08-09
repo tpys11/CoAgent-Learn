@@ -295,7 +295,7 @@ function TimeLineChart({ days, height = 90 }: { days: Record<string, any[]>; hei
   )
 }
 
-export default function MemoryView({ projectId, onRequestModify, onRequestAnalyze }: { projectId: string | null; onRequestModify?: (label: string, pid?: string) => void; onRequestAnalyze?: (projectName: string) => void }) {
+export default function MemoryView({ projectId, onRequestModify, onRequestAnalyze, onRequestEditBase }: { projectId: string | null; onRequestModify?: (label: string, pid?: string) => void; onRequestAnalyze?: (projectName: string) => void; onRequestEditBase?: (projectName: string) => void }) {
   const [level, setLevel] = useState<'global' | 'project'>('global')
   // 项目列表
   const [projects, setProjects] = useState<Array<{ id: string; name: string; is_default?: boolean; created_at?: string }>>([])
@@ -657,22 +657,68 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                             title="进入对话，由 AI 重新分析该项目的记忆"
                             className="ml-auto px-3 py-1.5 rounded-lg text-[11px] font-medium border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">↻ 重新分析</button>
                         </div>
-                        {detailTab === 'base' && (<>
-                        {/* 项目概述：单栏简历式（不分子栏），修改由 AI 处理 */}
-                        <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-1.5 max-w-3xl">
-                          {['抽象目的', '抽象项目情况'].map((k, idx) => (
-                            <div key={k} className={idx > 0 ? 'flex flex-col gap-1.5 pt-3 border-t hairline' : 'flex flex-col gap-1.5'}>
-                              <div className="flex items-center justify-between">
-                                <label className="text-[10px] font-semibold text-dim uppercase tracking-wider">{k}</label>
-                                <button onClick={() => onRequestModify?.(k, pid)} className="text-[9px] text-[var(--accent)] hover:underline">修改</button>
+                        {detailTab === 'base' && (
+                          <div className="max-w-3xl">
+                            {/* 基本情况：简历式竖向文档（各内容区形状/大小不同），改动由 AI 整体处理 */}
+                            <div className="border hairline rounded-2xl bg-[var(--bg-panel)] overflow-hidden">
+                              {/* 简历头部：大标题 + 副信息 */}
+                              <div className="px-8 py-7 flex flex-col items-center gap-1.5 border-b hairline" style={{ background: 'color-mix(in srgb, var(--accent) 4%, var(--bg-panel))' }}>
+                                <span className="text-xl font-bold">{p?.name || pid}</span>
+                                <span className="text-[11px] text-dim">
+                                  {p?.created_at ? `创建于 ${String(p.created_at).slice(0, 10)}` : ''}{data ? ` · 累计 ${data.count} 次对话` : ''}
+                                </span>
                               </div>
-                              <div className="text-xs text-[var(--text-muted)] leading-relaxed">
-                                {(data?.fields[k] || '').trim() ? <MiniMD text={data?.fields[k] || ''} /> : <span className="text-dim">（空）</span>}
+                              <div className="px-8 py-6 flex flex-col gap-7">
+                                {/* 段落区：抽象目的（大留白） */}
+                                <section>
+                                  <h3 className="text-[11px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--accent)' }}>抽象目的</h3>
+                                  <div className="text-[13px] leading-7 text-[var(--text)] min-h-[64px]">
+                                    {(data?.fields['抽象目的'] || '').trim() ? <MiniMD text={data?.fields['抽象目的'] || ''} /> : <span className="text-dim">（待 AI 分析）</span>}
+                                  </div>
+                                </section>
+                                {/* 段落区：抽象项目情况 */}
+                                <section>
+                                  <h3 className="text-[11px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--accent)' }}>项目情况</h3>
+                                  <div className="text-[13px] leading-7 text-[var(--text)] min-h-[48px]">
+                                    {(data?.fields['抽象项目情况'] || '').trim() ? <MiniMD text={data?.fields['抽象项目情况'] || ''} /> : <span className="text-dim">（待 AI 分析）</span>}
+                                  </div>
+                                </section>
+                                {/* 标签区：偏好/知识点/难点/薄弱点/兴趣（胶囊） */}
+                                {['偏好', '知识点', '难点', '薄弱点', '兴趣'].map(k => {
+                                  const arr = (data?.fields[k] || '').split(/[,，、]/).map((s: string) => s.trim()).filter(Boolean)
+                                  if (!arr.length) return null
+                                  return (
+                                    <section key={k}>
+                                      <h3 className="text-[11px] font-bold uppercase tracking-widest mb-2.5" style={{ color: 'var(--accent)' }}>{k}</h3>
+                                      <div className="flex flex-wrap gap-2">
+                                        {arr.map((s, i) => (
+                                          <span key={i} className="px-3 py-1 rounded-full text-[11px] border hairline"
+                                            style={{ background: 'color-mix(in srgb, var(--accent) 8%, var(--bg-panel))', borderColor: 'color-mix(in srgb, var(--accent) 25%, transparent)' }}>
+                                            {s}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </section>
+                                  )
+                                })}
+                                {/* 三小块：起点 / 当前水平 / 目标 */}
+                                <div className="grid grid-cols-3 gap-3">
+                                  {[['起点', '起点'], ['当前水平', '当前水平'], ['目标', '目标']].map(([k]) => (
+                                    <div key={k} className="rounded-xl px-4 py-3.5 flex flex-col gap-1.5 bg-[var(--bg-input)]">
+                                      <span className="text-[9px] uppercase tracking-wider text-dim">{k}</span>
+                                      <span className="text-xs leading-relaxed line-clamp-3">{data?.fields[k]?.trim() || '—'}</span>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
                             </div>
-                          ))}
-                        </div>
-                        </>)}
+                            {/* 总体修改入口：只能整体与 AI 对话修改 */}
+                            <button onClick={() => onRequestEditBase?.(p?.name || pid)}
+                              className="mt-3 w-full py-2.5 rounded-xl text-xs font-medium border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">
+                              与 AI 对话修改基本情况
+                            </button>
+                          </div>
+                        )}
                         {detailTab === 'progress' && (<>
                         {/* 知识图谱：树状结构（复用资料章节层级，节点颜色=掌握状态） */}
                         <div className="flex flex-col gap-2 max-w-3xl">
