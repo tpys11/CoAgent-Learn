@@ -58,13 +58,22 @@ const buildMilestones = (data: any): Milestone[] => {
   return list
 }
 
-/** 节点颜色：起点灰 · 当前主题色 · 目标深色 · 系统/自定义为主题色深浅（重要节点更深） */
-const nodeColor = (m: Milestone) => {
-  if (m.type === 'start') return '#d4d4d4'
+/** 节点填充色（实心色块内部）：主题色系，按类型区分深浅 */
+const nodeFill = (m: Milestone) => {
+  if (m.type === 'start') return 'color-mix(in srgb, var(--accent) 25%, var(--bg-panel))'
   if (m.type === 'current') return 'var(--accent)'
-  if (m.type === 'goal') return '#1a1a1a'
-  if (m.type === 'custom') return '#9ca3af'
-  return `color-mix(in srgb, var(--accent) ${m.important ? 85 : 45}%, var(--bg-panel))`
+  if (m.type === 'goal') return 'color-mix(in srgb, var(--accent) 80%, var(--bg-panel))'
+  if (m.type === 'custom') return 'color-mix(in srgb, var(--accent) 35%, var(--bg-panel))'
+  return `color-mix(in srgb, var(--accent) ${m.important ? 65 : 35}%, var(--bg-panel))`
+}
+
+/** 节点边框色：符合主题但与填充/进度条不重复（更深一档） */
+const nodeBorder = (m: Milestone) => {
+  if (m.type === 'start') return 'color-mix(in srgb, var(--accent) 55%, transparent)'
+  if (m.type === 'current') return 'color-mix(in srgb, var(--accent) 60%, #1a1a1a)'
+  if (m.type === 'goal') return 'color-mix(in srgb, var(--accent) 45%, #1a1a1a)'
+  if (m.type === 'custom') return 'color-mix(in srgb, var(--accent) 65%, transparent)'
+  return `color-mix(in srgb, var(--accent) ${m.important ? 85 : 55}%, transparent)`
 }
 
 /** 记忆系统：两级（个人全局性记忆 / 项目记忆）完整界面 */
@@ -764,17 +773,19 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                                       {ms.map(m => (
                                         <button key={m.id} onClick={() => setMsNode(m)}
                                           title={m.label}
-                                          className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 flex flex-col items-center gap-1 group"
-                                          style={{ left: m.pos + '%' }}>
-                                          <span className="relative flex items-center justify-center w-7 h-7 rounded-full bg-white border-[3px] shadow transition-transform group-hover:scale-110" style={{ borderColor: nodeColor(m) }}>
-                                            {m.type === 'current' && <span className="w-3 h-3 rounded-full" style={{ background: 'var(--accent)' }} />}
-                                            {m.type === 'goal' && <span className="w-3 h-3 rounded-full bg-[#1a1a1a]" />}
+                                          className="absolute top-0 bottom-0 group"
+                                          style={{ left: m.pos + '%', transform: 'translateX(-50%)' }}>
+                                          {/* 圆点：inset-0 m-auto 绝对居中于进度条中线 */}
+                                          <span className="absolute inset-0 m-auto w-7 h-7 rounded-full shadow transition-transform group-hover:scale-110"
+                                            style={{ background: nodeFill(m), border: '3px solid ' + nodeBorder(m) }}>
                                             {m.important && <span className="absolute -top-3 -right-2.5 text-[10px] leading-none text-amber-500">★</span>}
                                           </span>
-                                          {/* 小三角：提示可点击查看内容 */}
-                                          <span className="w-0 h-0 border-l-[4px] border-r-[4px] border-b-[5px] border-l-transparent border-r-transparent" style={{ borderBottomColor: nodeColor(m) }} />
+                                          {/* 小三角：提示可点击查看内容（挂在圆点正下方） */}
+                                          <span className="absolute left-1/2 -translate-x-1/2 w-0 h-0 border-l-[4px] border-r-[4px] border-b-[5px] border-l-transparent border-r-transparent"
+                                            style={{ top: 'calc(50% + 17px)', borderBottomColor: nodeFill(m) }} />
                                           {m.type !== 'start' && m.type !== 'current' && m.type !== 'goal' && (
-                                            <span className="max-w-[56px] truncate text-[9px] text-dim group-hover:text-[var(--text)]">{m.label}</span>
+                                            <span className="absolute left-1/2 -translate-x-1/2 max-w-[56px] truncate text-[9px] text-dim group-hover:text-[var(--text)]"
+                                              style={{ top: 'calc(50% + 22px)' }}>{m.label}</span>
                                           )}
                                         </button>
                                       ))}
