@@ -634,14 +634,14 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                                       {ms.map(m => (
                                         <button key={m.id} onClick={() => setMsNode(m)}
                                           title={m.label}
-                                          className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 flex flex-col items-center gap-0.5 group"
+                                          className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 flex flex-col items-center gap-1 group"
                                           style={{ left: m.pos + '%' }}>
-                                          <span className="relative flex items-center justify-center w-5 h-5 rounded-full bg-white border-2 shadow transition-transform group-hover:scale-110" style={{ borderColor: nodeColor(m) }}>
-                                            {m.type === 'current' && <span className="w-2 h-2 rounded-full" style={{ background: 'var(--accent)' }} />}
-                                            {m.type === 'goal' && <span className="w-2 h-2 rounded-full bg-[#1a1a1a]" />}
-                                            {m.important && <span className="absolute -top-2.5 -right-2 text-[9px] leading-none text-amber-500">★</span>}
+                                          <span className="relative flex items-center justify-center w-7 h-7 rounded-full bg-white border-[3px] shadow transition-transform group-hover:scale-110" style={{ borderColor: nodeColor(m) }}>
+                                            {m.type === 'current' && <span className="w-3 h-3 rounded-full" style={{ background: 'var(--accent)' }} />}
+                                            {m.type === 'goal' && <span className="w-3 h-3 rounded-full bg-[#1a1a1a]" />}
+                                            {m.important && <span className="absolute -top-3 -right-2.5 text-[10px] leading-none text-amber-500">★</span>}
                                           </span>
-                                          <span className="max-w-[52px] truncate text-[9px] text-dim group-hover:text-[var(--text)]">{m.label}</span>
+                                          <span className="max-w-[56px] truncate text-[9px] text-dim group-hover:text-[var(--text)]">{m.label}</span>
                                         </button>
                                       ))}
                                     </div>
