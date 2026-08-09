@@ -145,7 +145,7 @@ const FlowArrow = () => <span className="text-dim flex-shrink-0 text-base">→</
 function SubNode({ name, active, onClick }: { name: string; active?: boolean; onClick?: () => void }) {
   return (
     <button onClick={onClick}
-      className={`min-w-[96px] min-h-[64px] flex items-center justify-center px-4 py-3 rounded-xl border-2 text-xs font-bold whitespace-nowrap transition-colors ${
+      className={`min-w-[96px] min-h-[64px] max-w-[160px] truncate flex items-center justify-center px-4 py-3 rounded-xl border-2 text-xs font-bold whitespace-nowrap transition-colors ${
         onClick ? 'cursor-pointer hover:border-[var(--accent)]' : ''
       } ${active ? 'bg-[#1a1a1a] text-white border-[#1a1a1a]' : 'bg-[var(--bg-panel)] text-dim border-[var(--border-color)]'}`}>
       {name}
@@ -178,9 +178,9 @@ function AgentWithSubs({ node, subs, subActive }: { node: React.ReactNode; subs?
 /** 环绕图：中心节点（输出增强/检索增强）+ 子 Agent 均匀环绕一圈，中心到每个子 Agent 画曲线 */
 function SubRing({ center, subs, onPick, onCenterClick }: { center: string; subs: Array<{ id: string; name: string; form: string; subPrompt: string }>; onPick?: (s: { id: string; name: string; form: string; subPrompt: string }) => void; onCenterClick?: () => void }) {
   const n = subs.length
-  const W = 400, H = 340
+  const W = 520, H = 460
   const cx = W / 2, cy = H / 2
-  const R = 122
+  const R = 176
   const pos = (i: number) => {
     const a = (-90 + i * (360 / n)) * Math.PI / 180
     return { x: cx + R * Math.cos(a), y: cy + R * Math.sin(a) }
@@ -195,10 +195,12 @@ function SubRing({ center, subs, onPick, onCenterClick }: { center: string; subs
           return <path key={s.id} d={`M ${cx} ${cy} Q ${mx} ${my - 22}, ${x} ${y}`} stroke="#d4d4d4" strokeWidth="1.5" fill="none" strokeDasharray="4 3" />
         })}
       </svg>
-      {/* 中心节点（可点开进入设定） */}
+      {/* 中心节点（中间层/输出增强/检索增强：可点开进入设定，hover 有反馈） */}
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-        <button onClick={onCenterClick}
-          className={`px-4 py-3 rounded-xl border-2 border-dashed text-xs font-medium whitespace-nowrap transition-colors ${onCenterClick ? 'cursor-pointer hover:border-[var(--accent)]' : ''}`}
+        <button onClick={onCenterClick} title={onCenterClick ? '点击编辑中间层' : undefined}
+          className={`px-5 py-3.5 rounded-xl border-2 border-dashed text-xs font-semibold whitespace-nowrap transition-all ${
+            onCenterClick ? 'cursor-pointer hover:border-[var(--accent)] hover:shadow-soft hover:scale-105 hover:bg-[color-mix(in_srgb,var(--accent)_14%,var(--bg-panel))] active:scale-95' : ''
+          }`}
           style={{ borderColor: 'var(--border-strong)', background: 'color-mix(in srgb, var(--accent) 8%, var(--bg-panel))' }}>
           {center}
         </button>
