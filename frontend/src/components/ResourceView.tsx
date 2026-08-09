@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { BookOpen, Sparkles, Upload, FileText, Trash2, Wrench, ExternalLink, Plus, X, FolderTree, FolderOpen, Library, Download } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { BookOpen, Sparkles, Upload, FileText, Trash2, Wrench, ExternalLink, Plus, X, FolderTree, FolderOpen, Library, Download, ChevronRight } from 'lucide-react'
 
 interface Artifact {
   id: string
@@ -209,6 +209,54 @@ const NAV: Array<{ key: Tab; icon: any; label: string; desc: string }> = [
 ]
 
 /** 资源界面：hyper.ai 风格——顶部 Hero + 领域/分类选择 + 分区卡片流（配色跟随主题变量） */
+// ---------- Obsidian 文件夹导入（复用 Obsidian 界面的 IndexedDB 连接句柄） ----------
+interface DirNode { name: string; path: string; children: DirNode[] }
+function obsIdbOpen(): Promise<IDBDatabase> {
+  return new Promise((res, rej) => {
+    const rq = indexedDB.open('coagent-fs', 1)
+    rq.onupgradeneeded = () => rq.result.createObjectStore('handles')
+    rq.onsuccess = () => res(rq.result)
+    rq.onerror = () => rej(rq.error)
+  })
+}
+async function obsLoadRoot(): Promise<FileSystemDirectoryHandle | null> {
+  try {
+    const db = await obsIdbOpen()
+    return await new Promise((res) => {
+      const tx = db.transaction('handles', 'readonly')
+      const rq = tx.objectStore('handles').get('root')
+      rq.onsuccess = () => res(rq.result || null)
+      rq.onerror = () => res(null)
+    })
+  } catch { return null }
+}
+async function buildDirs(h: FileSystemDirectoryHandle, prefix: string, depth: number): Promise<DirNode[]> {
+  if (depth > 8) return []
+  const out: DirNode[] = []
+  for await (const [name, hh] of (h as any).entries()) {
+    if (hh.kind === 'directory') {
+      const kids = await buildDirs(hh, prefix + '/' + name, depth + 1)
+      out.push({ name, path: prefix + '/' + name, children: kids })
+    }
+  }
+  out.sort((a, b) => a.name.localeCompare(b.name))
+  return out
+}
+const OBS_EXT = new Set(['md', 'txt', 'pdf', 'docx', 'doc', 'pptx', 'xlsx', 'csv', 'json'])
+async function collectObsFiles(h: FileSystemDirectoryHandle, depth: number, out: Array<{ name: string; file: File }>) {
+  if (depth > 8) return
+  for await (const [name, hh] of (h as any).entries()) {
+    if (hh.kind === 'directory') await collectObsFiles(hh, depth + 1, out)
+    else {
+      const ext = name.split('.').pop()?.toLowerCase() || ''
+      if (OBS_EXT.has(ext)) {
+        const f = await hh.getFile()
+        out.push({ name, file: f })
+      }
+    }
+  }
+}
+
 export default function ResourceView({ projectId }: { projectId: string | null }) {
   const [tab, setTab] = useState<Tab>('tutorials')
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
@@ -240,6 +288,86 @@ export default function ResourceView({ projectId }: { projectId: string | null }
   const [showAddResource, setShowAddResource] = useState(false)
   const [rName, setRName] = useState('')
   const [rContent, setRContent] = useState('')
+
+  // ---------- Obsidian 文件夹导入 ----------
+  const [obsOpen, setObsOpen] = useState(false)
+  const [obsDirs, setObsDirs] = useState<DirNode[]>([])
+  const [obsExpanded, setObsExpanded] = useState<Set<string>>(new Set())
+  const [obsSel, setObsSel] = useState('')
+  const [obsErr, setObsErr] = useState('')
+  const [obsProgress, setObsProgress] = useState('')
+  const [obsImporting, setObsImporting] = useState(false)
+  const obsRootRef = useRef<FileSystemDirectoryHandle | null>(null)
+
+  const openObsPicker = async () => {
+    setObsErr(''); setObsProgress(''); setObsSel('')
+    try {
+      const h = await obsLoadRoot()
+      if (!h) {
+        setObsErr('尚未连接 Obsidian 库：请先在最左侧栏的 Obsidian 界面点「连接 Obsidian 文件夹」')
+        setObsOpen(true)
+        return
+      }
+      obsRootRef.current = h
+      setObsDirs(await buildDirs(h, '', 0))
+      setObsOpen(true)
+    } catch (e) {
+      setObsErr('读取失败：' + String(e))
+      setObsOpen(true)
+    }
+  }
+  const toggleObsDir = (p: string) => {
+    setObsExpanded(prev => { const n = new Set(prev); n.has(p) ? n.delete(p) : n.add(p); return n })
+  }
+  const renderObsDirs = (dirs: DirNode[], depth: number): React.ReactNode => dirs.map(d => (
+    <div key={d.path}>
+      <div onClick={() => setObsSel(d.path)}
+        className={`flex items-center gap-1.5 pr-2 py-1.5 rounded-lg text-xs cursor-pointer transition-colors ${obsSel === d.path ? 'bg-[#1a1a1a] text-white' : 'hover:bg-[var(--bg-hover)]'}`}
+        style={{ paddingLeft: depth * 18 + 6 }}>
+        <button onClick={(e) => { e.stopPropagation(); toggleObsDir(d.path) }}
+          className="w-4 flex items-center justify-center flex-shrink-0">
+          <ChevronRight size={12} className={`transition-transform ${obsExpanded.has(d.path) ? 'rotate-90' : ''}`} />
+        </button>
+        <FolderTree size={13} className="text-dim flex-shrink-0" />
+        <span className="truncate">{d.name}</span>
+      </div>
+      {obsExpanded.has(d.path) && d.children.length > 0 && renderObsDirs(d.children, depth + 1)}
+    </div>
+  ))
+  const importObsFolder = async () => {
+    if (!obsSel || !obsRootRef.current) return
+    setObsImporting(true)
+    setObsProgress('扫描文件…')
+    try {
+      const parts = obsSel.split('/').filter(Boolean)
+      let cur: any = obsRootRef.current
+      for (const p of parts) cur = await cur.getDirectoryHandle(p)
+      const files: Array<{ name: string; file: File }> = []
+      await collectObsFiles(cur, 0, files)
+      if (files.length === 0) {
+        setObsProgress('该文件夹下没有可导入的文件（md/txt/pdf/docx 等）')
+        setObsImporting(false)
+        return
+      }
+      let done = 0
+      for (const { name, file } of files) {
+        const fd = new FormData()
+        fd.append('project_id', projectId || 'default')
+        fd.append('session_id', 'resource')
+        fd.append('api_key', localStorage.getItem('coagent-apikey') || '')
+        fd.append('file', file, name)
+        await fetch('/api/knowledge/upload-file', { method: 'POST', body: fd })
+        done++
+        setObsProgress(`导入中 ${done} / ${files.length}：${name}`)
+      }
+      setObsProgress(`完成，导入 ${done} 个文件（正在后台处理）`)
+      setObsImporting(false)
+      setTimeout(() => load(), 3000)
+    } catch (e) {
+      setObsProgress('导入失败：' + String(e))
+      setObsImporting(false)
+    }
+  }
 
   const load = useCallback(() => {
     if (!projectId) return
@@ -695,7 +823,12 @@ const exportItem = (item: ListItem) => {
             <>
               <div className="flex items-end justify-between mb-5">
                 <h2 className="text-lg font-bold flex items-center gap-2"><Upload size={18} /> 我的上传</h2>
-                {isCustomUploadCat ? (
+                <div className="flex items-center gap-2">
+                  <button onClick={openObsPicker}
+                    className="flex items-center gap-1.5 px-4 py-2 border hairline text-xs font-semibold rounded-xl text-dim hover:bg-[var(--bg-hover)] transition-colors">
+                    <BookOpen size={13} /> 从 Obsidian 导入
+                  </button>
+                  {isCustomUploadCat ? (
                   !showNewGenItem && (
                     <button onClick={() => setShowNewGenItem(true)}
                       className="flex items-center gap-1.5 px-4 py-2 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors">
@@ -710,6 +843,7 @@ const exportItem = (item: ListItem) => {
                     </button>
                   )
                 )}
+                </div>
               </div>
 
               {/* 添加资料表单（预设分类下） */}
@@ -785,6 +919,39 @@ const exportItem = (item: ListItem) => {
                   <Trash2 size={14} /> 删除
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Obsidian 文件夹导入弹窗 */}
+      {obsOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
+          <div className="w-[540px] max-h-[72vh] flex flex-col rounded-2xl panel shadow-xl overflow-hidden">
+            <div className="px-5 py-4 border-b hairline flex items-center justify-between flex-shrink-0">
+              <h3 className="text-sm font-bold flex items-center gap-2"><BookOpen size={16} /> 从 Obsidian 导入</h3>
+              <button onClick={() => setObsOpen(false)} className="w-7 h-7 flex items-center justify-center rounded-lg text-dim hover:bg-[var(--bg-hover)]">
+                <X size={14} />
+              </button>
+            </div>
+            <div className="px-5 py-2.5 border-b hairline flex items-center justify-between flex-shrink-0">
+              <span className="text-[11px] text-dim truncate">{obsSel ? `已选择：${obsSel.replace(/^\//, '')}` : '请选择一个文件夹'}</span>
+              <span className="text-[10px] text-dim flex-shrink-0 ml-3">md / txt / pdf / docx 等</span>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3">
+              {obsErr ? (
+                <p className="text-xs text-red-600 p-4 leading-relaxed">{obsErr}</p>
+              ) : obsDirs.length === 0 ? (
+                <p className="text-xs text-dim text-center py-8">库中没有子文件夹</p>
+              ) : renderObsDirs(obsDirs, 0)}
+            </div>
+            <div className="px-5 py-3 border-t hairline flex items-center justify-between flex-shrink-0">
+              <span className="text-[11px] text-dim truncate">{obsProgress}</span>
+              <button onClick={importObsFolder} disabled={!obsSel || obsImporting}
+                className={`px-4 py-2 rounded-xl text-xs font-semibold text-white shadow-soft transition-transform ${(!obsSel || obsImporting) ? 'opacity-40 cursor-not-allowed' : 'hover:scale-105'}`}
+                style={{ background: 'var(--accent)' }}>
+                {obsImporting ? '导入中…' : '导入此文件夹'}
+              </button>
             </div>
           </div>
         </div>
