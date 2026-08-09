@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from 'react'
-import { Home, Plus, X, FolderOpen, Clock } from 'lucide-react'
+import { Plus, X, FolderOpen, Clock } from 'lucide-react'
 import TrendCalendar from './TrendCalendar'
 
 /** 系统预设领域 → 预存图片（非系统自带领域无图，显示首字占位） */
@@ -89,8 +89,6 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
         <div className="px-14 py-12 flex gap-14">
           {/* 左：主内容 */}
           <div className="flex-1 min-w-0 flex flex-col gap-10">
-          {/* 左上角：我的主页 */}
-          <h1 className="text-2xl font-bold flex items-center gap-2"><Home size={22} /> 我的主页</h1>
           {/* 快速引导：系统提示建议（一栏直展，无折叠） */}
           <div className="flex flex-col gap-3">
             <h2 className="text-lg font-bold">快速引导</h2>
