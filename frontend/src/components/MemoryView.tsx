@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useRef, useMemo } from 'react'
-import { Brain, User, FolderTree, Check, Loader2, PenLine, ChevronRight, ChevronDown } from 'lucide-react'
+import { Brain, User, FolderTree, Check, Loader2, PenLine, ChevronRight, ChevronDown, RefreshCw } from 'lucide-react'
 
 /** 个人全局性记忆：基础信息字段（固定，纵向表单） */
 const BASIC_FIELDS = [
@@ -370,6 +370,8 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
   const [refreshTick, setRefreshTick] = useState(0)
   // 记忆模块只读详情（修改记忆由 AI 处理：跳转主对话并以 [模块名] 引用）
   const [detailCard, setDetailCard] = useState<{ key: string; label: string; val: string } | null>(null)
+  // 重新分析记忆独立窗口
+  const [showRebuild, setShowRebuild] = useState(false)
   useEffect(() => { setDayDetail(null); setDetailCard(null) }, [level])
 
   const [saved, setSaved] = useState<'saving' | 'saved' | ''>('')
@@ -575,12 +577,13 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
         {/* ========== 个人全局性记忆 ========== */}
         {level === 'global' && (
           <div className="max-w-4xl flex flex-col gap-6">
-            <h2 className="text-xl font-bold flex items-center gap-2"><User size={16} /> 个人全局性记忆</h2>
-            <button onClick={() => runRebuild()}
-              className="self-end -mt-9 px-3 py-1.5 rounded-xl text-[11px] font-medium border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors"
-              title="用当前 API Key 重新分析所有对话，生成全局画像与课程记忆">
-              ↻ 重新分析记忆
-            </button>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-bold flex items-center gap-2"><User size={16} /> 个人全局性记忆</h2>
+              <button onClick={() => setShowRebuild(true)} title="重新分析记忆"
+                className="p-1.5 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors">
+                <RefreshCw size={12} />
+              </button>
+            </div>
 
             {gLoading ? <p className="text-xs text-dim text-center py-10">加载中…</p> : (
               <>
@@ -914,6 +917,24 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                 onClick={() => { const lb = detailCard.label; setDetailCard(null); onRequestModify?.(lb) }}
                 className="py-2.5 rounded-xl bg-[#1a1a1a] text-white text-xs font-medium">
                 修改记忆
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* 重新分析记忆独立窗口 */}
+      {showRebuild && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowRebuild(false)}>
+          <div className="card-lift rounded-2xl p-5 w-[360px] flex flex-col gap-3" onClick={e => e.stopPropagation()}>
+            <p className="text-sm font-bold">重新分析记忆</p>
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+              系统会重新分析所有对话，更新个人画像与各课程记忆（基本情况、知识图谱、进度等）。分析在后台进行，需要一些时间，完成后刷新即可看到。
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => setShowRebuild(false)} className="flex-1 py-2 rounded-xl border hairline text-[11px] text-dim hover:bg-[var(--bg-hover)] transition-colors">取消</button>
+              <button onClick={() => { setShowRebuild(false); runRebuild() }}
+                className="flex-1 py-2 rounded-xl text-[11px] font-medium text-white" style={{ background: 'var(--accent)' }}>
+                开始重新分析
               </button>
             </div>
           </div>
