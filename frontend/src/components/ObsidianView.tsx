@@ -191,36 +191,6 @@ function TreeItem({ node, open, onToggle, onOpen, depth }: {
   )
 }
 
-/** 树状图展开：缩进 + 竖直连接线 + 每行横向短线（父子层级连线可见） */
-function TreeChart({ node, open, onToggle, onOpen }: {
-  node: TreeNode
-  open: Set<string>
-  onToggle: (p: string) => void
-  onOpen: (n: TreeNode) => void
-}) {
-  const isDir = node.kind === 'dir'
-  const expanded = open.has(node.path)
-  return (
-    <div className="tree-node">
-      <button onClick={() => isDir ? onToggle(node.path) : onOpen(node)}
-        className={`tree-row w-full flex items-center gap-1.5 pr-2 py-1.5 rounded-lg text-left text-xs transition-colors hover:bg-[var(--bg-hover)] ${!isDir ? 'text-[var(--text-muted)]' : 'font-medium'}`}>
-        {isDir
-          ? (expanded ? <FolderOpen size={13} className="text-dim flex-shrink-0" /> : <FolderClosed size={13} className="text-dim flex-shrink-0" />)
-          : <FileText size={12} className="text-dim flex-shrink-0" />}
-        <span className="truncate">{node.name.replace(/\.md$/, '')}</span>
-      </button>
-      {isDir && expanded && node.children && node.children.length > 0 && (
-        <div className="tree-children">
-          {node.children.map(c => (
-            <TreeChart key={c.path} node={c} open={open} onToggle={onToggle} onOpen={onOpen} />
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-/** 树状图：节点卡片横向展开（根节点居中于整棵子树，子节点向右分支），画布可拖拽平移 / 滚轮缩放，点阵背景 */
 function TreeGraph({ nodes, rootName, open, onToggle, onOpen, currentPath }: {
   nodes: TreeNode[]
   rootName: string
@@ -646,25 +616,6 @@ function ObsidianViewInner() {
         )}
       </div>
       <style>{`
-        .tree-children {
-          margin-left: 11px;
-          padding-left: 12px;
-          border-left: 1px solid var(--border-color);
-          display: flex;
-          flex-direction: column;
-        }
-        .tree-children > .tree-node > .tree-row {
-          position: relative;
-        }
-        .tree-children > .tree-node > .tree-row::before {
-          content: '';
-          position: absolute;
-          left: -12px;
-          top: 50%;
-          width: 12px;
-          height: 1px;
-          background: var(--border-color);
-        }
         .obsidian-prose { font-size: 15px; line-height: 1.75; color: var(--text); word-break: break-word; }
         .obsidian-prose h1, .obsidian-prose h2, .obsidian-prose h3, .obsidian-prose h4, .obsidian-prose h5, .obsidian-prose h6 {
           font-weight: 700; margin: 1.6em 0 0.6em; line-height: 1.4;
