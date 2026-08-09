@@ -125,7 +125,7 @@ const BLOCKS: Array<{ key: Block; icon: any; label: string }> = [
 ]
 
 /** 编排节点图：节点 + 箭头；节点背景色深浅按模板编排的基础逻辑标注（节点在流程中的职责负载，与内部运行数据无关） */
-function FlowNode({ icon: Icon, name, level = 0, active, onClick, subs, subActive }: { icon: any; name: string; level?: number; active?: boolean; onClick?: () => void; subs?: string[]; subActive?: boolean }) {
+function FlowNode({ icon: Icon, name, level = 0, active, onClick }: { icon: any; name: string; level?: number; active?: boolean; onClick?: () => void }) {
   const pct = [10, 22, 38, 56, 76, 100][Math.min(Math.max(level, 0), 5)]
   const dark = level >= 3
   return (
@@ -136,17 +136,35 @@ function FlowNode({ icon: Icon, name, level = 0, active, onClick, subs, subActiv
       } ${active ? 'border-[var(--accent)] shadow-soft' : 'border-[var(--border-color)]'} ${dark ? 'text-white' : 'text-[var(--text)]'}`}>
       {Icon && <Icon size={18} className={dark ? 'text-white' : active ? 'text-[var(--accent)]' : 'text-dim'} />}
       <span className="text-xs font-bold">{name}</span>
-      {subs && subs.length > 0 && (
-        <span className="flex flex-wrap gap-1 justify-center max-w-[130px]">
-          {subs.map(s => (
-            <span key={s} className={`text-[8px] px-1.5 py-0.5 rounded-full border whitespace-nowrap ${subActive ? 'bg-[#1a1a1a] text-white border-[#1a1a1a]' : 'border-[var(--border-color)] text-dim'}`}>{s}</span>
-          ))}
-        </span>
-      )}
     </button>
   )
 }
 const FlowArrow = () => <span className="text-dim flex-shrink-0 text-base">→</span>
+
+/** 子 Agent 独立矩形节点 */
+function SubNode({ name, active }: { name: string; active?: boolean }) {
+  return (
+    <div className={`px-2.5 py-1.5 rounded-lg border text-[9px] whitespace-nowrap transition-colors ${
+      active ? 'bg-[#1a1a1a] text-white border-[#1a1a1a]' : 'bg-[var(--bg-panel)] text-dim border-[var(--border-color)]'
+    }`}>
+      {name}
+    </div>
+  )
+}
+
+/** 父 Agent 节点 + 连线 + 子 Agent 独立矩形（子 Agent 从父节点底部伸出连线连接） */
+function AgentWithSubs({ node, subs, subActive }: { node: React.ReactNode; subs?: string[]; subActive?: boolean }) {
+  if (!subs || subs.length === 0) return <>{node}</>
+  return (
+    <div className="flex flex-col items-center gap-1">
+      {node}
+      <span className="w-px h-2.5 bg-[#d4d4d4]" />
+      <div className="flex flex-wrap gap-1.5 justify-center max-w-[220px]">
+        {subs.map(s => <SubNode key={s} name={s} active={subActive} />)}
+      </div>
+    </div>
+  )
+}
 
 /** 4-Agent 编排节点图：节点可点击选中 Agent（无 agents 参数时静态展示）；
  *  节点颜色深浅按当前模板的基础逻辑标注（各模板一套分布，不依赖运行数据） */
@@ -165,15 +183,15 @@ const FlowGraph = ({ agents, templateName, templateAgentId, onSelect }: { agents
   const mainSubActive = templateName === '输出增强'
   return (
     <div className="flex items-center justify-center gap-2 flex-wrap">
-      <FlowNode icon={Workflow} name="规划" level={lv('plan')} active={act('main')} onClick={pick('main')} subs={mainSubs} subActive={mainSubActive} />
+      <AgentWithSubs node={<FlowNode icon={Workflow} name="规划" level={lv('plan')} active={act('main')} onClick={pick('main')} />} subs={mainSubs} subActive={mainSubActive} />
       <FlowArrow />
       <div className="flex flex-col gap-1 items-center">
         <FlowNode icon={Brain} name="学情与记忆" level={lv('study_memory')} active={act('study')} onClick={pick('study')} />
         <span className="text-[9px] text-dim">∥ 并行</span>
-        <FlowNode icon={Database} name={nameOf('kb', '知识库与搜索')} level={lv('kb')} active={act('kb')} onClick={pick('kb')} subs={kbSubs} subActive={kbSubActive} />
+        <AgentWithSubs node={<FlowNode icon={Database} name={nameOf('kb', '知识库与搜索')} level={lv('kb')} active={act('kb')} onClick={pick('kb')} />} subs={kbSubs} subActive={kbSubActive} />
       </div>
       <FlowArrow />
-      <FlowNode icon={Workflow} name="生成" level={lv('generate')} active={act('main')} onClick={pick('main')} subs={mainSubs} subActive={mainSubActive} />
+      <AgentWithSubs node={<FlowNode icon={Workflow} name="生成" level={lv('generate')} active={act('main')} onClick={pick('main')} />} subs={mainSubs} subActive={mainSubActive} />
       <FlowArrow />
       <FlowNode icon={Scale} name="审核" level={lv('review')} active={act('review')} onClick={pick('review')} />
       <FlowArrow />
