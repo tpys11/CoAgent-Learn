@@ -545,14 +545,12 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                             }`}>
                             <Square size={16} className={linked ? 'text-[#1a1a1a]' : 'text-dim'} />
                             <span className="text-[10px] font-medium leading-tight text-center px-1 truncate w-full">{s.name}</span>
-                            {/* 右上角红色叉：删除该 Skill 链接 */}
-                            {linked && (
-                              <button onClick={(e) => { e.stopPropagation(); removeSkillFromAgent(s.name) }}
-                                className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center shadow hover:bg-red-600 transition-colors"
-                                title="删除该 Skill">
-                                <X size={9} />
-                              </button>
-                            )}
+                            {/* 右上角红色叉：持续存在，点击删除该 Skill（未选中也可删除） */}
+                            <button onClick={(e) => { e.stopPropagation(); removeSkillFromAgent(s.name) }}
+                              className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center shadow hover:bg-red-600 transition-colors"
+                              title="删除该 Skill">
+                              <X size={9} />
+                            </button>
                             {/* 右下角 radio：选中实心、未选中空心 */}
                             <span className={`absolute right-1.5 bottom-1.5 w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center transition-colors ${
                               linked ? 'border-[#1a1a1a]' : 'border-[var(--border-color)]'
