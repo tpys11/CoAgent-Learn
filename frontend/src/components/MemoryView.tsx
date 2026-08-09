@@ -501,19 +501,22 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                   })}
                 </div>
 
-                {/* 时间：日历热度图 + 学习统计（所有项目） */}
-                <div>
-                  <p className="text-xs font-semibold text-dim uppercase tracking-wider mb-3">时间</p>
+                {/* 时间：内容量趋势 + 日历（横向排布） */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col">
+                    <TimeLineChart days={globalDays} />
+                  </div>
                   <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-3">
                     <CalendarHeatmap
                       data={Object.fromEntries(Object.entries(globalDays).map(([d, items]) => [d, items.length]))}
                       onPick={d => setDayDetail({ date: d, items: globalDays[d] || [] })}
                     />
-                    <div className="flex items-center gap-4 text-[11px] text-dim">
+                    <div className="flex items-center gap-4 text-[10px] text-dim">
                       <span>累计 <b className="text-[var(--text)]">{globalStats.count}</b> 次对话</span>
                       {globalStats.latest && <span>最近学习 <b className="text-[var(--text)]">{globalStats.latest}</b></span>}
                     </div>
                   </div>
+                </div>
                   {dayDetail && (
                     <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] mt-3 flex flex-col gap-2">
                       <div className="flex items-center justify-between">
