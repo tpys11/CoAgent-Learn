@@ -176,7 +176,7 @@ function AgentWithSubs({ node, subs, subActive }: { node: React.ReactNode; subs?
 }
 
 /** 环绕图：中心节点（输出增强/检索增强）+ 子 Agent 均匀环绕一圈，中心到每个子 Agent 画曲线 */
-function SubRing({ center, subs, onPick }: { center: string; subs: Array<{ id: string; name: string }>; onPick?: (s: { id: string; name: string }) => void }) {
+function SubRing({ center, subs, onPick }: { center: string; subs: Array<{ id: string; name: string; form: string; subPrompt: string }>; onPick?: (s: { id: string; name: string; form: string; subPrompt: string }) => void }) {
   const n = subs.length
   const W = 360, H = 300
   const cx = W / 2, cy = H / 2
