@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useRef, useMemo } from 'react'
-import { Brain, User, FolderTree, Check, Loader2, PenLine, ChevronRight, ChevronDown, RefreshCw } from 'lucide-react'
+import { Brain, User, FolderTree, Check, Loader2, PenLine, ChevronRight, ChevronDown } from 'lucide-react'
 
 /** 个人全局性记忆：基础信息字段（固定，纵向表单） */
 const BASIC_FIELDS = [
@@ -370,8 +370,6 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
   const [refreshTick, setRefreshTick] = useState(0)
   // 记忆模块只读详情（修改记忆由 AI 处理：跳转主对话并以 [模块名] 引用）
   const [detailCard, setDetailCard] = useState<{ key: string; label: string; val: string } | null>(null)
-  // 重新分析记忆独立窗口
-  const [showRebuild, setShowRebuild] = useState(false)
   useEffect(() => { setDayDetail(null); setDetailCard(null) }, [level])
 
   const [saved, setSaved] = useState<'saving' | 'saved' | ''>('')
@@ -513,33 +511,19 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
     setMcSending(true)
     try {
       const apikey = localStorage.getItem('coagent-apikey') || ''
+      const target = level === 'global' ? 'global' : (activeProject || '')
       const r = await fetch('/api/memory-chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, project_id: activeProject, api_key: apikey }),
+        body: JSON.stringify({ message: text, project_id: target, api_key: apikey }),
       })
       const d = await r.json()
       setMcMsgs(prev => [...prev, { role: 'assistant', content: d.reply || '已处理。' }])
-      setRefreshTick(t => t + 1)
+      if (level === 'global') loadGlobal()
+      else setRefreshTick(t => t + 1)
     } catch {
       setMcMsgs(prev => [...prev, { role: 'assistant', content: '请求失败，请稍后再试。' }])
     }
     setMcSending(false)
-  }
-
-  // 重新分析记忆：携带前端有效 key，后台从现有对话重新提炼（空 projectId = 全部课程）
-  const runRebuild = (pid?: string) => {
-    let key = ''
-    try {
-      const prov = localStorage.getItem('coagent-provider') || 'deepseek'
-      const keys = JSON.parse(localStorage.getItem('coagent-provider-keys') || '{}')
-      key = keys[prov] || localStorage.getItem('coagent-apikey') || ''
-    } catch {
-      key = localStorage.getItem('coagent-apikey') || ''
-    }
-    fetch('/api/memory/rebuild', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ api_key: key, project_id: pid || '' }),
-    }).then(r => r.json()).then(d => alert(d.message || '记忆分析已启动')).catch(() => alert('记忆分析启动失败'))
   }
 
   const saveState = (
@@ -576,14 +560,9 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
       <div className="flex-1 overflow-y-auto p-6">
         {/* ========== 个人全局性记忆 ========== */}
         {level === 'global' && (
-          <div className="max-w-4xl flex flex-col gap-6">
-            <div className="flex items-center gap-2">
-              <h2 className="text-xl font-bold flex items-center gap-2"><User size={16} /> 个人全局性记忆</h2>
-              <button onClick={() => setShowRebuild(true)} title="重新分析记忆"
-                className="p-1.5 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors">
-                <RefreshCw size={12} />
-              </button>
-            </div>
+          <div className="flex items-start gap-4">
+          <div className="flex-1 min-w-0 max-w-4xl flex flex-col gap-6">
+            <h2 className="text-xl font-bold flex items-center gap-2"><User size={16} /> 个人全局性记忆</h2>
 
             {gLoading ? <p className="text-xs text-dim text-center py-10">加载中…</p> : (
               <>
@@ -667,6 +646,37 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                 )}
               </>
             )}
+          </div>
+          {/* 右侧：记忆对话窗口（与课程记忆一致） */}
+          <div className="w-[340px] flex-shrink-0 border hairline rounded-2xl bg-[var(--bg-panel)] flex flex-col overflow-hidden">
+            <div className="px-4 py-3 border-b hairline flex items-center justify-between">
+              <span className="text-xs font-bold">修改记忆</span>
+              <span className="text-[9px] text-dim">对话后 AI 直接更新记忆</span>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2 min-h-[220px] max-h-[430px]">
+              {mcMsgs.length === 0 ? (
+                <p className="text-[10px] text-dim text-center py-6 leading-relaxed">
+                  直接输入想修改的内容，例如：
+                  <br />「学习目标改为掌握 RAG 原理」
+                  <br />「我的薄弱点是向量检索」
+                </p>
+              ) : mcMsgs.map((m, i) => (
+                <div key={i} className={`max-w-[88%] px-3 py-2 rounded-xl text-[11px] leading-relaxed ${m.role === 'user' ? 'bg-[#1a1a1a] text-white self-end' : 'bg-[var(--bg-hover)] text-[var(--text)] self-start'}`}>
+                  {m.content}
+                </div>
+              ))}
+            </div>
+            <div className="p-3 border-t hairline flex gap-2">
+              <input value={mcInput} onChange={e => setMcInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') sendMc() }}
+                placeholder="输入想修改的记忆…"
+                className="flex-1 px-3 py-2 rounded-xl text-xs border hairline bg-[var(--bg-input)] outline-none focus:border-[var(--border-strong)]" />
+              <button onClick={sendMc} disabled={mcSending || !mcInput.trim()}
+                className="px-3.5 py-2 rounded-xl text-xs font-medium bg-[#1a1a1a] text-white disabled:opacity-40 transition-opacity">
+                {mcSending ? '…' : '发送'}
+              </button>
+            </div>
+          </div>
           </div>
         )}
 
@@ -917,24 +927,6 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                 onClick={() => { const lb = detailCard.label; setDetailCard(null); onRequestModify?.(lb) }}
                 className="py-2.5 rounded-xl bg-[#1a1a1a] text-white text-xs font-medium">
                 修改记忆
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* 重新分析记忆独立窗口 */}
-      {showRebuild && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowRebuild(false)}>
-          <div className="card-lift rounded-2xl p-5 w-[360px] flex flex-col gap-3" onClick={e => e.stopPropagation()}>
-            <p className="text-sm font-bold">重新分析记忆</p>
-            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-              系统会重新分析所有对话，更新个人画像与各课程记忆（基本情况、知识图谱、进度等）。分析在后台进行，需要一些时间，完成后刷新即可看到。
-            </p>
-            <div className="flex gap-2">
-              <button onClick={() => setShowRebuild(false)} className="flex-1 py-2 rounded-xl border hairline text-[11px] text-dim hover:bg-[var(--bg-hover)] transition-colors">取消</button>
-              <button onClick={() => { setShowRebuild(false); runRebuild() }}
-                className="flex-1 py-2 rounded-xl text-[11px] font-medium text-white" style={{ background: 'var(--accent)' }}>
-                开始重新分析
               </button>
             </div>
           </div>

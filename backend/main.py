@@ -1100,16 +1100,23 @@ def _memory_edit(api_key: str, message: str, project_id: str, session_id: str) -
 
 @app.post("/api/memory-chat")
 async def memory_chat(req: ChatRequest):
-    """记忆对话：根据用户输入直接更新课程记忆（只更新明确提到的字段），返回一句话确认"""
+    """记忆对话：根据用户输入直接更新记忆（只更新明确提到的字段），返回一句话确认。
+    project_id 为 'global'（或空）时操作个人全局性记忆，否则操作课程记忆。"""
     import json
     from core.postgres_client import pg_client
     from core.memory_analysis import _as_dict
-    pid = req.project_id or "default"
-    rows = pg_client.execute("SELECT data FROM project_memories WHERE project_id=%s", (pid,))
-    mem = _as_dict(rows[0]["data"]) if rows and rows[0].get("data") else {}
-    ALLOW = ["抽象目的", "抽象项目情况", "起点", "当前水平", "目标", "偏好", "知识点", "难点", "薄弱点", "兴趣"]
+    pid = (req.project_id or "").strip()
+    if not pid or pid == "global":
+        pid = "global"
+        rows = pg_client.execute("SELECT id, data FROM global_profile ORDER BY updated_at DESC LIMIT 1")
+        mem = _as_dict(rows[0]["data"]) if rows and rows[0].get("data") else {}
+        ALLOW = ["身份", "学习目标", "擅长领域", "学习方式", "兴趣方向", "补充信息"]
+    else:
+        rows = pg_client.execute("SELECT session_id, data FROM project_memories WHERE project_id=%s", (pid,))
+        mem = _as_dict(rows[0]["data"]) if rows and rows[0].get("data") else {}
+        ALLOW = ["抽象目的", "抽象项目情况", "起点", "当前水平", "目标", "偏好", "知识点", "难点", "薄弱点", "兴趣"]
     prompt = (
-        "你是记忆更新助手。以下是某个学习项目的当前记忆字段，以及用户想要修改的内容。"
+        "你是记忆更新助手。以下是当前记忆字段，以及用户想要修改的内容。"
         "请只输出 JSON：{\"update\": {字段名: 新值}, \"reply\": \"一句话确认（说明更新了哪些字段；若无变更则说明原因）\"}\n"
         "规则：字段名只能是：" + "、".join(ALLOW) + "。数组字段（偏好/知识点/难点/薄弱点/兴趣）给字符串数组，其余给字符串。"
         "用户没有提到的字段不要出现在 update 中；若用户只是询问，update 可为空对象。\n"
@@ -1138,9 +1145,18 @@ async def memory_chat(req: ChatRequest):
                     merged[k] = v
                     changed.append(k)
             if changed:
-                pg_client.execute(
-                    "UPDATE project_memories SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE project_id=%s",
-                    (json.dumps(merged, ensure_ascii=False), pid))
+                if pid == "global":
+                    rows = pg_client.execute("SELECT id FROM global_profile LIMIT 1")
+                    if rows:
+                        pg_client.execute("UPDATE global_profile SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE id=%s",
+                                          (json.dumps(merged, ensure_ascii=False), rows[0]["id"]))
+                    else:
+                        pg_client.execute("INSERT INTO global_profile (session_id, data) VALUES (%s,%s)",
+                                          ("default", json.dumps(merged, ensure_ascii=False)))
+                else:
+                    pg_client.execute(
+                        "UPDATE project_memories SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE project_id=%s",
+                        (json.dumps(merged, ensure_ascii=False), pid))
         if not changed and not reply.strip():
             reply = "⚠️ 没有需要更新的字段。"
         return {"reply": reply, "changed": changed}
