@@ -15,7 +15,7 @@ interface HomeProject {
   created_at?: string
 }
 
-/** 主页：按项目展开（图片 + 名称 + 信息），点击进入该项目对话 */
+/** 主页：按项目展开的大卡片（上 70% 图片/名称/进度，下 30% 三方面描述），点击进入该项目对话 */
 export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
   projects: HomeProject[]
   onEnter: (id: string) => void
@@ -23,23 +23,31 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
   onDelete: (id: string) => void
 }) {
   const [stats, setStats] = useState<Record<string, number>>({})
+  const [mems, setMems] = useState<Record<string, Record<string, any>>>({})
   useEffect(() => {
     const m: Record<string, number> = {}
+    const mm: Record<string, Record<string, any>> = {}
     Promise.all(projects.map(p =>
-      fetch('/api/stats?project_id=' + encodeURIComponent(p.id), { cache: 'no-store' })
-        .then(r => r.json()).then(d => { m[p.id] = d.dialogue_count ?? d.count ?? 0 }).catch(() => { m[p.id] = 0 })
-    )).then(() => setStats(m))
+      Promise.all([
+        fetch('/api/stats?project_id=' + encodeURIComponent(p.id), { cache: 'no-store' })
+          .then(r => r.json()).then(d => { m[p.id] = d.dialogue_count ?? d.count ?? 0 }).catch(() => { m[p.id] = 0 }),
+        fetch('/api/project-memory/' + encodeURIComponent(p.id), { cache: 'no-store' })
+          .then(r => r.json()).then(d => { mm[p.id] = d.memory || {} }).catch(() => { mm[p.id] = {} }),
+      ])
+    )).then(() => { setStats(m); setMems(mm) })
   }, [projects])
 
   const newProject = () => {
     const name = window.prompt('项目名称：')
     if (name && name.trim()) onCreate(name.trim())
   }
+  const strOf = (v: any) => Array.isArray(v) ? v.join('、') : v ? String(v) : ''
+  const short = (s: string, n = 34) => s.length > n ? s.slice(0, n) + '…' : s
 
   return (
     <div className="flex-1 h-full min-w-0 flex panel rounded-3xl overflow-hidden">
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-5xl mx-auto px-10 py-10">
+        <div className="max-w-6xl mx-auto px-10 py-10">
           <div className="flex items-center justify-between mb-8">
             <div>
               <h1 className="text-2xl font-bold flex items-center gap-2"><Home size={22} /> 我的主页</h1>
@@ -56,36 +64,57 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
               <p className="text-sm">还没有项目，点击「新建项目」开始</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {projects.map(p => {
                 const img = p.domain ? DOMAIN_IMAGES[p.domain] : undefined
+                const count = stats[p.id] ?? 0
+                const pct = Math.min(95, 8 + count * 4)
+                const mem = mems[p.id] || {}
+                const progressTxt = strOf(mem['当前水平']) || (count ? `已学习 ${count} 次对话` : '尚未开始')
+                const unsolved = strOf((mem['薄弱点'] || [])[0] || (mem['难点'] || [])[0]) || '—'
+                const toLearn = strOf((mem['难点'] || []).slice(0, 2).join('、') ? (mem['难点'] || []).slice(0, 2) : (mem['知识点'] || []).slice(0, 2)) || '—'
                 return (
                   <div key={p.id} onClick={() => onEnter(p.id)}
-                    className="group relative card-surface rounded-2xl overflow-hidden cursor-pointer transition-all hover:shadow-lg hover:-translate-y-1 hover:border-[var(--border-strong)]">
-                    {/* 项目图片：系统预设领域加载预存图，其他无图（首字占位） */}
-                    <div className="h-36 w-full overflow-hidden">
+                    className="group relative card-surface rounded-2xl overflow-hidden cursor-pointer transition-all hover:shadow-lg hover:-translate-y-1 hover:border-[var(--border-strong)] flex flex-col h-[330px]">
+                    {/* 上 70%：图片 + 名称 + 进度 */}
+                    <div className="h-[70%] relative overflow-hidden">
                       {img ? (
                         <img src={img} alt={p.domain} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-4xl font-bold text-white"
+                        <div className="w-full h-full flex items-center justify-center text-6xl font-bold text-white"
                           style={{ background: 'linear-gradient(135deg, var(--border-strong), var(--bg-hover))' }}>
                           {p.name.slice(0, 1)}
                         </div>
                       )}
+                      <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/70 to-transparent">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-base font-bold text-white truncate">{p.name}</p>
+                          <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`删除项目「${p.name}」？`)) onDelete(p.id) }}
+                            className="p-1 rounded-lg text-white/70 opacity-0 group-hover:opacity-100 hover:text-red-400 transition-all flex-shrink-0" title="删除项目">
+                            <X size={14} />
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-2 mt-2">
+                          <div className="flex-1 h-1.5 rounded-full bg-white/25 overflow-hidden">
+                            <div className="h-full rounded-full bg-white" style={{ width: pct + '%' }} />
+                          </div>
+                          <span className="text-[10px] text-white/90 flex-shrink-0">{pct}%</span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="p-4 flex flex-col gap-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-semibold truncate">{p.name}</span>
-                        <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`删除项目「${p.name}」？`)) onDelete(p.id) }}
-                          className="p-1 rounded-lg text-dim opacity-0 group-hover:opacity-100 hover:text-red-500 transition-all flex-shrink-0" title="删除项目">
-                          <X size={13} />
-                        </button>
-                      </div>
-                      <div className="flex items-center gap-3 text-[10px] text-dim">
-                        {p.domain && <span className="px-2 py-0.5 rounded-full bg-[var(--bg-hover)]">{p.domain}</span>}
-                        <span className="flex items-center gap-1"><Clock size={10} /> {p.created_at ? String(p.created_at).slice(0, 10) : '—'}</span>
-                        <span>{stats[p.id] ?? 0} 次对话</span>
-                      </div>
+                    {/* 下 30%：三方面简单描述 */}
+                    <div className="h-[30%] p-4 bg-[var(--bg-panel)] flex flex-col justify-center gap-1">
+                      <p className="text-[11px] leading-relaxed text-[var(--text-muted)]">
+                        <span className="font-semibold text-[var(--text)]">进度</span>：{short(progressTxt)}
+                        <span className="mx-1.5 text-[var(--border-strong)]">·</span>
+                        <span className="font-semibold text-[var(--text)]">上次未解决</span>：{short(unsolved, 20)}
+                      </p>
+                      <p className="text-[11px] leading-relaxed text-[var(--text-muted)]">
+                        <span className="font-semibold text-[var(--text)]">还需学习</span>：{short(toLearn, 40)}
+                      </p>
+                      <p className="text-[9px] text-dim flex items-center gap-1 mt-0.5">
+                        <Clock size={9} /> {p.created_at ? String(p.created_at).slice(0, 10) : '—'} · {count} 次对话{p.domain ? ` · ${p.domain}` : ''}
+                      </p>
                     </div>
                   </div>
                 )
