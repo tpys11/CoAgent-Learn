@@ -613,13 +613,13 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                           </div>
                         )}
                         {/* 知识图谱：树状结构（复用资料章节层级，节点颜色=掌握状态） */}
-                        <div className="flex flex-col gap-2">
+                        <div className="flex flex-col gap-2 max-w-3xl">
                           <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">知识图谱</p>
                           <KnowledgeTree treeDocs={data?.treeDocs || []} progressItems={data?.progress.items || []} />
                         </div>
 
                         {/* 进度：里程碑时间线 */}
-                        <div className="flex flex-col gap-2">
+                        <div className="flex flex-col gap-2 max-w-3xl">
                           <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-3">
                             <div className="flex items-center justify-between">
                               <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">进度</p>
