@@ -652,9 +652,17 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
             <div>
               <h2 className="text-base font-bold flex items-center gap-2">
                 <FolderTree size={16} /> 项目记忆
-                <button onClick={() => setShowModifyTip(true)}
-                  className="ml-auto px-3 py-1.5 rounded-lg text-[11px] font-semibold text-white shadow-soft transition-transform hover:scale-105"
-                  style={{ background: 'var(--accent)' }}>修改记忆</button>
+                {projectOnly ? (
+                  <button onClick={() => setShowModifyTip(true)}
+                    className="ml-auto px-3 py-1.5 rounded-lg text-[11px] font-semibold text-white shadow-soft transition-transform hover:scale-105"
+                    style={{ background: 'var(--accent)' }}>修改记忆</button>
+                ) : (
+                  <button onClick={() => runRebuild(activeProject || undefined)}
+                    className="ml-auto px-3 py-1.5 rounded-xl text-[11px] font-medium border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors"
+                    title="用当前 API Key 重新分析对话，生成该项目的记忆">
+                    ↻ 重新分析
+                  </button>
+                )}
               </h2>
             </div>
 
@@ -684,6 +692,16 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                   return (
                     <div className="border hairline rounded-2xl bg-[var(--bg-panel)] overflow-hidden">
                       <div className="flex items-center gap-2 px-4 py-3 border-b hairline">
+                        {!projectOnly && (
+                          <>
+                            <FolderTree size={14} />
+                            <span className="text-sm font-bold">{p?.name || pid}</span>
+                            {p?.id === projectId && <span className="text-[9px] text-dim">当前</span>}
+                            <button onClick={() => setShowModifyTip(true)}
+                              className="ml-2 px-3 py-1.5 rounded-lg text-[10px] font-semibold text-white shadow-soft transition-transform hover:scale-105"
+                              style={{ background: 'var(--accent)' }}>修改记忆</button>
+                          </>
+                        )}
                         <span className="text-[10px] text-dim ml-auto">
                           {p?.created_at ? String(p.created_at).slice(0, 10) : ''}{data ? ` · ${data.count} 次对话` : ''}
                         </span>
