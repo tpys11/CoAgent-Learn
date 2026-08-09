@@ -697,7 +697,7 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                               return (
                                 <>
                                   {/* 加宽进度条 + 节点 */}
-                                  <div className="relative pt-4 pb-5">
+                                  <div className="relative pt-4 pb-7">
                                     <div className="relative h-4 rounded-full bg-[#ececec]">
                                       <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: pct + '%', background: 'var(--accent)', opacity: 0.9 }} />
                                       {ms.map(m => (
@@ -710,6 +710,8 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                                             {m.type === 'goal' && <span className="w-3 h-3 rounded-full bg-[#1a1a1a]" />}
                                             {m.important && <span className="absolute -top-3 -right-2.5 text-[10px] leading-none text-amber-500">★</span>}
                                           </span>
+                                          {/* 小三角：提示可点击查看内容 */}
+                                          <span className="w-0 h-0 border-l-[4px] border-r-[4px] border-t-[5px] border-l-transparent border-r-transparent" style={{ borderTopColor: nodeColor(m) }} />
                                           {m.type !== 'start' && m.type !== 'current' && m.type !== 'goal' && (
                                             <span className="max-w-[56px] truncate text-[9px] text-dim group-hover:text-[var(--text)]">{m.label}</span>
                                           )}
