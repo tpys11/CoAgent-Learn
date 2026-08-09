@@ -643,12 +643,15 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                         </span>
                       </div>
                       <div className="px-4 py-3 flex flex-col gap-4">
-                        {/* 项目概述：最顶层基础信息（创建时间 / 抽象目的 / 抽象项目情况），下方内容均为其具体展开 */}
-                        <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-3 max-w-3xl">
+                        {/* 项目概述：简历式文本框架（label + 内容块 + 列表渲染），修改由 AI 处理 */}
+                        <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-4 max-w-3xl">
                           {['抽象目的', '抽象项目情况'].map(k => (
-                            <div key={k}>
-                              <label className="text-[10px] font-semibold text-dim uppercase tracking-wider mb-1 block">{k}</label>
-                              <div className="px-3 py-2 border hairline rounded-xl text-xs bg-[var(--bg-input)] text-[var(--text-muted)] leading-relaxed">
+                            <div key={k} className="flex flex-col gap-1.5">
+                              <div className="flex items-center justify-between">
+                                <label className="text-[10px] font-semibold text-dim uppercase tracking-wider">{k}</label>
+                                <button onClick={() => onRequestModify?.(k, pid)} className="text-[9px] text-[var(--accent)] hover:underline">修改</button>
+                              </div>
+                              <div className="pl-3 border-l-2 text-xs text-[var(--text-muted)] leading-relaxed" style={{ borderColor: 'var(--accent)' }}>
                                 {(data?.fields[k] || '').trim() ? <MiniMD text={data?.fields[k] || ''} /> : <span className="text-dim">（空）</span>}
                               </div>
                             </div>
