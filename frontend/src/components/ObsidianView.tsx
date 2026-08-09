@@ -1,8 +1,91 @@
-import { useEffect, useState } from 'react'
-import { marked } from 'marked'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import MarkdownIt from 'markdown-it'
+import container from 'markdown-it-container'
+import katexPlugin from 'markdown-it-katex'
+import 'katex/dist/katex.min.css'
+import mermaid from 'mermaid'
 import { BookOpen, FileText, FolderOpen, FolderClosed, List, Network } from 'lucide-react'
 
-marked.setOptions({ breaks: true })
+// ---------- 渲染引擎：markdown-it（与 Obsidian 同源）+ callout/mermaid/KaTeX/双链嵌入 ----------
+mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', theme: 'default' })
+let mmdSeq = 0
+
+const md = new MarkdownIt({ html: false, linkify: true, breaks: true })
+md.use(katexPlugin, { throwOnError: false, errorColor: '#d9534f' })
+
+// Callout：> [!note] 标题（blockquote 形式，与 Obsidian 一致）
+const calloutStack: number[] = []
+const _quoteOpen = md.renderer.rules.blockquote_open
+md.renderer.rules.blockquote_open = (tokens, idx, options, env, slf) => {
+  const next = tokens[idx + 1]
+  let m: RegExpMatchArray | null = null
+  if (next && next.type === 'paragraph_open') {
+    const inline = tokens[idx + 2]
+    if (inline && inline.type === 'inline') m = inline.content.trim().match(/^\[!([^\]]+)\](.*)$/)
+  }
+  if (m) {
+    const type = m[1].toLowerCase()
+    const title = (m[2] || '').trim()
+    if (tokens[idx + 2] && tokens[idx + 2].type === 'inline') tokens[idx + 2].content = '' // 标题行不显示
+    calloutStack.push(1)
+    return `<blockquote class="obs-callout obs-callout-${type}"><div class="obs-callout-title">${title || type}</div>`
+  }
+  calloutStack.push(0)
+  return _quoteOpen ? _quoteOpen(tokens, idx, options, env, slf) : '<blockquote>'
+}
+const _quoteClose = md.renderer.rules.blockquote_close
+md.renderer.rules.blockquote_close = (tokens, idx, options, env, slf) => {
+  const isCallout = calloutStack.pop() === 1
+  if (isCallout) return '</div></blockquote>'
+  return _quoteClose ? _quoteClose(tokens, idx, options, env, slf) : '</blockquote>'
+}
+
+// Mermaid：```mermaid 代码块 → 异步渲染 SVG
+const _fence = md.renderer.rules.fence!
+md.renderer.rules.fence = (tokens, idx, options, env, slf) => {
+  const t = tokens[idx]
+  if (t.info.trim() === 'mermaid') {
+    const id = 'mmd-' + (++mmdSeq)
+    setTimeout(() => {
+      mermaid.render(id, t.content).then(({ svg }) => {
+        const el = document.getElementById(id)
+        if (el) el.innerHTML = svg
+      }).catch(() => {
+        const el = document.getElementById(id)
+        if (el) el.innerHTML = '<div class="obs-mermaid-err">图表渲染失败</div>'
+      })
+    }, 0)
+    return `<pre class="obs-mermaid" id="${id}">加载图表…</pre>`
+  }
+  return _fence(tokens, idx, options, env, slf)
+}
+
+// 双链 [[名称|别名]] 与嵌入 ![[名称]]
+md.inline.ruler.before('escape', 'obs_wiki', (state, silent) => {
+  const src = state.src.slice(state.pos)
+  const m = src.match(/^(!?)\[\[([^\[\]]+?)(?:\|([^\[\]]*))?\]\]/)
+  if (!m) return false
+  if (!silent) {
+    const embed = m[1] === '!'
+    const name = m[2].trim()
+    const alias = (m[3] || '').trim()
+    if (embed) {
+      const t1 = state.push('obs_embed_open', 'span', 1)
+      t1.attrs = [['class', 'obs-embed'], ['data-wiki', name]]
+      const t2 = state.push('obs_embed_body', '', 0)
+      t2.content = `加载 ${name} …`
+      state.push('obs_embed_close', 'span', -1)
+    } else {
+      const t1 = state.push('obs_wikilink_open', 'a', 1)
+      t1.attrs = [['class', 'obs-wikilink'], ['data-wiki', name], ['href', '#']]
+      const t2 = state.push('text', '', 0)
+      t2.content = alias || name
+      state.push('obs_wikilink_close', 'a', -1)
+    }
+  }
+  state.pos += m[0].length
+  return true
+})
 
 // ---------- IndexedDB：持久化目录句柄（刷新后自动恢复连接） ----------
 const DB_NAME = 'coagent-fs'
@@ -135,6 +218,7 @@ export default function ObsidianView() {
   const [current, setCurrent] = useState<{ path: string; content: string } | null>(null)
   // 展开方式：列表（缩进列表）/ 树状图（带连接线），持久化记忆
   const [expandMode, setExpandMode] = useState<'list' | 'tree'>(() => localStorage.getItem('coagent-obsidian-mode') === 'tree' ? 'tree' : 'list')
+  const articleRef = useRef<HTMLDivElement>(null)
 
   // 恢复上次连接
   useEffect(() => {
@@ -181,7 +265,54 @@ export default function ObsidianView() {
       setCurrent({ path: node.path, content: '读取失败' })
     }
   }
-  const html = current ? (marked.parse(current.content) as string) : ''
+
+  // 名称索引：双链/嵌入按名称定位文件
+  const nameIndex = useMemo(() => {
+    const map = new Map<string, TreeNode>()
+    const walk = (nodes: TreeNode[]) => {
+      for (const n of nodes) {
+        if (n.kind === 'file') map.set(n.name.replace(/\.md$/, ''), n)
+        if (n.children) walk(n.children)
+      }
+    }
+    walk(tree)
+    return map
+  }, [tree])
+
+  const html = current ? (md.render(current.content) as string) : ''
+
+  // 嵌入懒加载：文章渲染后扫描 .obs-embed 元素，读取目标文件并渲染
+  useEffect(() => {
+    if (!current || !rootHandle || !articleRef.current) return
+    const root = articleRef.current
+    root.querySelectorAll('.obs-embed[data-loaded!="1"]').forEach(async el => {
+      const name = el.getAttribute('data-wiki') || ''
+      el.setAttribute('data-loaded', '1')
+      const node = nameIndex.get(name)
+      if (!node) {
+        el.innerHTML = `<div class="obs-embed-head">${name}</div><div class="obs-embed-err">未找到笔记「${name}」</div>`
+        return
+      }
+      try {
+        const text = await readFile(rootHandle, node.path)
+        el.innerHTML = `<div class="obs-embed-head">${name}</div><div class="obs-embed-body">${md.render(text)}</div>`
+      } catch {
+        el.innerHTML = `<div class="obs-embed-head">${name}</div><div class="obs-embed-err">读取失败</div>`
+      }
+    })
+  }, [current, html, rootHandle, nameIndex])
+
+  // 双链点击：打开目标笔记
+  const onArticleClick = (e: React.MouseEvent) => {
+    const a = (e.target as HTMLElement).closest('.obs-wikilink') as HTMLElement | null
+    if (a) {
+      e.preventDefault()
+      const name = a.getAttribute('data-wiki') || ''
+      const node = nameIndex.get(name)
+      if (node) openFile(node)
+      else a.title = '未找到笔记「' + name + '」'
+    }
+  }
 
   return (
     <div className="flex-1 h-full min-w-0 flex panel rounded-3xl overflow-hidden">
@@ -237,7 +368,8 @@ export default function ObsidianView() {
       {/* 右侧：文章阅读 */}
       <div className="flex-1 overflow-y-auto">
         {current ? (
-          <article className="max-w-3xl mx-auto px-10 py-8 obsidian-prose" dangerouslySetInnerHTML={{ __html: html }} />
+          <article ref={articleRef} onClick={onArticleClick}
+            className="max-w-3xl mx-auto px-10 py-8 obsidian-prose" dangerouslySetInnerHTML={{ __html: html }} />
         ) : (
           <div className="h-full flex items-center justify-center text-xs text-dim">选择左侧文章查看</div>
         )}
@@ -285,6 +417,25 @@ export default function ObsidianView() {
         .obsidian-prose img { max-width: 100%; border-radius: 8px; }
         .obsidian-prose strong { font-weight: 700; }
         .obsidian-prose del { color: var(--text-muted); }
+        /* Callout（与 Obsidian 一致） */
+        .obs-callout { margin: 1em 0; border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; background: color-mix(in srgb, var(--accent) 6%, var(--bg-panel)); padding: 0.7em 1em; }
+        .obs-callout-title { font-weight: 700; font-size: 0.95em; margin-bottom: 0.35em; text-transform: capitalize; }
+        .obs-callout-body > p:first-child:empty { display: none; }
+        .obs-callout-warning { border-left-color: #f59e0b; }
+        .obs-callout-tip, .obs-callout-success, .obs-callout-check { border-left-color: #10b981; }
+        .obs-callout-danger, .obs-callout-error, .obs-callout-fail { border-left-color: #ef4444; }
+        .obs-callout-info, .obs-callout-question { border-left-color: #3b82f6; }
+        /* 双链与嵌入 */
+        .obs-wikilink { color: var(--accent); text-decoration: underline; cursor: pointer; }
+        .obs-wikilink:hover { text-decoration: none; background: color-mix(in srgb, var(--accent) 10%, transparent); border-radius: 3px; }
+        .obs-embed { display: block; border: 1px solid var(--border-color); border-left: 3px solid var(--accent); border-radius: 8px; margin: 0.8em 0; padding: 0.5em 0.9em 0.6em; background: var(--bg-panel); }
+        .obs-embed-head { font-size: 0.78em; font-weight: 600; color: var(--text-muted); margin-bottom: 0.3em; }
+        .obs-embed-err { font-size: 0.85em; color: #d9534f; }
+        .obs-embed-body > :first-child { margin-top: 0.3em; }
+        .obs-embed-body .obs-embed { border-left-width: 2px; }
+        /* Mermaid */
+        .obs-mermaid { background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 10px; padding: 1em; text-align: center; overflow-x: auto; }
+        .obs-mermaid-err { color: #d9534f; font-size: 0.85em; }
       `}</style>
     </div>
   )
