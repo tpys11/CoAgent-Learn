@@ -374,6 +374,12 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
     commit({ skill: linked || agent.skill })
   }
 
+  /** 删除 Skill：直接从此处消失（卡片移除 + 若已链接则解除链接） */
+  const removeSkillFromAgent = (name: string) => {
+    setAllSkills(prev => prev.filter(s => s.name !== name))
+    if (linkedSkills.includes(name)) toggleSkill(name)
+  }
+
   const toggleSkillEnabled = (name: string) => {
     const next = { ...skillEnabled, [name]: !(skillEnabled[name] ?? true) }
     setSkillEnabled(next)
@@ -541,7 +547,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                             <span className="text-[10px] font-medium leading-tight text-center px-1 truncate w-full">{s.name}</span>
                             {/* 右上角红色叉：删除该 Skill 链接 */}
                             {linked && (
-                              <button onClick={(e) => { e.stopPropagation(); toggleSkill(s.name) }}
+                              <button onClick={(e) => { e.stopPropagation(); removeSkillFromAgent(s.name) }}
                                 className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center shadow hover:bg-red-600 transition-colors"
                                 title="删除该 Skill">
                                 <X size={9} />
