@@ -68,6 +68,12 @@ class SQLiteClient:
             "CREATE VIRTUAL TABLE IF NOT EXISTS memory_vectors USING vec0("
             "scope TEXT, content TEXT, embedding float[512])"
         )
+        # 知识库文档标题树（上传时提取 markdown 标题层级，供项目记忆知识图谱使用）
+        self.execute(
+            "CREATE TABLE IF NOT EXISTS kb_tree("
+            "project_id TEXT, source TEXT, tree TEXT, updated_at TEXT DEFAULT (datetime('now')), "
+            "PRIMARY KEY (project_id, source))"
+        )
 
     def upsert_kb_vector(self, doc_id: str, project_id: str, source: str, chunk: int,
                          session_id: str, has_context: bool, content: str, embedding: list):
@@ -80,6 +86,31 @@ class SQLiteClient:
              sqlite_vec.serialize_float32(embedding)),
         )
         self.conn.commit()
+
+    def upsert_kb_tree(self, project_id: str, source: str, tree: list):
+        """保存文档标题树（json）"""
+        import json as _json
+        self.execute(
+            "INSERT INTO kb_tree(project_id, source, tree, updated_at) VALUES (?,?,?,datetime('now')) "
+            "ON CONFLICT(project_id, source) DO UPDATE SET tree=excluded.tree, updated_at=datetime('now')",
+            (project_id, source, _json.dumps(tree, ensure_ascii=False)),
+        )
+
+    def get_kb_tree(self, project_id: str, source: str) -> list:
+        """读取文档标题树（无则空列表）"""
+        import json as _json
+        rows = self.execute("SELECT tree FROM kb_tree WHERE project_id=? AND source=?", (project_id, source))
+        if not rows or not rows[0].get("tree"):
+            return []
+        try:
+            t = _json.loads(rows[0]["tree"])
+            return t if isinstance(t, list) else []
+        except Exception:
+            return []
+
+    def delete_kb_tree_by_source(self, project_id: str, source: str) -> int:
+        """删除某来源文档的标题树"""
+        return self.execute("DELETE FROM kb_tree WHERE project_id=? AND source=?", (project_id, source))
 
     def search_kb_vectors(self, project_id: str, query_embedding: list, k: int = 12) -> list[dict]:
         rows = self.conn.execute(

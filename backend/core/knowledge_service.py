@@ -3,6 +3,7 @@
 替换原 Chroma 实现；embedding 用 bge-small-zh-v1.5（中文，512维）。
 """
 import hashlib
+import json
 import re
 
 from core.sqlite_client import get_db
@@ -75,6 +76,29 @@ def _get_bm25(project_id: str):
 
 def _invalidate_bm25(project_id: str):
     _bm25_cache.pop(project_id, None)
+
+
+def _extract_tree(text: str) -> list:
+    """从文档文本提取标题层级树（复用上传资料自身的形式分类逻辑：markdown 标题）
+    无标题时返回空列表（前端显示空树占位）。"""
+    tree = []
+    stack: list[tuple[int, dict]] = []
+    for line in (text or "").splitlines():
+        if not line.strip().startswith("#"):
+            continue
+        m = re.match(r"^(#{1,6})\s+(.+)$", line.rstrip())
+        if not m:
+            continue
+        lvl = len(m.group(1))
+        node = {"name": m.group(2).strip(), "children": []}
+        while stack and stack[-1][0] >= lvl:
+            stack.pop()
+        if stack:
+            stack[-1][1]["children"].append(node)
+        else:
+            tree.append(node)
+        stack.append((lvl, node))
+    return tree
 
 
 def _chunk_text(text: str, size: int = 400) -> list:
@@ -151,6 +175,12 @@ def add_document(project_id: str, text: str, source: str = "", session_id: str =
             session_id=session_id, has_context=bool(pfx),
             content=docs[i], embedding=embeddings[i],
         )
+    # 标题树：复用文档自身的形式分类逻辑（markdown 标题层级），供项目记忆知识图谱
+    try:
+        if source:
+            _db.upsert_kb_tree(project_id, source, _extract_tree(text))
+    except Exception:
+        pass
     _invalidate_bm25(project_id)
     return len(chunks)
 
@@ -259,12 +289,14 @@ def list_docs(project_id: str) -> list:
         if not g["preview"]:
             g["preview"] = content[:60]
         g["blocks"].append({"chunk": r["chunk"], "content": content})
+        g["tree"] = _db.get_kb_tree(project_id, src)
     return list(grouped.values())
 
 
 def delete_doc(project_id: str, source: str) -> int:
     """删除某个来源的全部块，返回删除块数"""
     n = _db.delete_kb_by_source(project_id, source)
+    _db.delete_kb_tree_by_source(project_id, source)
     _invalidate_bm25(project_id)
     return n
 
