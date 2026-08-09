@@ -1,5 +1,6 @@
 ﻿import { useEffect, useState } from 'react'
 import { Home, Plus, X, FolderOpen, Clock } from 'lucide-react'
+import TrendCalendar from './TrendCalendar'
 
 /** 系统预设领域 → 预存图片（非系统自带领域无图，显示首字占位） */
 const DOMAIN_IMAGES: Record<string, string> = {
@@ -24,6 +25,15 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
 }) {
   const [stats, setStats] = useState<Record<string, number>>({})
   const [mems, setMems] = useState<Record<string, Record<string, any>>>({})
+  // 横栏：内容量趋势 + 日历（全局学习记录，与记忆界面一致）
+  const [trendDays, setTrendDays] = useState<Record<string, any[]>>({})
+  useEffect(() => {
+    fetch('/api/learning-log', { cache: 'no-store' }).then(r => r.json()).then(d => {
+      const days: Record<string, any[]> = {}
+      for (const dd of (d.days || [])) days[dd.date] = dd.items || []
+      setTrendDays(days)
+    }).catch(() => {})
+  }, [])
   useEffect(() => {
     const m: Record<string, number> = {}
     const mm: Record<string, Record<string, any>> = {}
@@ -47,17 +57,20 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
   return (
     <div className="flex-1 h-full min-w-0 flex panel rounded-3xl overflow-hidden">
       <div className="flex-1 overflow-y-auto">
-        <div className="max-w-6xl mx-auto px-10 py-10">
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h1 className="text-2xl font-bold flex items-center gap-2"><Home size={22} /> 我的主页</h1>
-              <p className="text-xs text-dim mt-1.5">选择课程进入对话，或创建新课程开始学习</p>
-            </div>
+        <div className="max-w-6xl px-10 py-10 flex flex-col gap-8">
+          {/* 左上角：我的主页 */}
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold flex items-center gap-2"><Home size={22} /> 我的主页</h1>
             <button onClick={newProject}
               className="flex items-center gap-1.5 px-4 py-2.5 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors">
               <Plus size={14} /> 新建课程
             </button>
           </div>
+          {/* 横栏：内容量趋势 + 日历 */}
+          <TrendCalendar days={trendDays} />
+          {/* 课程区块 */}
+          <div className="flex flex-col gap-6">
+            <h2 className="text-xl font-bold">课程</h2>
           {projects.length === 0 ? (
             <div className="border border-dashed hairline rounded-3xl py-20 flex flex-col items-center gap-3 text-dim">
               <FolderOpen size={36} className="opacity-50" />
@@ -121,6 +134,7 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
               })}
             </div>
           )}
+          </div>
         </div>
       </div>
     </div>
