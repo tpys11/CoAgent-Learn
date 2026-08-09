@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { Component, useEffect, useMemo, useRef, useState } from 'react'
 import MarkdownIt from 'markdown-it'
 import container from 'markdown-it-container'
 import katexPlugin from 'markdown-it-katex'
@@ -361,7 +361,7 @@ function TreeGraph({ nodes, rootName, open, onToggle, onOpen, currentPath }: {
   )
 }
 
-export default function ObsidianView() {
+function ObsidianViewInner() {
   const [rootHandle, setRootHandle] = useState<FileSystemDirectoryHandle | null>(null)
   const [rootName, setRootName] = useState('')
   const [tree, setTree] = useState<TreeNode[]>([])
@@ -430,7 +430,14 @@ export default function ObsidianView() {
     return map
   }, [tree])
 
-  const html = current ? (md.render(current.content) as string) : ''
+  const html = (() => {
+    if (!current) return ''
+    try {
+      return md.render(current.content) as string
+    } catch (e) {
+      return `<div class="obs-render-err">渲染出错：${String(e)}</div><pre class="obs-raw">${current.content}</pre>`
+    }
+  })()
 
   // 嵌入懒加载：文章渲染后扫描 .obs-embed 元素，读取目标文件并渲染
   useEffect(() => {
@@ -446,7 +453,9 @@ export default function ObsidianView() {
       }
       try {
         const text = await readFile(rootHandle, node.path)
-        el.innerHTML = `<div class="obs-embed-head">${name}</div><div class="obs-embed-body">${md.render(text)}</div>`
+        let body = ''
+        try { body = md.render(text) } catch (e) { body = `<div class="obs-render-err">渲染出错：${String(e)}</div><pre class="obs-raw">${text}</pre>` }
+        el.innerHTML = `<div class="obs-embed-head">${name}</div><div class="obs-embed-body">${body}</div>`
       } catch {
         el.innerHTML = `<div class="obs-embed-head">${name}</div><div class="obs-embed-err">读取失败</div>`
       }
@@ -506,7 +515,7 @@ export default function ObsidianView() {
                   <TreeItem key={n.path} node={n} open={open} onToggle={toggle} onOpen={openFile} depth={0} />
                 ))
               ) : (
-                <div className="flex-1 overflow-hidden">
+                <div className="h-full overflow-hidden">
                   <TreeGraph nodes={tree} rootName={rootName} open={open} onToggle={toggle} onOpen={openFile} currentPath={current?.path || null} />
                 </div>
               )}
@@ -585,7 +594,25 @@ export default function ObsidianView() {
         /* Mermaid */
         .obs-mermaid { background: var(--bg-panel); border: 1px solid var(--border-color); border-radius: 10px; padding: 1em; text-align: center; overflow-x: auto; }
         .obs-mermaid-err { color: #d9534f; font-size: 0.85em; }
+        .obs-render-err { color: #d9534f; font-size: 0.85em; margin: 0.5em 0; }
+        .obs-raw { white-space: pre-wrap; font-size: 0.85em; }
       `}</style>
     </div>
   )
+}
+
+/** 错误边界：渲染崩溃时显示错误信息而非白屏 */
+class OBSafe extends Component<{ children: React.ReactNode }, { err: string | null }> {
+  state: { err: string | null } = { err: null }
+  static getDerivedStateFromError(e: any) { return { err: String(e?.message || e) } }
+  render() {
+    if (this.state.err) {
+      return <div className="flex-1 p-6 text-xs text-red-600">Obsidian 界面渲染出错：{this.state.err}</div>
+    }
+    return this.props.children
+  }
+}
+
+export default function ObsidianView() {
+  return <OBSafe><ObsidianViewInner /></OBSafe>
 }
