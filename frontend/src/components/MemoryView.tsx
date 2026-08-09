@@ -669,12 +669,6 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                             </div>
                           ))}
                         </div>
-                        {/* 空数据引导 */}
-                        {data && !Object.values(data.fields).some(v => (v || '').trim()) && (data.progress.items || []).length === 0 && (
-                          <div className="px-3 py-2.5 rounded-xl bg-amber-50 text-amber-800 text-[11px] border border-amber-200 leading-relaxed">
-                            该项目暂无记忆数据：对话后会自动分析生成，或点「↻ 重新分析」立即生成。
-                          </div>
-                        )}
                         </>)}
                         {detailTab === 'progress' && (<>
                         {/* 知识图谱：树状结构（复用资料章节层级，节点颜色=掌握状态） */}
