@@ -175,6 +175,46 @@ function AgentWithSubs({ node, subs, subActive }: { node: React.ReactNode; subs?
   )
 }
 
+/** 环绕图：中心节点（输出增强/检索增强）+ 子 Agent 均匀环绕一圈，中心到每个子 Agent 画曲线 */
+function SubRing({ center, subs, onPick }: { center: string; subs: Array<{ id: string; name: string }>; onPick?: (s: { id: string; name: string }) => void }) {
+  const n = subs.length
+  const W = 360, H = 300
+  const cx = W / 2, cy = H / 2
+  const R = 104
+  const pos = (i: number) => {
+    const a = (-90 + i * (360 / n)) * Math.PI / 180
+    return { x: cx + R * Math.cos(a), y: cy + R * Math.sin(a) }
+  }
+  return (
+    <div className="relative flex-shrink-0" style={{ width: W, height: H }}>
+      <svg className="absolute inset-0" width={W} height={H}>
+        {subs.map((s, i) => {
+          const { x, y } = pos(i)
+          const mx = (cx + x) / 2
+          const my = (cy + y) / 2
+          return <path key={s.id} d={`M ${cx} ${cy} Q ${mx} ${my - 16}, ${x} ${y}`} stroke="#d4d4d4" strokeWidth="1.5" fill="none" />
+        })}
+      </svg>
+      {/* 中心节点 */}
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+        <div className="px-4 py-3 rounded-xl border-2 border-dashed text-xs font-medium whitespace-nowrap text-dim"
+          style={{ borderColor: 'var(--border-strong)', background: 'color-mix(in srgb, var(--accent) 8%, var(--bg-panel))' }}>
+          {center}
+        </div>
+      </div>
+      {/* 子 Agent 环绕 */}
+      {subs.map((s, i) => {
+        const { x, y } = pos(i)
+        return (
+          <div key={s.id} className="absolute" style={{ left: x, top: y, transform: 'translate(-50%, -50%)' }}>
+            <SubNode name={s.name} onClick={onPick ? () => onPick(s) : undefined} />
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 /** 4-Agent 编排节点图：节点可点击选中 Agent（无 agents 参数时静态展示）；
  *  节点颜色深浅按当前模板的基础逻辑标注（各模板一套分布，不依赖运行数据） */
 const FlowGraph = ({ agents, templateName, templateAgentId, onSelect }: { agents?: AgentConfig[]; templateName?: string; templateAgentId?: string; onSelect?: (id: string) => void }) => {
@@ -506,13 +546,13 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
           </div>
           {/* 右侧：子 Agent 层级图（点击节点进入子 Agent 设定） */}
           {agent && agent.subAgents && agent.subAgents.length > 0 && (
-            <div className="w-[300px] flex-shrink-0 flex flex-col gap-3">
+            <div className="w-[560px] flex-shrink-0 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold text-dim uppercase tracking-wider">子 Agent</p>
                 <button onClick={() => { setSubName(''); setSubForm(''); setSubPrompt(''); setShowSubAdd(true) }}
                   className="text-[10px] px-2 py-1 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">＋ 添加</button>
               </div>
-              <div className="border hairline rounded-xl p-5 bg-[var(--bg-panel)] flex items-center justify-center">
+              <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex items-center justify-center overflow-hidden">
                 <div className="flex items-center gap-0 flex-shrink-0">
                   {/* 当前 Agent */}
                   <div className="px-4 py-3 rounded-xl border-2 text-xs font-bold whitespace-nowrap"
@@ -522,25 +562,12 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                   <svg width="46" height="44" viewBox="0 0 46 44" className="flex-shrink-0">
                     <path d="M 0 22 C 18 22, 28 22, 46 22" stroke="#d4d4d4" strokeWidth="1.5" fill="none" />
                   </svg>
-                  {(agent.id === 'main' || agent.id === 'kb') && (
-                    <>
-                      <div className="px-3 py-2 rounded-xl border-2 border-dashed text-[11px] font-medium whitespace-nowrap text-dim" style={{ borderColor: 'var(--border-strong)' }}>
-                        {agent.id === 'main' ? '输出增强' : '检索增强'}
-                      </div>
-                      <svg width="46" height="44" viewBox="0 0 46 44" className="flex-shrink-0">
-                        <path d="M 0 22 C 18 22, 28 22, 46 22" stroke="#d4d4d4" strokeWidth="1.5" fill="none" />
-                      </svg>
-                    </>
-                  )}
-                  <div className="flex flex-col">
-                    <span className="mx-auto w-px h-2 bg-[#d4d4d4]" />
-                    {agent.subAgents.map(s => (
-                      <div key={s.id} className="flex items-center gap-2 py-1">
-                        <span className="w-4 h-px bg-[#d4d4d4] flex-shrink-0" />
-                        <SubNode name={s.name} onClick={() => setSubEditing({ id: s.id, name: s.name, form: s.form, subPrompt: s.subPrompt })} />
-                      </div>
-                    ))}
-                  </div>
+                  {/* 中间层（输出增强/检索增强）为圆心，子 Agent 环绕一圈 */}
+                  <SubRing
+                    center={agent.id === 'main' ? '输出增强' : agent.id === 'kb' ? '检索增强' : agent.name}
+                    subs={agent.subAgents}
+                    onPick={s => setSubEditing({ id: s.id, name: s.name, form: s.form, subPrompt: s.subPrompt })}
+                  />
                 </div>
               </div>
             </div>
