@@ -58,22 +58,24 @@ const buildMilestones = (data: any): Milestone[] => {
   return list
 }
 
-/** 节点填充色（实心色块内部）：主题色系，按类型区分深浅 */
-const nodeFill = (m: Milestone) => {
-  if (m.type === 'start') return 'color-mix(in srgb, var(--accent) 25%, var(--bg-panel))'
+/** 节点填充色（实心色块内部）：固定节点按类型定深浅；系统/自定义节点按掌握度深浅（与知识图谱一致） */
+const nodeFill = (m: Milestone, mastery: number | null) => {
+  if (m.type === 'start') return 'color-mix(in srgb, var(--accent) 20%, var(--bg-panel))'
   if (m.type === 'current') return 'var(--accent)'
-  if (m.type === 'goal') return 'color-mix(in srgb, var(--accent) 80%, var(--bg-panel))'
-  if (m.type === 'custom') return 'color-mix(in srgb, var(--accent) 35%, var(--bg-panel))'
-  return `color-mix(in srgb, var(--accent) ${m.important ? 65 : 35}%, var(--bg-panel))`
+  if (m.type === 'goal') return 'color-mix(in srgb, var(--accent) 85%, var(--bg-panel))'
+  if (m.type === 'custom') return 'color-mix(in srgb, var(--accent) 40%, var(--bg-panel))'
+  const base = mastery == null ? 30 : Math.round(30 + mastery * 70)
+  return `color-mix(in srgb, var(--accent) ${base}%, var(--bg-panel))`
 }
 
 /** 节点边框色：符合主题但与填充/进度条不重复（更深一档） */
-const nodeBorder = (m: Milestone) => {
-  if (m.type === 'start') return 'color-mix(in srgb, var(--accent) 55%, transparent)'
+const nodeBorder = (m: Milestone, mastery: number | null) => {
+  if (m.type === 'start') return 'color-mix(in srgb, var(--accent) 50%, transparent)'
   if (m.type === 'current') return 'color-mix(in srgb, var(--accent) 60%, #1a1a1a)'
   if (m.type === 'goal') return 'color-mix(in srgb, var(--accent) 45%, #1a1a1a)'
-  if (m.type === 'custom') return 'color-mix(in srgb, var(--accent) 65%, transparent)'
-  return `color-mix(in srgb, var(--accent) ${m.important ? 85 : 55}%, transparent)`
+  if (m.type === 'custom') return 'color-mix(in srgb, var(--accent) 60%, transparent)'
+  const base = mastery == null ? 55 : Math.round(55 + mastery * 30)
+  return `color-mix(in srgb, var(--accent) ${base}%, transparent)`
 }
 
 /** 记忆系统：两级（个人全局性记忆 / 项目记忆）完整界面 */
@@ -780,31 +782,39 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                             {(() => {
                               const pct = pctOf(data?.fields || {}, data?.count || 0)
                               const ms = buildMilestones(data)
+                              // 节点掌握度：与知识图谱同源匹配（名与知识点/难点双向包含）
+                              const masteryOf = (label: string) => {
+                                const hit = (data?.progress.items || []).find((it: any) => it.name && label && (label.includes(it.name) || it.name.includes(label)))
+                                return hit ? (hit.retrievability || 0) : null
+                              }
                               return (
                                 <>
                                   {/* 加宽进度条 + 节点 */}
                                   <div className="relative pt-4 pb-7">
                                     <div className="relative h-4 rounded-full bg-[#ececec]">
                                       <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: pct + '%', background: 'var(--accent)', opacity: 0.9 }} />
-                                      {ms.map(m => (
+                                      {ms.map(m => {
+                                        const mst = masteryOf(m.label)
+                                        return (
                                         <button key={m.id} onClick={() => setMsNode(m)}
                                           title={m.label}
-                                          className="absolute top-0 bottom-0 group"
+                                          className="absolute top-0 bottom-0 w-7 group"
                                           style={{ left: m.pos + '%', transform: 'translateX(-50%)' }}>
-                                          {/* 圆点：inset-0 m-auto 绝对居中于进度条中线 */}
-                                          <span className="absolute inset-0 m-auto w-7 h-7 rounded-full shadow transition-transform group-hover:scale-110"
-                                            style={{ background: nodeFill(m), border: '3px solid ' + nodeBorder(m) }}>
+                                          {/* 圆点：按钮宽=圆点宽，水平中心=pos%；垂直 top-1/2 居中于条中线 */}
+                                          <span className="absolute left-0 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full shadow transition-transform group-hover:scale-110"
+                                            style={{ background: nodeFill(m, mst), border: '3px solid ' + nodeBorder(m, mst) }}>
                                             {m.important && <span className="absolute -top-3 -right-2.5 text-[10px] leading-none text-amber-500">★</span>}
                                           </span>
-                                          {/* 小三角：提示可点击查看内容（挂在圆点正下方） */}
+                                          {/* 小三角：提示可点击查看内容（挂在圆点正下方，与圆点同中心） */}
                                           <span className="absolute left-1/2 -translate-x-1/2 w-0 h-0 border-l-[4px] border-r-[4px] border-b-[5px] border-l-transparent border-r-transparent"
-                                            style={{ top: 'calc(50% + 17px)', borderBottomColor: nodeFill(m) }} />
+                                            style={{ top: 'calc(50% + 17px)', borderBottomColor: nodeFill(m, mst) }} />
                                           {m.type !== 'start' && m.type !== 'current' && m.type !== 'goal' && (
                                             <span className="absolute left-1/2 -translate-x-1/2 max-w-[56px] truncate text-[9px] text-dim group-hover:text-[var(--text)]"
                                               style={{ top: 'calc(50% + 22px)' }}>{m.label}</span>
                                           )}
                                         </button>
-                                      ))}
+                                        )
+                                      })}
                                     </div>
                                   </div>
                                 </>
