@@ -145,7 +145,7 @@ const FlowArrow = () => <span className="text-dim flex-shrink-0 text-base">→</
 function SubNode({ name, active, onClick }: { name: string; active?: boolean; onClick?: () => void }) {
   return (
     <button onClick={onClick}
-      className={`min-w-[96px] min-h-[46px] flex items-center justify-center px-4 py-3 rounded-xl border-2 text-xs font-bold whitespace-nowrap transition-colors ${
+      className={`min-w-[96px] min-h-[64px] flex items-center justify-center px-4 py-3 rounded-xl border-2 text-xs font-bold whitespace-nowrap transition-colors ${
         onClick ? 'cursor-pointer hover:border-[var(--accent)]' : ''
       } ${active ? 'bg-[#1a1a1a] text-white border-[#1a1a1a]' : 'bg-[var(--bg-panel)] text-dim border-[var(--border-color)]'}`}>
       {name}
