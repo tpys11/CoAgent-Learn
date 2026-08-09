@@ -264,27 +264,32 @@ function AgentRow({ node, subs }: { node: React.ReactNode; subs?: string[] }) {
   if (!subs || subs.length === 0) return <>{node}</>
   const left = subs.length >= 2 ? subs.slice(0, Math.ceil(subs.length / 2)) : []
   const right = subs.slice(left.length)
+  // 子 Agent 绝对定位在父节点两侧，不参与布局（父节点位置不变）；连接线为拱形曲线
   return (
-    <div className="flex items-center gap-0">
+    <div className="relative">
+      {node}
       {left.length > 0 && (
-        <div className="flex items-center gap-1">
-          <div className="flex flex-col gap-2 items-end">
-            {left.map(s => <SubNode key={s} name={s} />)}
-          </div>
-          <svg width="30" height="44" viewBox="0 0 30 44" className="flex-shrink-0">
-            <path d="M 30 22 C 16 22, 12 22, 0 22" stroke="#d4d4d4" strokeWidth="1.5" fill="none" />
-          </svg>
+        <div className="absolute right-full top-1/2 -translate-y-1/2 mr-3 flex flex-col gap-2 items-end">
+          {left.map((s, i) => (
+            <div key={s} className="flex items-center">
+              <SubNode name={s} />
+              <svg width="36" height="40" viewBox="0 0 36 40" className="flex-shrink-0">
+                <path d={`M 36 20 Q 18 ${i % 2 === 0 ? 2 : 38}, 0 20`} stroke="#d4d4d4" strokeWidth="1.5" fill="none" />
+              </svg>
+            </div>
+          ))}
         </div>
       )}
-      {node}
       {right.length > 0 && (
-        <div className="flex items-center gap-1">
-          <svg width="30" height="44" viewBox="0 0 30 44" className="flex-shrink-0">
-            <path d="M 0 22 C 14 22, 18 22, 30 22" stroke="#d4d4d4" strokeWidth="1.5" fill="none" />
-          </svg>
-          <div className="flex flex-col gap-2 items-start">
-            {right.map(s => <SubNode key={s} name={s} />)}
-          </div>
+        <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 flex flex-col gap-2 items-start">
+          {right.map((s, i) => (
+            <div key={s} className="flex items-center">
+              <svg width="36" height="40" viewBox="0 0 36 40" className="flex-shrink-0">
+                <path d={`M 0 20 Q 18 ${i % 2 === 0 ? 2 : 38}, 36 20`} stroke="#d4d4d4" strokeWidth="1.5" fill="none" />
+              </svg>
+              <SubNode name={s} />
+            </div>
+          ))}
         </div>
       )}
     </div>
