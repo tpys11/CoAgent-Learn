@@ -362,7 +362,12 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
   // 里程碑弹层：查看/编辑节点（null 不显示；{ mode:'new' } 为新增节点）
   const [msNode, setMsNode] = useState<Milestone | { mode: 'new' } | null>(null)
   // 课程详情页签：基本情况 | 进度与细节
-  const [detailTab, setDetailTab] = useState<'base' | 'progress'>('base')
+  // 记忆对话（右侧对话框，直接输入修改记忆）
+  const [mcMsgs, setMcMsgs] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([])
+  const [mcInput, setMcInput] = useState('')
+  const [mcSending, setMcSending] = useState(false)
+  // 课程记忆刷新触发器（记忆对话后刷新）
+  const [refreshTick, setRefreshTick] = useState(0)
   // 修改记忆介绍弹窗
   const [showModifyTip, setShowModifyTip] = useState(false)
   // 记忆模块只读详情（修改记忆由 AI 处理：跳转主对话并以 [模块名] 引用）
@@ -469,7 +474,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
         })
       }
     }).catch(() => setProjLoading(false))
-  }, [level])
+  }, [level, refreshTick])
 
   // ---------- 自动保存 ----------
   const scheduleSave = (url: string, data: Record<string, any>) => {
@@ -497,6 +502,28 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
   const updateExtra = (v: string) => {
     setGExtra(v)
     saveGlobal(gFields, v)
+  }
+
+  // 记忆对话：直接输入想修改的记忆，AI 更新课程记忆字段并回复确认
+  const sendMc = async () => {
+    const text = mcInput.trim()
+    if (!text || mcSending || !activeProject) return
+    setMcMsgs(prev => [...prev, { role: 'user', content: text }])
+    setMcInput('')
+    setMcSending(true)
+    try {
+      const apikey = localStorage.getItem('coagent-apikey') || ''
+      const r = await fetch('/api/memory-chat', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, project_id: activeProject, api_key: apikey }),
+      })
+      const d = await r.json()
+      setMcMsgs(prev => [...prev, { role: 'assistant', content: d.reply || '已处理。' }])
+      setRefreshTick(t => t + 1)
+    } catch {
+      setMcMsgs(prev => [...prev, { role: 'assistant', content: '请求失败，请稍后再试。' }])
+    }
+    setMcSending(false)
   }
 
   // 重新分析记忆：携带前端有效 key，后台从现有对话重新提炼（空 projectId = 全部课程）
@@ -680,6 +707,8 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                   const data = projData[activeProject]
                   const pid = activeProject
                   return (
+                    <div className="flex items-start gap-4">
+                    <div className="flex-1 min-w-0">
                     <div className="border hairline rounded-2xl bg-[var(--bg-panel)] overflow-hidden">
                       <div className="flex items-center gap-2 px-4 py-3 border-b hairline">
                         {!projectOnly && (
@@ -694,16 +723,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                         </span>
                       </div>
                       <div className="px-4 py-3 flex flex-col gap-4">
-                        {/* 页签：基本情况 | 进度与细节 */}
-                        <div className="flex items-center gap-1">
-                          {([['base', '基本情况'], ['progress', '进度与细节']] as const).map(([key, label]) => (
-                            <button key={key} onClick={() => setDetailTab(key)}
-                              className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${detailTab === key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'}`}>
-                              {label}
-                            </button>
-                          ))}
-                        </div>
-                        {detailTab === 'base' && (
+                        {/* 基本情况（上） */}
                           <div className="max-w-3xl">
                             {/* 基本情况：简历式竖向文档（各内容区形状/大小不同），改动由 AI 整体处理 */}
                             <div className="border hairline rounded-2xl bg-[var(--bg-panel)] overflow-hidden">
@@ -758,8 +778,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                               </div>
                             </div>
                           </div>
-                        )}
-                        {detailTab === 'progress' && (<>
+                        {/* 进度与细节（下） */}
                         {/* 知识图谱：树状结构（复用资料章节层级，节点颜色=掌握状态） */}
                         <div className="flex flex-col gap-2 max-w-3xl">
                           <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">知识图谱</p>
@@ -833,8 +852,39 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                             />
                           </div>
                         </div>
-                      </>)}
                       </div>
+                    </div>
+                    </div>
+                    {/* 右侧：记忆对话（直接输入修改记忆） */}
+                    <div className="w-[340px] flex-shrink-0 border hairline rounded-2xl bg-[var(--bg-panel)] flex flex-col overflow-hidden">
+                      <div className="px-4 py-3 border-b hairline flex items-center justify-between">
+                        <span className="text-xs font-bold">修改记忆</span>
+                        <span className="text-[9px] text-dim">对话后 AI 直接更新记忆</span>
+                      </div>
+                      <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2 min-h-[220px] max-h-[430px]">
+                        {mcMsgs.length === 0 ? (
+                          <p className="text-[10px] text-dim text-center py-6 leading-relaxed">
+                            直接输入想修改的内容，例如：
+                            <br />「学习目标改为掌握 RAG 原理」
+                            <br />「我的薄弱点是向量检索」
+                          </p>
+                        ) : mcMsgs.map((m, i) => (
+                          <div key={i} className={`max-w-[88%] px-3 py-2 rounded-xl text-[11px] leading-relaxed ${m.role === 'user' ? 'bg-[#1a1a1a] text-white self-end' : 'bg-[var(--bg-hover)] text-[var(--text)] self-start'}`}>
+                            {m.content}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="p-3 border-t hairline flex gap-2">
+                        <input value={mcInput} onChange={e => setMcInput(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') sendMc() }}
+                          placeholder="输入想修改的记忆…"
+                          className="flex-1 px-3 py-2 rounded-xl text-xs border hairline bg-[var(--bg-input)] outline-none focus:border-[var(--border-strong)]" />
+                        <button onClick={sendMc} disabled={mcSending || !mcInput.trim()}
+                          className="px-3.5 py-2 rounded-xl text-xs font-medium bg-[#1a1a1a] text-white disabled:opacity-40 transition-opacity">
+                          {mcSending ? '…' : '发送'}
+                        </button>
+                      </div>
+                    </div>
                     </div>
                   )
                 })()}
