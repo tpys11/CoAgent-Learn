@@ -229,7 +229,7 @@ function TreeGraph({ nodes, rootName, open, onToggle, onOpen, currentPath }: {
   onOpen: (n: TreeNode) => void
   currentPath: string | null
 }) {
-  const NODE_W = 148, NODE_H = 46, XGAP = 180, YGAP = 64, X0 = 28, Y0 = 20
+  const NODE_W = 180, NODE_H = 46, XGAP = 204, YGAP = 64, X0 = 28, Y0 = 20
   const wrapRef = useRef<HTMLDivElement>(null)
   // 视图变换：scale + 平移
   const [view, setView] = useState({ s: 1, tx: 0, ty: 0 })
@@ -380,7 +380,7 @@ function TreeGraph({ nodes, rootName, open, onToggle, onOpen, currentPath }: {
                 style={{ background: isRoot || active ? 'var(--accent)' : undefined }}>
                 {isDir
                   ? (expanded ? <FolderOpen size={14} className="flex-shrink-0 opacity-70" /> : <FolderClosed size={14} className="flex-shrink-0 opacity-70" />)
-                  : <FileText size={13} className="flex-shrink-0 opacity-70" />}
+                  : null}
                 <span className="truncate">{n.name.replace(/\.md$/, '')}</span>
                 {isDir && <ChevronRight size={12} className={`flex-shrink-0 ml-auto transition-transform ${expanded ? 'rotate-90' : ''}`} />}
               </button>
