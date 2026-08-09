@@ -204,49 +204,6 @@ function AgentWithSubs({ node, subs, subActive }: { node: React.ReactNode; subs?
   )
 }
 
-/** 环绕图：中心节点（输出增强/检索增强）+ 子 Agent 均匀环绕一圈，中心到每个子 Agent 画曲线 */
-function SubRing({ center, subs, onPick, onCenterClick }: { center: string; subs: Array<{ id: string; name: string; form: string; subPrompt: string }>; onPick?: (s: { id: string; name: string; form: string; subPrompt: string }) => void; onCenterClick?: () => void }) {
-  const n = subs.length
-  const W = 520, H = 460
-  const cx = W / 2, cy = H / 2
-  const R = 176
-  const pos = (i: number) => {
-    const a = (-90 + i * (360 / n)) * Math.PI / 180
-    return { x: cx + R * Math.cos(a), y: cy + R * Math.sin(a) }
-  }
-  return (
-    <div className="relative flex-shrink-0" style={{ width: W, height: H }}>
-      <svg className="absolute inset-0" width={W} height={H}>
-        {subs.map((s, i) => {
-          const { x, y } = pos(i)
-          const mx = (cx + x) / 2
-          const my = (cy + y) / 2
-          return <path key={s.id} d={`M ${cx} ${cy} Q ${mx} ${my - 22}, ${x} ${y}`} stroke="#d4d4d4" strokeWidth="1.5" fill="none" strokeDasharray="4 3" />
-        })}
-      </svg>
-      {/* 中心节点（中间层/输出增强/检索增强：可点开进入设定，hover 有反馈） */}
-      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-        <button onClick={onCenterClick} title={onCenterClick ? '点击编辑中间层' : undefined}
-          className={`px-5 py-3.5 rounded-xl border-2 border-dashed text-xs font-semibold whitespace-nowrap transition-all ${
-            onCenterClick ? 'cursor-pointer hover:border-[var(--accent)] hover:shadow-soft hover:scale-105 hover:bg-[color-mix(in_srgb,var(--accent)_14%,var(--bg-panel))] active:scale-95' : ''
-          }`}
-          style={{ borderColor: 'var(--border-strong)', background: 'color-mix(in srgb, var(--accent) 8%, var(--bg-panel))' }}>
-          {center}
-        </button>
-      </div>
-      {/* 子 Agent 环绕 */}
-      {subs.map((s, i) => {
-        const { x, y } = pos(i)
-        return (
-          <div key={s.id} className="absolute" style={{ left: x, top: y, transform: 'translate(-50%, -50%)' }}>
-            <SubNode name={s.name} onClick={onPick ? () => onPick(s) : undefined} />
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
 /** 4-Agent 编排节点图：节点可点击选中 Agent（无 agents 参数时静态展示）；
  *  节点颜色深浅按当前模板的基础逻辑标注（各模板一套分布，不依赖运行数据） */
 const FlowGraph = ({ agents, templateName, templateAgentId, onSelect }: { agents?: AgentConfig[]; templateName?: string; templateAgentId?: string; onSelect?: (id: string) => void }) => {
@@ -603,22 +560,41 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
               </>
             )}
           </div>
-          {/* 右侧：子 Agent 层级图（点击节点进入子 Agent 设定） */}
+          {/* 右侧：子 Agent（文字列表形式，含中间层与各子 Agent 的全局性提示词） */}
           {agent && agent.subAgents && agent.subAgents.length > 0 && (
-            <div className="w-[560px] flex-shrink-0 flex flex-col gap-3">
+            <div className="w-[420px] flex-shrink-0 flex flex-col gap-3 overflow-y-auto">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold text-dim uppercase tracking-wider">子 Agent</p>
                 <button onClick={() => { setSubName(''); setSubForm(''); setSubPrompt(''); setShowSubAdd(true) }}
                   className="text-[10px] px-2 py-1 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">＋ 添加</button>
               </div>
-              <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex items-center justify-center overflow-hidden">
-                {/* 中间层（输出增强/检索增强）为圆心可点开，子 Agent 环绕一圈；不展示主 Agent 节点 */}
-                <SubRing
-                  center={agent.id === 'main' ? '输出增强' : agent.id === 'kb' ? '检索增强' : agent.name}
-                  subs={agent.subAgents}
-                  onPick={s => setSubEditing({ id: s.id, name: s.name, form: s.form, subPrompt: s.subPrompt })}
-                  onCenterClick={() => { setMidName(agent.id === 'main' ? '输出增强' : agent.id === 'kb' ? '检索增强' : agent.name); setShowMidAgent(true) }}
-                />
+              <div className="flex flex-col gap-2.5">
+                {/* 第一项：中间层（输出增强/检索增强） */}
+                <div className="border hairline rounded-xl p-3.5 bg-[var(--bg-panel)] flex flex-col gap-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold">{agent.id === 'main' ? '输出增强' : agent.id === 'kb' ? '检索增强' : agent.name}</span>
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--bg-hover)] text-dim flex-shrink-0">中间层</span>
+                    <span className="flex-1" />
+                    <button onClick={() => { setMidName(agent.id === 'main' ? '输出增强' : agent.id === 'kb' ? '检索增强' : agent.name); setShowMidAgent(true) }}
+                      className="text-[10px] text-[var(--accent)]">编辑</button>
+                  </div>
+                  <p className="text-[10px] text-dim whitespace-pre-wrap leading-relaxed">- 全局性提示词：该 Agent 可自行调用特定功能性 Agent（子 Agent），完成对应形式的内容产出。</p>
+                </div>
+                {/* 各子 Agent 文字卡片 */}
+                {agent.subAgents.map(s => (
+                  <div key={s.id} className="border hairline rounded-xl p-3.5 bg-[var(--bg-panel)] flex flex-col gap-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold truncate">{s.name}</span>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--bg-hover)] text-dim flex-shrink-0">{s.form}</span>
+                      <span className="flex-1" />
+                      <button onClick={() => setSubEditing({ id: s.id, name: s.name, form: s.form, subPrompt: s.subPrompt })}
+                        className="text-[10px] text-[var(--accent)]">编辑</button>
+                      <button onClick={() => commit({ subAgents: (agent.subAgents || []).filter(x => x.id !== s.id) })}
+                        className="text-[10px] text-red-500">删除</button>
+                    </div>
+                    <p className="text-[10px] text-dim whitespace-pre-wrap leading-relaxed">- 全局性提示词：{s.subPrompt}</p>
+                  </div>
+                ))}
               </div>
             </div>
           )}
