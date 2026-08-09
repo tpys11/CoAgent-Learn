@@ -620,8 +620,12 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
 
                         {/* 进度：里程碑时间线 */}
                         <div className="flex flex-col gap-2">
-                          <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">进度</p>
                           <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-3">
+                            <div className="flex items-center justify-between">
+                              <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">进度</p>
+                              <button onClick={() => setMsNode({ mode: 'new' })}
+                                className="px-2.5 py-1 rounded-lg border hairline text-[10px] text-dim hover:bg-[var(--bg-hover)] transition-colors">＋ 新增节点</button>
+                            </div>
                             {(() => {
                               const pct = pctOf(data?.fields || {}, data?.count || 0)
                               const ms = buildMilestones(data)
@@ -648,48 +652,9 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                                       ))}
                                     </div>
                                   </div>
-                                  {/* 固定信息行 */}
-                                  <div className="flex items-center justify-between gap-2 text-[10px] text-dim">
-                                    <span className="truncate max-w-[38%]">起点：{(data?.fields['起点'] || '').trim() || '（待填写）'}</span>
-                                    <span className="font-semibold text-[var(--text)] flex-shrink-0">{pct}%</span>
-                                    <span className="truncate max-w-[38%] text-right">目标：{(data?.fields['目标'] || '').trim() || '（待填写）'}</span>
-                                  </div>
-                                  <div className="flex items-center justify-between text-[10px] text-dim pt-1.5 border-t hairline">
-                                    <span>近7天 <b className="text-[var(--text)]">{(() => { const dl = data?.progress.daily || []; return dl.slice(-7).reduce((s: number, d: any) => s + (d.count || 0), 0) })()}</b> 次</span>
-                                    <span className="font-medium">{data?.progress.pace || '—'}</span>
-                                    <button onClick={() => setMsNode({ mode: 'new' })}
-                                      className="px-2 py-0.5 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">＋ 新增节点</button>
-                                  </div>
                                 </>
                               )
                             })()}
-                          </div>
-                          {/* 遗忘面板 */}
-                          <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-semibold text-dim uppercase tracking-wider">遗忘面板</span>
-                              <button onClick={() => onRequestModify?.('知识点', pid)} className="text-[9px] text-[var(--accent)] hover:underline">修改</button>
-                            </div>
-                            {(() => { const kps = (data?.progress.items || []).filter((x: any) => x.kind === '知识点'); return kps.length ? (
-                              <div className="flex flex-col gap-1.5">
-                                {kps.map((it: any) => {
-                                  const r = it.retrievability || 0
-                                  const bg = `color-mix(in srgb, var(--accent) ${Math.round(6 + r * 34)}%, var(--bg-panel))`
-                                  const bd = `color-mix(in srgb, var(--accent) ${Math.round(20 + r * 50)}%, transparent)`
-                                  return (
-                                    <div key={it.name} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-[10px]" style={{ background: bg, borderColor: bd }}>
-                                      <span className="font-medium truncate">{it.name}</span>
-                                      <span className="ml-auto text-dim flex-shrink-0">{it.daysSince >= 999 ? '未提及' : `${it.daysSince} 天前`} · {it.mastery}%</span>
-                                      {it.forgotten && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-700 flex-shrink-0">待复习</span>}
-                                    </div>
-                                  )
-                                })}
-                              </div>
-                            ) : (
-                              <div className="min-h-[90px] border border-dashed hairline rounded-xl flex items-center justify-center px-3">
-                                <span className="text-[11px] text-dim">暂无知识点数据</span>
-                              </div>
-                            ) })()}
                           </div>
                           <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
                             {['抽象目的', '抽象项目情况'].map(k => (
