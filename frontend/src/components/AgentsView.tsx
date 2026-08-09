@@ -639,9 +639,11 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                     </div>
                   </div>
                 )}
+                {/* 卡片内部下方：一句话介绍（始终可见） */}
+                <div className="px-3.5 pb-4 border-t hairline">
+                  <p className="text-[10px] text-dim leading-relaxed">按需调用各能力 Agent 产出结构化内容，选择「输出增强」模板后才会调用。</p>
+                </div>
               </div>
-              {/* 卡片下一句话介绍 */}
-              <p className="text-[11px] text-dim leading-relaxed">输出增强：按需调用各能力 Agent 产出结构化内容（树状图生成、要点卡片、思维导图等），选择「输出增强」模板后才会调用。</p>
             </div>
           )}
           </div>
