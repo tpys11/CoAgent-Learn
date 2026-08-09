@@ -825,7 +825,7 @@ const exportItem = (item: ListItem) => {
                 <h2 className="text-lg font-bold flex items-center gap-2"><Upload size={18} /> 我的上传</h2>
                 <div className="flex items-center gap-2">
                   <button onClick={openObsPicker}
-                    className="flex items-center gap-1.5 px-4 py-2 border hairline text-xs font-semibold rounded-xl text-dim hover:bg-[var(--bg-hover)] transition-colors">
+                    className="flex items-center gap-1.5 px-4 py-2 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors">
                     <BookOpen size={13} /> 从 Obsidian 导入
                   </button>
                   {isCustomUploadCat ? (
