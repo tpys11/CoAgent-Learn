@@ -12,6 +12,7 @@ import CenterPanel from './components/CenterPanel'
 import RightPanel from './components/RightPanel'
 import SettingsModal, { ApiKeyPrompt } from './components/SettingsModal'
 import ProjectConfigModal from './components/ProjectConfigModal'
+import ObsidianView from './components/ObsidianView'
 import ProfileWizard from './components/ProfileWizard'
 import GuideModal from './components/GuideModal'
 import ActivityBar, { type ViewKey } from './components/ActivityBar'
@@ -372,6 +373,7 @@ function App() {
       {view === 'memory' && <MemoryView projectId={currentProjectId} onRequestModify={handleRequestModify} onRequestAnalyze={handleRequestAnalyze} />}
       {view === 'knowledge' && <KnowledgeView projectId={projectKBId ?? currentProjectId} onClose={() => setView('chat')} />}
       {view === 'agents' && <AgentsView agents={agents} onSave={handleSaveAgent} onReplace={handleReplaceAgents} projectId={currentProjectId} />}
+      {view === 'obsidian' && <ObsidianView />}
       {view === 'chat' && (<>
       {/* 左侧栏（tonal 面板） */}
       {!sidebarCollapsed && (

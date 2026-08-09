@@ -12,6 +12,7 @@
     "@xyflow/react": "^12.5.0",
     "echarts": "^6.1.0",
     "lucide-react": "^0.460.0",
+    "marked": "^18.0.9",
     "playwright-core": "^1.62.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

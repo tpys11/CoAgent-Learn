@@ -1,6 +1,6 @@
-import { MessageSquare, GraduationCap, Library, Brain, Bot, Settings } from 'lucide-react'
+import { MessageSquare, GraduationCap, Library, Brain, Bot, BookOpen, Settings } from 'lucide-react'
 
-export type ViewKey = 'chat' | 'tutorial' | 'resources' | 'memory' | 'knowledge' | 'agents'
+export type ViewKey = 'chat' | 'tutorial' | 'resources' | 'memory' | 'knowledge' | 'agents' | 'obsidian'
 
 interface Props {
   view: ViewKey
@@ -13,6 +13,7 @@ const ITEMS: Array<{ key: ViewKey; icon: any; label: string }> = [
   { key: 'resources', icon: Library, label: '资源' },
   { key: 'memory', icon: Brain, label: '记忆' },
   { key: 'agents', icon: Bot, label: 'Agent' },
+  { key: 'obsidian', icon: BookOpen, label: 'Obsidian' },
 ]
 const GUIDE = { key: 'tutorial' as ViewKey, icon: GraduationCap, label: '使用引导' }
 
