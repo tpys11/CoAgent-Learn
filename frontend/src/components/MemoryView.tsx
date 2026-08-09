@@ -656,44 +656,6 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                               )
                             })()}
                           </div>
-                          <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
-                            {['抽象目的', '抽象项目情况'].map(k => (
-                              <div key={k}>
-                                <div className="flex items-center justify-between mb-1">
-                                  <label className="text-[10px] font-semibold text-dim uppercase tracking-wider">{k}</label>
-                                  <button onClick={() => onRequestModify?.(k, pid)} className="text-[9px] text-[var(--accent)] hover:underline">修改</button>
-                                </div>
-                                <div className="px-3 py-2 border hairline rounded-xl text-xs bg-[var(--bg-input)] text-[var(--text-muted)] leading-relaxed">
-                                  {(data?.fields[k] || '').trim() ? <MiniMD text={data?.fields[k] || ''} /> : <span className="text-dim">（空）</span>}
-                                </div>
-                              </div>
-                            ))}
-                            {['起点', '当前水平', '目标'].map(k => (
-                              <div key={k}>
-                                <div className="flex items-center justify-between mb-1">
-                                  <label className="text-[10px] font-semibold text-dim uppercase tracking-wider">{k}</label>
-                                  <button onClick={() => onRequestModify?.(k, pid)} className="text-[9px] text-[var(--accent)] hover:underline">修改</button>
-                                </div>
-                                <div className="px-3 py-2 border hairline rounded-xl text-xs bg-[var(--bg-input)] text-[var(--text-muted)] leading-relaxed">
-                                  {(data?.fields[k] || '').trim() ? <MiniMD text={data?.fields[k] || ''} /> : <span className="text-dim">（空）</span>}
-                                </div>
-                              </div>
-                            ))}
-                            {/* 难点（待攻克） */}
-                            <div>
-                              <div className="flex items-center justify-between mb-1">
-                                <label className="text-[10px] font-semibold text-dim uppercase tracking-wider">难点（待攻克）</label>
-                                <button onClick={() => onRequestModify?.('难点', pid)} className="text-[9px] text-[var(--accent)] hover:underline">修改</button>
-                              </div>
-                              {(data?.fields['难点'] || '').trim() ? (
-                                <div className="flex flex-wrap gap-1.5">
-                                  {(data?.fields['难点'] || '').split(/[,，、]/).map((s, i) => s.trim()).filter(Boolean).map((s, i) => (
-                                    <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-red-50 text-red-600">{s}</span>
-                                  ))}
-                                </div>
-                              ) : <span className="text-[11px] text-dim">（空）</span>}
-                            </div>
-                          </div>
                         </div>
                         {/* 时间：内容量趋势 + 日历（横向排布，占满详情宽度） */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
