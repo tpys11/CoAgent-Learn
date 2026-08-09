@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from 'react'
-import { Home, Plus, X, FolderOpen, Clock, Library, GraduationCap } from 'lucide-react'
+import { Home, Plus, X, FolderOpen, Clock, ChevronDown } from 'lucide-react'
 import TrendCalendar from './TrendCalendar'
 
 /** 系统预设领域 → 预存图片（非系统自带领域无图，显示首字占位） */
@@ -17,15 +17,15 @@ interface HomeProject {
 }
 
 /** 主页：按课程展开的大卡片（上 70% 图片/名称/进度，下 30% 三方面描述），点击进入该课程对话 */
-export default function HomeView({ projects, onEnter, onCreate, onDelete, onNavigate }: {
+export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
   projects: HomeProject[]
   onEnter: (id: string) => void
   onCreate: (name: string) => void
   onDelete: (id: string) => void
-  onNavigate?: (v: string) => void
 }) {
   const [stats, setStats] = useState<Record<string, number>>({})
   const [mems, setMems] = useState<Record<string, Record<string, any>>>({})
+  const [kbCount, setKbCount] = useState<Record<string, number>>({})
   // 横栏：内容量趋势 + 日历（全局学习记录，与记忆界面一致）
   const [trendDays, setTrendDays] = useState<Record<string, any[]>>({})
   useEffect(() => {
@@ -38,14 +38,17 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onNavi
   useEffect(() => {
     const m: Record<string, number> = {}
     const mm: Record<string, Record<string, any>> = {}
+    const kc: Record<string, number> = {}
     Promise.all(projects.map(p =>
       Promise.all([
         fetch('/api/stats?project_id=' + encodeURIComponent(p.id), { cache: 'no-store' })
           .then(r => r.json()).then(d => { m[p.id] = d.dialogue_count ?? d.count ?? 0 }).catch(() => { m[p.id] = 0 }),
         fetch('/api/project-memory/' + encodeURIComponent(p.id), { cache: 'no-store' })
           .then(r => r.json()).then(d => { mm[p.id] = d.memory || {} }).catch(() => { mm[p.id] = {} }),
+        fetch('/api/kb/' + encodeURIComponent(p.id), { cache: 'no-store' })
+          .then(r => r.json()).then(d => { kc[p.id] = Array.isArray(d) ? d.length : 0 }).catch(() => { kc[p.id] = 0 }),
       ])
-    )).then(() => { setStats(m); setMems(mm) })
+    )).then(() => { setStats(m); setMems(mm); setKbCount(kc) })
   }, [projects])
 
   const newProject = () => {
@@ -55,6 +58,41 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onNavi
   const strOf = (v: any) => Array.isArray(v) ? v.join('、') : v ? String(v) : ''
   const short = (s: string, n = 34) => s.length > n ? s.slice(0, n) + '…' : s
 
+  // ---------- 快速引导：系统提示建议（课程 / 资源 / 记忆 / Agent） ----------
+  const totalCount = Object.values(stats).reduce((s, n) => s + n, 0)
+  const totalDocs = Object.values(kbCount).reduce((s, n) => s + n, 0)
+  const latestDate = Object.keys(trendDays).sort().pop() || ''
+  const buildTips = () => {
+    const tips: Array<{ title: string; text: string }> = []
+    if (projects.length === 0) {
+      tips.push({ title: '课程', text: '还没有课程。点击下方「新建课程」卡片创建第一个课程，开始你的学习之旅。' })
+    } else {
+      const stale = projects.filter(p => (stats[p.id] ?? 0) === 0)
+      if (stale.length > 0) {
+        tips.push({ title: '课程', text: `${stale.length} 个课程还没有对话记录（如「${stale[0].name}」），建议尽快安排时间开始学习；若时间紧迫，优先推进最近创建的课程。` })
+      } else {
+        tips.push({ title: '课程', text: `学习进度正常，最近学习${latestDate ? '于 ' + latestDate : '记录暂无'}。可参考各课程卡片的「进度 / 上次 / 后续」决定下一步。` })
+      }
+    }
+    if (totalDocs === 0) {
+      tips.push({ title: '资源', text: '知识库还没有文档。在课程侧栏「资源」中上传文件或从系统预设资源加入，回答将更有依据、更少幻觉。' })
+    } else {
+      tips.push({ title: '资源', text: `知识库已收录 ${totalDocs} 份文档。建议定期补充或更新资料（如教程更新、新文档发布），让回答持续贴合最新内容。` })
+    }
+    if (totalCount === 0) {
+      tips.push({ title: '记忆', text: '系统会在每次对话后自动提炼记忆（画像、进度、薄弱点）。多与系统对话，记忆会越来越准确。' })
+    } else {
+      tips.push({ title: '记忆', text: `已有 ${totalCount} 次对话沉淀记忆。若间隔较久未学习，可在侧栏「记忆与进程」查看记忆，并让 AI 根据新进展更新记忆。` })
+    }
+    tips.push({ title: 'Agent', text: '可随时在 Agent 管理中调整模型、模式与 Skill。若生成质量遇到瓶颈，可考虑接入更强的新模型，或开启「输出增强」模板获得结构化产出。' })
+    return tips
+  }
+  const tips = buildTips()
+  const [openTips, setOpenTips] = useState<Set<string>>(() => new Set(['课程', '资源', '记忆', 'Agent']))
+  const toggleTip = (t: string) => {
+    setOpenTips(prev => { const n = new Set(prev); n.has(t) ? n.delete(t) : n.add(t); return n })
+  }
+
   return (
     <div className="flex-1 h-full min-w-0 flex panel rounded-3xl overflow-hidden">
       <div className="flex-1 overflow-y-auto">
@@ -63,21 +101,21 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onNavi
           <div className="flex-1 min-w-0 flex flex-col gap-10">
           {/* 左上角：我的主页 */}
           <h1 className="text-2xl font-bold flex items-center gap-2"><Home size={22} /> 我的主页</h1>
-          {/* 快速引导 */}
+          {/* 快速引导：系统提示建议（点击小标题展开/收起） */}
           <div className="flex flex-col gap-3">
             <h2 className="text-lg font-bold">快速引导</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
-              {[
-                { icon: Plus, label: '新建课程', fn: newProject },
-                { icon: Library, label: '资源中心', fn: () => onNavigate?.('resources') },
-                { icon: GraduationCap, label: '使用引导', fn: () => onNavigate?.('tutorial') },
-                { icon: FolderOpen, label: '本地文档', fn: () => onNavigate?.('obsidian') },
-              ].map(({ icon: Icon, label, fn }) => (
-                <button key={label} onClick={fn}
-                  className="card-surface rounded-2xl p-6 flex flex-col items-center gap-3 hover:shadow-soft hover:border-[var(--accent)] transition-all">
-                  <Icon size={20} className="text-dim" />
-                  <span className="text-xs font-semibold">{label}</span>
-                </button>
+            <div className="flex flex-col gap-2">
+              {tips.map(t => (
+                <div key={t.title} className="border hairline rounded-xl bg-[var(--bg-panel)] overflow-hidden">
+                  <button onClick={() => toggleTip(t.title)}
+                    className="w-full flex items-center gap-2 px-4 py-3 hover:bg-[var(--bg-hover)] transition-colors">
+                    <ChevronDown size={12} className={`flex-shrink-0 transition-transform ${openTips.has(t.title) ? 'rotate-180' : ''}`} />
+                    <span className="text-xs font-semibold">{t.title}</span>
+                  </button>
+                  {openTips.has(t.title) && (
+                    <p className="px-4 pb-3.5 text-[11px] leading-relaxed text-[var(--text-muted)]">{t.text}</p>
+                  )}
+                </div>
               ))}
             </div>
           </div>

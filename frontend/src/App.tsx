@@ -457,7 +457,6 @@ function App() {
           onEnter={(id) => { setCurrentProjectId(id); setChatOpen(true) }}
           onCreate={handleCreateProject}
           onDelete={handleDeleteProject}
-          onNavigate={(v) => { setView(v as ViewKey); if (v === 'chat') setChatOpen(false) }}
         />
       ))}
       </div>
