@@ -524,37 +524,20 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
 
   return (
     <div className="flex-1 h-full min-w-0 flex panel rounded-3xl overflow-hidden">
-      {/* 左侧：两级导航 + 课程列表（projectOnly 时不显示，仅课程记忆） */}
-      {!projectOnly && (
-      <div className="w-52 bg-[var(--bg-sidebar)] border-r hairline flex flex-col flex-shrink-0">
-        <div className="p-3 border-b hairline flex items-center justify-between">
-          <h2 className="text-sm font-bold flex items-center gap-1.5"><Brain size={15} /> 记忆系统</h2>
-          {saveState}
-        </div>
-        <div className="p-2 flex flex-col gap-1 border-b hairline">
-          <button onClick={() => setLevel('global')}
-            className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-left transition-colors ${
-              level === 'global' ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
-            }`}>
-            <User size={14} /> 个人全局性记忆
-          </button>
-          <button onClick={() => setLevel('project')}
-            className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-left transition-colors ${
-              level === 'project' ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
-            }`}>
-            <FolderTree size={14} /> 课程记忆
-          </button>
-        </div>
-        <div className="flex-1" />
-      </div>
-      )}
-
       {/* 右侧内容 */}
       <div className="flex-1 overflow-y-auto p-6">
         {/* ========== 个人全局性记忆 ========== */}
         {level === 'global' && (
           <div className="max-w-4xl flex flex-col gap-6">
-            <h2 className="text-xl font-bold flex items-center gap-2"><User size={16} /> 个人全局性记忆</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-xl font-bold flex items-center gap-2"><User size={16} /> 个人全局性记忆</h2>
+              {!projectOnly && (
+                <button onClick={() => setLevel('project')}
+                  className="px-3 py-1.5 rounded-xl text-[11px] font-medium border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">
+                  课程记忆 →
+                </button>
+              )}
+            </div>
             <button onClick={() => runRebuild()}
               className="self-end -mt-9 px-3 py-1.5 rounded-xl text-[11px] font-medium border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors"
               title="用当前 API Key 重新分析所有对话，生成全局画像与课程记忆">
@@ -651,6 +634,12 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
           <div className="w-full flex flex-col gap-4">
             <div>
               <h2 className="text-base font-bold flex items-center gap-2">
+                {!projectOnly && (
+                  <button onClick={() => setLevel('global')}
+                    className="px-3 py-1.5 rounded-lg text-[11px] font-medium border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">
+                    ← 个人全局性记忆
+                  </button>
+                )}
                 <FolderTree size={16} /> 课程记忆
                 {projectOnly && (
                   <button onClick={() => setShowModifyTip(true)}
@@ -688,11 +677,8 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                       <div className="flex items-center gap-2 px-4 py-3 border-b hairline">
                         {!projectOnly && (
                           <>
-                            <FolderTree size={14} />
-                            <span className="text-sm font-bold">{p?.name || pid}</span>
-                            {p?.id === projectId && <span className="text-[9px] text-dim">当前</span>}
                             <button onClick={() => setShowModifyTip(true)}
-                              className="ml-2 px-3 py-1.5 rounded-lg text-[10px] font-semibold text-white shadow-soft transition-transform hover:scale-105"
+                              className="px-3 py-1.5 rounded-lg text-[10px] font-semibold text-white shadow-soft transition-transform hover:scale-105"
                               style={{ background: 'var(--accent)' }}>修改记忆</button>
                           </>
                         )}
