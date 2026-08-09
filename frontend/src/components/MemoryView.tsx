@@ -641,7 +641,9 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                                             {m.type === 'goal' && <span className="w-3 h-3 rounded-full bg-[#1a1a1a]" />}
                                             {m.important && <span className="absolute -top-3 -right-2.5 text-[10px] leading-none text-amber-500">★</span>}
                                           </span>
-                                          <span className="max-w-[56px] truncate text-[9px] text-dim group-hover:text-[var(--text)]">{m.label}</span>
+                                          {m.type !== 'start' && m.type !== 'current' && m.type !== 'goal' && (
+                                            <span className="max-w-[56px] truncate text-[9px] text-dim group-hover:text-[var(--text)]">{m.label}</span>
+                                          )}
                                         </button>
                                       ))}
                                     </div>
