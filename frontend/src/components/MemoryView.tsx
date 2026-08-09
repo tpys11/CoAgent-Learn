@@ -706,10 +706,10 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                           <div className="max-w-3xl">
                             {/* 基本情况：简历式竖向文档（各内容区形状/大小不同），改动由 AI 整体处理 */}
                             <div className="border hairline rounded-2xl bg-[var(--bg-panel)] overflow-hidden">
-                              {/* 简历头部：大标题 + 副信息 */}
-                              <div className="px-8 py-7 flex flex-col items-center gap-1.5 border-b hairline" style={{ background: 'color-mix(in srgb, var(--accent) 4%, var(--bg-panel))' }}>
+                              {/* 简历头部：大标题居中（高度缩小），创建时间/对话次数在右下角 */}
+                              <div className="relative px-8 py-5 flex items-center justify-center border-b hairline" style={{ background: 'color-mix(in srgb, var(--accent) 4%, var(--bg-panel))' }}>
                                 <span className="text-xl font-bold">{p?.name || pid}</span>
-                                <span className="text-[11px] text-dim">
+                                <span className="absolute right-8 bottom-2.5 text-[11px] text-dim">
                                   {p?.created_at ? `创建于 ${String(p.created_at).slice(0, 10)}` : ''}{data ? ` · 累计 ${data.count} 次对话` : ''}
                                 </span>
                               </div>
