@@ -714,18 +714,26 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                                 </span>
                               </div>
                               <div className="px-8 py-6 flex flex-col gap-7">
-                                {/* 段落区：抽象目的（大留白） */}
+                                {/* 第二栏：基本情况（大框） */}
                                 <section>
-                                  <h3 className="text-[11px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--accent)' }}>抽象目的</h3>
-                                  <div className="text-[13px] leading-7 text-[var(--text)] min-h-[64px]">
-                                    {(data?.fields['抽象目的'] || '').trim() ? <MiniMD text={data?.fields['抽象目的'] || ''} /> : <span className="text-dim">（待 AI 分析）</span>}
+                                  <h3 className="text-[11px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--accent)' }}>基本情况</h3>
+                                  <div className="border hairline rounded-xl px-5 py-4 bg-[var(--bg-input)] min-h-[120px] text-[13px] leading-7 text-[var(--text)]">
+                                    {(data?.fields['抽象项目情况'] || '').trim() ? <MiniMD text={data?.fields['抽象项目情况'] || ''} /> : <span className="text-dim">（待 AI 分析）</span>}
                                   </div>
                                 </section>
-                                {/* 段落区：抽象项目情况 */}
+                                {/* 第三栏：大框内三个横向矩形（目的 / 初始情况 / 当前情况） */}
                                 <section>
-                                  <h3 className="text-[11px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--accent)' }}>项目情况</h3>
-                                  <div className="text-[13px] leading-7 text-[var(--text)] min-h-[48px]">
-                                    {(data?.fields['抽象项目情况'] || '').trim() ? <MiniMD text={data?.fields['抽象项目情况'] || ''} /> : <span className="text-dim">（待 AI 分析）</span>}
+                                  <div className="border hairline rounded-xl p-5 bg-[var(--bg-input)]">
+                                    <div className="grid grid-cols-3 gap-4">
+                                      {[['目的', '抽象目的'], ['初始情况', '起点'], ['当前情况', '当前水平']].map(([title, k]) => (
+                                        <div key={k} className="rounded-xl border hairline bg-[var(--bg-panel)] px-4 py-3.5 flex flex-col gap-2 min-h-[110px]">
+                                          <span className="text-[10px] font-semibold uppercase tracking-wider text-dim">{title}</span>
+                                          <div className="text-xs leading-relaxed text-[var(--text)] line-clamp-5">
+                                            {(data?.fields[k] || '').trim() ? <MiniMD text={data?.fields[k] || ''} /> : <span className="text-dim">（待 AI 分析）</span>}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
                                   </div>
                                 </section>
                                 {/* 标签区：偏好/知识点/难点/薄弱点/兴趣（胶囊） */}
@@ -746,15 +754,6 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                                     </section>
                                   )
                                 })}
-                                {/* 三小块：起点 / 当前水平 / 目标 */}
-                                <div className="grid grid-cols-3 gap-3">
-                                  {[['起点', '起点'], ['当前水平', '当前水平'], ['目标', '目标']].map(([k]) => (
-                                    <div key={k} className="rounded-xl px-4 py-3.5 flex flex-col gap-1.5 bg-[var(--bg-input)]">
-                                      <span className="text-[9px] uppercase tracking-wider text-dim">{k}</span>
-                                      <span className="text-xs leading-relaxed line-clamp-3">{data?.fields[k]?.trim() || '—'}</span>
-                                    </div>
-                                  ))}
-                                </div>
                               </div>
                             </div>
                             {/* 总体修改入口：只能整体与 AI 对话修改 */}
