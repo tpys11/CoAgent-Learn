@@ -533,7 +533,6 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                       ))}
                     </div>
                   )}
-                </div>
 
                 {/* 项目摘要（只读） */}
                 {Object.keys(gSummary).length > 0 && (
