@@ -287,6 +287,8 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   const agent = agents.find(a => a.id === selectedId) || agents[0]
   const [mode, setMode] = useState(agent?.mode || '均衡')
   const [prompt, setPrompt] = useState(agent?.systemPrompt || '')
+  // 全局性提示词：默认模块化渲染展示，可切换编辑
+  const [editPrompt, setEditPrompt] = useState(false)
   const [allSkills, setAllSkills] = useState<SkillInfo[]>([])
   const [linkedSkills, setLinkedSkills] = useState<string[]>([])
   // Skill 全局启用开关（localStorage）
@@ -492,9 +494,32 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                 {/* 网格：全局性提示词 + Skill 模块 */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <div className="flex flex-col gap-2">
-                    <label className={fieldLabel}>全局性提示词</label>
-                    <textarea value={prompt} onChange={e => { setPrompt(e.target.value); commit({ systemPrompt: e.target.value }) }} rows={10}
-                      className="flex-1 w-full px-3 py-2 border hairline rounded-xl text-xs font-mono outline-none resize-none focus:border-[var(--border-strong)] bg-[var(--bg-input)]" />
+                    <div className="flex items-center justify-between">
+                      <label className={fieldLabel}>全局性提示词</label>
+                      <button onClick={() => setEditPrompt(!editPrompt)}
+                        className="text-[10px] px-2 py-1 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">
+                        {editPrompt ? '完成' : '编辑'}
+                      </button>
+                    </div>
+                    {editPrompt ? (
+                      <textarea value={prompt} onChange={e => { setPrompt(e.target.value); commit({ systemPrompt: e.target.value }) }} rows={10}
+                        className="flex-1 w-full px-3 py-2 border hairline rounded-xl text-xs font-mono outline-none resize-none focus:border-[var(--border-strong)] bg-[var(--bg-input)]" />
+                    ) : (
+                      <div className="flex-1 w-full border hairline rounded-xl px-4 py-3.5 bg-[var(--bg-input)] flex flex-col gap-4 overflow-y-auto">
+                        {prompt.split('\n').filter((l: string) => l.trim()).map((line: string, i: number) => {
+                          const m = line.match(/^-\s*([^：:]+)[：:]\s*(.*)$/)
+                          if (m) {
+                            return (
+                              <div key={i} className="flex flex-col gap-1.5">
+                                <p className="text-[13px] font-bold text-[var(--text)]">{m[1]}</p>
+                                <p className="text-xs text-[var(--text-muted)] leading-loose">{m[2]}</p>
+                              </div>
+                            )
+                          }
+                          return <p key={i} className="text-xs leading-loose text-[var(--text-muted)]">{line}</p>
+                        })}
+                      </div>
+                    )}
                   </div>
                   <div className="flex flex-col gap-2">
                     <label className={`${fieldLabel} flex items-center gap-1`}><Folder size={13} /> Skill 模块</label>
