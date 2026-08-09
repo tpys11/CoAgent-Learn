@@ -318,6 +318,8 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
   const [dayDetail, setDayDetail] = useState<{ date: string; items: any[] } | null>(null)
   // 里程碑弹层：查看/编辑节点（null 不显示；{ mode:'new' } 为新增节点）
   const [msNode, setMsNode] = useState<Milestone | { mode: 'new' } | null>(null)
+  // 项目详情页签：基本情况 | 进度与细节
+  const [detailTab, setDetailTab] = useState<'base' | 'progress'>('base')
   // 记忆模块只读详情（修改记忆由 AI 处理：跳转主对话并以 [模块名] 引用）
   const [detailCard, setDetailCard] = useState<{ key: string; label: string; val: string } | null>(null)
   useEffect(() => { setDayDetail(null); setDetailCard(null) }, [level])
@@ -643,6 +645,16 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                         </span>
                       </div>
                       <div className="px-4 py-3 flex flex-col gap-4">
+                        {/* 页签：基本情况 | 进度与细节 */}
+                        <div className="flex items-center gap-1">
+                          {([['base', '基本情况'], ['progress', '进度与细节']] as const).map(([key, label]) => (
+                            <button key={key} onClick={() => setDetailTab(key)}
+                              className={`px-3.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${detailTab === key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'}`}>
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                        {detailTab === 'base' && (<>
                         {/* 项目概述：单栏简历式（不分子栏），修改由 AI 处理 */}
                         <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-1.5 max-w-3xl">
                           {['抽象目的', '抽象项目情况'].map((k, idx) => (
@@ -663,6 +675,8 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                             该项目暂无记忆数据：对话后会自动分析生成，或点「↻ 重新分析」立即生成。
                           </div>
                         )}
+                        </>)}
+                        {detailTab === 'progress' && (<>
                         {/* 知识图谱：树状结构（复用资料章节层级，节点颜色=掌握状态） */}
                         <div className="flex flex-col gap-2 max-w-3xl">
                           <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">知识图谱</p>
@@ -724,6 +738,7 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                             />
                           </div>
                         </div>
+                      </>)}
                       </div>
                     </div>
                   )
