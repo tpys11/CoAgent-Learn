@@ -368,8 +368,6 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
   const [mcSending, setMcSending] = useState(false)
   // 课程记忆刷新触发器（记忆对话后刷新）
   const [refreshTick, setRefreshTick] = useState(0)
-  // 修改记忆介绍弹窗
-  const [showModifyTip, setShowModifyTip] = useState(false)
   // 记忆模块只读详情（修改记忆由 AI 处理：跳转主对话并以 [模块名] 引用）
   const [detailCard, setDetailCard] = useState<{ key: string; label: string; val: string } | null>(null)
   useEffect(() => { setDayDetail(null); setDetailCard(null) }, [level])
@@ -675,11 +673,6 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
             <div>
               <h2 className="text-base font-bold flex items-center gap-2">
                 <FolderTree size={16} /> 课程记忆
-                {projectOnly && (
-                  <button onClick={() => setShowModifyTip(true)}
-                    className="ml-2 px-3 py-1.5 rounded-lg text-[11px] font-semibold text-white shadow-soft transition-transform hover:scale-105"
-                    style={{ background: 'var(--accent)' }}>修改记忆</button>
-                )}
               </h2>
             </div>
 
@@ -711,13 +704,6 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                     <div className="flex-1 min-w-0">
                     <div className="border hairline rounded-2xl bg-[var(--bg-panel)] overflow-hidden">
                       <div className="flex items-center gap-2 px-4 py-3 border-b hairline">
-                        {!projectOnly && (
-                          <>
-                            <button onClick={() => setShowModifyTip(true)}
-                              className="px-3 py-1.5 rounded-lg text-[10px] font-semibold text-white shadow-soft transition-transform hover:scale-105"
-                              style={{ background: 'var(--accent)' }}>修改记忆</button>
-                          </>
-                        )}
                         <span className="text-[10px] text-dim ml-auto">
                           {p?.created_at ? String(p.created_at).slice(0, 10) : ''}{data ? ` · ${data.count} 次对话` : ''}
                         </span>
@@ -929,20 +915,6 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                 className="py-2.5 rounded-xl bg-[#1a1a1a] text-white text-xs font-medium">
                 修改记忆
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* 修改记忆介绍弹窗 */}
-      {showModifyTip && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowModifyTip(false)}>
-          <div className="card-lift rounded-2xl p-5 w-[340px] flex flex-col gap-3" onClick={e => e.stopPropagation()}>
-            <p className="text-sm font-bold">修改记忆</p>
-            <p className="text-xs text-[var(--text-muted)] leading-relaxed">进入对话界面后，AI 会重新分析该课程的对话与资料，并更新课程记忆（基本情况、知识图谱、进度等）。修改在对话中完成。</p>
-            <div className="flex gap-2">
-              <button onClick={() => setShowModifyTip(false)} className="flex-1 py-2 rounded-xl border hairline text-[11px] text-dim hover:bg-[var(--bg-hover)] transition-colors">取消</button>
-              <button onClick={() => { setShowModifyTip(false); const ap = projects.find(x => x.id === activeProject); onRequestAnalyze?.(ap?.name || activeProject || '') }}
-                className="flex-1 py-2 rounded-xl text-[11px] font-medium text-white" style={{ background: 'var(--accent)' }}>进入对话</button>
             </div>
           </div>
         </div>
