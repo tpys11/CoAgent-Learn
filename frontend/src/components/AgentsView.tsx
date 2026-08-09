@@ -58,13 +58,13 @@ const PRESET_TEMPLATES: Array<{ name: string; desc: string; intro: string; detai
     agents: DEFAULT_AGENTS.map(a => a.id === 'main' ? { ...a, model: 'fast' } : { ...a }),
   },
   {
-    name: '输出增强', desc: '主 Agent 调用子 Agent 产出结构化内容',
-    intro: '面向需要「结构化产出」的问题——学习笔记、要点总结、对比表格、思维导图、时间线、FAQ 清单等。主 Agent 规划时按问题选择输出子 Agent 产出专项内容，再组织成完整回答。',
+    name: '输出增强', desc: '主 Agent 调用输出增强子 Agent 产出结构化内容',
+    intro: '面向需要「结构化产出」的问题——学习笔记、要点总结、对比表格、清单等。主 Agent 在生成前调用输出增强子 Agent 产出结构化内容，再组织成完整回答。',
     detail: [
-      ['编排流程', '规划（按需选择输出子 Agent）→ 学情与记忆 ∥ 知识库与搜索 → 生成（基于子 Agent 产出）→ 审核 → 输出'],
-      ['输出子 Agent', '树状结构、要点卡片、思维导图、表格对比、流程图时序图、时间线、FAQ 问答对、清单检查单（按问题选 0-3 个）'],
+      ['编排流程', '规划 → 学情与记忆 ∥ 知识库与搜索 → 生成（基于输出增强子 Agent 产出）→ 审核 → 输出'],
+      ['输出子 Agent', '输出增强（生成前调用，产出结构化、清晰易读的内容）'],
       ['生成模型', '强模型（质量优先）'],
-      ['子 Agent 调用', '按需调用输出子 Agent'],
+      ['子 Agent 调用', '按需调用输出增强子 Agent'],
       ['审核', '标准三维度审核（符实性 / 难度适配 / 规范性）'],
     ],
     agents: DEFAULT_AGENTS,
