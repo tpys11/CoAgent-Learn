@@ -300,11 +300,19 @@ function App() {
               return next
             })
           }
-          if (data.type === 'done') { finalReply = data.reply; steps.push(...(data.steps || [])); taskStats = data.task_stats || null }
+          if (data.type === 'done') {
+            finalReply = data.reply; steps.push(...(data.steps || [])); taskStats = data.task_stats || null
+            // 思维链兜底：后端返回完整 mindchain（各节点思考），流式片段缺失/不完整时覆盖
+            const mc: Array<{ agent: string; content: string }> = data.mindchain || []
+            if (mc.length > 0 && mc.length >= mindchainRef.current.length) {
+              mindchainRef.current = mc
+              setFlowMindchain(mc)
+            }
+          }
         }
       }
       try{
-        if(_buf.trim()){var _blines=_buf.split(String.fromCharCode(10));for(var _bi=0;_bi<_blines.length;_bi++){var _bl=_blines[_bi];if(!_bl.startsWith("data: "))continue;try{var _bd=JSON.parse(_bl.slice(6));if(_bd.type==="done"){finalReply=_bd.reply||finalReply;taskStats=_bd.task_stats||taskStats}}catch(_be){}}}
+        if(_buf.trim()){var _blines=_buf.split(String.fromCharCode(10));for(var _bi=0;_bi<_blines.length;_bi++){var _bl=_blines[_bi];if(!_bl.startsWith("data: "))continue;try{var _bd=JSON.parse(_bl.slice(6));if(_bd.type==="done"){finalReply=_bd.reply||finalReply;taskStats=_bd.task_stats||taskStats;var _mc=_bd.mindchain||[];if(_mc.length>0&&_mc.length>=mindchainRef.current.length){mindchainRef.current=_mc;setFlowMindchain(_mc)}}}catch(_be){}}}
         // 调试模式：在回复底部追加各 Agent 耗时/token 摘要
         const debugOn = localStorage.getItem('coagent-debug') === '1'
         let debugLine = ''
