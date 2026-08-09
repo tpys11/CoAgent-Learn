@@ -176,7 +176,7 @@ function AgentWithSubs({ node, subs, subActive }: { node: React.ReactNode; subs?
 }
 
 /** 环绕图：中心节点（输出增强/检索增强）+ 子 Agent 均匀环绕一圈，中心到每个子 Agent 画曲线 */
-function SubRing({ center, subs, onPick }: { center: string; subs: Array<{ id: string; name: string; form: string; subPrompt: string }>; onPick?: (s: { id: string; name: string; form: string; subPrompt: string }) => void }) {
+function SubRing({ center, subs, onPick, onCenterClick }: { center: string; subs: Array<{ id: string; name: string; form: string; subPrompt: string }>; onPick?: (s: { id: string; name: string; form: string; subPrompt: string }) => void; onCenterClick?: () => void }) {
   const n = subs.length
   const W = 360, H = 300
   const cx = W / 2, cy = H / 2
@@ -195,12 +195,13 @@ function SubRing({ center, subs, onPick }: { center: string; subs: Array<{ id: s
           return <path key={s.id} d={`M ${cx} ${cy} Q ${mx} ${my - 16}, ${x} ${y}`} stroke="#d4d4d4" strokeWidth="1.5" fill="none" />
         })}
       </svg>
-      {/* 中心节点 */}
+      {/* 中心节点（可点开进入设定） */}
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
-        <div className="px-4 py-3 rounded-xl border-2 border-dashed text-xs font-medium whitespace-nowrap text-dim"
+        <button onClick={onCenterClick}
+          className={`px-4 py-3 rounded-xl border-2 border-dashed text-xs font-medium whitespace-nowrap transition-colors ${onCenterClick ? 'cursor-pointer hover:border-[var(--accent)]' : ''}`}
           style={{ borderColor: 'var(--border-strong)', background: 'color-mix(in srgb, var(--accent) 8%, var(--bg-panel))' }}>
           {center}
-        </div>
+        </button>
       </div>
       {/* 子 Agent 环绕 */}
       {subs.map((s, i) => {
@@ -336,6 +337,9 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   const [subPrompt, setSubPrompt] = useState('')
   // 子 Agent 编辑弹窗（点击图中节点进入设定）
   const [subEditing, setSubEditing] = useState<{ id: string; name: string; form: string; subPrompt: string } | null>(null)
+  // 中间层 Agent（输出增强/检索增强）设定弹窗
+  const [showMidAgent, setShowMidAgent] = useState(false)
+  const [midName, setMidName] = useState('')
   // Skill 管理四区
   const [skillTab, setSkillTab] = useState('installed')
   const [skillCat, setSkillCat] = useState('all')
@@ -592,22 +596,13 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                   className="text-[10px] px-2 py-1 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">＋ 添加</button>
               </div>
               <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex items-center justify-center overflow-hidden">
-                <div className="flex items-center gap-0 flex-shrink-0">
-                  {/* 当前 Agent */}
-                  <div className="px-4 py-3 rounded-xl border-2 text-xs font-bold whitespace-nowrap"
-                    style={{ borderColor: 'var(--accent)', background: 'color-mix(in srgb, var(--accent) 30%, var(--bg-panel))' }}>
-                    {agent.name}
-                  </div>
-                  <svg width="46" height="44" viewBox="0 0 46 44" className="flex-shrink-0">
-                    <path d="M 0 22 C 18 22, 28 22, 46 22" stroke="#d4d4d4" strokeWidth="1.5" fill="none" />
-                  </svg>
-                  {/* 中间层（输出增强/检索增强）为圆心，子 Agent 环绕一圈 */}
-                  <SubRing
-                    center={agent.id === 'main' ? '输出增强' : agent.id === 'kb' ? '检索增强' : agent.name}
-                    subs={agent.subAgents}
-                    onPick={s => setSubEditing({ id: s.id, name: s.name, form: s.form, subPrompt: s.subPrompt })}
-                  />
-                </div>
+                {/* 中间层（输出增强/检索增强）为圆心可点开，子 Agent 环绕一圈；不展示主 Agent 节点 */}
+                <SubRing
+                  center={agent.id === 'main' ? '输出增强' : agent.id === 'kb' ? '检索增强' : agent.name}
+                  subs={agent.subAgents}
+                  onPick={s => setSubEditing({ id: s.id, name: s.name, form: s.form, subPrompt: s.subPrompt })}
+                  onCenterClick={() => { setMidName(agent.id === 'main' ? '输出增强' : agent.id === 'kb' ? '检索增强' : agent.name); setShowMidAgent(true) }}
+                />
               </div>
             </div>
           )}
@@ -899,6 +894,28 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
           )}
         </div>
         </>
+      )}
+      {/* 中间层 Agent 设定弹窗（点击图中圆心节点打开） */}
+      {showMidAgent && agent && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setShowMidAgent(false)}>
+          <div className="bg-[var(--bg-panel)] rounded-2xl shadow-xl w-full max-w-md p-5 mx-4 flex flex-col gap-3" onClick={e => e.stopPropagation()}>
+            <p className="text-base font-bold">{midName}</p>
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed">该 Agent 可自行调用特定功能性 Agent（子 Agent），完成对应形式的内容产出。</p>
+            <div className="flex flex-col gap-2">
+              {(agent.subAgents || []).map(s => (
+                <div key={s.id} className="flex items-center gap-2 border hairline rounded-xl px-3 py-2 bg-[var(--bg-input)]">
+                  <span className="text-xs font-medium truncate">{s.name}</span>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--bg-panel)] text-dim flex-shrink-0">{s.form}</span>
+                  <button onClick={() => { setShowMidAgent(false); setSubEditing({ id: s.id, name: s.name, form: s.form, subPrompt: s.subPrompt }) }}
+                    className="ml-auto text-[10px] text-[var(--accent)] hover:underline">编辑</button>
+                </div>
+              ))}
+            </div>
+            <button onClick={() => { setShowMidAgent(false); setSubName(''); setSubForm(''); setSubPrompt(''); setShowSubAdd(true) }}
+              className="py-2 rounded-xl border hairline text-xs text-dim hover:bg-[var(--bg-hover)] transition-colors">＋ 添加子 Agent</button>
+            <button onClick={() => setShowMidAgent(false)} className="py-2 rounded-xl bg-[#1a1a1a] text-white text-xs font-medium">关闭</button>
+          </div>
+        </div>
       )}
       {/* 子 Agent 编辑弹窗（点击图中节点进入设定） */}
       {subEditing && (
