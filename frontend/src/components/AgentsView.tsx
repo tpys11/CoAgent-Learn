@@ -229,24 +229,63 @@ const FlowGraph = ({ agents, templateName, templateAgentId, onSelect }: { agents
   const kbSubs = templateName === '检索增强' ? subOf('kb') : []
   // 输出增强模板：生成节点只连接一个「输出增强」节点（规划节点不展示子 Agent）
   const mainSubs = templateName === '输出增强' ? ['输出增强'] : []
-  const kbSubActive = templateName === '检索增强'
-  const mainSubActive = templateName === '输出增强'
   return (
-    <div className="flex items-center justify-center gap-2 flex-wrap">
+    <div className="flex flex-col items-center gap-1 py-6">
       {/* 规划节点：不展示子 Agent（规划职责不调用输出子 Agent） */}
       <FlowNode icon={Workflow} name="规划" level={lv('plan')} active={act('main')} onClick={pick('main')} />
-      <FlowArrow />
-      <div className="flex flex-col gap-1 items-center">
+      <DownArrow />
+      {/* 学情与记忆 ∥ 知识库与搜索（子 Agent 左右横向连接） */}
+      <div className="flex items-center gap-3">
         <FlowNode icon={Brain} name="学情与记忆" level={lv('study_memory')} active={act('study')} onClick={pick('study')} />
         <span className="text-[9px] text-dim">∥ 并行</span>
-        <AgentWithSubs node={<FlowNode icon={Database} name={nameOf('kb', '知识库与搜索')} level={lv('kb')} active={act('kb')} onClick={pick('kb')} />} subs={kbSubs} subActive={kbSubActive} />
+        <AgentRow node={<FlowNode icon={Database} name={nameOf('kb', '知识库与搜索')} level={lv('kb')} active={act('kb')} onClick={pick('kb')} />} subs={kbSubs} />
       </div>
-      <FlowArrow />
-      <AgentWithSubs node={<FlowNode icon={Workflow} name="生成" level={lv('generate')} active={act('main')} onClick={pick('main')} />} subs={mainSubs} subActive={true} />
-      <FlowArrow />
+      <DownArrow />
+      {/* 生成（输出增强 子 Agent 右侧连接） */}
+      <AgentRow node={<FlowNode icon={Workflow} name="生成" level={lv('generate')} active={act('main')} onClick={pick('main')} />} subs={mainSubs} />
+      <DownArrow />
       <FlowNode icon={Scale} name="审核" level={lv('review')} active={act('review')} onClick={pick('review')} />
-      <FlowArrow />
+      <DownArrow />
       <FlowNode icon={CheckCircle2} name="输出" />
+    </div>
+  )
+}
+
+/** 向下箭头 */
+const DownArrow = () => (
+  <svg width="14" height="22" viewBox="0 0 14 22" className="flex-shrink-0">
+    <path d="M 7 0 L 7 15 M 7 15 L 2.5 10.5 M 7 15 L 11.5 10.5" stroke="#d4d4d4" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+)
+
+/** 父节点 + 左右两侧子 Agent 横向连接（≥2 个子 Agent 左右平分；1 个放右侧） */
+function AgentRow({ node, subs }: { node: React.ReactNode; subs?: string[] }) {
+  if (!subs || subs.length === 0) return <>{node}</>
+  const left = subs.length >= 2 ? subs.slice(0, Math.ceil(subs.length / 2)) : []
+  const right = subs.slice(left.length)
+  return (
+    <div className="flex items-center gap-0">
+      {left.length > 0 && (
+        <div className="flex items-center gap-1">
+          <div className="flex flex-col gap-2 items-end">
+            {left.map(s => <SubNode key={s} name={s} />)}
+          </div>
+          <svg width="30" height="44" viewBox="0 0 30 44" className="flex-shrink-0">
+            <path d="M 30 22 C 16 22, 12 22, 0 22" stroke="#d4d4d4" strokeWidth="1.5" fill="none" />
+          </svg>
+        </div>
+      )}
+      {node}
+      {right.length > 0 && (
+        <div className="flex items-center gap-1">
+          <svg width="30" height="44" viewBox="0 0 30 44" className="flex-shrink-0">
+            <path d="M 0 22 C 14 22, 18 22, 30 22" stroke="#d4d4d4" strokeWidth="1.5" fill="none" />
+          </svg>
+          <div className="flex flex-col gap-2 items-start">
+            {right.map(s => <SubNode key={s} name={s} />)}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
