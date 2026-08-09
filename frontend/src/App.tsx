@@ -194,12 +194,6 @@ function App() {
     setView('chat')
   }
 
-  /** 基本情况修改：跳转对话界面，显示持久提示「项目基本情况」 */
-  const handleRequestEditBase = (projectName: string) => {
-    setAnalyzeHint({ label: '项目基本情况', project: projectName })
-    setView('chat')
-  }
-
   const handleSendMessage = useCallback(async (text: string, settings?: Record<string, any>) => {
     let did = currentDialogueId
     if (!did && currentProjectId) {
@@ -370,7 +364,7 @@ function App() {
       )}
       {view === 'tutorial' && <TutorialView />}
       {view === 'resources' && <ResourceView projectId={currentProjectId} />}
-      {view === 'memory' && <MemoryView projectId={currentProjectId} onRequestModify={handleRequestModify} onRequestAnalyze={handleRequestAnalyze} onRequestEditBase={handleRequestEditBase} />}
+      {view === 'memory' && <MemoryView projectId={currentProjectId} onRequestModify={handleRequestModify} onRequestAnalyze={handleRequestAnalyze} />}
       {view === 'knowledge' && <KnowledgeView projectId={projectKBId ?? currentProjectId} onClose={() => setView('chat')} />}
       {view === 'agents' && <AgentsView agents={agents} onSave={handleSaveAgent} onReplace={handleReplaceAgents} projectId={currentProjectId} />}
       {view === 'chat' && (<>

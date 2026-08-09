@@ -337,7 +337,7 @@ function TimeLineChart({ days, height = 90 }: { days: Record<string, any[]>; hei
   )
 }
 
-export default function MemoryView({ projectId, onRequestModify, onRequestAnalyze, onRequestEditBase }: { projectId: string | null; onRequestModify?: (label: string, pid?: string) => void; onRequestAnalyze?: (projectName: string) => void; onRequestEditBase?: (projectName: string) => void }) {
+export default function MemoryView({ projectId, onRequestModify, onRequestAnalyze }: { projectId: string | null; onRequestModify?: (label: string, pid?: string) => void; onRequestAnalyze?: (projectName: string) => void }) {
   const [level, setLevel] = useState<'global' | 'project'>('global')
   // 项目列表
   const [projects, setProjects] = useState<Array<{ id: string; name: string; is_default?: boolean; created_at?: string }>>([])
@@ -682,12 +682,15 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                         <FolderTree size={14} />
                         <span className="text-sm font-bold">{p?.name || pid}</span>
                         {p?.id === projectId && <span className="text-[9px] text-dim">当前</span>}
+                        <button onClick={() => onRequestAnalyze?.(p?.name || pid)}
+                          title="进入对话，由 AI 重新分析该项目的记忆"
+                          className="ml-2 px-2.5 py-1 rounded-lg text-[10px] font-medium border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">↻ 重新分析</button>
                         <span className="text-[10px] text-dim ml-auto">
                           {p?.created_at ? String(p.created_at).slice(0, 10) : ''}{data ? ` · ${data.count} 次对话` : ''}
                         </span>
                       </div>
                       <div className="px-4 py-3 flex flex-col gap-4">
-                        {/* 页签：基本情况 | 进度与细节 | 重新分析（跳转对话，AI 分析项目记忆） */}
+                        {/* 页签：基本情况 | 进度与细节 */}
                         <div className="flex items-center gap-1">
                           {([['base', '基本情况'], ['progress', '进度与细节']] as const).map(([key, label]) => (
                             <button key={key} onClick={() => setDetailTab(key)}
@@ -695,9 +698,6 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                               {label}
                             </button>
                           ))}
-                          <button onClick={() => onRequestAnalyze?.(p?.name || pid)}
-                            title="进入对话，由 AI 重新分析该项目的记忆"
-                            className="ml-auto px-3 py-1.5 rounded-lg text-[11px] font-medium border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">↻ 重新分析</button>
                         </div>
                         {detailTab === 'base' && (
                           <div className="max-w-3xl">
@@ -753,11 +753,6 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                                 })}
                               </div>
                             </div>
-                            {/* 总体修改入口：只能整体与 AI 对话修改 */}
-                            <button onClick={() => onRequestEditBase?.(p?.name || pid)}
-                              className="mt-3 w-full py-2.5 rounded-xl text-xs font-medium border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">
-                              与 AI 对话修改基本情况
-                            </button>
                           </div>
                         )}
                         {detailTab === 'progress' && (<>
