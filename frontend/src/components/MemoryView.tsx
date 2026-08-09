@@ -295,7 +295,7 @@ function TimeLineChart({ days, height = 90 }: { days: Record<string, any[]>; hei
   )
 }
 
-export default function MemoryView({ projectId, onRequestModify }: { projectId: string | null; onRequestModify?: (label: string, pid?: string) => void }) {
+export default function MemoryView({ projectId, onRequestModify, onRequestAnalyze }: { projectId: string | null; onRequestModify?: (label: string, pid?: string) => void; onRequestAnalyze?: (projectName: string) => void }) {
   const [level, setLevel] = useState<'global' | 'project'>('global')
   // 项目列表
   const [projects, setProjects] = useState<Array<{ id: string; name: string; is_default?: boolean; created_at?: string }>>([])
@@ -645,7 +645,7 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                         </span>
                       </div>
                       <div className="px-4 py-3 flex flex-col gap-4">
-                        {/* 页签：基本情况 | 进度与细节 */}
+                        {/* 页签：基本情况 | 进度与细节 | 重新分析（跳转对话，AI 分析项目记忆） */}
                         <div className="flex items-center gap-1">
                           {([['base', '基本情况'], ['progress', '进度与细节']] as const).map(([key, label]) => (
                             <button key={key} onClick={() => setDetailTab(key)}
@@ -653,6 +653,9 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                               {label}
                             </button>
                           ))}
+                          <button onClick={() => onRequestAnalyze?.(p?.name || pid)}
+                            title="进入对话，由 AI 重新分析该项目的记忆"
+                            className="ml-auto px-3 py-1.5 rounded-lg text-[11px] font-medium border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">↻ 重新分析</button>
                         </div>
                         {detailTab === 'base' && (<>
                         {/* 项目概述：单栏简历式（不分子栏），修改由 AI 处理 */}

@@ -16,9 +16,11 @@ interface CenterPanelProps {
   onOpenSettings?: () => void
   projectInitialized?: boolean
   draft?: string
+  analyzeHint?: string | null
+  onClearAnalyzeHint?: () => void
 }
 
-export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, statsCollapsed, onToggleStats, flowMindchain, onOpenGuide, onOpenSettings, projectInitialized, draft }: CenterPanelProps) {
+export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, statsCollapsed, onToggleStats, flowMindchain, onOpenGuide, onOpenSettings, projectInitialized, draft, analyzeHint, onClearAnalyzeHint }: CenterPanelProps) {
   const [input, setInput] = useState('')
   // 记忆修改预填：draft 变化时写入输入框（从记忆界面跳转）
   useEffect(() => { if (draft) setInput(draft) }, [draft])
@@ -310,6 +312,15 @@ const TEMPLATE_OPTIONS = [
       {/* 消息流：内容限宽居中 */}
       <div ref={msgScrollRef} className="flex-1 overflow-y-auto">
         <div className="max-w-3xl mx-auto px-6 py-6 flex flex-col gap-6">
+          {/* 持久提示：项目记忆分析（从记忆界面点「重新分析」进入时显示） */}
+          {analyzeHint && (
+            <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl border hairline"
+              style={{ background: 'color-mix(in srgb, var(--accent) 8%, var(--bg-panel))', borderColor: 'color-mix(in srgb, var(--accent) 30%, transparent)' }}>
+              <span className="text-xs font-semibold flex-shrink-0">项目记忆分析</span>
+              <span className="text-[11px] text-dim truncate">正在分析「{analyzeHint}」的记忆，可在下方对话中直接提出要求（如：总结薄弱点 / 规划下一步）</span>
+              <button onClick={onClearAnalyzeHint} className="ml-auto flex-shrink-0 text-dim hover:text-[var(--text)] text-xs px-1">✕</button>
+            </div>
+          )}
           {/* 欢迎屏 */}
           {messages.length === 0 && (
             <div className="flex flex-col items-center gap-4 py-16 animate-[fadeIn_0.4s_ease]">
