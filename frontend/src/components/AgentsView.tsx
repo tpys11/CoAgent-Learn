@@ -188,12 +188,14 @@ const FlowGraph = ({ agents, templateName, templateAgentId, onSelect }: { agents
   const subOf = (id: string) => ((agents || []).find(a => a.id === id)?.subAgents || []).map(s => s.name)
   const nameOf = (id: string, fallback: string) => (agents || []).find(a => a.id === id)?.name || fallback
   const kbSubs = templateName === '检索增强' ? subOf('kb') : []
-  const mainSubs = templateName === '输出增强' ? subOf('main') : []
+  // 输出增强模板：生成节点只连接一个「输出增强」节点（规划节点不展示子 Agent）
+  const mainSubs = templateName === '输出增强' ? ['输出增强'] : []
   const kbSubActive = templateName === '检索增强'
   const mainSubActive = templateName === '输出增强'
   return (
     <div className="flex items-center justify-center gap-2 flex-wrap">
-      <AgentWithSubs node={<FlowNode icon={Workflow} name="规划" level={lv('plan')} active={act('main')} onClick={pick('main')} />} subs={mainSubs} subActive={mainSubActive} />
+      {/* 规划节点：不展示子 Agent（规划职责不调用输出子 Agent） */}
+      <FlowNode icon={Workflow} name="规划" level={lv('plan')} active={act('main')} onClick={pick('main')} />
       <FlowArrow />
       <div className="flex flex-col gap-1 items-center">
         <FlowNode icon={Brain} name="学情与记忆" level={lv('study_memory')} active={act('study')} onClick={pick('study')} />
@@ -201,7 +203,7 @@ const FlowGraph = ({ agents, templateName, templateAgentId, onSelect }: { agents
         <AgentWithSubs node={<FlowNode icon={Database} name={nameOf('kb', '知识库与搜索')} level={lv('kb')} active={act('kb')} onClick={pick('kb')} />} subs={kbSubs} subActive={kbSubActive} />
       </div>
       <FlowArrow />
-      <AgentWithSubs node={<FlowNode icon={Workflow} name="生成" level={lv('generate')} active={act('main')} onClick={pick('main')} />} subs={mainSubs} subActive={mainSubActive} />
+      <AgentWithSubs node={<FlowNode icon={Workflow} name="生成" level={lv('generate')} active={act('main')} onClick={pick('main')} />} subs={mainSubs} subActive={true} />
       <FlowArrow />
       <FlowNode icon={Scale} name="审核" level={lv('review')} active={act('review')} onClick={pick('review')} />
       <FlowArrow />
