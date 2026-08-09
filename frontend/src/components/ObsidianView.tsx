@@ -378,11 +378,11 @@ function TreeGraph({ nodes, rootName, open, onToggle, onOpen, currentPath }: {
                       : 'card-surface border-[var(--border-color)] hover:border-[var(--accent)] hover:shadow-soft'
                 }`}
                 style={{ background: isRoot || active ? 'var(--accent)' : undefined }}>
-                {isDir && <ChevronRight size={12} className={`flex-shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`} />}
                 {isDir
                   ? (expanded ? <FolderOpen size={14} className="flex-shrink-0 opacity-70" /> : <FolderClosed size={14} className="flex-shrink-0 opacity-70" />)
                   : <FileText size={13} className="flex-shrink-0 opacity-70" />}
                 <span className="truncate">{n.name.replace(/\.md$/, '')}</span>
+                {isDir && <ChevronRight size={12} className={`flex-shrink-0 ml-auto transition-transform ${expanded ? 'rotate-90' : ''}`} />}
               </button>
             </div>
           )
