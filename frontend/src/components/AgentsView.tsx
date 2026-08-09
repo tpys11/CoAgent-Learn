@@ -289,8 +289,8 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   const [prompt, setPrompt] = useState(agent?.systemPrompt || '')
   // 全局性提示词：默认模块化渲染展示，可切换编辑
   const [editPrompt, setEditPrompt] = useState(false)
-  // 子 Agent 卡片展开/收起
-  const [subExpanded, setSubExpanded] = useState(false)
+  // 子 Agent 介绍弹窗
+  const [subIntroOpen, setSubIntroOpen] = useState(false)
   const [allSkills, setAllSkills] = useState<SkillInfo[]>([])
   const [linkedSkills, setLinkedSkills] = useState<string[]>([])
   // Skill 全局启用开关（localStorage）
@@ -334,7 +334,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   useEffect(() => {
     setMode(agent?.mode || '均衡')
     setPrompt(agent?.systemPrompt || '')
-    setSubExpanded(false)
+    setSubIntroOpen(false)
     fetch('/api/skills').then(r => r.json()).then(d => {
       setAllSkills(d.skills || [])
       const names = (agent?.skill || '').match(/[a-z_]+/g) || []
@@ -601,45 +601,50 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                   className="text-[10px] px-2 py-1 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">＋ 添加能力</button>
               </div>
               <div className="border hairline rounded-xl bg-[var(--bg-panel)] overflow-hidden">
-                {/* 子 Agent 卡片头（点击展开/收起，上下留白为常规三倍） */}
-                <button onClick={() => setSubExpanded(!subExpanded)}
+                {/* 子 Agent 卡片头（点击弹出介绍弹窗，上下留白为常规三倍） */}
+                <button onClick={() => setSubIntroOpen(true)}
                   className="w-full flex items-center gap-2 px-3.5 py-9 hover:bg-[var(--bg-hover)] transition-colors">
-                  <ChevronRight size={12} className={`flex-shrink-0 transition-transform ${subExpanded ? 'rotate-90' : ''}`} />
                   <span className="text-xs font-bold">{agent.id === 'main' ? '输出增强' : agent.id === 'kb' ? '检索增强' : agent.name}</span>
                   <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--bg-hover)] text-dim flex-shrink-0">子 Agent</span>
                   <span className="flex-1" />
-                  <span className="text-[10px] text-dim">{subExpanded ? '收起' : '展开'}</span>
+                  <span className="text-[10px] text-dim">查看介绍</span>
                 </button>
-                {subExpanded && (
-                  <div className="px-3.5 pb-3.5 pt-3 border-t hairline flex flex-col gap-3.5">
-                    {/* 介绍 */}
-                    <div className="flex flex-col gap-1.5">
-                      <p className="text-[13px] font-bold">介绍</p>
-                      <p className="text-xs text-dim leading-loose">该 Agent 可自行调用特定功能性 Agent（子 Agent），完成对应形式的内容产出；当选择了输出增强选项后，才会调用这些能力。</p>
-                    </div>
-                    {/* 能力列表（如 树状图生成、要点卡片…） */}
-                    <div className="flex flex-col gap-2">
-                      <p className="text-[13px] font-bold">能力</p>
-                      {agent.subAgents.map(s => (
-                        <div key={s.id} className="border hairline rounded-lg px-3 py-2.5 bg-[var(--bg-input)] flex flex-col gap-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] font-semibold truncate">{s.name}</span>
-                            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--bg-panel)] text-dim flex-shrink-0">{s.form}</span>
-                            <span className="flex-1" />
-                            <button onClick={() => setSubEditing({ id: s.id, name: s.name, form: s.form, subPrompt: s.subPrompt })}
-                              className="text-[10px] text-[var(--accent)]">编辑</button>
-                            <button onClick={() => commit({ subAgents: (agent.subAgents || []).filter(x => x.id !== s.id) })}
-                              className="text-[10px] text-red-500">删除</button>
-                          </div>
-                          <p className="text-[10px] text-dim leading-loose">- 职责：{s.subPrompt}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
                 {/* 卡片内部下方：一句话介绍（始终可见） */}
                 <div className="px-3.5 pb-4 border-t hairline">
                   <p className="text-[10px] text-dim leading-relaxed">按需调用各能力 Agent 产出结构化内容，选择「输出增强」模板后才会调用。</p>
+                </div>
+              </div>
+            </div>
+          )}
+          {/* 子 Agent 介绍弹窗（点击卡片弹出，较小） */}
+          {subIntroOpen && agent && (
+            <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setSubIntroOpen(false)}>
+              <div className="bg-[var(--bg-panel)] rounded-2xl shadow-xl w-full max-w-md p-5 mx-4 flex flex-col gap-3.5" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between">
+                  <p className="text-base font-bold">{agent.id === 'main' ? '输出增强' : agent.id === 'kb' ? '检索增强' : agent.name} · 子 Agent</p>
+                  <button onClick={() => setSubIntroOpen(false)} className="p-1 hover:bg-[var(--bg-hover)] rounded"><X size={16} /></button>
+                </div>
+                {/* 介绍 */}
+                <p className="text-xs text-[var(--text-muted)] leading-loose">该 Agent 可自行调用特定功能性 Agent（子 Agent），完成对应形式的内容产出；当选择了输出增强选项后，才会调用这些能力。</p>
+                {/* 能力列表 */}
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs font-semibold text-dim uppercase tracking-wider">能力</p>
+                  {(agent.subAgents || []).map(s => (
+                    <div key={s.id} className="border hairline rounded-lg px-3 py-2.5 bg-[var(--bg-input)] flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-semibold truncate">{s.name}</span>
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--bg-panel)] text-dim flex-shrink-0">{s.form}</span>
+                        <span className="flex-1" />
+                        <button onClick={() => setSubEditing({ id: s.id, name: s.name, form: s.form, subPrompt: s.subPrompt })}
+                          className="text-[10px] text-[var(--accent)]">编辑</button>
+                        <button onClick={() => commit({ subAgents: (agent.subAgents || []).filter(x => x.id !== s.id) })}
+                          className="text-[10px] text-red-500">删除</button>
+                      </div>
+                      <p className="text-[10px] text-dim leading-loose">- 职责：{s.subPrompt}</p>
+                    </div>
+                  ))}
+                  <button onClick={() => { setSubIntroOpen(false); setSubName(''); setSubForm(''); setSubPrompt(''); setShowSubAdd(true) }}
+                    className="py-2 rounded-xl border hairline text-xs text-dim hover:bg-[var(--bg-hover)] transition-colors">＋ 添加能力</button>
                 </div>
               </div>
             </div>
