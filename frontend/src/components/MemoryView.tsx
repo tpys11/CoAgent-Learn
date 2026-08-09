@@ -643,6 +643,17 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                         </span>
                       </div>
                       <div className="px-4 py-3 flex flex-col gap-4">
+                        {/* 项目概述：最顶层基础信息（创建时间 / 抽象目的 / 抽象项目情况），下方内容均为其具体展开 */}
+                        <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-3 max-w-3xl">
+                          {['抽象目的', '抽象项目情况'].map(k => (
+                            <div key={k}>
+                              <label className="text-[10px] font-semibold text-dim uppercase tracking-wider mb-1 block">{k}</label>
+                              <div className="px-3 py-2 border hairline rounded-xl text-xs bg-[var(--bg-input)] text-[var(--text-muted)] leading-relaxed">
+                                {(data?.fields[k] || '').trim() ? <MiniMD text={data?.fields[k] || ''} /> : <span className="text-dim">（空）</span>}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                         {/* 空数据引导 */}
                         {data && !Object.values(data.fields).some(v => (v || '').trim()) && (data.progress.items || []).length === 0 && (
                           <div className="px-3 py-2.5 rounded-xl bg-amber-50 text-amber-800 text-[11px] border border-amber-200 leading-relaxed">
