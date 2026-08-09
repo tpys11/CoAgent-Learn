@@ -415,6 +415,20 @@ function ObsidianViewInner() {
   const [saveMsg, setSaveMsg] = useState('')
   // 展开方式：列表（缩进列表）/ 树状图（带连接线），持久化记忆
   const [expandMode, setExpandMode] = useState<'list' | 'tree'>(() => localStorage.getItem('coagent-obsidian-mode') === 'tree' ? 'tree' : 'list')
+  // 左侧栏宽度：null = 模式默认（列表 288 / 树状图 576），拖动后保留用户值
+  const [panelW, setPanelW] = useState<number | null>(null)
+  const effectiveW = panelW ?? (expandMode === 'tree' ? 576 : 288)
+  const resizeRef = useRef<{ startX: number; startW: number } | null>(null)
+  const onResizeDown = (e: React.PointerEvent) => {
+    resizeRef.current = { startX: e.clientX, startW: effectiveW }
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  }
+  const onResizeMove = (e: React.PointerEvent) => {
+    const r = resizeRef.current
+    if (!r) return
+    setPanelW(Math.min(680, Math.max(240, r.startW + (e.clientX - r.startX))))
+  }
+  const onResizeUp = () => { resizeRef.current = null }
   const articleRef = useRef<HTMLDivElement>(null)
 
   // 恢复上次连接
@@ -545,8 +559,8 @@ function ObsidianViewInner() {
 
   return (
     <div className="flex-1 h-full min-w-0 flex panel rounded-3xl overflow-hidden">
-      {/* 左侧：连接 + 文件树（树状图模式宽度翻倍） */}
-      <div className={`${expandMode === 'tree' ? 'w-[576px]' : 'w-72'} bg-[var(--bg-sidebar)] border-r hairline flex flex-col flex-shrink-0 transition-all duration-200`}>
+      {/* 左侧：连接 + 文件树（宽度可拖拽，树状图模式默认更宽） */}
+      <div className="relative bg-[var(--bg-sidebar)] border-r hairline flex flex-col flex-shrink-0" style={{ width: effectiveW }}>
         <div className="p-3 border-b hairline flex items-center justify-between">
           <h2 className="text-sm font-bold flex items-center gap-1.5"><BookOpen size={15} /> Obsidian</h2>
           {rootHandle && (
@@ -591,6 +605,11 @@ function ObsidianViewInner() {
             </div>
           </>
         )}
+        {/* 拖拽把手：调整栏宽 */}
+        <div
+          onPointerDown={onResizeDown} onPointerMove={onResizeMove} onPointerUp={onResizeUp}
+          className="absolute right-0 inset-y-0 w-1.5 cursor-col-resize z-10 transition-colors hover:bg-[var(--accent)]/15"
+          title="拖动调整宽度" />
       </div>
       {/* 右侧：文章阅读 / 编辑 */}
       <div className="flex-1 relative overflow-y-auto">
