@@ -19,19 +19,54 @@ const NODE_BY_AGENT: Record<string, string[]> = {
   main: ['plan', 'generate'], study: ['study_memory'], kb: ['kb'], review: ['review'],
 }
 
-/** 预设模板库（基础 / 检索增强 / 快速 / 输出增强） */
-const PRESET_TEMPLATES: Array<{ name: string; desc: string; agents: AgentConfig[] }> = [
-  { name: '基础', desc: '默认编排', agents: DEFAULT_AGENTS },
+/** 预设模板库（基础 / 检索增强 / 快速 / 输出增强），intro=适用场景概述，detail=预设内部细节（只读展示） */
+const PRESET_TEMPLATES: Array<{ name: string; desc: string; intro: string; detail: Array<[string, string]>; agents: AgentConfig[] }> = [
+  {
+    name: '基础', desc: '默认编排',
+    intro: '面向日常学习提问与概念讲解——回答「这是什么、怎么理解」类问题，讲解深浅按你的学情动态调整。不需要引用资料、也不需要特定输出形式时，用这个最省心。',
+    detail: [
+      ['编排流程', '规划 → 学情与记忆 ∥ 知识库与搜索 → 生成 → 审核 → 输出'],
+      ['生成模型', '强模型（质量优先）'],
+      ['知识库与搜索', '视问题需要自动调用'],
+      ['子 Agent 调用', '无'],
+      ['审核', '标准三维度审核（符实性 / 难度适配 / 规范性）'],
+    ],
+    agents: DEFAULT_AGENTS,
+  },
   {
     name: '检索增强', desc: '知识库管理调用子 Agent 整理资料',
+    intro: '面向需要「基于资料回答」的问题——复习备考、查证概念、引用知识库内容作答。回答会先让知识库子 Agent 整理检索与联网结果，再基于整理内容生成，可溯源、少幻觉。',
+    detail: [
+      ['编排流程', '规划 → 学情与记忆 ∥ 知识库与搜索（强制调用子 Agent）→ 生成 → 审核 → 输出'],
+      ['知识库子 Agent', '知识库管理（整理检索片段）、搜索（整理联网结果）'],
+      ['生成模型', '强模型（质量优先）'],
+      ['子 Agent 调用', '强制调用知识库与搜索的子 Agent'],
+      ['审核', '标准三维度审核（符实性 / 难度适配 / 规范性）'],
+    ],
     agents: DEFAULT_AGENTS,
   },
   {
     name: '快速', desc: '主 Agent 生成使用快模型',
+    intro: '面向简单快速的问答——快速概念确认、即兴提问、碎片化学习。使用快模型，各节点分析从简，速度最快、消耗最低；复杂推导类问题不建议用。',
+    detail: [
+      ['编排流程', '规划（简化）→ 学情与记忆（简化）∥ 知识库与搜索（简化）→ 生成 → 审核（简化）→ 输出'],
+      ['生成模型', '快模型（速度优先）'],
+      ['知识库与搜索', '视问题需要自动调用'],
+      ['子 Agent 调用', '无'],
+      ['审核', '简化审核'],
+    ],
     agents: DEFAULT_AGENTS.map(a => a.id === 'main' ? { ...a, model: 'fast' } : { ...a }),
   },
   {
     name: '输出增强', desc: '主 Agent 调用子 Agent 产出结构化内容',
+    intro: '面向需要「结构化产出」的问题——学习笔记、要点总结、对比表格、思维导图、时间线、FAQ 清单等。主 Agent 规划时按问题选择输出子 Agent 产出专项内容，再组织成完整回答。',
+    detail: [
+      ['编排流程', '规划（按需选择输出子 Agent）→ 学情与记忆 ∥ 知识库与搜索 → 生成（基于子 Agent 产出）→ 审核 → 输出'],
+      ['输出子 Agent', '树状结构、要点卡片、思维导图、表格对比、流程图时序图、时间线、FAQ 问答对、清单检查单（按问题选 0-3 个）'],
+      ['生成模型', '强模型（质量优先）'],
+      ['子 Agent 调用', '按需调用输出子 Agent'],
+      ['审核', '标准三维度审核（符实性 / 难度适配 / 规范性）'],
+    ],
     agents: DEFAULT_AGENTS,
   },
 ]
@@ -405,6 +440,25 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   const fieldLabel = 'text-xs font-semibold text-dim uppercase tracking-wider mb-2 block'
   // 模板与编排：模板集合（预设 + 自定义）、保存自定义
   const allTemplates = [...PRESET_TEMPLATES, ...customTemplates]
+  // 模板介绍：自定义模板无内置文案时，从 Agent 团队配置推导细节
+  const tplInfo = (t: { name: string; intro?: string; detail?: Array<[string, string]>; agents: AgentConfig[] }) => {
+    if (t.intro && t.detail) return { intro: t.intro, detail: t.detail }
+    const main = t.agents.find(a => a.id === 'main')
+    const kb = t.agents.find(a => a.id === 'kb')
+    const review = t.agents.find(a => a.id === 'review')
+    const mainSubs = main?.subAgents?.map(s => s.name) || []
+    const kbSubs = kb?.subAgents?.map(s => s.name) || []
+    return {
+      intro: '自定义模板：基于你保存的 Agent 团队配置，含自定义的 Agent 设定与子 Agent，编排流程与默认一致。',
+      detail: [
+        ['编排流程', '规划 → 学情与记忆 ∥ 知识库与搜索 → 生成 → 审核 → 输出'],
+        ['生成模型', main?.model === 'fast' ? '快模型（速度优先）' : '强模型（质量优先）'],
+        ['知识库子 Agent', kbSubs.length ? kbSubs.join('、') : '无'],
+        ['主 Agent 子 Agent', mainSubs.length ? `${mainSubs.length} 个（${mainSubs.join('、')}）` : '无'],
+        ['审核重试上限', String(review?.retryMax ?? 2)],
+      ],
+    }
+  }
   const saveCustomTemplate = () => {
     const name = saveTplName.trim()
     if (!name) return
@@ -777,6 +831,30 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
           </div>
         )}
       </div>
+      {/* 右侧：模板介绍（选中模板时显示：概述 + 预设内部细节只读展示） */}
+      {block === 'templates' && selectedTpl && (() => {
+        const tpl = allTemplates.find(t => t.name === selectedTpl)
+        if (!tpl) return null
+        const info = tplInfo(tpl)
+        return (
+          <div className="w-80 flex-shrink-0 border-l hairline bg-[var(--bg-hover)] p-5 flex flex-col gap-5 overflow-y-auto">
+            <p className="text-sm font-bold flex items-center gap-2"><LayoutTemplate size={15} /> {tpl.name} 模板</p>
+            <div className="flex flex-col gap-1.5">
+              <p className="text-xs font-semibold text-dim uppercase tracking-wider">适用场景</p>
+              <p className="text-xs leading-relaxed text-[var(--text-muted)]">{info.intro}</p>
+            </div>
+            <div className="flex flex-col gap-2.5">
+              <p className="text-xs font-semibold text-dim uppercase tracking-wider">内部细节设定<span className="ml-1 text-[9px] font-normal text-dim/70">（预设，仅展示）</span></p>
+              {info.detail.map(([k, v]) => (
+                <div key={k} className="flex flex-col gap-0.5">
+                  <span className="text-[10px] font-semibold text-dim uppercase tracking-wider">{k}</span>
+                  <span className="text-[11px] leading-relaxed text-[var(--text-muted)]">{v}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
       {/* 中间层 Agent 设定弹窗（点击图中圆心节点打开） */}
       {showMidAgent && agent && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setShowMidAgent(false)}>
