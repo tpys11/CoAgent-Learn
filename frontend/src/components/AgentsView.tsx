@@ -25,16 +25,20 @@ const NODE_BY_AGENT: Record<string, string[]> = {
   main: ['plan', 'generate'], study: ['study_memory'], kb: ['kb'], review: ['review'],
 }
 
-/** 预设模板库 */
+/** 预设模板库（基础 / 检索增强 / 快速 / 输出增强） */
 const PRESET_TEMPLATES: Array<{ name: string; desc: string; agents: AgentConfig[] }> = [
-  { name: '均衡模式', desc: '与默认一致', agents: DEFAULT_AGENTS },
+  { name: '基础', desc: '默认编排', agents: DEFAULT_AGENTS },
   {
-    name: '质量优先', desc: '审核更严格（重试 3 次、严格模式）',
-    agents: DEFAULT_AGENTS.map(a => a.id === 'review' ? { ...a, retryMax: 3, mode: '严格' } : { ...a }),
+    name: '检索增强', desc: '知识库管理调用子 Agent 整理资料',
+    agents: DEFAULT_AGENTS,
   },
   {
-    name: '响应更快', desc: '主 Agent 生成也使用快模型',
+    name: '快速', desc: '主 Agent 生成使用快模型',
     agents: DEFAULT_AGENTS.map(a => a.id === 'main' ? { ...a, model: 'fast' } : { ...a }),
+  },
+  {
+    name: '输出增强', desc: '主 Agent 调用子 Agent 产出结构化内容',
+    agents: DEFAULT_AGENTS,
   },
 ]
 
@@ -43,9 +47,10 @@ const CUSTOM_TEMPLATES_KEY = 'coagent-custom-templates'
 
 /** 各模板的节点颜色深浅分布：按模板编排的基础逻辑标注各节点职责负载（0-5，越深负载越高） */
 const TEMPLATE_LEVELS: Record<string, Record<string, number>> = {
-  '均衡模式': { plan: 1, study_memory: 2, kb: 2, generate: 4, review: 3 },
-  '质量优先': { plan: 1, study_memory: 2, kb: 3, generate: 4, review: 5 },
-  '响应更快': { plan: 1, study_memory: 1, kb: 1, generate: 2, review: 2 },
+  '基础': { plan: 1, study_memory: 2, kb: 2, generate: 4, review: 3 },
+  '检索增强': { plan: 1, study_memory: 2, kb: 4, generate: 4, review: 3 },
+  '快速': { plan: 1, study_memory: 1, kb: 1, generate: 2, review: 2 },
+  '输出增强': { plan: 1, study_memory: 2, kb: 2, generate: 5, review: 3 },
 }
 
 /** 模型选择中文标签 */
@@ -120,7 +125,7 @@ const BLOCKS: Array<{ key: Block; icon: any; label: string }> = [
 ]
 
 /** 编排节点图：节点 + 箭头；节点背景色深浅按模板编排的基础逻辑标注（节点在流程中的职责负载，与内部运行数据无关） */
-function FlowNode({ icon: Icon, name, level = 0, active, onClick }: { icon: any; name: string; level?: number; active?: boolean; onClick?: () => void }) {
+function FlowNode({ icon: Icon, name, level = 0, active, onClick, subs, subActive }: { icon: any; name: string; level?: number; active?: boolean; onClick?: () => void; subs?: string[]; subActive?: boolean }) {
   const pct = [10, 22, 38, 56, 76, 100][Math.min(Math.max(level, 0), 5)]
   const dark = level >= 3
   return (
@@ -131,6 +136,13 @@ function FlowNode({ icon: Icon, name, level = 0, active, onClick }: { icon: any;
       } ${active ? 'border-[var(--accent)] shadow-soft' : 'border-[var(--border-color)]'} ${dark ? 'text-white' : 'text-[var(--text)]'}`}>
       {Icon && <Icon size={18} className={dark ? 'text-white' : active ? 'text-[var(--accent)]' : 'text-dim'} />}
       <span className="text-xs font-bold">{name}</span>
+      {subs && subs.length > 0 && (
+        <span className="flex flex-wrap gap-1 justify-center max-w-[130px]">
+          {subs.map(s => (
+            <span key={s} className={`text-[8px] px-1.5 py-0.5 rounded-full border whitespace-nowrap ${subActive ? 'bg-[#1a1a1a] text-white border-[#1a1a1a]' : 'border-[var(--border-color)] text-dim'}`}>{s}</span>
+          ))}
+        </span>
+      )}
     </button>
   )
 }
@@ -141,20 +153,26 @@ const FlowArrow = () => <span className="text-dim flex-shrink-0 text-base">→</
 const FlowGraph = ({ agents, templateName, templateAgentId, onSelect }: { agents?: AgentConfig[]; templateName?: string; templateAgentId?: string; onSelect?: (id: string) => void }) => {
   const act = (id: string) => templateAgentId === id
   const pick = (id: string) => onSelect ? () => onSelect(id) : undefined
-  // 当前模板对应的节点职责负载分布（未选中模板时按均衡模式）
-  const levels = TEMPLATE_LEVELS[templateName || '均衡模式'] || TEMPLATE_LEVELS['均衡模式']
+  // 当前模板对应的节点职责负载分布（未选中模板时按基础模板）
+  const levels = TEMPLATE_LEVELS[templateName || '基础'] || TEMPLATE_LEVELS['基础']
   const lv = (n: string) => levels[n] || 0
+  // 子 Agent：kb（检索增强模板调用）/ main（输出增强模板调用）
+  const subOf = (id: string) => ((agents || []).find(a => a.id === id)?.subAgents || []).map(s => s.name)
+  const kbSubs = subOf('kb')
+  const mainSubs = subOf('main')
+  const kbSubActive = templateName === '检索增强'
+  const mainSubActive = templateName === '输出增强'
   return (
     <div className="flex items-center justify-center gap-2 flex-wrap">
-      <FlowNode icon={Workflow} name="规划" level={lv('plan')} active={act('main')} onClick={pick('main')} />
+      <FlowNode icon={Workflow} name="规划" level={lv('plan')} active={act('main')} onClick={pick('main')} subs={mainSubs} subActive={mainSubActive} />
       <FlowArrow />
       <div className="flex flex-col gap-1 items-center">
         <FlowNode icon={Brain} name="学情与记忆" level={lv('study_memory')} active={act('study')} onClick={pick('study')} />
         <span className="text-[9px] text-dim">∥ 并行</span>
-        <FlowNode icon={Database} name="知识库" level={lv('kb')} active={act('kb')} onClick={pick('kb')} />
+        <FlowNode icon={Database} name="知识库" level={lv('kb')} active={act('kb')} onClick={pick('kb')} subs={kbSubs} subActive={kbSubActive} />
       </div>
       <FlowArrow />
-      <FlowNode icon={Workflow} name="生成" level={lv('generate')} active={act('main')} onClick={pick('main')} />
+      <FlowNode icon={Workflow} name="生成" level={lv('generate')} active={act('main')} onClick={pick('main')} subs={mainSubs} subActive={mainSubActive} />
       <FlowArrow />
       <FlowNode icon={Scale} name="审核" level={lv('review')} active={act('review')} onClick={pick('review')} />
       <FlowArrow />
@@ -202,6 +220,11 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   })
   const [saveTplName, setSaveTplName] = useState('')
   const [showNewTplModal, setShowNewTplModal] = useState(false)
+  // 子 Agent 添加弹窗
+  const [showSubAdd, setShowSubAdd] = useState(false)
+  const [subName, setSubName] = useState('')
+  const [subForm, setSubForm] = useState('')
+  const [subPrompt, setSubPrompt] = useState('')
   // Skill 管理四区
   const [skillTab, setSkillTab] = useState('installed')
   const [skillCat, setSkillCat] = useState('all')
@@ -705,12 +728,58 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                 <textarea value={tplAgent.systemPrompt} onChange={e => commitTpl({ systemPrompt: e.target.value })} rows={5}
                   className="w-full px-3 py-2 border hairline rounded-xl text-xs font-mono outline-none resize-none focus:border-[var(--border-strong)] bg-[var(--bg-input)]" />
               </div>
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold text-dim uppercase tracking-wider">子 Agent</p>
+                  <button onClick={() => { setSubName(''); setSubForm(''); setSubPrompt(''); setShowSubAdd(true) }}
+                    className="text-[10px] px-2 py-1 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">＋ 添加</button>
+                </div>
+                {tplAgent.subAgents && tplAgent.subAgents.length > 0 ? (
+                  <div className="flex flex-col gap-2">
+                    {tplAgent.subAgents.map(s => (
+                      <div key={s.id} className="border hairline rounded-xl p-2.5 bg-[var(--bg-input)] flex flex-col gap-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] font-medium truncate">{s.name}</span>
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--bg-panel)] text-dim flex-shrink-0">{s.form}</span>
+                          <button onClick={() => commitTpl({ subAgents: (tplAgent.subAgents || []).filter(x => x.id !== s.id) })}
+                            className="ml-auto text-dim hover:text-red-500 text-[10px] px-1" title="删除">✕</button>
+                        </div>
+                        <p className="text-[9px] text-dim leading-snug line-clamp-2">{s.subPrompt}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-dim">无</p>
+                )}
+              </div>
             </>
           ) : (
             <p className="text-xs text-dim text-center py-10">点击节点选择 Agent</p>
           )}
         </div>
         </>
+      )}
+      {/* 子 Agent 添加弹窗 */}
+      {showSubAdd && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setShowSubAdd(false)}>
+          <div className="bg-[var(--bg-panel)] rounded-2xl shadow-xl w-full max-w-md p-5 mx-4 flex flex-col gap-3" onClick={e => e.stopPropagation()}>
+            <p className="text-base font-bold">添加子 Agent</p>
+            <input autoFocus value={subName} onChange={e => setSubName(e.target.value)} placeholder="名称（如：树状结构）"
+              className="w-full px-3 py-2 text-xs input-surface rounded-lg outline-none" />
+            <input value={subForm} onChange={e => setSubForm(e.target.value)} placeholder="输出形式（如：树状 / 卡片 / 解析）"
+              className="w-full px-3 py-2 text-xs input-surface rounded-lg outline-none" />
+            <textarea value={subPrompt} onChange={e => setSubPrompt(e.target.value)} placeholder="职责提示词（子 Agent 被调用时执行的专项任务）" rows={4}
+              className="w-full px-3 py-2 text-xs input-surface rounded-lg outline-none resize-none" />
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setShowSubAdd(false)} className="px-4 py-2 text-xs text-dim row-hover rounded-lg">取消</button>
+              <button onClick={() => {
+                if (!subName.trim() || !subPrompt.trim()) return
+                commitTpl({ subAgents: [...(tplAgent?.subAgents || []), { id: 'sub-' + Date.now(), name: subName.trim(), subPrompt: subPrompt.trim(), form: subForm.trim() }] })
+                setShowSubAdd(false)
+              }} className="px-4 py-2 text-xs bg-[#1a1a1a] text-white rounded-lg font-semibold">添加</button>
+            </div>
+          </div>
+        </div>
       )}
       {/* 新建模板弹窗 */}
       {showNewTplModal && (

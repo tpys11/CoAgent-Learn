@@ -130,9 +130,10 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   const [showModelModal, setShowModelModal] = useState(false)
   // 模板模式：与「模板与编排」预设模板一致
 const TEMPLATE_OPTIONS = [
-  { name: '均衡模式', desc: '生成最重、审核次之（默认编排）' },
-  { name: '质量优先', desc: '审核更严格（重试 3 次、严格模式）' },
-  { name: '响应更快', desc: '生成用快模型，整体负载轻' },
+  { name: '基础', desc: '默认编排' },
+  { name: '检索增强', desc: '知识库管理调用子 Agent 整理资料' },
+  { name: '快速', desc: '生成用快模型' },
+  { name: '输出增强', desc: '主 Agent 调用子 Agent 产出结构化内容' },
 ]
 
 /** 模型厂家配置（仅保留最常用：DeepSeek / 智谱GLM） */
@@ -146,7 +147,7 @@ const TEMPLATE_OPTIONS = [
     return (m === 'deepseek-chat' || m === 'deepseek-reasoner') ? 'deepseek-pro' : m
   })
   // 模板模式（与模板与编排预设一致）
-  const [templateMode, setTemplateMode] = useState(() => localStorage.getItem('coagent-template') || '均衡模式')
+  const [templateMode, setTemplateMode] = useState(() => { const t = localStorage.getItem('coagent-template') || '基础'; return ['基础', '检索增强', '快速', '输出增强'].includes(t) ? t : '基础' })
   // Auto：AI 根据输入自动选择模板/模式（开启后手动设置按钮禁用）
   const [autoMode, setAutoMode] = useState(() => localStorage.getItem('coagent-auto') === '1')
   // 模型 Auto：AI 根据输入自动选择模型（模型选择上拉栏内开关）

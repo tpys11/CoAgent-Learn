@@ -57,6 +57,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                     model: str | None = None, base_url: str | None = None, agents: list | None = None):
     settings = settings or {}
     agents = agents or []
+    tpl = settings.get("template") or "基础"  # 基础 / 检索增强 / 快速 / 输出增强
     # 主模型：生成节点使用（用户所选模型）
     llm_main = DeepSeekLLM(api_key=api_key, model=model, base_url=base_url)
     # 快模型：决策类节点（规划/学情/审核）使用
@@ -217,6 +218,28 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             thinking += f"；联网搜索 {sres.get('total', 0)} 条"
         except Exception:
             state["search_results"] = []
+        # 检索增强模板：调用知识库管理 Agent 的子 Agent（如 资料解析）整理检索结果
+        kb_cfg = _agent_cfg("kb")
+        kb_subs = kb_cfg.get("subAgents") or []
+        if tpl == "检索增强" and kb_subs:
+            sub_parts = []
+            for sub in kb_subs:
+                try:
+                    _sp = (sub.get("subPrompt") or "") + "\n请只输出整理结果本身。"
+                    _in = "检索材料：\n" + json.dumps({
+                        "knowledge": state.get("knowledge", []),
+                        "search": state.get("search_results", []),
+                    }, ensure_ascii=False)[:4000]
+                    _t, _r = think_then_json(llm_fast, _sp, _in, sub.get("name") or "资料解析")
+                    _c = (_r.get("content") if isinstance(_r, dict) and _r.get("content") else _t) or ""
+                    if _c:
+                        sub_parts.append(f"【{sub.get('name')}】\n" + str(_c)[:1200])
+                except Exception:
+                    pass
+            if sub_parts:
+                state["sub_outputs"] = {**(state.get("sub_outputs") or {}), "kb": "\n".join(sub_parts)}
+                state.setdefault("mindchain", []).append({"agent": "知识库管理·子Agent", "content": f"调用 {len(sub_parts)} 个子Agent整理资料"})
+                thinking += f"；子Agent整理 {len(sub_parts)} 项"
         _stats(state, "kb", int((time.time() - t0) * 1000), 0, 0)
         state["mindchain"].append({"agent": "知识库管理", "content": thinking})
         state.setdefault("steps", []).append({"agent": "知识库管理", "status": "done"})
@@ -247,6 +270,8 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             context += f"学情: {json.dumps(state['profile'], ensure_ascii=False)}" + NL
         if state.get("knowledge"): context += f"知识库: {json.dumps(state['knowledge'], ensure_ascii=False)}" + NL
         if state.get("search_results"): context += f"联网搜索: {json.dumps(state['search_results'], ensure_ascii=False)}" + NL
+        if state.get("sub_outputs") and state["sub_outputs"].get("kb"):
+            context += NL + "【知识库子Agent整理】" + NL + state["sub_outputs"]["kb"] + NL
         if state.get("review_feedback"): context += NL + "【审核修正要求】上一版未通过审核，请针对以下意见修改后再生成：" + NL + state["review_feedback"] + NL
         # 读最近对话历史（历史条数可配置）
         try:
@@ -263,6 +288,25 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                         context += ("user: " if _r.get("role") == "user" else "assistant: ") + _c[:150] + NL
         except Exception:
             pass
+        # 输出增强模板：调用主 Agent 的子 Agent（如 树状结构/要点卡片）产出专项内容，主 Agent 基于其生成
+        main_subs = cfg.get("subAgents") or []
+        if tpl == "输出增强" and main_subs:
+            sub_parts = []
+            for sub in main_subs:
+                try:
+                    _sp = (sub.get("subPrompt") or "") + "\n只输出该形式的内容本身。"
+                    _form = sub.get("form") or ""
+                    _in = f"主题：{state['user_input'][:500]}\n\n参考材料：\n" + context[-2500:]
+                    _t, _r = think_then_json(llm_fast, _sp, _in, sub.get("name") or "输出子Agent")
+                    _c = (_r.get("content") if isinstance(_r, dict) and _r.get("content") else _t) or ""
+                    if _c:
+                        sub_parts.append(f"【{sub.get('name')}{'（' + _form + '）' if _form else ''}】\n" + str(_c)[:1500])
+                        state.setdefault("mindchain", []).append({"agent": "主Agent·子Agent", "content": f"{sub.get('name')} 产出完成"})
+                except Exception:
+                    pass
+            if sub_parts:
+                state["sub_outputs"] = {**(state.get("sub_outputs") or {}), "gen": "\n\n".join(sub_parts)}
+                context += "\n\n【子Agent 专项产出（请基于这些产出组织最终回答）】\n" + state["sub_outputs"]["gen"]
         try:
             thinking, result = think_then_json(_pick_llm(cfg, llm_main), _GENERATE_PROMPT,
                 _append_example(cfg, context), "主Agent")

@@ -41,6 +41,8 @@ export interface AgentConfig {
   role?: string
   /** 输入输出 JSON 示例（few-shot，可选） */
   example?: string
+  /** 子 Agent：该 Agent 可调用的专项子 Agent（不同模板下被调用产出特定形式内容） */
+  subAgents?: Array<{ id: string; name: string; subPrompt: string; form: string }>
 }
 
 export interface Message {
@@ -79,6 +81,10 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
     enabled: true,
     role: '负责全局调度与最终生成：解析输入 → 一次规划调用学情/知识库子 Agent → 汇总学情画像与检索结果 → 生成讲义、实操指南、分阶测试题 → 提交审核。',
     example: '',
+    subAgents: [
+      { id: 'tree', name: '树状结构', subPrompt: '你是内容结构化助手。根据给定材料，输出一份树状结构（层级缩进，每个节点一句话概括，节点不超过三层），清晰展示内容的组织关系。', form: '树状' },
+      { id: 'cards', name: '要点卡片', subPrompt: '你是要点提炼助手。根据给定材料，输出 3-6 张要点卡片（每张卡片：要点标题 + 一句话说明 + 关键细节），便于快速记忆。', form: '卡片' },
+    ],
   },
   {
     id: 'study',
@@ -115,6 +121,9 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
     enabled: true,
     role: '检索知识库向量库中的相关片段并联网补充信息，为生成提供可溯源的参考资料（纯工具调用，不消耗 LLM 推理）。',
     example: '',
+    subAgents: [
+      { id: 'parse', name: '资料解析', subPrompt: '你是资料解析助手。把检索到的资料整理为「来源 → 核心观点 → 关键数据」的条目式结果，只输出整理结果本身。', form: '解析' },
+    ],
   },
   {
     id: 'review',
