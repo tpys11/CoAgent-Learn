@@ -225,6 +225,16 @@ function TreeGraph({ nodes, rootName, open, onToggle, onOpen, currentPath }: {
   const viewRef = useRef(view)
   viewRef.current = view
   const dragRef = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null)
+  const downTargetRef = useRef<HTMLElement | null>(null)
+
+  // path → 节点索引（点击判定用）
+  const pathIndex = useMemo(() => {
+    const m = new Map<string, TreeNode>()
+    const walk = (ns: TreeNode[]) => { for (const n of ns) { m.set(n.path, n); if (n.children) walk(n.children) } }
+    walk(nodes)
+    m.set('/', { name: rootName || '库', path: '/', kind: 'dir', children: nodes })
+    return m
+  }, [nodes, rootName])
 
   // 子树高度（根节点始终展开；折叠/叶子 = 单节点高；展开 = 子块和 + 间距）
   const isRootNode = (n: TreeNode) => n.path === '/'
@@ -291,6 +301,7 @@ function TreeGraph({ nodes, rootName, open, onToggle, onOpen, currentPath }: {
   }
 
   const onPointerDown = (e: React.PointerEvent) => {
+    downTargetRef.current = e.target as HTMLElement
     dragRef.current = { x: e.clientX, y: e.clientY, tx: view.tx, ty: view.ty }
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
   }
@@ -299,7 +310,25 @@ function TreeGraph({ nodes, rootName, open, onToggle, onOpen, currentPath }: {
     if (!d) return
     setView(v => ({ ...v, tx: d.tx + (e.clientX - d.x), ty: d.ty + (e.clientY - d.y) }))
   }
-  const onPointerUp = () => { dragRef.current = null }
+  const onPointerUp = (e: React.PointerEvent) => {
+    const d = dragRef.current
+    const moved = d ? Math.abs(e.clientX - d.x) + Math.abs(e.clientY - d.y) > 6 : false
+    dragRef.current = null
+    // 位移很小 = 点击：pointer capture 会吞掉子按钮 click，这里手动触发
+    if (!moved && downTargetRef.current) {
+      const btn = downTargetRef.current.closest('button[data-node]') as HTMLElement | null
+      if (btn) {
+        const path = btn.getAttribute('data-path') || ''
+        const kind = btn.getAttribute('data-kind') || ''
+        const node = pathIndex.get(path)
+        if (node) {
+          if (kind === 'dir') onToggle(path)
+          else onOpen(node)
+        }
+      }
+    }
+    downTargetRef.current = null
+  }
 
   return (
     <div ref={wrapRef}
@@ -327,7 +356,8 @@ function TreeGraph({ nodes, rootName, open, onToggle, onOpen, currentPath }: {
           const active = !isDir && currentPath === n.path
           return (
             <div key={i} className="absolute" style={{ left: p.x, top: p.y, width: NODE_W, height: NODE_H }}>
-              <button onClick={() => isDir ? onToggle(n.path) : onOpen(n)}
+              <button data-node data-path={n.path} data-kind={n.kind}
+                onClick={() => isDir ? onToggle(n.path) : onOpen(n)}
                 title={n.name}
                 className={`w-full h-full flex items-center gap-2 px-3 rounded-xl border text-xs transition-all cursor-pointer ${
                   isRoot
@@ -443,7 +473,7 @@ function ObsidianViewInner() {
   useEffect(() => {
     if (!current || !rootHandle || !articleRef.current) return
     const root = articleRef.current
-    root.querySelectorAll('.obs-embed[data-loaded!="1"]').forEach(async el => {
+    root.querySelectorAll('.obs-embed:not([data-loaded="1"])').forEach(async el => {
       const name = el.getAttribute('data-wiki') || ''
       el.setAttribute('data-loaded', '1')
       const node = nameIndex.get(name)
