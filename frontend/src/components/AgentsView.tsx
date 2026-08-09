@@ -144,7 +144,7 @@ const FlowArrow = () => <span className="text-dim flex-shrink-0 text-base">→</
 /** 子 Agent 独立矩形节点 */
 function SubNode({ name, active }: { name: string; active?: boolean }) {
   return (
-    <div className={`px-2.5 py-1.5 rounded-lg border text-[9px] whitespace-nowrap transition-colors ${
+    <div className={`px-3.5 py-2 rounded-xl border-2 text-[11px] font-medium whitespace-nowrap transition-colors ${
       active ? 'bg-[#1a1a1a] text-white border-[#1a1a1a]' : 'bg-[var(--bg-panel)] text-dim border-[var(--border-color)]'
     }`}>
       {name}
@@ -152,15 +152,25 @@ function SubNode({ name, active }: { name: string; active?: boolean }) {
   )
 }
 
-/** 父 Agent 节点 + 连线 + 子 Agent 独立矩形（子 Agent 从父节点底部伸出连线连接） */
+/** 父 Agent 节点 + 弯曲连线 + 子 Agent 独立矩形（每条线从父节点底中心弯曲到对应子节点） */
 function AgentWithSubs({ node, subs, subActive }: { node: React.ReactNode; subs?: string[]; subActive?: boolean }) {
   if (!subs || subs.length === 0) return <>{node}</>
+  const n = subs.length
   return (
-    <div className="flex flex-col items-center gap-1">
+    <div className="flex flex-col items-center">
       {node}
-      <span className="w-px h-2.5 bg-[#d4d4d4]" />
-      <div className="flex flex-wrap gap-1.5 justify-center max-w-[220px]">
-        {subs.map(s => <SubNode key={s} name={s} active={subActive} />)}
+      <div className="flex gap-2 justify-center" style={{ maxWidth: 300 }}>
+        {subs.map((s, i) => {
+          const mid = ((i + 0.5) / n) * 100
+          return (
+            <div key={s} className="flex-1 flex flex-col items-center">
+              <svg width="100%" height="20" viewBox="0 0 100 20" preserveAspectRatio="none">
+                <path d={`M 50 0 C 50 8, ${mid} 10, ${mid} 20`} stroke="#d4d4d4" strokeWidth="1.5" fill="none" />
+              </svg>
+              <SubNode name={s} active={subActive} />
+            </div>
+          )
+        })}
       </div>
     </div>
   )
