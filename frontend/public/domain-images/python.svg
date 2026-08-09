@@ -1,0 +1,17 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2563eb"/><stop offset="1" stop-color="#1e40af"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="360" fill="url(#g)"/>
+  <circle cx="540" cy="100" r="80" fill="rgba(255,255,255,0.10)"/>
+  <circle cx="90" cy="310" r="100" fill="rgba(255,255,255,0.07)"/>
+  <path d="M180 130 q-55 55 0 110 q55 55 0 110" stroke="#fbbf24" stroke-width="26" fill="none" stroke-linecap="round"/>
+  <path d="M180 130 q-55 55 0 110 q55 55 0 110" stroke="#2563eb" stroke-width="13" fill="none" stroke-linecap="round"/>
+  <circle cx="155" cy="115" r="17" fill="#fbbf24"/>
+  <path d="M330 130 q-55 55 0 110 q55 55 0 110" stroke="#4ade80" stroke-width="26" fill="none" stroke-linecap="round" opacity="0.95"/>
+  <path d="M330 130 q-55 55 0 110 q55 55 0 110" stroke="#1e40af" stroke-width="13" fill="none" stroke-linecap="round"/>
+  <circle cx="305" cy="115" r="17" fill="#4ade80"/>
+  <text x="452" y="300" font-family="sans-serif" font-size="40" font-weight="bold" fill="#ffffff" opacity="0.92">Python</text>
+</svg>

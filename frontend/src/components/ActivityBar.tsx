@@ -1,4 +1,4 @@
-import { MessageSquare, GraduationCap, Library, Brain, Bot, FolderOpen, Settings } from 'lucide-react'
+import { MessageSquare, GraduationCap, Library, Brain, Bot, FolderOpen, Settings, Home } from 'lucide-react'
 
 export type ViewKey = 'chat' | 'tutorial' | 'resources' | 'memory' | 'knowledge' | 'agents' | 'obsidian'
 
@@ -9,7 +9,7 @@ interface Props {
 }
 
 const ITEMS: Array<{ key: ViewKey; icon: any; label: string }> = [
-  { key: 'chat', icon: MessageSquare, label: '对话' },
+  { key: 'chat', icon: Home, label: '主页' },
   { key: 'resources', icon: Library, label: '资源' },
   { key: 'memory', icon: Brain, label: '记忆' },
   { key: 'agents', icon: Bot, label: 'Agent' },

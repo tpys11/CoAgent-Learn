@@ -13,6 +13,7 @@ import RightPanel from './components/RightPanel'
 import SettingsModal, { ApiKeyPrompt } from './components/SettingsModal'
 import ProjectConfigModal from './components/ProjectConfigModal'
 import ObsidianView from './components/ObsidianView'
+import HomeView from './components/HomeView'
 import ProfileWizard from './components/ProfileWizard'
 import GuideModal from './components/GuideModal'
 import ActivityBar, { type ViewKey } from './components/ActivityBar'
@@ -53,6 +54,8 @@ function App() {
   const [wizard, setWizard] = useState<{mode: 'project'|'dialogue'; id: string; name?: string} | null>(null)
   const [showGuide, setShowGuide] = useState(false)
   const [view, setView] = useState<ViewKey>('chat')
+  // 主页模式：view=chat 时默认显示主页（按项目展开），进入项目后才显示对话界面
+  const [chatOpen, setChatOpen] = useState(false)
   // 记忆修改预填：从记忆界面跳转时，输入框以 [模块名] 引用并提示补充想法
   const [prefillInput, setPrefillInput] = useState('')
   // 项目记忆分析持久提示：从记忆界面跳转对话时显示（label 区分分析/修改基本情况）
@@ -191,6 +194,7 @@ function App() {
     if (pid) setCurrentProjectId(pid)
     setPrefillInput(`[${label}] 请帮我分析并修改这个记忆模块，我的想法：`)
     setView('chat')
+    setChatOpen(true)
   }
 
   /** 项目记忆重新分析：跳转对话界面，显示持久提示「项目记忆分析」 */
@@ -198,6 +202,12 @@ function App() {
     setShowProjectConfig(false)
     setAnalyzeHint({ label: '项目记忆分析', project: projectName })
     setView('chat')
+    setChatOpen(true)
+  }
+
+  const handleViewChange = (v: ViewKey) => {
+    setView(v)
+    if (v === 'chat') setChatOpen(false) // 点「主页」回到主页
   }
 
   const handleSendMessage = useCallback(async (text: string, settings?: Record<string, any>) => {
@@ -370,7 +380,7 @@ function App() {
 </header>
       <div className="flex-1 flex min-h-0 pb-3 pr-3">
       {/* 最左侧细轨：三界面切换 */}
-      <ActivityBar view={view} onChange={setView} onSettings={() => setShowSettings(true)} />
+      <ActivityBar view={view} onChange={handleViewChange} onSettings={() => setShowSettings(true)} />
       {sidebarCollapsed && (
         <button onClick={() => setSidebarCollapsed(false)} className="flex-shrink-0 w-7 h-7 mt-3 ml-1.5 flex items-center justify-center rounded-lg icon-btn" title="展开侧栏">
           <PanelLeftOpen size={15} />
@@ -379,10 +389,10 @@ function App() {
       {view === 'tutorial' && <TutorialView />}
       {view === 'resources' && <ResourceView projectId={currentProjectId} />}
       {view === 'memory' && <MemoryView projectId={currentProjectId} onRequestModify={handleRequestModify} onRequestAnalyze={handleRequestAnalyze} />}
-      {view === 'knowledge' && <KnowledgeView projectId={projectKBId ?? currentProjectId} onClose={() => setView('chat')} />}
+      {view === 'knowledge' && <KnowledgeView projectId={projectKBId ?? currentProjectId} onClose={() => { setView('chat'); setChatOpen(true) }} />}
       {view === 'agents' && <AgentsView agents={agents} onSave={handleSaveAgent} onReplace={handleReplaceAgents} projectId={currentProjectId} />}
       {view === 'obsidian' && <ObsidianView />}
-      {view === 'chat' && (<>
+      {view === 'chat' && (chatOpen ? (<>
       {/* 左侧栏（tonal 面板） */}
       {!sidebarCollapsed && (
         <>
@@ -438,9 +448,15 @@ function App() {
           </div>
         </>
       )}
-      </>)}
+      </>) : (
+        <HomeView
+          projects={projects}
+          onEnter={(id) => { setCurrentProjectId(id); setChatOpen(true) }}
+          onCreate={handleCreateProject}
+          onDelete={handleDeleteProject}
+        />
+      ))}
       </div>
-
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} projectId={currentProjectId} />}
       {showProjectConfig && (

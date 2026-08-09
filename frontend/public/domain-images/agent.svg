@@ -1,0 +1,19 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360" viewBox="0 0 640 360">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6366f1"/><stop offset="1" stop-color="#8b5cf6"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="360" fill="url(#g)"/>
+  <circle cx="500" cy="120" r="70" fill="rgba(255,255,255,0.12)"/>
+  <circle cx="110" cy="300" r="90" fill="rgba(255,255,255,0.08)"/>
+  <rect x="245" y="110" width="150" height="110" rx="22" fill="#ffffff"/>
+  <circle cx="288" cy="152" r="13" fill="#6366f1"/>
+  <circle cx="352" cy="152" r="13" fill="#6366f1"/>
+  <path d="M295 192 q25 20 50 0" stroke="#6366f1" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <rect x="285" y="220" width="70" height="62" rx="10" fill="#ffffff"/>
+  <path d="M306 250 h28 M306 264 h28" stroke="#6366f1" stroke-width="5" stroke-linecap="round"/>
+  <line x1="320" y1="110" x2="320" y2="82" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="320" cy="76" r="7" fill="#fbbf24"/>
+  <text x="420" y="310" font-family="sans-serif" font-size="40" font-weight="bold" fill="#ffffff" opacity="0.92">Agent</text>
+</svg>
