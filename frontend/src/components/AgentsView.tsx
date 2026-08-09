@@ -178,9 +178,9 @@ function AgentWithSubs({ node, subs, subActive }: { node: React.ReactNode; subs?
 /** 环绕图：中心节点（输出增强/检索增强）+ 子 Agent 均匀环绕一圈，中心到每个子 Agent 画曲线 */
 function SubRing({ center, subs, onPick, onCenterClick }: { center: string; subs: Array<{ id: string; name: string; form: string; subPrompt: string }>; onPick?: (s: { id: string; name: string; form: string; subPrompt: string }) => void; onCenterClick?: () => void }) {
   const n = subs.length
-  const W = 360, H = 300
+  const W = 400, H = 340
   const cx = W / 2, cy = H / 2
-  const R = 104
+  const R = 122
   const pos = (i: number) => {
     const a = (-90 + i * (360 / n)) * Math.PI / 180
     return { x: cx + R * Math.cos(a), y: cy + R * Math.sin(a) }
@@ -192,7 +192,7 @@ function SubRing({ center, subs, onPick, onCenterClick }: { center: string; subs
           const { x, y } = pos(i)
           const mx = (cx + x) / 2
           const my = (cy + y) / 2
-          return <path key={s.id} d={`M ${cx} ${cy} Q ${mx} ${my - 16}, ${x} ${y}`} stroke="#d4d4d4" strokeWidth="1.5" fill="none" />
+          return <path key={s.id} d={`M ${cx} ${cy} Q ${mx} ${my - 22}, ${x} ${y}`} stroke="#d4d4d4" strokeWidth="1.5" fill="none" strokeDasharray="4 3" />
         })}
       </svg>
       {/* 中心节点（可点开进入设定） */}
@@ -269,23 +269,23 @@ function AgentRow({ node, subs }: { node: React.ReactNode; subs?: string[] }) {
     <div className="relative">
       {node}
       {left.length > 0 && (
-        <div className="absolute right-full top-1/2 -translate-y-1/2 mr-3 flex flex-col gap-2 items-end">
+        <div className="absolute right-full top-1/2 -translate-y-1/2 mr-4 flex flex-col gap-3 items-end">
           {left.map((s, i) => (
             <div key={s} className="flex items-center">
               <SubNode name={s} />
-              <svg width="36" height="40" viewBox="0 0 36 40" className="flex-shrink-0">
-                <path d={`M 36 20 Q 18 ${i % 2 === 0 ? 2 : 38}, 0 20`} stroke="#d4d4d4" strokeWidth="1.5" fill="none" />
+              <svg width="46" height="44" viewBox="0 0 46 44" className="flex-shrink-0">
+                <path d={`M 46 22 Q 23 ${i % 2 === 0 ? 2 : 42}, 0 22`} stroke="#d4d4d4" strokeWidth="1.5" fill="none" strokeDasharray="4 3" />
               </svg>
             </div>
           ))}
         </div>
       )}
       {right.length > 0 && (
-        <div className="absolute left-full top-1/2 -translate-y-1/2 ml-3 flex flex-col gap-2 items-start">
+        <div className="absolute left-full top-1/2 -translate-y-1/2 ml-4 flex flex-col gap-3 items-start">
           {right.map((s, i) => (
             <div key={s} className="flex items-center">
-              <svg width="36" height="40" viewBox="0 0 36 40" className="flex-shrink-0">
-                <path d={`M 0 20 Q 18 ${i % 2 === 0 ? 2 : 38}, 36 20`} stroke="#d4d4d4" strokeWidth="1.5" fill="none" />
+              <svg width="46" height="44" viewBox="0 0 46 44" className="flex-shrink-0">
+                <path d={`M 0 22 Q 23 ${i % 2 === 0 ? 2 : 42}, 46 22`} stroke="#d4d4d4" strokeWidth="1.5" fill="none" strokeDasharray="4 3" />
               </svg>
               <SubNode name={s} />
             </div>
