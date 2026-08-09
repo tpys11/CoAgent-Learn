@@ -114,7 +114,7 @@ function CalendarHeatmap({ data, onPick }: { data: Record<string, number>; onPic
   for (let d = 1; d <= daysInMonth; d++) {
     cells.push({ date: `${ym.y}-${String(ym.m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`, day: d })
   }
-  const level = (c: number) => c <= 0 ? 'bg-[#ececec]' : c <= 2 ? 'bg-emerald-200' : c <= 5 ? 'bg-emerald-400' : c <= 9 ? 'bg-emerald-600' : 'bg-emerald-800'
+  const level = (c: number) => c <= 0 ? '#f2f2f2' : c <= 2 ? `color-mix(in srgb, var(--accent) 22%, white)` : c <= 5 ? `color-mix(in srgb, var(--accent) 45%, white)` : c <= 9 ? `color-mix(in srgb, var(--accent) 70%, white)` : `color-mix(in srgb, var(--accent) 95%, white)`
   const shift = (delta: number) => {
     const d = new Date(ym.y, ym.m + delta, 1)
     setYm({ y: d.getFullYear(), m: d.getMonth() })
@@ -133,19 +133,11 @@ function CalendarHeatmap({ data, onPick }: { data: Record<string, number>; onPic
         {cells.map((c, i) => c ? (
           <button key={i} onClick={() => onPick?.(c.date)}
             title={`${c.date}${data[c.date] ? ` · ${data[c.date]} 次对话` : ' · 无记录'}`}
-            className={`h-7 rounded-md text-[10px] flex items-center justify-center transition-colors ${level(data[c.date] || 0)} ${c.date === today ? 'ring-2 ring-[#1a1a1a] ring-offset-1' : ''} ${data[c.date] ? 'text-white font-medium' : 'text-dim'}`}>
+            className={`h-8 rounded-lg text-[10px] flex items-center justify-center transition-colors ${data[c.date] ? 'font-medium text-white' : 'text-dim'} ${c.date === today ? 'ring-2 ring-[var(--accent)] ring-offset-1' : ''}`}
+            style={data[c.date] ? { background: level(data[c.date] || 0) } : undefined}>
             {c.day}
           </button>
         ) : <span key={i} />)}
-      </div>
-      <div className="flex items-center justify-end gap-1 text-[9px] text-dim">
-        <span>少</span>
-        <span className="w-3.5 h-3.5 rounded bg-[#ececec]" />
-        <span className="w-3.5 h-3.5 rounded bg-emerald-200" />
-        <span className="w-3.5 h-3.5 rounded bg-emerald-400" />
-        <span className="w-3.5 h-3.5 rounded bg-emerald-600" />
-        <span className="w-3.5 h-3.5 rounded bg-emerald-800" />
-        <span>多</span>
       </div>
     </div>
   )
@@ -221,7 +213,7 @@ function KnowledgeTree({ treeDocs, progressItems }: { treeDocs: Array<{ source: 
   )
 }
 
-/** 时间折线图：纵轴 = 当日内容量（对话产出条数），表示进度快慢 */
+/** 时间折线图：纵轴 = 当日内容量（对话产出条数），表示进度快慢（无外层边框，作为子块嵌入） */
 function TimeLineChart({ days, height = 90 }: { days: Record<string, any[]>; height?: number }) {
   const key = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   const N = 14
@@ -235,7 +227,7 @@ function TimeLineChart({ days, height = 90 }: { days: Record<string, any[]>; hei
   const hasData = vals.some(v => v > 0)
   const last = dates[dates.length - 1]
   return (
-    <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-1.5">
+    <div className="flex flex-col gap-1.5 flex-1">
       <div className="flex items-center justify-between text-[10px] text-dim">
         <span className="font-semibold uppercase tracking-wider">内容量趋势</span>
         {hasData && <span>今日 {vals[vals.length - 1]} 条 · 峰值 {max} 条</span>}
@@ -668,10 +660,6 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                               )
                             })()}
                           </div>
-                          {/* 时间折线图：内容量趋势 */}
-                          <div className="flex flex-col gap-2">
-                            <TimeLineChart days={data?.days || {}} />
-                          </div>
                           {/* 遗忘面板 */}
                           <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
                             <div className="flex items-center justify-between">
@@ -738,18 +726,20 @@ export default function MemoryView({ projectId, onRequestModify }: { projectId: 
                             </div>
                           </div>
                         </div>
-                        {/* 时间：日历热度图 + 统计 */}
-                        <div className="flex flex-col gap-2">
-                          <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">时间</p>
-                          <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
+                        {/* 时间：内容量趋势 + 日历（横向排布，占满详情宽度） */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col">
+                            <TimeLineChart days={data?.days || {}} />
+                          </div>
+                          <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-semibold text-dim uppercase tracking-wider">日历</span>
+                              <span className="text-[9px] text-dim">{data?.count || 0} 次对话{data?.latest ? ` · 最近 ${data.latest}` : ''}</span>
+                            </div>
                             <CalendarHeatmap
                               data={Object.fromEntries(Object.entries(data?.days || {}).map(([d, items]) => [d, items.length]))}
                               onPick={d => setDayDetail({ date: d, items: (data?.days || {})[d] || [] })}
                             />
-                            <div className="flex gap-4 text-[10px] text-dim mt-2">
-                              <span>累计 {data?.count || 0} 次对话</span>
-                              {data?.latest && <span>最近学习 {data.latest}</span>}
-                            </div>
                           </div>
                         </div>
                       </div>
