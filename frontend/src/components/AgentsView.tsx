@@ -468,6 +468,32 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                   </div>
                 </div>
 
+                {/* 子 Agent */}
+                <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold text-dim uppercase tracking-wider">子 Agent</p>
+                    <button onClick={() => { setSubName(''); setSubForm(''); setSubPrompt(''); setShowSubAdd(true) }}
+                      className="text-[10px] px-2 py-1 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">＋ 添加</button>
+                  </div>
+                  {agent.subAgents && agent.subAgents.length > 0 ? (
+                    <div className="flex flex-col gap-2">
+                      {agent.subAgents.map(s => (
+                        <div key={s.id} className="border hairline rounded-xl p-2.5 bg-[var(--bg-input)] flex flex-col gap-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[11px] font-medium truncate">{s.name}</span>
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--bg-panel)] text-dim flex-shrink-0">{s.form}</span>
+                            <button onClick={() => commit({ subAgents: (agent.subAgents || []).filter(x => x.id !== s.id) })}
+                              className="ml-auto text-dim hover:text-red-500 text-[10px] px-1" title="删除">✕</button>
+                          </div>
+                          <p className="text-[9px] text-dim leading-snug line-clamp-2">{s.subPrompt}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-dim">无</p>
+                  )}
+                </div>
+
                 {/* 该 Agent 运行监控 */}
                 <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
                   <p className={`${fieldLabel} flex items-center gap-1`}><Activity size={13} /> 运行监控（该 Agent 最近任务）</p>
@@ -793,7 +819,10 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
               <button onClick={() => setShowSubAdd(false)} className="px-4 py-2 text-xs text-dim row-hover rounded-lg">取消</button>
               <button onClick={() => {
                 if (!subName.trim() || !subPrompt.trim()) return
-                commitTpl({ subAgents: [...(tplAgent?.subAgents || []), { id: 'sub-' + Date.now(), name: subName.trim(), subPrompt: subPrompt.trim(), form: subForm.trim() }] })
+                const base = block === 'agents' ? agent : tplAgent
+                const next = [...(base?.subAgents || []), { id: 'sub-' + Date.now(), name: subName.trim(), subPrompt: subPrompt.trim(), form: subForm.trim() }]
+                if (block === 'agents') commit({ subAgents: next })
+                else commitTpl({ subAgents: next })
                 setShowSubAdd(false)
               }} className="px-4 py-2 text-xs bg-[#1a1a1a] text-white rounded-lg font-semibold">添加</button>
             </div>
