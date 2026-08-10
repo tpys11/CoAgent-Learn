@@ -31,11 +31,11 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
     if (!projectId) return
     setSaving(true)
     try {
-      // 只提交三个字段：基本情况（抽象项目情况）/ 目的（抽象目的）/ 初始情况（起点）
+      // 提交编辑过的字段：基本情况（抽象项目情况/学习时间/强度与频率/学习周期）/ 目的（抽象目的）/ 初始情况（起点）
       const profile: Record<string, string> = {}
-      if (collected['抽象项目情况']) profile['抽象项目情况'] = collected['抽象项目情况']
-      if (collected['抽象目的']) profile['抽象目的'] = collected['抽象目的']
-      if (collected['起点']) profile['起点'] = collected['起点']
+      for (const k of ['抽象项目情况', '学习时间', '强度与频率', '学习周期', '抽象目的', '起点']) {
+        if (collected[k]) profile[k] = collected[k]
+      }
       if (Object.keys(profile).length) {
         await fetch('/api/project-memory/' + encodeURIComponent(projectId), {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
