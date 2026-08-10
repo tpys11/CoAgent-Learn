@@ -395,8 +395,8 @@ function App() {
           const total = nodes.reduce((s, [, v]: any) => s + (v.ms || 0), 0)
           debugLine = '⏱ ' + nodes.map(([k, v]: any) => `${NODE_CN[k] || k} ${v.ms}ms×${v.llm_calls || 1}`).join(' · ') + ` · 总计 ${total}ms · ~${taskStats.token_estimate || 0} tokens`
         }
-        const thinkArr = mindchainRef.current.map(m => m.content)
-        if (debugLine) thinkArr.push(debugLine)
+        const thinkArr = mindchainRef.current
+        if (debugLine) thinkArr.push({ agent: "运行统计", content: debugLine })
         const finalContent = finalReply || (flowError ? '⚠️ ' + flowError : '处理完成')
         // 打字机效果（设置开关）
         const typingOn = (() => { try { return (JSON.parse(localStorage.getItem('coagent-context-settings') || '{}') as any).typing === true } catch { return false } })()

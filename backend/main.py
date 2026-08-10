@@ -865,8 +865,12 @@ async def create_dialogue(req: dict):
 
 @app.get("/api/dialogues/{did}/messages")
 async def get_dialogue_messages(did: str):
+    import json as _json
     from core.sqlite_client import get_db
-    rows = get_db().execute("SELECT role, content, created_at FROM messages WHERE dialogue_id=%s ORDER BY created_at ASC", (did,))
+    rows = get_db().execute("SELECT role, content, think, created_at FROM messages WHERE dialogue_id=%s ORDER BY created_at ASC", (did,))
+    for r in rows or []:
+        t = r.get("think") or ""
+        r["think"] = _json.loads(t) if t else []
     return {"messages": rows or []}
 
 
@@ -1257,7 +1261,7 @@ async def chat(req: ChatRequest):
                         _reply2 = _edit["reply"]
                         try:
                             from core.postgres_client import pg_client as _pg2
-                            _pg2.execute("INSERT INTO messages(dialogue_id,role,content) VALUES(%s,%s,%s)", (_did, "assistant", _reply2))
+                            _pg2.execute("INSERT INTO messages(dialogue_id,role,content,think) VALUES(%s,%s,%s,%s)", (_did, "assistant", _reply2, ""))
                         except Exception as _e:
                             print("[存储]", _e)
                         token_queue.put(("done", {"final_reply": _reply2, "steps": _edit["steps"], "mindchain": [], "task_stats": {}}))
@@ -1273,12 +1277,13 @@ async def chat(req: ChatRequest):
                                          (pid, _did, _json.dumps(_ts, ensure_ascii=False)))
                     except Exception as _e:
                         print("[task_stats]", _e)
-                    # invoke 后存 AI 回复
+                    # invoke 后存 AI 回复（含思维链 mindchain 落库，刷新后保留）
                     try:
                         from core.postgres_client import pg_client as _pg
                         _reply=result.get("final_reply","")
                         if _reply:
-                            _pg.execute("INSERT INTO messages(dialogue_id,role,content) VALUES(%s,%s,%s)",(_did,"assistant",_reply))
+                            _think = _json.dumps(result.get("mindchain") or [], ensure_ascii=False)
+                            _pg.execute("INSERT INTO messages(dialogue_id,role,content,think) VALUES(%s,%s,%s,%s)",(_did,"assistant",_reply,_think))
                     except Exception as _e:
                         print("[存储]",_e)
                     # 自动保存生成物到"我的上传"（设置开关 autoSaveResource）

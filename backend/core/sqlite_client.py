@@ -231,9 +231,15 @@ class SQLiteClient:
                 dialogue_id TEXT NOT NULL REFERENCES dialogues(id),
                 role TEXT NOT NULL,
                 content TEXT NOT NULL,
+                think TEXT DEFAULT '',
                 created_at TEXT DEFAULT (datetime('now'))
             )
         """)
+        try:
+            # 兼容旧库：思维链列（{agent, content}[] 的 JSON）
+            self.execute("ALTER TABLE messages ADD COLUMN think TEXT DEFAULT ''")
+        except Exception:
+            pass
         self.execute("CREATE INDEX IF NOT EXISTS idx_messages_dialogue ON messages (dialogue_id, created_at)")
         self.execute("""
             CREATE TABLE IF NOT EXISTS global_profile (

@@ -45,11 +45,17 @@ export interface AgentConfig {
   subAgents?: Array<{ id: string; name: string; subPrompt: string; form: string }>
 }
 
+/** 思维链单条：Agent 名 + 思考内容（reasonix 风格：Agent 小标题 + 正文） */
+export interface MindchainItem {
+  agent: string
+  content: string
+}
+
 export interface Message {
   role: 'user' | 'assistant' | 'thinking'
   content: string
   steps?: ChatStep[]
-  think?: string[]
+  think?: MindchainItem[] | string[]
 }
 
 export interface ChatStep {

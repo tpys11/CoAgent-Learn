@@ -1,6 +1,11 @@
 ﻿import { useState, useEffect, useRef } from 'react'
 import { Send, Bot, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Cpu, SlidersHorizontal, Check, AlertTriangle, Search, FileText, LayoutTemplate, Image as ImageIcon } from 'lucide-react'
 import type { Message, Project } from '../types'
+import MarkdownIt from 'markdown-it'
+
+// ---------- 思维链渲染：markdown-it 轻量渲染（html:false 防 XSS，换行生效）----------
+const mdThink = new MarkdownIt({ html: false, linkify: true, breaks: true })
+const renderMd = (text: string) => mdThink.render(text || '')
 
 
 interface CenterPanelProps {
@@ -384,8 +389,8 @@ const TEMPLATE_OPTIONS = [
                   {flowMindchain.map((item, i) => (
                     <div key={i} className="animate-[fadeIn_0.2s_ease]">
                       <div className="text-[11px] font-semibold mb-0.5">{item.agent}</div>
-                      <div className="text-[11px] leading-relaxed text-dim whitespace-pre-wrap pl-2 border-l-2 hairline">
-                        {item.content}
+                      <div className="md-think-body text-[11px] leading-relaxed text-dim pl-2 border-l-2 hairline">
+                        <div dangerouslySetInnerHTML={{ __html: renderMd(item.content) }} />
                       </div>
                     </div>
                   ))}
@@ -695,16 +700,26 @@ const TEMPLATE_OPTIONS = [
   )
 }
 
-function CollapsibleThink({ think }: { think: string[] }) {
+function CollapsibleThink({ think }: { think?: Array<{ agent: string; content: string }> | string[] }) {
   const [open, setOpen] = useState(false)
+  const items = (think || []).map(it => typeof it === 'string' ? { agent: '', content: it } : it)
+  if (items.length === 0) return null
+  const agents = items.filter(i => i.agent).length
   return (
     <div className="mt-3">
       <button onClick={() => setOpen(!open)} className="text-[11px] text-dim hover:text-[#1a1a1a] flex items-center gap-1">
-        <span>{open ? '▾' : '▸'}</span> 思考过程
+        <span>{open ? '▾' : '▸'}</span> 思考过程{agents > 0 ? ` · ${agents} 个 Agent` : ''}
       </button>
       {open && (
-        <div className="mt-2 text-[11px] text-dim leading-relaxed whitespace-pre-wrap max-h-60 overflow-y-auto pl-2 border-l-2 hairline">
-          {think.join('\n')}
+        <div className="mt-2 flex flex-col gap-2 max-h-72 overflow-y-auto pr-1">
+          {items.map((it, i) => (
+            <div key={i} className="animate-[fadeIn_0.2s_ease]">
+              {it.agent && <div className="text-[11px] font-semibold mb-0.5">{it.agent}</div>}
+              <div className="md-think-body text-[11px] leading-relaxed text-dim pl-2 border-l-2 hairline">
+                <div dangerouslySetInnerHTML={{ __html: renderMd(it.content) }} />
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

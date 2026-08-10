@@ -157,3 +157,15 @@ body { font-size: var(--ui-font); }
 .text-xl{font-size:calc(var(--ui-font)*1.333)!important}
 .text-2xl{font-size:calc(var(--ui-font)*1.6)!important}
 .text-3xl{font-size:calc(var(--ui-font)*2)!important}
+
+/* 思维链 markdown 正文（Agent 小标题下）：小字号、紧凑、代码块浅底 */
+.md-think-body p { margin: 0 0 4px; }
+.md-think-body p:last-child { margin-bottom: 0; }
+.md-think-body ul, .md-think-body ol { margin: 2px 0 4px; padding-left: 16px; }
+.md-think-body li { margin: 1px 0; }
+.md-think-body h1, .md-think-body h2, .md-think-body h3, .md-think-body h4 { font-weight: 600; margin: 4px 0 2px; font-size: 12px; }
+.md-think-body strong { font-weight: 600; color: var(--text); }
+.md-think-body code { background: var(--bg-hover); padding: 1px 4px; border-radius: 4px; font-size: 10px; }
+.md-think-body pre { background: var(--bg-hover); padding: 6px 8px; border-radius: 8px; overflow-x: auto; margin: 4px 0; }
+.md-think-body pre code { background: transparent; padding: 0; }
+.md-think-body blockquote { border-left: 2px solid var(--border-strong); padding-left: 8px; margin: 4px 0; color: var(--text-muted); }
