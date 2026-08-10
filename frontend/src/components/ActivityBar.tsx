@@ -1,27 +1,39 @@
-import { MessageSquare, GraduationCap, Library, Brain, Bot, FolderOpen, Settings, Home } from 'lucide-react'
+import { MessageSquare, GraduationCap, Library, Brain, BookOpen, Bot, FolderOpen } from 'lucide-react'
 
 export type ViewKey = 'chat' | 'tutorial' | 'resources' | 'memory' | 'knowledge' | 'agents' | 'obsidian'
 
 interface Props {
   view: ViewKey
   onChange: (v: ViewKey) => void
-  onSettings: () => void
+  expanded?: boolean
 }
 
 const ITEMS: Array<{ key: ViewKey; icon: any; label: string }> = [
-  { key: 'chat', icon: Home, label: '主页' },
+  { key: 'chat', icon: MessageSquare, label: '对话' },
+  { key: 'tutorial', icon: GraduationCap, label: '教程' },
   { key: 'resources', icon: Library, label: '资源' },
   { key: 'memory', icon: Brain, label: '记忆' },
+  { key: 'knowledge', icon: BookOpen, label: '知识库' },
   { key: 'agents', icon: Bot, label: 'Agent' },
   { key: 'obsidian', icon: FolderOpen, label: '本地文档' },
 ]
-const GUIDE = { key: 'tutorial' as ViewKey, icon: GraduationCap, label: '使用引导' }
 
-/** 最左侧细轨（无边框，融入底色）：主界面/功能入口切换，使用引导与设置位于最下方 */
-export default function ActivityBar({ view, onChange, onSettings }: Props) {
-  const renderBtn = (key: ViewKey, Icon: any, label: string) => {
-    const active = view === key
-    return (
+/** 最左侧细轨（无边框，融入底色）：主页时展开加宽（图标在文字前横排），离开主页变窄（图标在上、文字在下） */
+export default function ActivityBar({ view, onChange, expanded }: Props) {
+  const renderBtn = (key: ViewKey, icon: any, label: string, active: boolean) => (
+    expanded ? (
+      <button
+        key={key}
+        onClick={() => onChange(key)}
+        title={label}
+        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all ${
+          active ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'
+        }`}
+      >
+        <icon.type {...{ size: 17, strokeWidth: active ? 2 : 1.6 }} />
+        <span className="text-[11px] font-medium leading-none">{label}</span>
+      </button>
+    ) : (
       <button
         key={key}
         onClick={() => onChange(key)}
@@ -30,28 +42,17 @@ export default function ActivityBar({ view, onChange, onSettings }: Props) {
           active ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'
         }`}
       >
-        <Icon size={20} strokeWidth={active ? 2 : 1.6} />
+        <icon.type {...{ size: 20, strokeWidth: active ? 2 : 1.6 }} />
         <span className="text-[9px] leading-none">{label}</span>
       </button>
     )
-  }
+  )
   return (
-    <nav className="w-[64px] h-full flex-shrink-0 flex flex-col items-center py-3">
-      {ITEMS.slice(0, 2).map(({ key, icon: Icon, label }) => renderBtn(key, Icon, label))}
-      <div className="w-px h-3 bg-[#e5e5e5] my-1" />
-      {ITEMS.slice(2).map(({ key, icon: Icon, label }) => renderBtn(key, Icon, label))}
+    <nav className={`h-full flex-shrink-0 flex flex-col transition-all duration-300 ${expanded ? 'w-44 px-2.5 py-4 items-stretch' : 'w-[64px] py-3 items-center'}`}>
+      {ITEMS.slice(0, 3).map(({ key, icon, label }) => renderBtn(key, icon, label, view === key))}
+      <div className={`bg-[#e5e5e5] my-1 ${expanded ? 'w-full h-px' : 'w-px h-3'}`} />
+      {ITEMS.slice(3).map(({ key, icon, label }) => renderBtn(key, icon, label, view === key))}
       <div className="flex-1" />
-      {/* 使用引导（教程）→ 设置上方 */}
-      {renderBtn(GUIDE.key, GUIDE.icon, GUIDE.label)}
-      {/* 最下方：设置 */}
-      <button
-        onClick={onSettings}
-        title="设置"
-        className="w-14 flex flex-col items-center justify-center gap-1 py-2 rounded-2xl icon-btn transition-all"
-      >
-        <Settings size={20} strokeWidth={1.6} />
-        <span className="text-[9px] leading-none">设置</span>
-      </button>
     </nav>
   )
 }

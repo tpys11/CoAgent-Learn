@@ -382,7 +382,7 @@ function App() {
 </header>
       <div className="flex-1 flex min-h-0 pb-3 pr-3">
       {/* 最左侧细轨：三界面切换 */}
-      <ActivityBar view={view} onChange={handleViewChange} onSettings={() => setShowSettings(true)} />
+      <ActivityBar view={view} onChange={handleViewChange} expanded={view === 'chat' && !chatOpen} />
       {sidebarCollapsed && (
         <button onClick={() => setSidebarCollapsed(false)} className="flex-shrink-0 w-7 h-7 mt-3 ml-1.5 flex items-center justify-center rounded-lg icon-btn" title="展开侧栏">
           <PanelLeftOpen size={15} />
