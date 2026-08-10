@@ -164,12 +164,13 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
                     <MessageSquare size={11} className="flex-shrink-0 opacity-70" />
                     <span className="truncate flex-1">{d.name}</span>
                   </button>
-                  <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all">
-                    <button onClick={() => setEditingId(d.id)} className="p-1 rounded-md text-dim hover:text-[var(--text)]" title="重命名">
-                      <Pencil size={10} />
+                  {/* 重命名/删除：持久化显示（不依赖 hover） */}
+                  <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                    <button onClick={() => setEditingId(d.id)} className="p-1.5 rounded-md text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors" title="重命名">
+                      <Pencil size={13} />
                     </button>
-                    <button onClick={() => onDeleteDialogue(d.id)} className="p-1 rounded-md text-dim hover:text-red-500" title="删除对话">
-                      <X size={11} />
+                    <button onClick={() => onDeleteDialogue(d.id)} className="p-1.5 rounded-md text-dim hover:bg-red-50 hover:text-red-500 transition-colors" title="删除对话">
+                      <X size={14} />
                     </button>
                   </div>
                   </>
