@@ -88,7 +88,6 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
   const hour = new Date().getHours()
   const greeting = hour < 5 ? '夜深了' : hour < 11 ? '早上好' : hour < 13 ? '中午好' : hour < 18 ? '下午好' : '晚上好'
   const staleCount = projects.filter(p => (stats[p.id] ?? 0) === 0).length
-  const projName = projects[0]?.name || '我的学习空间'
   const statusTxt = projects.length === 0
     ? '还没有课程，从新建第一个课程开始吧'
     : staleCount > 0
@@ -102,13 +101,10 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
         <div className="px-14 py-12 flex gap-14">
           {/* 左：主内容 */}
           <div className="flex-1 min-w-0 flex flex-col gap-10">
-          {/* 顶部：项目名称（左）与 时间问候+状态鼓励（右）平行 */}
-          <div className="flex items-start justify-between gap-8">
-            <h1 className="text-2xl font-bold leading-snug">{projName}</h1>
-            <div className="text-right flex flex-col gap-1">
-              <p className="text-2xl font-bold leading-snug">{greeting}！</p>
-              <p className="text-[11px] text-dim">{statusTxt} · {encourage}</p>
-            </div>
+          {/* 顶部：时间问候+状态鼓励（从左侧起始，替代原项目名位置） */}
+          <div className="flex flex-col gap-1">
+            <p className="text-2xl font-bold leading-snug">{greeting}！</p>
+            <p className="text-[11px] text-dim">{statusTxt} · {encourage}</p>
           </div>
           {/* 留白后：快速引导 */}
           <div className="flex flex-col gap-3">
