@@ -388,14 +388,14 @@ const TEMPLATE_OPTIONS = [
                         ))}
                       </div>
                     )}
-                    {/* 新建课程引导消息：右下角「手动填写」按钮（仅初次创建、未完成手动填写时显示） */}
+                    {/* 新建课程引导消息：右下角「手动初始化」按钮（仅初次创建、未完成手动填写时显示） */}
                     {msg.content.includes('课程创建成功') && onManualSetup && !(currentProject && (() => {
                       try { return (JSON.parse(localStorage.getItem('coagent-manual-setup-done') || '[]') as string[]).includes(currentProject.id) } catch { return false }
                     })()) && (
                       <div className="mt-3 flex justify-end">
                         <button onClick={onManualSetup}
                           className="text-[11px] px-3 py-1.5 rounded-lg border hairline text-dim hover:text-[var(--text)] hover:bg-[var(--bg-hover)] transition-colors flex items-center gap-1">
-                          <PenLine size={11} /> 手动填写
+                          <PenLine size={11} /> 手动初始化
                         </button>
                       </div>
                     )}
