@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from 'react'
-import { Plus, X, FolderOpen, Clock, Pencil } from 'lucide-react'
+import { Plus, X, FolderOpen, Pencil } from 'lucide-react'
 import TrendCalendar from './TrendCalendar'
 
 /** 系统预设领域 → 预存图片；非预设领域/未设置领域使用默认学习封面 */
@@ -28,6 +28,8 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
   const [stats, setStats] = useState<Record<string, number>>({})
   const [mems, setMems] = useState<Record<string, Record<string, any>>>({})
   const [kbCount, setKbCount] = useState<Record<string, number>>({})
+  // 每课程最新对话名（"上次学到哪"）
+  const [lastTopics, setLastTopics] = useState<Record<string, string>>({})
   // 横栏：内容量趋势 + 日历（全局学习记录，与记忆界面一致）
   const [trendDays, setTrendDays] = useState<Record<string, any[]>>({})
   useEffect(() => {
@@ -41,6 +43,7 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
     const m: Record<string, number> = {}
     const mm: Record<string, Record<string, any>> = {}
     const kc: Record<string, number> = {}
+    const lt: Record<string, string> = {}
     Promise.all(projects.map(p =>
       Promise.all([
         fetch('/api/stats?project_id=' + encodeURIComponent(p.id), { cache: 'no-store' })
@@ -49,8 +52,15 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
           .then(r => r.json()).then(d => { mm[p.id] = d.memory || {} }).catch(() => { mm[p.id] = {} }),
         fetch('/api/kb/' + encodeURIComponent(p.id), { cache: 'no-store' })
           .then(r => r.json()).then(d => { kc[p.id] = Array.isArray(d) ? d.length : 0 }).catch(() => { kc[p.id] = 0 }),
+        fetch('/api/projects/' + encodeURIComponent(p.id) + '/dialogues', { cache: 'no-store' })
+          .then(r => r.json()).then(d => {
+            const arr = (d.dialogues || []).slice()
+            arr.sort((a: any, b: any) => String(a.created_at || '').localeCompare(String(b.created_at || '')))
+            const last = arr[arr.length - 1]
+            lt[p.id] = (last && last.name && last.name !== '对话') ? last.name : ''
+          }).catch(() => { lt[p.id] = '' }),
       ])
-    )).then(() => { setStats(m); setMems(mm); setKbCount(kc) })
+    )).then(() => { setStats(m); setMems(mm); setKbCount(kc); setLastTopics(lt) })
   }, [projects])
 
   const newProject = () => {
@@ -142,9 +152,14 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
                 const count = stats[p.id] ?? 0
                 const pct = Math.min(95, 8 + count * 4)
                 const mem = mems[p.id] || {}
-                const progressTxt = strOf(mem['当前水平']) || (count ? `已学习 ${count} 次对话` : '尚未开始')
-                const unsolved = strOf((mem['薄弱点'] || [])[0] || (mem['难点'] || [])[0]) || '—'
-                const toLearn = strOf((mem['难点'] || []).slice(0, 2).join('、') ? (mem['难点'] || []).slice(0, 2) : (mem['知识点'] || []).slice(0, 2)) || '—'
+                // 进度一段话：学了多少 / 上次学到哪 / 接下来建议学什么
+                const unsolved = strOf((mem['薄弱点'] || [])[0] || (mem['难点'] || [])[0]) || ''
+                const toLearnArr = (mem['难点'] || []).length ? (mem['难点'] || []).slice(0, 2) : (mem['知识点'] || []).slice(0, 2)
+                const toLearnTxt = strOf(toLearnArr) || ''
+                const lastTopic = lastTopics[p.id] || ''
+                const progressSentence = count === 0
+                  ? '尚未开始，建议尽快开启第一次对话，明确学习目标。'
+                  : ['已学习 ' + count + ' 次对话', lastTopic ? '上次学到「' + short(lastTopic, 12) + '」' : '', toLearnTxt ? '接下来建议先学「' + short(toLearnTxt, 16) + '」' : (unsolved ? '接下来建议先补「' + short(unsolved, 12) + '」' : '')].filter(Boolean).join('，') + '。'
                 return (
                   <div key={p.id} onClick={() => onEnter(p.id)}
                     className="group relative card-surface rounded-2xl overflow-hidden cursor-pointer transition-all hover:shadow-lg hover:-translate-y-1 hover:border-[var(--border-strong)] flex flex-col h-[330px]">
@@ -193,17 +208,10 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
                         </div>
                       </div>
                     </div>
-                    {/* 下 30%：进度 / 上次 / 后续 三横平行（每行标签+内容） */}
+                    {/* 下 30%：只保留进度——一段话描述现状（学了多少/上次学到哪/接下来建议学什么） */}
                     <div className="h-[30%] p-3.5 bg-[var(--bg-panel)] flex flex-col justify-center gap-1.5">
-                      <div className="flex flex-col gap-1">
-                        <p className="text-[10px] leading-relaxed text-[var(--text-muted)]"><span className="font-semibold text-[var(--text)]">进度</span>：{short(progressTxt)}</p>
-                        <p className="text-[10px] leading-relaxed text-[var(--text-muted)]"><span className="font-semibold text-[var(--text)]">上次</span>：{short(unsolved)}</p>
-                        <p className="text-[10px] leading-relaxed text-[var(--text-muted)]"><span className="font-semibold text-[var(--text)]">后续</span>：{short(toLearn)}</p>
-                      </div>
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-[9px] text-dim flex items-center gap-1 truncate">
-                          <Clock size={9} /> {p.created_at ? String(p.created_at).slice(0, 10) : '—'}{p.domain ? ` · ${p.domain}` : ''}
-                        </p>
+                      <div className="flex items-start gap-1.5">
+                        <p className="flex-1 text-[10px] leading-relaxed text-[var(--text-muted)]">{progressSentence}</p>
                         {onRename && (
                           <button onClick={(e) => { e.stopPropagation(); setRenamingId(renamingId === p.id ? null : p.id) }}
                             className="p-1.5 rounded-md text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors flex-shrink-0" title="改名">
