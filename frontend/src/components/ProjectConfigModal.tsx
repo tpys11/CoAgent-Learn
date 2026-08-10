@@ -61,15 +61,7 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
       <div className="w-[min(1200px,94vw)] h-[90vh] panel rounded-3xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-2 px-4 py-2.5 border-b hairline flex-shrink-0">
           {initialOnly ? (
-            <>
-              <h3 className="text-sm font-bold mr-2">课程</h3>
-              {TABS.map(t => (
-                <button key={t.key} onClick={() => setTab(t.key)}
-                  className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${tab === t.key ? 'bg-[#1a1a1a] text-white' : 'row-hover'}`}>
-                  {t.label}
-                </button>
-              ))}
-            </>
+            <h3 className="text-sm font-bold">课程初始化</h3>
           ) : (
             <h3 className="text-sm font-bold">{tab === 'memory' ? '记忆与进程' : '资源'}</h3>
           )}
@@ -87,16 +79,25 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
           </div>
         </div>
         <div className="flex-1 min-h-0 overflow-hidden">
-          {tab === 'memory'
-            ? (
-              <div className="h-full flex flex-col min-h-0">
-                <div className="flex-1 min-h-0 overflow-hidden">
-                  <MemoryView projectId={projectId} projectOnly initialEdit={initialOnly} onEditChange={setCollected}
-                    onRequestModify={onRequestModify} onRequestAnalyze={onRequestAnalyze} />
-                </div>
+          {initialOnly ? (
+            // 初始化：记忆与资源同一界面，上下分层（上：记忆基本情况填写；下：资源）
+            <div className="h-full flex flex-col min-h-0">
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <MemoryView projectId={projectId} projectOnly initialEdit onEditChange={setCollected}
+                  onRequestModify={onRequestModify} onRequestAnalyze={onRequestAnalyze} />
               </div>
-            )
-            : <ProjectResources projectId={projectId} />}
+              <div className="flex-shrink-0 border-t hairline" style={{ height: '36%' }}>
+                <ProjectResources projectId={projectId} />
+              </div>
+            </div>
+          ) : tab === 'memory' ? (
+            <div className="h-full flex flex-col min-h-0">
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <MemoryView projectId={projectId} projectOnly
+                  onRequestModify={onRequestModify} onRequestAnalyze={onRequestAnalyze} />
+              </div>
+            </div>
+          ) : <ProjectResources projectId={projectId} />}
         </div>
       </div>
       {/* 保存确认弹窗：仅初次创建支持手动填写，后续只能通过对话间接填写 */}
