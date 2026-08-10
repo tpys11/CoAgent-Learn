@@ -145,19 +145,38 @@ export default function RightPanel({ messageCount, projectId, onCollapse }: Prop
   const [sideInput, setSideInput] = useState('')
   const [sideLoading, setSideLoading] = useState(false)
   const [sideMode, setSideMode] = useState<'kb'|'free'>('free')
+  // 第二对话追问建议：横向拓展/轻松闲聊风格（后端 followup_focus=expand 生成）
+  const [sideFollowups, setSideFollowups] = useState<string[]>([])
+  const loadSideFollowups = () => {
+    fetch('/api/dialogues/' + encodeURIComponent(sideDialogueId.current) + '/followups', { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => setSideFollowups(Array.isArray(d.questions) ? d.questions.slice(0, 3) : []))
+      .catch(() => {})
+  }
+  // 回答结束后台线程生成新追问，延迟拉取一次
+  const prevSideLoading = useRef(sideLoading)
+  useEffect(() => {
+    if (prevSideLoading.current && !sideLoading) {
+      const t1 = setTimeout(loadSideFollowups, 5000)
+      const t2 = setTimeout(loadSideFollowups, 12000)
+      prevSideLoading.current = sideLoading
+      return () => { clearTimeout(t1); clearTimeout(t2) }
+    }
+    prevSideLoading.current = sideLoading
+  }, [sideLoading])
   const [nodeDetail, setNodeDetail] = useState<{name: string; relations: any[]; kb_refs: any[]} | null>(null)
 
-  const sendSide = async () => {
-    const text = sideInput.trim()
+  const sendSide = async (q?: string) => {
+    const text = (q ?? sideInput).trim()
     if (!text || sideLoading) return
-    setSideInput('')
+    if (!q) setSideInput('')
     setSideMessages(prev => [...prev, { role: 'user', content: text }])
     setSideLoading(true)
     try {
       const resp = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, dialogue_id: sideDialogueId.current, project_id: projectId || 'default', api_key: localStorage.getItem('coagent-apikey') || undefined, mode: sideMode })
+        body: JSON.stringify({ message: text, dialogue_id: sideDialogueId.current, project_id: projectId || 'default', api_key: localStorage.getItem('coagent-apikey') || undefined, mode: sideMode, followup_focus: 'expand' })
       })
       const reader = resp.body ? resp.body.getReader() : null
       let buf = ''
@@ -304,7 +323,7 @@ export default function RightPanel({ messageCount, projectId, onCollapse }: Prop
               <div className="w-full h-full flex flex-col">
                 <div className="flex-1 overflow-y-auto px-3 flex flex-col gap-2 pb-2 min-h-0">
                   {sideMessages.length === 0 ? (
-                    <p className="text-[11px] text-dim text-center py-4">暂无对话</p>
+                    <p className="text-[11px] text-dim text-center py-4">独立会话 · 追问聚焦横向拓展 / 轻松闲聊</p>
                   ) : (
                     sideMessages.map((m, i) => (
                       <div key={i} className={`max-w-[90%] px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap ${m.role === 'user' ? 'self-end btn-primary' : 'self-start chip'}`} style={{ borderRadius: m.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px' }}>
@@ -314,6 +333,18 @@ export default function RightPanel({ messageCount, projectId, onCollapse }: Prop
                   )}
                   {sideLoading && <p className="text-[10px] text-dim text-center">思考中…</p>}
                 </div>
+                {/* 横向拓展/闲聊追问建议 */}
+                {sideFollowups.length > 0 && !sideLoading && (
+                  <div className="px-3 pb-1 flex flex-col gap-1 items-start flex-shrink-0">
+                    <p className="text-[10px] text-dim font-medium">横向拓展 · 闲聊</p>
+                    {sideFollowups.map((q, i) => (
+                      <button key={i} onClick={() => sendSide(q)}
+                        className="chip text-left text-[11px] px-2.5 py-1.5 transition-all">
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div className="p-2.5 flex-shrink-0">
                   <div className="chip flex items-center gap-1.5 px-2 py-1">
                     <textarea placeholder="在此提问..." rows={1} value={sideInput}
@@ -321,7 +352,7 @@ export default function RightPanel({ messageCount, projectId, onCollapse }: Prop
                       className="flex-1 px-1.5 py-1 bg-transparent text-xs outline-none resize-none"
                       style={{ background: 'transparent' }}
                       onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendSide() } }} />
-                    <button onClick={sendSide} disabled={sideLoading} className="w-7 h-7 btn-primary flex items-center justify-center flex-shrink-0 disabled:opacity-50">
+                    <button onClick={() => sendSide()} disabled={sideLoading} className="w-7 h-7 btn-primary flex items-center justify-center flex-shrink-0 disabled:opacity-50">
                       <Send size={12} />
                     </button>
                   </div>

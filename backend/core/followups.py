@@ -29,10 +29,13 @@ def _extract_questions(text):
     return out[:3]
 
 
-def generate_followups(api_key, project_id, dialogue_id, db):
-    """读当前对话最近一轮问答，LLM 生成 3 条针对性追问，持久化到 followups 表"""
+def generate_followups(api_key, project_id, dialogue_id, db, focus="purpose"):
+    """读当前对话最近一轮问答，LLM 生成 3 条追问，持久化到 followups 表。
+    focus="purpose"：追问聚焦推进用户的学习目的（注入课程记忆中的目的/目标/当前水平）；
+    focus="expand"：追问聚焦横向拓展或轻松闲聊（不严肃、无压力）。"""
     NL = chr(10)
     import sys as _s
+    import json as _json
 
     import requests as _req
     from core.config import config as _cfg
@@ -52,12 +55,44 @@ def generate_followups(api_key, project_id, dialogue_id, db):
         if not convo.strip():
             return
 
-        prompt = (
-            "基于以下学习对话，为用户生成 3 条最有价值的追问问题。" + NL
-            + "要求：1) 每条一句话，不超过 40 字；2) 针对回答中的核心概念深挖、实际应用、进阶学习三个不同角度；3) 以 JSON 数组返回，不要任何额外文字。" + NL + NL
-            + "对话内容：" + NL + convo[:4000] + NL + NL
-            + 'JSON 格式：["问题1", "问题2", "问题3"]'
-        )
+        # 课程记忆：目的推进风格需要注入学习目的/目标/当前水平
+        goal_txt = ""
+        if focus == "purpose":
+            try:
+                rows = db.execute("SELECT data FROM project_memories WHERE project_id=%s", (project_id,))
+                if rows and rows[0].get("data"):
+                    mem = rows[0]["data"]
+                    if isinstance(mem, str):
+                        try:
+                            mem = _json.loads(mem)
+                        except Exception:
+                            mem = {}
+                    if isinstance(mem, dict):
+                        parts = []
+                        for k in ("抽象目的", "目标", "当前水平", "难点", "薄弱点"):
+                            v = mem.get(k)
+                            if v:
+                                parts.append(f"{k}：{v if isinstance(v, str) else '、'.join(str(x) for x in v)}")
+                        if parts:
+                            goal_txt = NL + "课程学习目的/现状：" + NL + NL.join(parts)
+            except Exception:
+                goal_txt = ""
+
+        if focus == "expand":
+            prompt = (
+                "基于以下学习对话，为用户生成 3 条横向拓展或轻松闲聊性质的追问。" + NL
+                + "要求：1) 每条一句话，不超过 40 字；2) 聚焦话题的横向延伸（相关概念、实际生活应用、有趣冷知识等）或轻松闲聊（不严肃、无学习压力）；3) 以 JSON 数组返回，不要任何额外文字。" + NL + NL
+                + "对话内容：" + NL + convo[:4000] + NL + NL
+                + 'JSON 格式：["问题1", "问题2", "问题3"]'
+            )
+        else:
+            prompt = (
+                "基于以下学习对话与课程学习目的，为用户生成 3 条最能推进学习目的达成的追问。" + NL
+                + "要求：1) 每条一句话，不超过 40 字；2) 追问聚焦于推进学习进程（检验是否理解、攻克薄弱点、衔接下一步学习内容、向学习目标迈进），不闲聊；3) 以 JSON 数组返回，不要任何额外文字。" + NL
+                + goal_txt + NL + NL
+                + "对话内容：" + NL + convo[:4000] + NL + NL
+                + 'JSON 格式：["问题1", "问题2", "问题3"]'
+            )
         h = {"Authorization": "Bearer " + (api_key or _cfg.DEEPSEEK_API_KEY), "Content-Type": "application/json"}
         resp = _req.post(
             _cfg.DEEPSEEK_BASE_URL + "/chat/completions",

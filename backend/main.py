@@ -966,6 +966,7 @@ class ChatRequest(BaseModel):
     mode: str | None = None
     image: str | None = None
     agents: list = []
+    followup_focus: str | None = None  # 追问风格：purpose=目的推进（默认）/ expand=横向拓展闲聊
 
 class ChatStep(BaseModel):
     agent: str
@@ -1314,7 +1315,7 @@ async def chat(req: ChatRequest):
                             threading.Thread(target=update_memories, args=(req.api_key, pid, _did, pg_client, req.session_id or "default"), daemon=True).start()
                             if not (req.settings and req.settings.get('autoFollowups') is False):
                                 from core.followups import generate_followups
-                                threading.Thread(target=generate_followups, args=(req.api_key, pid, _did, pg_client), daemon=True).start()
+                                threading.Thread(target=generate_followups, args=(req.api_key, pid, _did, pg_client, req.followup_focus or "purpose"), daemon=True).start()
                     except Exception as e:
                         print("[记忆] err:", e)
                 except Exception as e:
