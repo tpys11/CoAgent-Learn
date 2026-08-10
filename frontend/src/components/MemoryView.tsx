@@ -639,11 +639,14 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
         {/* ========== 课程记忆 ========== */}
         {level === 'project' && (
           <div className="w-full flex flex-col gap-4">
+            {/* 初始化时删除"课程记忆"占位标题，直接进入填写 */}
+            {!initialEdit && (
             <div>
               <h2 className="text-base font-bold flex items-center gap-2">
                 <FolderTree size={16} /> 课程记忆
               </h2>
             </div>
+            )}
 
             {projLoading ? <p className="text-xs text-dim text-center py-10">加载中…</p> : projects.length === 0 ? (
               <p className="text-xs text-dim text-center py-10">暂无课程</p>
