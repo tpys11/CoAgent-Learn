@@ -213,7 +213,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             state["processed_input"] = state["user_input"]
             state["_plan"] = []
         _stats(state, "plan", int((time.time() - t0) * 1000), 1, len(thinking) // 2)
-        state["mindchain"].append({"agent": "主Agent·规划", "content": thinking[:600]})
+        state["mindchain"].append({"agent": "主Agent·规划", "content": thinking[:200]})
         state.setdefault("steps", []).append({"agent": "主Agent·规划", "status": "done",
             "detail": f"规划完成，调用: {state['_plan'] if state['_plan'] else '无需子Agent'}"})
         return state
@@ -243,7 +243,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             thinking = "学情分析异常"
             state["profile"] = {"level": "unknown"}
         _stats(state, "study_memory", int((time.time() - t0) * 1000), 1, len(thinking) // 2)
-        state["mindchain"].append({"agent": "学情与记忆管理", "content": thinking[:600]})
+        state["mindchain"].append({"agent": "学情与记忆管理", "content": thinking[:200]})
         state.setdefault("steps", []).append({"agent": "学情与记忆管理", "status": "done"})
         return state
 
@@ -422,7 +422,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         except Exception as e:
             state["generated"] = f"抱歉，生成内容时出现错误：{str(e)[:200]}"
         _stats(state, "generate", int((time.time() - t0) * 1000), 1, len(thinking) // 2)
-        state["mindchain"].append({"agent": "主Agent·生成", "content": thinking[:800]})
+        state["mindchain"].append({"agent": "主Agent·生成", "content": thinking[:300]})
         state.setdefault("steps", []).append({"agent": "主Agent·生成", "status": "done", "detail": "生成完成"})
         return state
 
@@ -453,7 +453,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             thinking = "审核异常"
             state["reviewed"] = {"passed": True, "score": 80, "verdict": "审核异常，默认通过"}
         _stats(state, "review", int((time.time() - t0) * 1000), 1, len(thinking) // 2)
-        state["mindchain"].append({"agent": "审核", "content": thinking[:400]})
+        state["mindchain"].append({"agent": "审核", "content": thinking[:150]})
         state.setdefault("steps", []).append({"agent": "审核", "status": "done",
             "detail": f"score={state['reviewed'].get('score', 0)} passed={state['reviewed'].get('passed', True)}"})
         # 输出：审核通过直接交付；不通过（已到重试上限）交付并标注
