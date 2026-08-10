@@ -686,13 +686,12 @@ const exportItem = (item: ListItem) => {
               <button
                 key={d}
                 onClick={() => { setSelectedDomain(d); setSelectedCat(CATEGORIES[0].key); setDetail(null) }}
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold transition-all ${
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
                   selectedDomain === d
-                    ? 'bg-[#1a1a1a] text-white shadow-soft ring-2 ring-[var(--accent)]/40'
-                    : 'bg-[var(--bg-hover)] text-[var(--text-muted)] hover:bg-[var(--bg-active)] border border-[var(--border-color)]'
+                    ? 'bg-[#1a1a1a] text-white shadow-soft'
+                    : 'bg-[var(--bg-panel)] text-dim border hairline hover:border-[var(--border-strong)] hover:text-[var(--text)]'
                 }`}
               >
-                <FolderTree size={15} />
                 {d}
               </button>
             ))}
