@@ -850,16 +850,13 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                     {/* 右侧：记忆对话（直接输入修改记忆）——sticky 固定悬浮；初始化时不显示 */}
                     {!initialEdit && (
                     <div className="w-[340px] flex-shrink-0 self-start sticky top-0 border hairline rounded-2xl bg-[var(--bg-panel)] flex flex-col overflow-hidden">
-                      <div className="px-4 py-3 border-b hairline flex items-center justify-between">
+                      <div className="px-4 py-3 border-b hairline">
                         <span className="text-xs font-bold">修改记忆</span>
-                        <span className="text-[9px] text-dim">对话后 AI 直接更新记忆</span>
                       </div>
                       <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2 min-h-[220px] max-h-[430px]">
                         {mcMsgs.length === 0 ? (
                           <p className="text-[10px] text-dim text-center py-6 leading-relaxed">
-                            直接输入想修改的内容，例如：
-                            <br />「学习目标改为掌握 RAG 原理」
-                            <br />「我的薄弱点是向量检索」
+                            手动修改记忆很容易发生冲突，agent可以帮助您完成这件事情
                           </p>
                         ) : mcMsgs.map((m, i) => (
                           <div key={i} className={`max-w-[88%] px-3 py-2 rounded-xl text-[11px] leading-relaxed ${m.role === 'user' ? 'bg-[#1a1a1a] text-white self-end' : 'bg-[var(--bg-hover)] text-[var(--text)] self-start'}`}>
