@@ -156,10 +156,10 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
                           {p.name.slice(0, 1)}
                         </div>
                       )}
-                      {/* 右上角：红色叉删除 */}
+                      {/* 右上角：红色叉删除（持久显示、显眼） */}
                       <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`删除课程「${p.name}」？`)) onDelete(p.id) }}
-                        className="absolute top-2.5 right-2.5 p-1.5 rounded-full bg-black/45 text-white opacity-0 group-hover:opacity-100 hover:bg-red-600 transition-all" title="删除课程">
-                        <X size={13} />
+                        className="absolute top-2.5 right-2.5 p-1.5 rounded-full bg-red-500/90 text-white shadow-md hover:bg-red-600 hover:scale-110 transition-all" title="删除课程">
+                        <X size={14} strokeWidth={2.5} />
                       </button>
                       <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/70 to-transparent">
                         <div className="flex items-center justify-between gap-2">
