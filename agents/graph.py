@@ -396,10 +396,12 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 state["sub_outputs"] = {**(state.get("sub_outputs") or {}), "gen": "\n\n".join(sub_parts)}
                 context += "\n\n【子Agent 专项产出（请基于这些产出组织最终回答）】\n" + state["sub_outputs"]["gen"]
         try:
-            # 简单问题：思考模式 + effort=low（保留思维链但极短思考）；快速模板：关闭思考直接生成；复杂问题：深入思考
-            _gen_llm = llm_main_low if state.get("complexity") == "simple" else (llm_main_no_think if tpl == "快速" else llm_main)
+            # 简单问题：非思考模式 + 精简回答（不生成三件套）；快速模板：非思考直接生成；复杂问题：深入思考
+            _gen_llm = llm_main_no_think if (state.get("complexity") == "simple" or tpl == "快速") else llm_main
+            _short_hint = ("（用户问题为简单问答：请直接给出简洁准确的回答，用 content 字段返回，"
+                           "不要生成讲义/实操指南/测试题等长内容）") if state.get("complexity") == "simple" else ""
             thinking, result = think_then_json(_pick_llm(cfg, _gen_llm), _GENERATE_PROMPT,
-                _append_example(cfg, context), "主Agent")
+                _append_example(cfg, context) + _short_hint, "主Agent")
             if isinstance(result, dict) and result.get("讲义"):
                 parts = ["## 📘 定制讲义", str(result.get("讲义", "")), "", "## 🛠 实操指南", str(result.get("实操指南", ""))]
                 tests = result.get("测试题") or []
@@ -425,7 +427,15 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         return state
 
     def review_node(state: AgentState) -> AgentState:
-        """审核：一次调用完成符实性/难度适配/规范性三维审查 + 综合裁定（快模型）"""
+        """审核：一次调用完成符实性/难度适配/规范性三维审查 + 综合裁定（快模型）。
+        简单问题（complexity=simple）跳过审核直接交付，保证极短响应。"""
+        if state.get("complexity") == "simple":
+            generated = state.get("generated") or "（系统未生成内容）"
+            state["final_reply"] = generated
+            state.setdefault("steps", []).append({"agent": "审核", "status": "done", "detail": "简单问题跳过审核"})
+            state["reviewed"] = {"passed": True, "score": 100, "issues": [], "suggestion": "简单问题跳过审核"}
+            _stats(state, "review", 0, 0, 0)
+            return state
         state["retry_count"] = state.get("retry_count", 0) + 1
         state.setdefault("steps", []).append({"agent": "审核", "status": "running"})
         t0 = time.time()
