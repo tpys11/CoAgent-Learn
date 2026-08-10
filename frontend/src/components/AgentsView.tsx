@@ -503,6 +503,10 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                     ) : (
                       <div className="flex-1 w-full border hairline rounded-xl px-4 py-3.5 bg-[var(--bg-input)] flex flex-col gap-4 overflow-y-auto">
                         {prompt.split('\n').filter((l: string) => l.trim()).map((line: string, i: number) => {
+                          const mh = line.match(/^\*\*(.+?)\*\*$/)  // 显眼标题：**基础能力** 等
+                          if (mh) {
+                            return <p key={i} className="text-[13px] font-bold uppercase tracking-wider" style={{ color: 'var(--accent)' }}>{mh[1]}</p>
+                          }
                           const m = line.match(/^-\s*([^：:]+)[：:]\s*(.*)$/)
                           if (m) {
                             return (
