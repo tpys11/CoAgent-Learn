@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect } from 'react'
-import { Settings, Square, Upload, Folder, Download, Layers, Wrench, ExternalLink, Plus, Trash2, LayoutTemplate, X, Workflow, Brain, Database, Scale } from 'lucide-react'
+import { Settings, Upload, Folder, Download, Layers, Wrench, ExternalLink, Plus, Trash2, LayoutTemplate, X, Workflow, Brain, Database, Scale } from 'lucide-react'
 import type { AgentConfig } from '../types'
 import { DEFAULT_AGENTS } from '../types'
 
@@ -554,7 +554,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                       }`}>
                       <img src={coverOf(s.name)} alt="" className="w-full h-16 object-cover rounded-t-[10px]" />
                       <span className="flex items-center justify-center gap-1.5 px-1 py-2">
-                        <Square size={12} className={linked ? 'text-[#1a1a1a]' : 'text-dim'} />
                         <span className="text-[10px] font-medium leading-tight text-center truncate">{s.name}</span>
                       </span>
                       <button onClick={(e) => { e.stopPropagation(); removeSkillFromAgent(s.name) }}
