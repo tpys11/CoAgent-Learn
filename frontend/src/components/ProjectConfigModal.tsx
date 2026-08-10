@@ -60,13 +60,19 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-6" onClick={onClose}>
       <div className="w-[min(1200px,94vw)] h-[90vh] panel rounded-3xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="flex items-center gap-2 px-4 py-2.5 border-b hairline flex-shrink-0">
-          <h3 className="text-sm font-bold mr-2">课程</h3>
-          {TABS.map(t => (
-            <button key={t.key} onClick={() => setTab(t.key)}
-              className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${tab === t.key ? 'bg-[#1a1a1a] text-white' : 'row-hover'}`}>
-              {t.label}
-            </button>
-          ))}
+          {initialOnly ? (
+            <>
+              <h3 className="text-sm font-bold mr-2">课程</h3>
+              {TABS.map(t => (
+                <button key={t.key} onClick={() => setTab(t.key)}
+                  className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${tab === t.key ? 'bg-[#1a1a1a] text-white' : 'row-hover'}`}>
+                  {t.label}
+                </button>
+              ))}
+            </>
+          ) : (
+            <h3 className="text-sm font-bold">{tab === 'memory' ? '记忆与进程' : '资源'}</h3>
+          )}
           <div className="ml-auto flex items-center gap-2">
             {/* 右上角保存：仅初次创建支持手动填写 */}
             {initialOnly && (
