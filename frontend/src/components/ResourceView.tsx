@@ -72,14 +72,14 @@ const DEFAULT_DOMAINS = ['Agent 应用与开发', 'Python 编程']
 
 /** 领域小方框配色：按名称稳定取一组柔和色调（浅底 + 彩色文字 + 彩色边框） */
 const DOMAIN_PALETTE = [
-  { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', hover: 'hover:bg-blue-100' },
-  { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', hover: 'hover:bg-emerald-100' },
-  { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', hover: 'hover:bg-amber-100' },
-  { bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200', hover: 'hover:bg-violet-100' },
-  { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200', hover: 'hover:bg-rose-100' },
-  { bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200', hover: 'hover:bg-cyan-100' },
-  { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200', hover: 'hover:bg-orange-100' },
-  { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200', hover: 'hover:bg-teal-100' },
+  { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', hover: 'hover:bg-blue-100', active: 'bg-blue-600' },
+  { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', hover: 'hover:bg-emerald-100', active: 'bg-emerald-600' },
+  { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', hover: 'hover:bg-amber-100', active: 'bg-amber-500' },
+  { bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200', hover: 'hover:bg-violet-100', active: 'bg-violet-600' },
+  { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200', hover: 'hover:bg-rose-100', active: 'bg-rose-600' },
+  { bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200', hover: 'hover:bg-cyan-100', active: 'bg-cyan-600' },
+  { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200', hover: 'hover:bg-orange-100', active: 'bg-orange-500' },
+  { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200', hover: 'hover:bg-teal-100', active: 'bg-teal-600' },
 ]
 const domainColor = (name: string) => {
   let h = 0
@@ -705,7 +705,7 @@ const exportItem = (item: ListItem) => {
                 onClick={() => { setSelectedDomain(d); setSelectedCat(CATEGORIES[0].key); setDetail(null) }}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-all ${
                   selectedDomain === d
-                    ? 'bg-[#1a1a1a] text-white border-[#1a1a1a] shadow-soft'
+                    ? `${c.active} text-white border-transparent shadow-soft`
                     : `${c.bg} ${c.text} ${c.border} ${c.hover}`
                 }`}
               >
