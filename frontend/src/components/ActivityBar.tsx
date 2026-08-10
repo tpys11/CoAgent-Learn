@@ -20,7 +20,7 @@ const ITEMS: Array<{ key: ViewKey; icon: any; label: string }> = [
 
 /** 最左侧细轨（无边框，融入底色）：主页时展开加宽（图标在文字前横排），离开主页变窄（图标在上、文字在下） */
 export default function ActivityBar({ view, onChange, expanded }: Props) {
-  const renderBtn = (key: ViewKey, icon: any, label: string, active: boolean) => (
+  const renderBtn = (key: ViewKey, Icon: any, label: string, active: boolean) => (
     expanded ? (
       <button
         key={key}
@@ -30,7 +30,7 @@ export default function ActivityBar({ view, onChange, expanded }: Props) {
           active ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'
         }`}
       >
-        <icon.type {...{ size: 17, strokeWidth: active ? 2 : 1.6 }} />
+        <Icon size={17} strokeWidth={active ? 2 : 1.6} />
         <span className="text-[11px] font-medium leading-none">{label}</span>
       </button>
     ) : (
@@ -42,7 +42,7 @@ export default function ActivityBar({ view, onChange, expanded }: Props) {
           active ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'
         }`}
       >
-        <icon.type {...{ size: 20, strokeWidth: active ? 2 : 1.6 }} />
+        <Icon size={20} strokeWidth={active ? 2 : 1.6} />
         <span className="text-[9px] leading-none">{label}</span>
       </button>
     )
