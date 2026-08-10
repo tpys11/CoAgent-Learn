@@ -10,7 +10,6 @@ const SESSION_ID = (() => {
 import ProjectSidebar from './components/ProjectSidebar'
 import CenterPanel from './components/CenterPanel'
 import RightPanel from './components/RightPanel'
-import ManualSetupModal from './components/ManualSetupModal'
 import SettingsModal, { ApiKeyPrompt } from './components/SettingsModal'
 import ProjectConfigModal from './components/ProjectConfigModal'
 import ObsidianView from './components/ObsidianView'
@@ -64,8 +63,6 @@ function App() {
   const [showSettings, setShowSettings] = useState(false)
   // 项目配置弹窗（Sidebar 项目三点进入：项目记忆 / 项目资源）
   const [showProjectConfig, setShowProjectConfig] = useState(false)
-  // 课程基本信息手动填写弹窗（新建课程引导消息右下角按钮打开）
-  const [showManualSetup, setShowManualSetup] = useState(false)
   // 弹窗默认页签（记忆与进程 / 资源）
   const [projectConfigTab, setProjectConfigTab] = useState<'memory' | 'resource'>('memory')
   const [projectKBId, setProjectKBId] = useState<string | null>(null)
@@ -622,7 +619,7 @@ function App() {
           onOpenSettings={() => setShowSettings(true)}
         projectInitialized={currentProject?.initialized !== false}
         draft={prefillInput}
-        onManualSetup={() => setShowManualSetup(true)}
+        onManualSetup={() => { setProjectConfigTab('memory'); setShowProjectConfig(true) }}
         analyzeHint={analyzeHint}
         onClearAnalyzeHint={() => setAnalyzeHint(null)}
       />
@@ -682,10 +679,6 @@ function App() {
         }} />}
       {showApiKeyPrompt && <ApiKeyPrompt onClose={() => { setShowApiKeyPrompt(false); localStorage.setItem('coagent-apikey-skipped', '1') }} />}
       {showIntro && <IntroPanel onClose={() => { setShowIntro(false); localStorage.setItem('coagent-intro-seen', '1') }} />}
-      {/* 课程基本信息手动填写弹窗 */}
-      {showManualSetup && currentProjectId && (
-        <ManualSetupModal projectId={currentProjectId} projectName={currentProject?.name || ''} onClose={() => setShowManualSetup(false)} />
-      )}
       {/* 删除对话确认弹窗 */}
       {deleteDialogueTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-6" onClick={() => setDeleteDialogueTarget(null)}>

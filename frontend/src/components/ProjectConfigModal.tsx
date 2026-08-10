@@ -3,7 +3,8 @@ import { FileText, BookOpen, Upload, Trash2 } from 'lucide-react'
 import MemoryView from './MemoryView'
 import ResourceView from './ResourceView'
 
-/** 课程记忆与资源窗口：点击侧栏对应「查看更多」进入，只展示对应界面（initialTab 决定展示哪个） */
+/** 课程记忆与资源窗口：两个页签（记忆与进程 / 资源）可切换；initialTab 决定打开时默认页签。
+ * 新建课程引导消息的「手动填写」按钮也复用此弹窗（默认记忆页=基本情况，可切资源） */
 export default function ProjectConfigModal({ projectId, onRequestModify, onRequestAnalyze, onClose, initialTab = 'memory' }: {
   projectId: string | null
   onRequestModify?: (label: string, pid?: string) => void
@@ -11,15 +12,27 @@ export default function ProjectConfigModal({ projectId, onRequestModify, onReque
   onClose: () => void
   initialTab?: 'memory' | 'resource'
 }) {
+  const [tab, setTab] = useState<'memory' | 'resource'>(initialTab)
+  useEffect(() => { setTab(initialTab) }, [initialTab])
+  const TABS: Array<{ key: 'memory' | 'resource'; label: string }> = [
+    { key: 'memory', label: '记忆与进程' },
+    { key: 'resource', label: '资源' },
+  ]
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-6" onClick={onClose}>
       <div className="w-[min(1200px,94vw)] h-[90vh] panel rounded-3xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-4 py-2.5 border-b hairline flex-shrink-0">
-          <h3 className="text-sm font-bold">{initialTab === 'memory' ? '记忆与进程' : '资源'}</h3>
-          <button onClick={onClose} className="w-7 h-7 rounded-lg icon-btn flex items-center justify-center text-xs" title="关闭">✕</button>
+        <div className="flex items-center gap-2 px-4 py-2.5 border-b hairline flex-shrink-0">
+          <h3 className="text-sm font-bold mr-2">课程</h3>
+          {TABS.map(t => (
+            <button key={t.key} onClick={() => setTab(t.key)}
+              className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${tab === t.key ? 'bg-[#1a1a1a] text-white' : 'row-hover'}`}>
+              {t.label}
+            </button>
+          ))}
+          <button onClick={onClose} className="ml-auto w-7 h-7 rounded-lg icon-btn flex items-center justify-center text-xs" title="关闭">✕</button>
         </div>
         <div className="flex-1 min-h-0 overflow-hidden">
-          {initialTab === 'memory'
+          {tab === 'memory'
             ? <MemoryView projectId={projectId} projectOnly onRequestModify={onRequestModify} onRequestAnalyze={onRequestAnalyze} />
             : <ProjectResources projectId={projectId} />}
         </div>
