@@ -248,15 +248,14 @@ const FlowGraph = ({ agents, templateName, templateAgentId, onSelect }: { agents
   if (templateName === '快速') {
     return (
       <div className="flex flex-col items-center gap-1 py-6">
-        <div className="flex items-center gap-3">
-          {/* 主 Agent 左侧虚线框：综合概述性记忆（合并已保存的对话记忆/个人记忆/项目记忆/知识库概述） */}
-          <div className="border-2 border-dashed border-[var(--border-color)] rounded-xl px-3 py-2.5 text-[10px] text-dim text-center leading-snug max-w-[150px]">
+        {/* 主 Agent：虚线框绝对定位在左侧（不参与布局，主干保持居中） */}
+        <div className="relative">
+          <FlowNode icon={Workflow} name="主 Agent" level={lv('plan')} active={act('main')} onClick={pick('main')} />
+          <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 border-2 border-dashed border-[var(--border-color)] rounded-xl px-3 py-2.5 text-[10px] text-dim text-center leading-snug max-w-[150px]">
             综合概述性记忆
             <br />
             <span className="text-[9px] opacity-70">对话记忆 · 个人记忆 · 项目记忆 · 知识库概述</span>
           </div>
-          <FlowArrow />
-          <FlowNode icon={Workflow} name="主 Agent" level={lv('plan')} active={act('main')} onClick={pick('main')} />
         </div>
         <DownArrow />
         <FlowNode icon={Scale} name="审核与输出" level={lv('review')} active={act('review')} onClick={pick('review')} />
@@ -293,9 +292,9 @@ const DownArrow = () => (
 /** 父节点 + 左右两侧子 Agent 横向连接（≥2 个子 Agent 左右平分；1 个放右侧） */
 function AgentRow({ node, subs }: { node: React.ReactNode; subs?: string[] }) {
   if (!subs || subs.length === 0) return <>{node}</>
-  // 子 Agent 全部放在父节点右侧，整列以父节点横向中线为轴对称分布（上下对称）；绝对定位不参与布局
+  // 子 Agent 全部放在父节点右侧，整列以父节点横向中线为轴对称分布（上下对称）；绝对定位不参与布局，不撑高主干
   return (
-    <div className="relative py-7">
+    <div className="relative">
       {node}
       <div className="absolute left-full top-1/2 -translate-y-1/2 ml-4 flex flex-col gap-4 items-start">
         {subs.map(s => (
