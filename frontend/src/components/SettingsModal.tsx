@@ -97,8 +97,12 @@ export default function SettingsModal({ onClose, projectId }: Props) {
 
   // 生成后动作
   const [postActions, setPostActions] = useState(() => getJSON('coagent-post-actions', { autoSaveResource: true, autoFollowups: true }))
-  // 流式与上下文
-  const [context, setContext] = useState(() => getJSON('coagent-context-settings', { typing: false, historyLimit: 10, memoryLayer: 'L2' }))
+  // 流式与上下文：固定（流式逐字输出 / 历史 10 条 / 记忆 L2），不提供修改入口
+  const FIXED_CONTEXT = { typing: true, historyLimit: 10, memoryLayer: 'L2' }
+  const [context] = useState(FIXED_CONTEXT)
+  useEffect(() => {
+    try { localStorage.setItem('coagent-context-settings', JSON.stringify(FIXED_CONTEXT)) } catch { /* 忽略 */ }
+  }, [])
   // 模型与 Key
   const [provider, setProvider] = useState(() => get('coagent-provider', 'deepseek'))
   const [provKeys, setProvKeys] = useState<Record<string, string>>(() => getJSON('coagent-provider-keys', {}))
@@ -277,25 +281,30 @@ export default function SettingsModal({ onClose, projectId }: Props) {
               </Section>
             )}
 
-            {/* 流式与上下文 */}
+            {/* 流式与上下文（固定，不提供修改） */}
             {show('context') && (
               <Section icon={MessageSquare} title="流式输出与上下文策略">
-                <div className="flex flex-col gap-4">
-                  <SwitchRow label="打字机渲染效果" desc="回复逐字显示；关闭则整段一次显示" checked={context.typing}
-                    onChange={v => setContext({ ...context, typing: v })} />
-                  <div className="flex flex-col gap-1.5 border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
-                    <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-between border hairline rounded-xl px-4 py-3 bg-[var(--bg-panel)]">
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-xs font-semibold">流式输出</span>
+                      <span className="text-[10px] text-dim">思考过程与回复逐字推送（固定开启）</span>
+                    </div>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--bg-hover)] text-dim">固定</span>
+                  </div>
+                  <div className="flex items-center justify-between border hairline rounded-xl px-4 py-3 bg-[var(--bg-panel)]">
+                    <div className="flex flex-col gap-0.5">
                       <span className="text-xs font-semibold">历史消息条数</span>
-                      <span className="text-[11px] text-dim">{context.historyLimit} 条</span>
+                      <span className="text-[10px] text-dim">注入对话上下文的历史条数（固定 10 条）</span>
                     </div>
-                    <input type="range" min="4" max="30" value={context.historyLimit}
-                      onChange={e => setContext({ ...context, historyLimit: Number(e.target.value) })}
-                      className="flex-1 accent-[var(--accent)]" />
-                    <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold">{context.historyLimit} 条</span>
+                  </div>
+                  <div className="flex items-center justify-between border hairline rounded-xl px-4 py-3 bg-[var(--bg-panel)]">
+                    <div className="flex flex-col gap-0.5">
                       <span className="text-xs font-semibold">记忆注入深度</span>
-                      <PillGroup options={['L1', 'L2', 'L3']} value={context.memoryLayer}
-                        onChange={v => setContext({ ...context, memoryLayer: v })} />
+                      <span className="text-[10px] text-dim">学情 Agent 读取的记忆层级（固定 L2）</span>
                     </div>
+                    <span className="text-[11px] font-semibold">{context.memoryLayer}</span>
                   </div>
                 </div>
               </Section>

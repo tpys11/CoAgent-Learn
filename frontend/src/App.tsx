@@ -424,6 +424,10 @@ function App() {
       const apiKey = provKeys[provider] || localStorage.getItem('coagent-apikey') || undefined
       // 合并设置：上下文(历史条数/记忆层级/打字机) + 对话后动作(自动保存/追问) + 上次设置 + 本次设置
       const ctxSettings = (() => { try { return JSON.parse(localStorage.getItem('coagent-context-settings') || '{}') } catch { return {} } })()
+      // 上下文策略固定：流式逐字输出 / 历史 10 条 / 记忆 L2（不随 localStorage 旧值变化）
+      ctxSettings.typing = true
+      ctxSettings.historyLimit = 10
+      ctxSettings.memoryLayer = 'L2'
       const postActions = (() => { try { return JSON.parse(localStorage.getItem('coagent-post-actions') || '{}') } catch { return {} } })()
       const lastSettings = (() => { try { return JSON.parse(localStorage.getItem('coagent-last-settings') || '{}') } catch { return {} } })()
       const mergedSettings = { ...ctxSettings, ...postActions, ...lastSettings, ...(settings || {}) }
@@ -528,7 +532,7 @@ function App() {
         if (debugLine) thinkArr.push({ agent: "运行统计", content: debugLine })
         const finalContent = finalReply || (flowError ? '⚠️ ' + flowError : '处理完成')
         // 打字机效果（设置开关）
-        const typingOn = (() => { try { return (JSON.parse(localStorage.getItem('coagent-context-settings') || '{}') as any).typing === true } catch { return false } })()
+        const typingOn = true  // 流式逐字输出固定开启
         if (typingOn) {
           setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: '', steps, think: thinkArr }) }))
           let i = 0
