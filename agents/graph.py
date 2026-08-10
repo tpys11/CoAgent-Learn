@@ -180,7 +180,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
 
     def plan_node(state: AgentState) -> AgentState:
         """主 Agent·规划调度：输入处理 + 一次规划出子 Agent 调用清单（可并行）"""
-        state.setdefault("steps", []).append({"agent": "主Agent", "status": "running", "detail": "规划调度"})
+        state.setdefault("steps", []).append({"agent": "主Agent·规划", "status": "running", "detail": "规划调度"})
         state.setdefault("mindchain", [])
         t0 = time.time()
         cfg = _agent_cfg("main")
@@ -192,12 +192,12 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             state["_output_subs"] = []
             state["complexity"] = "simple"  # 快速模板：跳过规划直接生成，视为简单问题
             _stats(state, "plan", int((time.time() - t0) * 1000), 0, 0)
-            state["mindchain"].append({"agent": "主Agent", "content": thinking})
-            state.setdefault("steps", []).append({"agent": "主Agent", "status": "done", "detail": "快速模板：跳过规划"})
+            state["mindchain"].append({"agent": "主Agent·规划", "content": thinking})
+            state.setdefault("steps", []).append({"agent": "主Agent·规划", "status": "done", "detail": "快速模板：跳过规划"})
             return state
         try:
             thinking, result = think_then_json(_pick_llm(cfg, llm_fast), _PLAN_PROMPT,
-                _append_example(cfg, state["user_input"]), "主Agent")
+                _append_example(cfg, state["user_input"]), "主Agent·规划")
             state["processed_input"] = result.get("processed", state["user_input"])
             state["_plan"] = result.get("plan", []) or []
             state["complexity"] = result.get("complexity", "normal")
@@ -213,8 +213,8 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             state["processed_input"] = state["user_input"]
             state["_plan"] = []
         _stats(state, "plan", int((time.time() - t0) * 1000), 1, len(thinking) // 2)
-        state["mindchain"].append({"agent": "主Agent", "content": thinking[:600]})
-        state.setdefault("steps", []).append({"agent": "主Agent", "status": "done",
+        state["mindchain"].append({"agent": "主Agent·规划", "content": thinking[:600]})
+        state.setdefault("steps", []).append({"agent": "主Agent·规划", "status": "done",
             "detail": f"规划完成，调用: {state['_plan'] if state['_plan'] else '无需子Agent'}"})
         return state
 
@@ -301,7 +301,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
 
     def generate_node(state: AgentState) -> AgentState:
         """主 Agent·生成：基于学情/知识库/历史生成三种学习资源（强模型）"""
-        state.setdefault("steps", []).append({"agent": "主Agent", "status": "running", "detail": "生成输出"})
+        state.setdefault("steps", []).append({"agent": "主Agent·生成", "status": "running", "detail": "生成输出"})
         t0 = time.time()
         cfg = _agent_cfg("main")
         NL = chr(10)
@@ -401,7 +401,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             _short_hint = ("（用户问题为简单问答：请直接给出简洁准确的回答，用 content 字段返回，"
                            "不要生成讲义/实操指南/测试题等长内容）") if state.get("complexity") == "simple" else ""
             thinking, result = think_then_json(_pick_llm(cfg, _gen_llm), _GENERATE_PROMPT,
-                _append_example(cfg, context) + _short_hint, "主Agent")
+                _append_example(cfg, context) + _short_hint, "主Agent·生成")
             if isinstance(result, dict) and result.get("讲义"):
                 parts = ["## 📘 定制讲义", str(result.get("讲义", "")), "", "## 🛠 实操指南", str(result.get("实操指南", ""))]
                 tests = result.get("测试题") or []
@@ -422,8 +422,8 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         except Exception as e:
             state["generated"] = f"抱歉，生成内容时出现错误：{str(e)[:200]}"
         _stats(state, "generate", int((time.time() - t0) * 1000), 1, len(thinking) // 2)
-        state["mindchain"].append({"agent": "主Agent", "content": thinking[:800]})
-        state.setdefault("steps", []).append({"agent": "主Agent", "status": "done", "detail": "生成完成"})
+        state["mindchain"].append({"agent": "主Agent·生成", "content": thinking[:800]})
+        state.setdefault("steps", []).append({"agent": "主Agent·生成", "status": "done", "detail": "生成完成"})
         return state
 
     def review_node(state: AgentState) -> AgentState:
