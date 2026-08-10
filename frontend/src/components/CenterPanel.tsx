@@ -23,9 +23,10 @@ interface CenterPanelProps {
   analyzeHint?: { label: string; project: string } | null
   onClearAnalyzeHint?: () => void
   onManualSetup?: () => void
+  flowStatus?: string
 }
 
-export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, statsCollapsed, onToggleStats, onOpenGuide, onOpenSettings, projectInitialized, draft, analyzeHint, onClearAnalyzeHint, onManualSetup }: CenterPanelProps) {
+export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, statsCollapsed, onToggleStats, onOpenGuide, onOpenSettings, projectInitialized, draft, analyzeHint, onClearAnalyzeHint, onManualSetup, flowStatus }: CenterPanelProps) {
   const [input, setInput] = useState('')
   // 记忆修改预填：draft 变化时写入输入框（从记忆界面跳转）
   useEffect(() => { if (draft) setInput(draft) }, [draft])
@@ -368,7 +369,7 @@ const TEMPLATE_OPTIONS = [
                       <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" />
                       <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }} />
                       <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }} />
-                      <span className="text-xs ml-1">思考中…</span>
+                      <span className="text-xs ml-1">{flowStatus || '思考中…'}</span>
                     </div>
                   </div>
                 ) : (

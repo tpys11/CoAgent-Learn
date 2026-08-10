@@ -133,6 +133,9 @@ function App() {
   const [rightCollapsed, setRightCollapsed] = useState(false)
   const [flowAgents, setFlowAgents] = useState<string[]>([])
   const [flowActiveAgent, setFlowActiveAgent] = useState<string | null>(null)
+  // 当前对话状态文案（等待模型响应/正在规划/正在阅读/正在思考/正在审核…）
+  const [flowStatus, setFlowStatus] = useState('')
+  const mainCountRef = useRef(0)
   const [flowMindchain, setFlowMindchain] = useState<Array<{agent: string; content: string}>>([])
   const mindchainRef = useRef<Array<{agent: string; content: string}>>([])
   // 思维链逐字 reveal：收到 token 进队列，interval 按 16ms/字 逐字追加（打字机效果）
@@ -388,6 +391,8 @@ function App() {
     setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'assistant', content: '' }] }))
     setIsLoading(true)
     setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = []
+    setFlowStatus('正在等待模型响应…')
+    mainCountRef.current = 0
     activeDidRef.current = did || null
     stopReveal()
     // 自动命名：对话名为「对话 N」时，按首条消息内容改名
@@ -470,6 +475,19 @@ function App() {
           if (data.type === 'step') {
             setFlowAgents(prev => prev.includes(data.agent) ? prev : [...prev, data.agent])
             setFlowActiveAgent(data.agent)
+            // 状态文案：主Agent出现2次（规划→生成思考），其余按节点名
+            if (data.agent === '主Agent') {
+              mainCountRef.current += 1
+              setFlowStatus(mainCountRef.current === 1 ? '正在规划…' : '正在思考生成…')
+            } else if (data.agent === '学情与记忆管理') {
+              setFlowStatus('正在阅读记忆…')
+            } else if (data.agent === '知识库管理') {
+              setFlowStatus('正在检索知识库…')
+            } else if (data.agent === '审核') {
+              setFlowStatus('正在审核…')
+            } else {
+              setFlowStatus('处理中…')
+            }
             // Agent 标题立即出现在思维链（内容由后续 thought_token 逐字填充）
             setFlowMindchain(prev => {
               const last = prev[prev.length - 1]
@@ -496,6 +514,7 @@ function App() {
           }
           if (data.type === 'done') {
             finalReply = data.reply; steps.push(...(data.steps || [])); taskStats = data.task_stats || null
+            setFlowStatus('')
             stopReveal()
             // 最终同步一次占位消息 think（降频期间可能滞后）
             setAllMessages(prev => {
@@ -625,6 +644,7 @@ function App() {
           onOpenSettings={() => setShowSettings(true)}
         projectInitialized={currentProject?.initialized !== false}
         draft={prefillInput}
+        flowStatus={flowStatus}
         onManualSetup={() => {
           if (!currentProjectId) return
           try {
