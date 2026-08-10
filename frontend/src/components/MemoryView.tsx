@@ -695,19 +695,23 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                                 <section>
                                   <h3 className="text-[11px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--accent)' }}>基本情况</h3>
                                   {initialEdit ? (
-                                    <div className="flex flex-col gap-2">
-                                      {/* 学习时间 / 强度与频率 / 学习周期：结构化小输入框 */}
-                                      <div className="grid grid-cols-3 gap-2.5">
-                                        {[['学习时间', '每周投入，如：每周 5 小时'], ['强度与频率', '如：每天 1 小时 × 5 天，中等强度'], ['学习周期', '如：3 个月']].map(([label, ph]) => (
-                                          <input key={label} value={editFields[label] || ''} placeholder={ph}
+                                    <div className="flex flex-col gap-2.5">
+                                      {/* 不设分栏：每项一行「设置项提示：输入」，用户跟着冒号填写 */}
+                                      {[['学习时间', '每周投入，如：每周 5 小时'], ['强度与频率', '如：每天 1 小时 × 5 天，中等强度'], ['学习周期', '如：3 个月']].map(([label, ph]) => (
+                                        <div key={label} className="flex items-center gap-2">
+                                          <span className="text-xs font-semibold flex-shrink-0">{label}：</span>
+                                          <input value={editFields[label] || ''} placeholder={ph}
                                             onChange={(e) => { const v = e.target.value; setEditFields(prev => ({ ...prev, [label]: v })); onEditChange?.({ ...editFields, [label]: v }) }}
-                                            className="w-full border hairline rounded-lg px-2.5 py-1.5 bg-[var(--bg-input)] text-xs outline-none focus:border-[var(--accent)]" />
-                                        ))}
+                                            className="flex-1 min-w-0 border hairline rounded-lg px-2.5 py-1.5 bg-[var(--bg-input)] text-xs outline-none focus:border-[var(--accent)]" />
+                                        </div>
+                                      ))}
+                                      <div className="flex items-start gap-2">
+                                        <span className="text-xs font-semibold flex-shrink-0">其他基本情况：</span>
+                                        <textarea value={editFields['抽象项目情况'] || ''} rows={3}
+                                          placeholder="一句话描述这门课程的整体情况（可选）"
+                                          onChange={(e) => { const v = e.target.value; setEditFields(prev => ({ ...prev, '抽象项目情况': v })); onEditChange?.({ ...editFields, '抽象项目情况': v }) }}
+                                          className="flex-1 min-w-0 border hairline rounded-xl px-3 py-2 bg-[var(--bg-input)] text-[13px] leading-6 outline-none resize-y focus:border-[var(--accent)]" />
                                       </div>
-                                      <textarea value={editFields['抽象项目情况'] || ''} rows={3}
-                                        placeholder="其他基本情况（可选）：一句话描述这门课程的整体情况"
-                                        onChange={(e) => { const v = e.target.value; setEditFields(prev => ({ ...prev, '抽象项目情况': v })); onEditChange?.({ ...editFields, '抽象项目情况': v }) }}
-                                        className="w-full border hairline rounded-xl px-3 py-2 bg-[var(--bg-input)] text-[13px] leading-6 outline-none resize-y focus:border-[var(--accent)]" />
                                     </div>
                                   ) : (
                                     <div className="border hairline rounded-xl px-5 py-4 bg-[var(--bg-input)] min-h-[120px] text-[13px] leading-7 text-[var(--text)]">
