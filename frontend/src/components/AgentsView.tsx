@@ -128,13 +128,13 @@ const SKILL_TABS: Array<{ key: string; label: string }> = [
 
 /** 系统预设 Skill 封面图（public/skill-covers/） */
 const SKILL_COVER: Record<string, string> = {
-  fetch_web: '/skill-covers/fetch-web.svg',
-  calculator: '/skill-covers/calculator.svg',
-  execute_code: '/skill-covers/execute-code.svg',
-  pdf_parse: '/skill-covers/pdf-parse.svg',
-  doc_parse: '/skill-covers/doc-parse.svg',
+  fetch_web: '/skill-covers/fetch-web.jpg',
+  calculator: '/skill-covers/calculator.jpg',
+  execute_code: '/skill-covers/execute-code.jpg',
+  pdf_parse: '/skill-covers/pdf-parse.jpg',
+  doc_parse: '/skill-covers/doc-parse.jpg',
 }
-const coverOf = (name: string) => SKILL_COVER[name] || '/skill-covers/generic.svg'
+const coverOf = (name: string) => SKILL_COVER[name] || '/skill-covers/generic.jpg'
 
 /** Skill 分类（已安装视图左侧栏） */
 const SKILL_CATS = [

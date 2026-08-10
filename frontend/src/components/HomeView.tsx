@@ -4,8 +4,8 @@ import TrendCalendar from './TrendCalendar'
 
 /** 系统预设领域 → 预存图片（非系统自带领域无图，显示首字占位） */
 const DOMAIN_IMAGES: Record<string, string> = {
-  'Agent 应用与开发': '/domain-images/agent.svg',
-  'Python 编程': '/domain-images/python.svg',
+  'Agent 应用与开发': '/domain-images/agent.jpg',
+  'Python 编程': '/domain-images/python.jpg',
 }
 
 interface HomeProject {
