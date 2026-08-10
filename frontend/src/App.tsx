@@ -147,25 +147,38 @@ function App() {
     const tick = () => {
       revealTimerRef.current = requestAnimationFrame(tick)
       const q = pendingQueueRef.current
-      while (q.length > 0 && q[0].text === '') q.shift()
       if (q.length === 0) return
-      // 每帧固定消费 1 个字符：均匀逐字输出（帧率极限 ~60字/秒，流畅不跳动）
-      const head = q[0]
-      const ch = head.text[0]
-      head.text = head.text.slice(1)
-      if (head.text === '') q.shift()
-      if (ch === undefined) return
+      // 每帧最多消费 12 字符（≈720字/秒）：跟上模型输出极限速度（不积压滞后），同时分批平滑不跳动
+      const MAX_PER_FRAME = 12
+      let budget = MAX_PER_FRAME
+      const updates: Array<{ agent: string; text: string }> = []
+      while (budget > 0 && q.length > 0) {
+        const head = q[0]
+        if (head.text === '') { q.shift(); continue }
+        const take = Math.min(budget, head.text.length)
+        const piece = head.text.slice(0, take)
+        head.text = head.text.slice(take)
+        if (head.text === '') q.shift()
+        const lastU = updates[updates.length - 1]
+        if (lastU && lastU.agent === head.agent) lastU.text += piece
+        else updates.push({ agent: head.agent, text: piece })
+        budget -= take
+      }
+      if (updates.length === 0) return
       setFlowMindchain(prev => {
-        const last = prev[prev.length - 1]
-        const next = (last && last.agent === head.agent)
-          ? [...prev.slice(0, -1), { agent: head.agent, content: last.content + ch }]
-          : [...prev, { agent: head.agent, content: ch }]
-        mindchainRef.current = next
-        return next
+        let cur = prev
+        for (const u of updates) {
+          const last = cur[cur.length - 1]
+          cur = (last && last.agent === u.agent)
+            ? [...cur.slice(0, -1), { agent: u.agent, content: last.content + u.text }]
+            : [...cur, { agent: u.agent, content: u.text }]
+        }
+        mindchainRef.current = cur
+        return cur
       })
-      // 同步到对话流占位消息的 think：每 4 帧一次（~64ms），降低渲染压力保证逐字帧率
+      // 同步到对话流占位消息的 think：每 2 帧一次（~32ms，纯文本渲染低成本）
       revealTickRef.current += 1
-      if (revealTickRef.current % 4 === 1) {
+      if (revealTickRef.current % 2 === 1) {
         setAllMessages(prev => {
           const arr = prev[activeDidRef.current || ''] || []
           const lastMsg = arr[arr.length - 1]
