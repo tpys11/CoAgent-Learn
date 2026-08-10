@@ -141,7 +141,7 @@ class DeepSeekLLM(BaseLLM):
     """OpenAI 兼容协议实现（DeepSeek/OpenAI/通义/GLM/Kimi/豆包等）"""
 
     def __init__(self, api_key: str | None = None, model: str | None = None, base_url: str | None = None):
-        self.model_name = model or "deepseek-flash"
+        self.model_name = model or "deepseek-v4-flash"
         self._api_key = api_key
         self._base_url = base_url
         super().__init__()

@@ -142,13 +142,19 @@ const TEMPLATE_OPTIONS = [
 
 /** 模型厂家配置（仅保留最常用：DeepSeek / 智谱GLM） */
   const MODEL_PROVIDERS = [
-    { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', models: ['deepseek-pro', 'deepseek-flash'] },
+    { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', models: ['deepseek-v4-pro', 'deepseek-v4-flash'] },
     { id: 'zhipu', name: '智谱GLM', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', models: ['glm-4-plus', 'glm-4-flash'] },
   ]
   const [selectedProvider, setSelectedProvider] = useState(() => localStorage.getItem('coagent-provider') || 'deepseek')
   const [selectedModel, setSelectedModel] = useState(() => {
-    const m = localStorage.getItem('coagent-model') || 'deepseek-pro'
-    return (m === 'deepseek-chat' || m === 'deepseek-reasoner') ? 'deepseek-pro' : m
+    const m = localStorage.getItem('coagent-model') || 'deepseek-v4-pro'
+    const alias: Record<string, string> = {
+      'deepseek-chat': 'deepseek-v4-pro',
+      'deepseek-reasoner': 'deepseek-v4-pro',
+      'deepseek-pro': 'deepseek-v4-pro',
+      'deepseek-flash': 'deepseek-v4-flash',
+    }
+    return alias[m] || m
   })
   // 模板模式（与模板与编排预设一致）
   const [templateMode, setTemplateMode] = useState(() => { const t = localStorage.getItem('coagent-template') || '基础'; return ['基础', '检索增强', '快速', '输出增强'].includes(t) ? t : '基础' })

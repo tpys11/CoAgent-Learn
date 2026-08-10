@@ -299,8 +299,15 @@ function App() {
       const provKeys = (() => { try { return JSON.parse(localStorage.getItem('coagent-provider-keys') || '{}') } catch { return {} } })()
       const provider = localStorage.getItem('coagent-provider') || 'deepseek'
       const model = (() => {
-        const m = localStorage.getItem('coagent-model') || 'deepseek-pro'
-        return (m === 'deepseek-chat' || m === 'deepseek-reasoner') ? 'deepseek-pro' : m
+        // DeepSeek 官方模型名已升级 v4：兼容 localStorage 里的旧值（deepseek-chat/reasoner/pro/flash）
+        const m = localStorage.getItem('coagent-model') || 'deepseek-v4-pro'
+        const alias: Record<string, string> = {
+          'deepseek-chat': 'deepseek-v4-pro',
+          'deepseek-reasoner': 'deepseek-v4-pro',
+          'deepseek-pro': 'deepseek-v4-pro',
+          'deepseek-flash': 'deepseek-v4-flash',
+        }
+        return alias[m] || m
       })()
       const providerBaseUrls: Record<string, string> = {
         deepseek: 'https://api.deepseek.com/v1',
