@@ -604,7 +604,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                 ))}
               </div>
               )}
-              </div>
             </div>
           )}
           {/* 子 Agent 介绍弹窗（点击卡片弹出，较小） */}
