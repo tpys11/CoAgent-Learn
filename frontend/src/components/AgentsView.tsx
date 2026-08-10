@@ -886,7 +886,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
         if (!tpl) return null
         const info = tplInfo(tpl)
         return (
-          <div className="w-80 flex-shrink-0 border-l hairline bg-[var(--bg-hover)] p-5 flex flex-col gap-5 overflow-y-auto">
+          <div className="w-[480px] flex-shrink-0 border-l hairline bg-[var(--bg-hover)] p-6 flex flex-col gap-5 overflow-y-auto">
             <p className="text-sm font-bold flex items-center gap-2"><LayoutTemplate size={15} /> {tpl.name} 模板</p>
             <div className="flex flex-col gap-1.5">
               <p className="text-xs font-semibold text-dim uppercase tracking-wider">适用场景</p>
