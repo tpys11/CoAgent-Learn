@@ -20,7 +20,7 @@ export default function SpecialOutputPane() {
   return (
     <div className="w-full h-full flex flex-col min-h-0">
       {/* 形式选项：正方形宫格（图标+名称竖排） */}
-      <div className="grid grid-cols-7 gap-1.5 px-3 pt-2.5 flex-shrink-0">
+      <div className="grid grid-cols-4 gap-1.5 px-3 pt-2.5 flex-shrink-0">
         {FORMS.map(f => (
           <button key={f.key} onClick={() => setForm(f.key)} title={f.desc}
             className={`flex flex-col items-center justify-center gap-1.5 rounded-xl aspect-square transition-colors ${form === f.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] text-dim hover:opacity-80'}`}>
