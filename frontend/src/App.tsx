@@ -475,18 +475,18 @@ function App() {
           if (data.type === 'step') {
             setFlowAgents(prev => prev.includes(data.agent) ? prev : [...prev, data.agent])
             setFlowActiveAgent(data.agent)
-            // 状态文案：主Agent出现2次（规划→生成思考），其余按节点名
+            // 状态文案：Agent 名称 + 正在干什么（主Agent出现2次：规划→生成思考）
             if (data.agent === '主Agent') {
               mainCountRef.current += 1
-              setFlowStatus(mainCountRef.current === 1 ? '正在规划…' : '正在思考生成…')
+              setFlowStatus(mainCountRef.current === 1 ? '主Agent 正在规划…' : '主Agent 正在思考生成…')
             } else if (data.agent === '学情与记忆管理') {
-              setFlowStatus('正在阅读记忆…')
+              setFlowStatus('学情与记忆管理 正在阅读记忆…')
             } else if (data.agent === '知识库管理') {
-              setFlowStatus('正在检索知识库…')
+              setFlowStatus('知识库管理 正在检索知识库…')
             } else if (data.agent === '审核') {
-              setFlowStatus('正在审核…')
+              setFlowStatus('审核 正在审核…')
             } else {
-              setFlowStatus('处理中…')
+              setFlowStatus(data.agent + ' 处理中…')
             }
             // Agent 标题立即出现在思维链（内容由后续 thought_token 逐字填充）
             setFlowMindchain(prev => {
