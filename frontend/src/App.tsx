@@ -438,7 +438,7 @@ function App() {
             setFlowActiveAgent(data.agent)
             // 进入逐字 reveal 队列（打字机效果，一个字一个字冒出来）；清洗 ```json 围栏
             const cleanChunk = data.chunk.replace(/```json[\s\S]*?```/g, '').replace(/```[\s\S]*?```/g, '')
-            if (!cleanChunk.trim()) return
+            if (!cleanChunk.trim()) continue  // 跳过空白 chunk（换行等），绝不能中断 SSE 解析循环
             const q = pendingQueueRef.current
             const lastQ = q[q.length - 1]
             if (lastQ && lastQ.agent === data.agent) {
