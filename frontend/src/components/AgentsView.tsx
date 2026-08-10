@@ -521,51 +521,51 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                       </div>
                     )}
                   </div>
-                  <div className="flex flex-col gap-2">
-                    <label className={`${fieldLabel} flex items-center gap-1`}><Folder size={13} /> Skill 模块</label>
-                    <div className="flex flex-wrap gap-3">
-                      {allSkills.map(s => {
-                        const linked = linkedSkills.includes(s.name)
-                        const disabled = skillEnabled[s.name] === false
-                        return (
-                          <button key={s.name} onClick={() => toggleSkill(s.name)}
-                            title={s.description}
-                            className={`relative w-20 h-20 rounded-xl border-2 flex flex-col items-center justify-center gap-1 transition-all ${
-                              disabled ? 'opacity-30 cursor-not-allowed' :
-                              linked ? 'border-[#1a1a1a] bg-[var(--bg-hover)]' : 'border-dashed border-[var(--border-color)] hover:border-[var(--border-strong)]'
-                            }`}>
-                            <Square size={16} className={linked ? 'text-[#1a1a1a]' : 'text-dim'} />
-                            <span className="text-[10px] font-medium leading-tight text-center px-1 truncate w-full">{s.name}</span>
-                            {/* 右上角红色叉：持续存在，点击删除该 Skill（未选中也可删除） */}
-                            <button onClick={(e) => { e.stopPropagation(); removeSkillFromAgent(s.name) }}
-                              className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center shadow hover:bg-red-600 transition-colors"
-                              title="删除该 Skill">
-                              <X size={9} />
-                            </button>
-                            {/* 右下角 radio：选中实心、未选中空心 */}
-                            <span className={`absolute right-1.5 bottom-1.5 w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center transition-colors ${
-                              linked ? 'border-[#1a1a1a]' : 'border-[var(--border-color)]'
-                            }`}>
-                              {linked && <span className="w-1.5 h-1.5 rounded-full bg-[#1a1a1a]" />}
-                            </span>
-                          </button>
-                        )
-                      })}
-                      <button className="w-20 h-20 rounded-xl border-2 border-dashed border-[var(--border-color)] flex flex-col items-center justify-center gap-1 hover:border-[var(--border-strong)] transition-colors"
-                        onClick={() => document.getElementById('agent-skill-upload')?.click()}>
-                        <Upload size={16} className="text-dim" />
-                        <span className="text-[10px] text-dim">上传</span>
-                        <input id="agent-skill-upload" type="file" className="hidden" {...({ webkitdirectory: '', directory: '' } as any)} />
-                      </button>
-                    </div>
-                  </div>
+
                 </div>
               </>
             )}
           </div>
-          {/* 右侧：子 Agent（主 Agent 只有一个「输出增强」，点开才显示介绍与能力列表） */}
+          {/* 右侧：Skill 模块（上）+ 子 Agent（下） */}
+          <div className="w-[520px] flex-shrink-0 flex flex-col gap-4 overflow-y-auto">
+            {/* Skill 模块：一排放三个 */}
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-dim uppercase tracking-wider flex items-center gap-1"><Folder size={13} /> Skill 模块</label>
+                <button onClick={() => document.getElementById('agent-skill-upload')?.click()}
+                  className="text-[10px] px-2 py-1 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">上传 Skill</button>
+                <input id="agent-skill-upload" type="file" className="hidden" {...({ webkitdirectory: '', directory: '' } as any)} />
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                {allSkills.map(s => {
+                  const linked = linkedSkills.includes(s.name)
+                  const disabled = skillEnabled[s.name] === false
+                  return (
+                    <button key={s.name} onClick={() => toggleSkill(s.name)}
+                      title={s.description}
+                      className={`relative h-24 rounded-xl border-2 flex flex-col items-center justify-center gap-1.5 transition-all ${
+                        disabled ? 'opacity-30 cursor-not-allowed' :
+                        linked ? 'border-[#1a1a1a] bg-[var(--bg-hover)]' : 'border-dashed border-[var(--border-color)] hover:border-[var(--border-strong)]'
+                      }`}>
+                      <Square size={18} className={linked ? 'text-[#1a1a1a]' : 'text-dim'} />
+                      <span className="text-[10px] font-medium leading-tight text-center px-1 truncate w-full">{s.name}</span>
+                      <button onClick={(e) => { e.stopPropagation(); removeSkillFromAgent(s.name) }}
+                        className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center shadow hover:bg-red-600 transition-colors"
+                        title="删除该 Skill">
+                        <X size={9} />
+                      </button>
+                      <span className={`absolute right-1.5 bottom-1.5 w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center transition-colors ${
+                        linked ? 'border-[#1a1a1a]' : 'border-[var(--border-color)]'
+                      }`}>
+                        {linked && <span className="w-1.5 h-1.5 rounded-full bg-[#1a1a1a]" />}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
           {agent && agent.subAgents && agent.subAgents.length > 0 && (
-            <div className="w-[420px] flex-shrink-0 flex flex-col gap-3 overflow-y-auto">
+            <div className="w-full flex flex-col gap-3 overflow-y-auto">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-semibold text-dim uppercase tracking-wider">子 Agent</p>
                 <button onClick={() => { setSubName(''); setSubForm(''); setSubPrompt(''); setShowSubAdd(true) }}
@@ -606,6 +606,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
               )}
             </div>
           )}
+          </div>
           {/* 子 Agent 介绍弹窗（点击卡片弹出，较小） */}
           {subIntroOpen && agent && (
             <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setSubIntroOpen(false)}>
