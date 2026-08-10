@@ -129,7 +129,7 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
     example: '',
     subAgents: [
       { id: 'kb-manage', name: '知识库管理', subPrompt: '你是知识库检索整理助手。把检索到的知识库片段整理为「来源→核心观点→关键数据」的条目，只输出整理结果本身。', form: '检索' },
-      { id: 'search', name: '搜索', subPrompt: '你是搜索整理助手。把联网搜索到的资料整理为「来源→核心观点→关键数据」的条目并标注来源网址，只输出整理结果本身。', form: '搜索' },
+      { id: 'search', name: '搜索增强', subPrompt: '你是搜索增强整理助手。把联网搜索到的资料整理为「来源→核心观点→关键数据」的条目并标注来源网址，只输出整理结果本身。', form: '搜索' },
     ],
   },
   {

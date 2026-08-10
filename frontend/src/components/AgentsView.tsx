@@ -571,18 +571,22 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                 <button onClick={() => { setSubName(''); setSubForm(''); setSubPrompt(''); setShowSubAdd(true) }}
                   className="text-[10px] px-2 py-1 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">＋ 添加能力</button>
               </div>
-              <div className="border hairline rounded-xl bg-[var(--bg-panel)] overflow-hidden">
-                {/* 子 Agent 卡片（名称与一句话介绍同属一个按钮，整块点击弹出介绍弹窗） */}
-                <button onClick={() => setSubIntroOpen(true)}
-                  className="w-full flex flex-col items-stretch gap-2.5 px-3.5 py-9 hover:bg-[var(--bg-hover)] transition-colors">
-                  <span className="flex items-center gap-2">
-                    <span className="text-xs font-bold">{agent.id === 'main' ? '输出增强' : agent.id === 'kb' ? '检索增强' : agent.name}</span>
-                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--bg-hover)] text-dim flex-shrink-0">子 Agent</span>
-                    <span className="flex-1" />
-                    <span className="text-[10px] text-dim">查看介绍</span>
-                  </span>
-                  <span className="text-[10px] text-dim leading-relaxed text-left">按需调用各能力 Agent 产出结构化内容，选择「输出增强」模板后才会调用。</span>
-                </button>
+              <div className="flex flex-col gap-2">
+                {/* 子 Agent 卡片：每个子 Agent 独立一张（知识库管理 / 搜索增强），整块点击弹出介绍弹窗 */}
+                {(agent.subAgents || []).map(s => (
+                  <div key={s.id} className="border hairline rounded-xl bg-[var(--bg-panel)] overflow-hidden">
+                    <button onClick={() => setSubIntroOpen(true)}
+                      className="w-full flex flex-col items-stretch gap-2 px-3.5 py-4 hover:bg-[var(--bg-hover)] transition-colors">
+                      <span className="flex items-center gap-2">
+                        <span className="text-xs font-bold">{s.name}</span>
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--bg-hover)] text-dim flex-shrink-0">{s.form}</span>
+                        <span className="flex-1" />
+                        <span className="text-[10px] text-dim">查看介绍</span>
+                      </span>
+                      <span className="text-[10px] text-dim leading-relaxed text-left line-clamp-2">{s.subPrompt}</span>
+                    </button>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -591,7 +595,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
             <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setSubIntroOpen(false)}>
               <div className="bg-[var(--bg-panel)] rounded-2xl shadow-xl w-full max-w-md p-5 mx-4 flex flex-col gap-3.5" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center justify-between">
-                  <p className="text-base font-bold">{agent.id === 'main' ? '输出增强' : agent.id === 'kb' ? '检索增强' : agent.name} · 子 Agent</p>
+                  <p className="text-base font-bold">{agent.name} · 子 Agent</p>
                   <button onClick={() => setSubIntroOpen(false)} className="p-1 hover:bg-[var(--bg-hover)] rounded"><X size={16} /></button>
                 </div>
                 {/* 介绍 */}
