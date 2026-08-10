@@ -1,16 +1,20 @@
-﻿import { useCallback, useEffect, useRef, useState } from 'react'
-import { FileText, BookOpen, Upload, Trash2 } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { FileText, BookOpen, Upload, Trash2, Save, X } from 'lucide-react'
 import MemoryView from './MemoryView'
 import ResourceView from './ResourceView'
 
 /** 课程记忆与资源窗口：两个页签（记忆与进程 / 资源）可切换；initialTab 决定打开时默认页签。
- * 新建课程引导消息的「手动填写」按钮也复用此弹窗（默认记忆页=基本情况，可切资源） */
-export default function ProjectConfigModal({ projectId, onRequestModify, onRequestAnalyze, onClose, initialTab = 'memory' }: {
+ * 新建课程引导消息的「手动填写」按钮也复用此弹窗（initialOnly=true：仅初次创建可手动填写，
+ * 记忆页顶部显示基本信息填写区，右上角「保存」→ 确认弹窗提示后续只能通过对话间接填写） */
+export default function ProjectConfigModal({ projectId, projectName, onRequestModify, onRequestAnalyze, onClose, initialTab = 'memory', initialOnly = false, onSaved }: {
   projectId: string | null
+  projectName?: string
   onRequestModify?: (label: string, pid?: string) => void
   onRequestAnalyze?: (projectName: string) => void
   onClose: () => void
   initialTab?: 'memory' | 'resource'
+  initialOnly?: boolean
+  onSaved?: () => void
 }) {
   const [tab, setTab] = useState<'memory' | 'resource'>(initialTab)
   useEffect(() => { setTab(initialTab) }, [initialTab])
@@ -18,6 +22,74 @@ export default function ProjectConfigModal({ projectId, onRequestModify, onReque
     { key: 'memory', label: '记忆与进程' },
     { key: 'resource', label: '资源' },
   ]
+  // 初次手动填写：基本信息表单 + 确认弹窗
+  const [confirming, setConfirming] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [name, setName] = useState(projectName || '')
+  const [purpose, setPurpose] = useState('')
+  const [overview, setOverview] = useState('')
+  const [start, setStart] = useState('')
+  const [level, setLevel] = useState('')
+  const [goal, setGoal] = useState('')
+  const [prefer, setPrefer] = useState('')
+  useEffect(() => {
+    if (!initialOnly || !projectId) return
+    setName(projectName || '')
+    fetch('/api/project-memory/' + encodeURIComponent(projectId), { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => {
+        const m = d.memory || {}
+        setPurpose(String(m['抽象目的'] || ''))
+        setOverview(String(m['抽象项目情况'] || ''))
+        setStart(String(m['起点'] || ''))
+        setLevel(String(m['当前水平'] || ''))
+        setGoal(String(m['目标'] || ''))
+        const p = m['偏好']
+        setPrefer(Array.isArray(p) ? p.join('、') : String(p || ''))
+      })
+      .catch(() => {})
+  }, [initialOnly, projectId, projectName])
+
+  const doSave = async () => {
+    if (!projectId) return
+    setSaving(true)
+    try {
+      await fetch('/api/project-memory/' + encodeURIComponent(projectId), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profile: {
+          抽象目的: purpose, 抽象项目情况: overview, 起点: start, 当前水平: level, 目标: goal,
+          偏好: prefer.split(/[,，、\n]+/).map(s => s.trim()).filter(Boolean),
+        } }),
+      })
+      if (name.trim() && name.trim() !== projectName) {
+        await fetch('/api/projects/' + encodeURIComponent(projectId), {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name.trim() }),
+        })
+      }
+      // 标记该课程已完成初次手动填写
+      try {
+        const done = JSON.parse(localStorage.getItem('coagent-manual-setup-done') || '[]')
+        if (!done.includes(projectId)) { done.push(projectId); localStorage.setItem('coagent-manual-setup-done', JSON.stringify(done)) }
+      } catch { /* 忽略 */ }
+      onSaved?.()
+      onClose()
+    } catch (e) {
+      alert('保存失败：' + ((e as any)?.message || '网络异常'))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const field = (label: string, placeholder: string, value: string, set: (v: string) => void, rows = 1) => (
+    <label className="flex flex-col gap-1 min-w-0">
+      <span className="text-[10px] font-semibold text-dim">{label}</span>
+      <textarea rows={rows} value={value} placeholder={placeholder}
+        onChange={(e) => set(e.target.value)}
+        className="w-full px-2.5 py-1.5 rounded-lg border hairline outline-none text-xs resize-none bg-[var(--bg-input)] focus:border-[var(--accent)]" />
+    </label>
+  )
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-6" onClick={onClose}>
       <div className="w-[min(1200px,94vw)] h-[90vh] panel rounded-3xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
@@ -29,14 +101,65 @@ export default function ProjectConfigModal({ projectId, onRequestModify, onReque
               {t.label}
             </button>
           ))}
-          <button onClick={onClose} className="ml-auto w-7 h-7 rounded-lg icon-btn flex items-center justify-center text-xs" title="关闭">✕</button>
+          <div className="ml-auto flex items-center gap-2">
+            {/* 右上角保存：仅初次创建支持手动填写 */}
+            {initialOnly && (
+              <button onClick={() => setConfirming(true)} disabled={saving}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-[11px] font-medium text-white bg-[var(--accent)] hover:opacity-90 transition-colors disabled:opacity-50">
+                <Save size={12} /> 保存
+              </button>
+            )}
+            <button onClick={onClose} className="w-7 h-7 rounded-lg icon-btn flex items-center justify-center text-xs" title="关闭">
+              <X size={14} />
+            </button>
+          </div>
         </div>
         <div className="flex-1 min-h-0 overflow-hidden">
           {tab === 'memory'
-            ? <MemoryView projectId={projectId} projectOnly onRequestModify={onRequestModify} onRequestAnalyze={onRequestAnalyze} />
+            ? (
+              <div className="h-full flex flex-col min-h-0">
+                {/* 初次手动填写：基本信息填写区（仅初次创建显示，后续只能通过对话间接填写） */}
+                {initialOnly && (
+                  <div className="flex-shrink-0 px-6 py-3 border-b hairline">
+                    <p className="text-[11px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--accent)' }}>基本信息（仅初次创建可手动填写）</p>
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+                      {field('课程名', '例如：Python 数据分析实战', name, setName)}
+                      {field('学习目的', '求职 / 兴趣 / 考试…', purpose, setPurpose)}
+                      {field('课程概述', '一句话说说学什么', overview, setOverview, 2)}
+                      {field('起点水平', '开始前的水平', start, setStart)}
+                      {field('当前水平', '现在的水平', level, setLevel)}
+                      {field('学习目标', '想最终学会什么', goal, setGoal, 2)}
+                      {field('偏好', '逗号分隔，如：例子驱动、图文', prefer, setPrefer)}
+                    </div>
+                  </div>
+                )}
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  <MemoryView projectId={projectId} projectOnly onRequestModify={onRequestModify} onRequestAnalyze={onRequestAnalyze} />
+                </div>
+              </div>
+            )
             : <ProjectResources projectId={projectId} />}
         </div>
       </div>
+      {/* 保存确认弹窗：仅初次创建支持手动填写，后续只能通过对话间接填写 */}
+      {confirming && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-6" onClick={() => setConfirming(false)}>
+          <div className="card-lift rounded-2xl p-5 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm font-bold">保存课程信息？</p>
+            <p className="mt-2 text-[11px] leading-relaxed text-dim">
+              仅初次创建支持手动填写，<br />
+              后续只能通过对话间接填写。<br />
+              确定保存吗？
+            </p>
+            <div className="mt-4 flex gap-2">
+              <button onClick={() => setConfirming(false)}
+                className="flex-1 py-2 rounded-xl text-[11px] font-medium border hairline row-hover transition-colors">取消</button>
+              <button onClick={() => { setConfirming(false); doSave() }}
+                className="flex-1 py-2 rounded-xl text-[11px] font-medium text-white bg-[var(--accent)] hover:opacity-90 transition-colors">确认保存</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

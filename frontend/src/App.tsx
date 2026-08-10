@@ -63,6 +63,8 @@ function App() {
   const [showSettings, setShowSettings] = useState(false)
   // 项目配置弹窗（Sidebar 项目三点进入：项目记忆 / 项目资源）
   const [showProjectConfig, setShowProjectConfig] = useState(false)
+  // 初次创建手动填写模式（仅首次可手动填写，保存后标记完成）
+  const [manualSetupOnly, setManualSetupOnly] = useState(false)
   // 弹窗默认页签（记忆与进程 / 资源）
   const [projectConfigTab, setProjectConfigTab] = useState<'memory' | 'resource'>('memory')
   const [projectKBId, setProjectKBId] = useState<string | null>(null)
@@ -619,7 +621,16 @@ function App() {
           onOpenSettings={() => setShowSettings(true)}
         projectInitialized={currentProject?.initialized !== false}
         draft={prefillInput}
-        onManualSetup={() => { setProjectConfigTab('memory'); setShowProjectConfig(true) }}
+        onManualSetup={() => {
+          if (!currentProjectId) return
+          try {
+            const done = JSON.parse(localStorage.getItem('coagent-manual-setup-done') || '[]')
+            if (done.includes(currentProjectId)) return  // 已完成初次手动填写，后续只能对话填写
+          } catch { /* 忽略 */ }
+          setManualSetupOnly(true)
+          setProjectConfigTab('memory')
+          setShowProjectConfig(true)
+        }}
         analyzeHint={analyzeHint}
         onClearAnalyzeHint={() => setAnalyzeHint(null)}
       />
@@ -656,10 +667,13 @@ function App() {
       {showProjectConfig && (
         <ProjectConfigModal
           projectId={projectKBId ?? currentProjectId}
+          projectName={(projectKBId ? projects.find(x => x.id === projectKBId) : currentProject)?.name || ''}
           initialTab={projectConfigTab}
+          initialOnly={manualSetupOnly}
+          onSaved={() => setManualSetupOnly(false)}
           onRequestModify={handleRequestModify}
           onRequestAnalyze={handleRequestAnalyze}
-          onClose={() => setShowProjectConfig(false)}
+          onClose={() => { setShowProjectConfig(false); setManualSetupOnly(false) }}
         />
       )}
       {showGuide && <GuideModal onClose={() => setShowGuide(false)} />}
