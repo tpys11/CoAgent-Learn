@@ -18,7 +18,7 @@ type Block = 'agents' | 'skills' | 'templates'
 const PRESET_TEMPLATES: Array<{ name: string; desc: string; intro: string; detail: Array<[string, string]>; agents: AgentConfig[] }> = [
   {
     name: '基础', desc: '默认编排',
-    intro: '面向日常学习提问与概念讲解——回答「这是什么、怎么理解」类问题，讲解深浅按你的学情动态调整。不需要引用资料、也不需要特定输出形式时，用这个最省心。',
+    intro: '基础职责概述：默认编排流程，覆盖大多数学习场景。一次规划 → 学情与记忆 ∥ 知识库与搜索（并行）→ 主 Agent 生成 → 审核与输出。\n**基础能力**\n- 规划调度：解析输入，一次规划并行调度所需 Agent\n- 学情与记忆：读取三层记忆，输出学情画像\n- 知识库与搜索：按需检索知识库与联网\n- 生成与审核：强模型生成 + 三维度质量把关\n**拓展能力**\n- 输出增强：触发条件——需要结构化产出（笔记/表格/清单等）时；执行方式——选择「输出增强」模板，由主 Agent 按需调用子 Agent 产出专项内容',
     detail: [
       ['编排流程', '规划 → 学情与记忆 ∥ 知识库与搜索 → 生成 → 审核 → 输出'],
       ['生成模型', '强模型（质量优先）'],
@@ -30,7 +30,7 @@ const PRESET_TEMPLATES: Array<{ name: string; desc: string; intro: string; detai
   },
   {
     name: '检索增强', desc: '知识库管理调用子 Agent 整理资料',
-    intro: '面向需要「基于资料回答」的问题——复习备考、查证概念、引用知识库内容作答。回答会先让知识库子 Agent 整理检索与联网结果，再基于整理内容生成，可溯源、少幻觉。',
+    intro: '基础职责概述：在基础流程上强化资料整理，面向「基于资料回答」的问题——复习备考、查证概念、引用知识库作答，可溯源、少幻觉。\n**基础能力**\n- 知识库检索：从向量库检索相关片段（含来源）\n- 联网搜索：必要时聚合多源权威信息\n- 子 Agent 整理：知识库管理/搜索子 Agent 将材料整理为「来源→核心观点→关键数据」条目\n**拓展能力**\n- 检索增强整理：触发条件——选择「检索增强」模板；执行方式——强制调用知识库与搜索的子 Agent（知识库管理只整理知识库片段、搜索只整理联网结果），主 Agent 基于整理结果生成',
     detail: [
       ['编排流程', '规划 → 学情与记忆 ∥ 知识库与搜索（强制调用子 Agent）→ 生成 → 审核 → 输出'],
       ['知识库子 Agent', '知识库管理（整理检索片段）、搜索（整理联网结果）'],
@@ -42,7 +42,7 @@ const PRESET_TEMPLATES: Array<{ name: string; desc: string; intro: string; detai
   },
   {
     name: '快速', desc: '主 Agent 生成使用快模型',
-    intro: '面向简单快速的问答——快速概念确认、即兴提问、碎片化学习。流程只保留主 Agent 与审核与输出：主 Agent 直接接收「综合概述性记忆」（对话记忆、知识库与个人记忆概述、项目记忆概述合并），不再额外调用各 Agent，速度最快、消耗最低；复杂推导类问题不建议用。',
+    intro: '基础职责概述：面向简单快速的问答——概念确认、即兴提问、碎片化学习。流程只保留主 Agent 与审核与输出，速度最快、消耗最低；复杂推导类问题不建议用。\n**基础能力**\n- 综合概述性记忆：将对话记忆、个人记忆概述、项目记忆概述、知识库概述合并后直接发送主 Agent，不额外调用各 Agent（前提：首次使用时各 Agent 调用后已保存信息）\n- 快速生成：主 Agent 用快模型直接生成\n**拓展能力**\n- 无（简化流程下不调用子 Agent 与额外节点）',
     detail: [
       ['编排流程', '主 Agent（接收综合概述性记忆）→ 审核与输出'],
       ['综合概述性记忆', '将对话记忆、知识库与个人记忆概述、项目记忆概述合并后直接发送给主 Agent，不再额外调用各 Agent；前提：首次使用时各 Agent 调用后已保存信息'],
@@ -55,7 +55,7 @@ const PRESET_TEMPLATES: Array<{ name: string; desc: string; intro: string; detai
   },
   {
     name: '输出增强', desc: '主 Agent 调用子 Agent 产出结构化内容',
-    intro: '面向需要「结构化产出」的问题——学习笔记、要点总结、对比表格、思维导图、时间线、FAQ 清单等。主 Agent 规划时按问题选择输出子 Agent 产出专项内容，再组织成完整回答。',
+    intro: '基础职责概述：面向需要「结构化产出」的问题——学习笔记、要点总结、对比表格、思维导图、时间线、FAQ 清单等，产出清晰易读的结构化内容。\n**基础能力**\n- 规划选择：主 Agent 规划时按问题选择输出子 Agent（树状结构、要点卡片、思维导图、表格对比、流程图时序图、时间线、FAQ 问答对、清单检查单，按问题选 0-3 个）\n- 子 Agent 产出：被选中的子 Agent 先产出专项结构化内容\n- 组织生成：主 Agent 基于子 Agent 产出组织完整回答\n**拓展能力**\n- 结构化适配：触发条件——用户要求特定形式产出时；执行方式——规划阶段按需选择对应子 Agent 执行',
     detail: [
       ['编排流程', '规划（按需选择输出子 Agent）→ 学情与记忆 ∥ 知识库与搜索 → 生成（基于子 Agent 产出）→ 审核 → 输出'],
       ['输出子 Agent', '树状结构、要点卡片、思维导图、表格对比、流程图时序图、时间线、FAQ 问答对、清单检查单（按问题选 0-3 个）'],
@@ -158,6 +158,26 @@ const BLOCKS: Array<{ key: Block; icon: any; label: string }> = [
   { key: 'skills', icon: Layers, label: 'Skill 管理' },
   { key: 'templates', icon: LayoutTemplate, label: '模板与编排' },
 ]
+
+/** 格式化文本：**标题** → 主题色加粗标题；「- 名称：内容」→ 加粗名称 + 正文；普通行 → 正文段落（与 Agent 提示词展示一致） */
+function FormattedText({ text }: { text: string }) {
+  return (
+    <div className="flex flex-col gap-3">
+      {text.split('\n').filter((l: string) => l.trim()).map((line: string, i: number) => {
+        const mh = line.match(/^\*\*(.+?)\*\*$/)
+        if (mh) return <p key={i} className="text-[13px] font-bold uppercase tracking-wider" style={{ color: 'var(--accent)' }}>{mh[1]}</p>
+        const m = line.match(/^-\s*([^：:]+)[：:]\s*(.*)$/)
+        if (m) return (
+          <div key={i} className="flex flex-col gap-1.5">
+            <p className="text-[13px] font-bold text-[var(--text)]">{m[1]}</p>
+            <p className="text-xs text-[var(--text-muted)] leading-loose">{m[2]}</p>
+          </div>
+        )
+        return <p key={i} className="text-xs leading-loose text-[var(--text-muted)]">{line}</p>
+      })}
+    </div>
+  )
+}
 
 /** 编排节点图：节点 + 箭头；节点背景色深浅按模板编排的基础逻辑标注（节点在流程中的职责负载，与内部运行数据无关） */
 function FlowNode({ icon: Icon, name, level = 0, active, onClick }: { icon: any; name: string; level?: number; active?: boolean; onClick?: () => void }) {
@@ -519,23 +539,8 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                       <textarea value={prompt} onChange={e => { setPrompt(e.target.value); commit({ systemPrompt: e.target.value }) }} rows={10}
                         className="flex-1 w-full px-3 py-2 border hairline rounded-xl text-xs font-mono outline-none resize-none focus:border-[var(--border-strong)] bg-[var(--bg-input)]" />
                     ) : (
-                      <div className="flex-1 w-full border hairline rounded-xl px-4 py-3.5 bg-[var(--bg-input)] flex flex-col gap-4 overflow-y-auto">
-                        {prompt.split('\n').filter((l: string) => l.trim()).map((line: string, i: number) => {
-                          const mh = line.match(/^\*\*(.+?)\*\*$/)  // 显眼标题：**基础能力** 等
-                          if (mh) {
-                            return <p key={i} className="text-[13px] font-bold uppercase tracking-wider" style={{ color: 'var(--accent)' }}>{mh[1]}</p>
-                          }
-                          const m = line.match(/^-\s*([^：:]+)[：:]\s*(.*)$/)
-                          if (m) {
-                            return (
-                              <div key={i} className="flex flex-col gap-1.5">
-                                <p className="text-[13px] font-bold text-[var(--text)]">{m[1]}</p>
-                                <p className="text-xs text-[var(--text-muted)] leading-loose">{m[2]}</p>
-                              </div>
-                            )
-                          }
-                          return <p key={i} className="text-xs leading-loose text-[var(--text-muted)]">{line}</p>
-                        })}
+                      <div className="flex-1 w-full border hairline rounded-xl px-4 py-3.5 bg-[var(--bg-input)] overflow-y-auto">
+                        <FormattedText text={prompt} />
                       </div>
                     )}
                   </div>
@@ -882,7 +887,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
             <p className="text-sm font-bold flex items-center gap-2"><LayoutTemplate size={15} /> {tpl.name} 模板</p>
             <div className="flex flex-col gap-1.5">
               <p className="text-xs font-semibold text-dim uppercase tracking-wider">适用场景</p>
-              <p className="text-xs leading-relaxed text-[var(--text-muted)]">{info.intro}</p>
+              <FormattedText text={info.intro} />
             </div>
             <div className="flex flex-col gap-2.5">
               <p className="text-xs font-semibold text-dim uppercase tracking-wider">内部细节设定<span className="ml-1 text-[9px] font-normal text-dim/70">（预设，仅展示）</span></p>
