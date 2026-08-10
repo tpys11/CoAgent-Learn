@@ -1,6 +1,6 @@
-﻿import { Map, Search, Send, MessagesSquare, X, ChevronUp, ChevronDown, SlidersHorizontal, FileText } from 'lucide-react'
+﻿import { Map, Send, MessagesSquare, X, ChevronUp, ChevronDown, SlidersHorizontal, FileText } from 'lucide-react'
 import { useEffect, useRef, useState, Fragment } from 'react'
-import * as echarts from 'echarts'
+import { KnowledgeTree } from './KbTree'
 
 interface Props {
   messageCount: number
@@ -136,11 +136,20 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
   }, [])
 
-  // 知识图谱
-  const [graphEmpty, setGraphEmpty] = useState(true)
-  const [graphErr, setGraphErr] = useState('')
-  const chartRef = useRef<HTMLDivElement>(null)
-  const chartInst = useRef<any>(null)
+  // 知识图谱（树状）：基于上传资料标题层级
+  const [treeDocs, setTreeDocs] = useState<Array<{ source: string; tree: any[] }>>([])
+  const [progressItems, setProgressItems] = useState<any[]>([])
+  const loadKbTree = () => {
+    if (!projectId) return
+    fetch('/api/knowledge/list?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => setTreeDocs((d.docs || []).map((x: any) => ({ source: x.source || '未命名', tree: Array.isArray(x.tree) ? x.tree : [] }))))
+      .catch(() => setTreeDocs([]))
+    fetch('/api/memory/progress?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => setProgressItems((d && d.items) || []))
+      .catch(() => setProgressItems([]))
+  }
   // 第二对话窗口：独立会话（id 由 App 持有，保证主对话完成后能为其生成追问）
   const sideDialogueIdRef = useRef(sideDialogueId || ('sd-' + Math.random().toString(36).slice(2) + Date.now().toString(36)))
   const [sideMessages, setSideMessages] = useState<Array<{role: string; content: string}>>([])
@@ -175,7 +184,6 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
     window.addEventListener('side-followups-ready', onSideReady)
     return () => window.removeEventListener('side-followups-ready', onSideReady)
   }, [])
-  const [nodeDetail, setNodeDetail] = useState<{name: string; relations: any[]; kb_refs: any[]} | null>(null)
 
   const sendSide = async (q?: string) => {
     const text = (q ?? sideInput).trim()
@@ -217,75 +225,18 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
     setSideLoading(false)
   }
 
-  const renderGraph = (d: any) => {
-    const nodesRaw = d.nodes || []
-    const empty = nodesRaw.length === 0
-    setGraphEmpty(empty)
-    // 图谱窗口被隐藏时清理实例，避免挂载到已卸载的 DOM
-    if (!chartRef.current) {
-      if (chartInst.current) { chartInst.current.dispose(); chartInst.current = null }
-      return
-    }
-    if (empty) return
-    if (!chartInst.current) chartInst.current = echarts.init(chartRef.current)
-    const nodes = nodesRaw.map((n: any) => ({
-      id: n.id, name: n.name, symbolSize: 26,
-      itemStyle: { color: '#4f8cff' },
-      label: { show: true, fontSize: 10 }
-    }))
-    const edges = (d.edges || []).map((e: any) => ({
-      source: e.source, target: e.target,
-      label: { show: true, formatter: e.relation, fontSize: 9 },
-      lineStyle: { width: 1.5, color: '#bbb' }
-    }))
-    chartInst.current.setOption({
-      tooltip: { trigger: 'item' },
-      series: [{
-        type: 'graph', layout: 'force', roam: true,
-        draggable: true,
-        force: { repulsion: 300, edgeLength: 80 },
-        data: nodes, links: edges,
-        emphasis: { focus: 'adjacency', lineStyle: { width: 3 } }
-      }]
-    }, true)
-    chartInst.current.off('click')
-    chartInst.current.on('click', (params: any) => {
-      if (params && params.data && params.data.name) {
-        fetch('/api/graph/node?project_id=' + encodeURIComponent(projectId || '') + '&name=' + encodeURIComponent(params.data.name), { cache: 'no-store' })
-          .then(r => r.json())
-          .then(d => setNodeDetail({ name: params.data.name, relations: d.relations || [], kb_refs: d.kb_refs || [] }))
-          .catch(() => {})
-      }
-    })
-  }
-
-  // 加载课程知识图谱
+  // 加载课程知识图谱树（上传资料标题层级）
   useEffect(() => {
     if (!projectId) return
-    fetch('/api/graph?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' })
-      .then(r => r.json())
-      .then(renderGraph)
-      .catch((e) => { console.error('[graph] 加载失败:', e); setGraphErr(String(e)); setGraphEmpty(true) })
-    return () => { if (chartInst.current) { chartInst.current.dispose(); chartInst.current = null } }
+    loadKbTree()
   }, [projectId])
 
-  // 监听知识库更新事件，重新加载图谱
+  // 监听知识库更新事件，重新加载知识树
   useEffect(() => {
-    const onKb = () => {
-      if (!projectId) return
-      fetch('/api/graph?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' })
-        .then(r => r.json())
-        .then(renderGraph)
-        .catch(() => setGraphEmpty(true))
-    }
+    const onKb = () => { if (projectId) loadKbTree() }
     window.addEventListener('kb-updated', onKb)
     return () => window.removeEventListener('kb-updated', onKb)
   }, [projectId])
-
-  // 窗口尺寸/折叠变化自适应
-  useEffect(() => {
-    if (chartInst.current) chartInst.current.resize()
-  }, [heights.graph, collapsed.graph])
 
   return (
     <aside className="w-full h-full flex flex-col overflow-hidden px-2.5 py-3 gap-1">
@@ -322,13 +273,8 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
           {i > 0 && <DragHandle onDown={startDrag(shown[i - 1].key, w.key)} />}
           <Pane title={w.title} icon={w.icon} collapsed={collapsed[w.key]} height={heights[w.key]} flex={i === shown.length - 1} onToggle={() => toggle(w.key)}>
             {w.key === 'graph' && (
-              <div className="w-full h-full relative">
-                {graphEmpty && (
-                  <div className="absolute inset-0 flex items-center justify-center z-10 px-3">
-                    <span className="text-[11px] text-dim text-center leading-relaxed">{graphErr ? ('图谱加载失败: ' + graphErr) : '暂无知识图谱（上传文档后自动生成）'}</span>
-                  </div>
-                )}
-                <div ref={chartRef} className="w-full h-full" />
+              <div className="w-full h-full overflow-y-auto px-2 py-1.5">
+                <KnowledgeTree treeDocs={treeDocs} progressItems={progressItems} />
               </div>
             )}
             {w.key === 'chat' && (
@@ -380,38 +326,6 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
         </Fragment>
       ))}
 
-      {/* 图谱节点详情 */}
-      {nodeDetail && (
-        <div className="fixed right-6 top-1/2 -translate-y-1/2 card-lift w-72 p-4 z-50 max-h-[70vh] overflow-y-auto">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-bold flex items-center gap-1.5"><Search size={14} /> {nodeDetail.name}</span>
-            <button onClick={() => setNodeDetail(null)} className="w-6 h-6 flex items-center justify-center rounded-lg icon-btn text-xs">✕</button>
-          </div>
-          <div className="mb-3">
-            <h4 className="text-[11px] font-semibold text-dim mb-1">相关关系</h4>
-            {nodeDetail.relations.length === 0 ? <p className="text-[10px] text-dim">无</p> : (
-              <div className="flex flex-col gap-1">
-                {nodeDetail.relations.map((r, i) => (
-                  <span key={i} className="text-[11px] chip px-2 py-1">{nodeDetail.name} —{r.rel}→ {r.target}</span>
-                ))}
-              </div>
-            )}
-          </div>
-          <div>
-            <h4 className="text-[11px] font-semibold text-dim mb-1">知识库相关</h4>
-            {nodeDetail.kb_refs.length === 0 ? <p className="text-[10px] text-dim">无</p> : (
-              <div className="flex flex-col gap-1.5">
-                {nodeDetail.kb_refs.map((r, i) => (
-                  <div key={i} className="text-[10px] text-dim border-l-2 hairline pl-2">
-                    <p className="line-clamp-3">{r.content}</p>
-                    {r.source && <p className="mt-0.5">来源：{r.source}</p>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </aside>
   )
 }
