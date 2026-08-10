@@ -54,8 +54,8 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
   }, [projects])
 
   const newProject = () => {
-    const name = window.prompt('课程名称：')
-    if (name && name.trim()) onCreate(name.trim())
+    // 点击新建课程：直接创建并进入对话界面（命名等由对话内静态引导完成）
+    onCreate('新课程')
   }
   const strOf = (v: any) => Array.isArray(v) ? v.join('、') : v ? String(v) : ''
   const short = (s: string, n = 34) => s.length > n ? s.slice(0, n) + '…' : s

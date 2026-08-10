@@ -45,6 +45,19 @@ function App() {
   const [currentDialogueId, setCurrentDialogueId] = useState<string | null>(null)
   const [allMessages, setAllMessages] = useState<Record<string, Message[]>>({})
   const currentMessages = (currentDialogueId ? allMessages[currentDialogueId] : []) || []
+
+  // 静态创建课程引导（新建课程后直接进入对话展示）
+  const PROJECT_GUIDE = (name: string) => `🎓 **课程创建成功！**
+
+已经为你创建课程「${name}」，接下来花一分钟完善它：
+
+**1. 命名**：想叫什么名字？直接告诉我，例如「Python 数据分析实战」
+**2. 简述**：一句话说说课程目标——你想最终学会什么？
+**3. 上传资源**：在「资源」界面上传相关资料/文档，我会基于这些资料讲解
+**4. 上传目的**：告诉我学习目的（求职 / 兴趣 / 考试 / 项目需要…），我会调整讲解的深度与方式
+**5. 时间**：每周能投入多少时间？学习周期打算多长？
+
+从第 1 项开始回复我即可，我会一步步帮你完善这门课程。`
   const [isLoading, setIsLoading] = useState(false)
   const [agents, setAgents] = useState<AgentConfig[]>(DEFAULT_AGENTS)
   const [showSettings, setShowSettings] = useState(false)
@@ -138,8 +151,13 @@ function App() {
         const id = d.id
         setProjects(prev => [...prev, { id, name, simple: false }])
         setCurrentProjectId(id)
-        // 不默认建对话（避免无画像对话）；由用户手动新建
-        setWizard({ mode: 'project', id, name })
+        // 创建默认对话并直接进入对话界面，对话内展示静态创建课程引导（命名/简述/资源/目的/时间）
+        const did = generateId()
+        const dia: Dialogue = { id: did, name: '对话 1', projectId: id, createdAt: new Date().toISOString(), archived: false }
+        setDialogues(prev => [...prev, dia])
+        setCurrentDialogueId(did)
+        setAllMessages(prev => ({ ...prev, [did]: [{ role: 'assistant' as const, content: PROJECT_GUIDE(name) }] }))
+        setChatOpen(true)
       })
   }, [])
   const handleDeleteProject = useCallback((id: string) => {
