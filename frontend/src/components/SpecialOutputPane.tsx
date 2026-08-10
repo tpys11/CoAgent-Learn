@@ -14,7 +14,8 @@ const FORMS: Array<{ key: FormKey; label: string; icon: any }> = [
   { key: 'flash', label: '闪卡', icon: Layers },
 ]
 
-/** 从回答文本解析测试题条目：[**难度**] 题目 / > 答案：... */
+/** 从回答文本解析测试题条目：支持本项目格式（**【难度】** 题目 / > 答案：）
+ * 与 deeptutor 格式（Q1:/Question N: 题目 + A) B) C) D) 选项 + 答案行） */
 function parseQuiz(content: string): Array<{ diff: string; q: string; a: string }> {
   const out: Array<{ diff: string; q: string; a: string }> = []
   const lines = (content || '').split('\n')
@@ -23,8 +24,31 @@ function parseQuiz(content: string): Array<{ diff: string; q: string; a: string 
     const m = line.match(/^\*\*【([^】]+)】\*\*\s*(.+)$/)
     if (m) { cur = { diff: m[1], q: m[2].trim(), a: '' }; out.push(cur); continue }
     const a = line.match(/^>\s*答案[：:]\s*(.+)$/)
-    if (a && cur) { cur.a = a[1].trim() }
+    if (a && cur) { cur.a = a[1].trim(); continue }
+    // deeptutor：Q1: / Question 1: 开头，后跟选项 A) B) C) D)
+    const qm = line.match(/^(?:Q\d*|Question\s*\d*)[:.\s]*([^A-D][\s\S]*)$/)
+    if (qm && qm[1].trim() && !/^[A-D]\)/.test(qm[1].trim())) {
+      cur = { diff: '题', q: qm[1].trim(), a: '' }; out.push(cur); continue
+    }
+    if (cur && !cur.a) {
+      const am = line.match(/^[A-D]\)[\s\S]*$/)
+      if (am && cur.q) cur.q += ' ' + line.trim()  // 选项并入题目（答案行另行匹配）
+    }
   }
+  return out
+}
+
+/** 从回答文本解析闪卡：deeptutor/Anki 风格 front: / back: 格式 */
+function parseFlash(content: string): Array<{ front: string; back: string }> {
+  const out: Array<{ front: string; back: string }> = []
+  let front = '', back = ''
+  for (const line of (content || '').split('\n')) {
+    const l = line.trim()
+    if (/^front:/i.test(l)) { if (front && back) out.push({ front, back }); front = l.replace(/^front:/i, '').trim(); back = '' }
+    else if (/^back:/i.test(l)) { back = l.replace(/^back:/i, '').trim() }
+    else if (front && l) back += (back ? ' ' : '') + l
+  }
+  if (front && back) out.push({ front, back })
   return out
 }
 
@@ -106,7 +130,8 @@ export default function SpecialOutputPane({ projectId, dialogueId }: { projectId
   }
 
   const quiz = parseQuiz(reply)
-  const flash = quiz.length ? quiz : []
+  const flashCards = parseFlash(reply)
+  const flash = flashCards.length ? flashCards : quiz.map(q => ({ front: q.q, back: q.a }))
 
   return (
     <div className="w-full h-full flex flex-col min-h-0">
@@ -176,7 +201,7 @@ export default function SpecialOutputPane({ projectId, dialogueId }: { projectId
               {speaking ? <Square size={18} /> : <Play size={18} />}
             </button>
             <p className="text-[10px] text-dim text-center leading-relaxed">
-              {speaking ? '正在朗读最近一次回答…（点击停止）' : '点击播放：朗读最近一次回答内容'}
+              {speaking ? '正在朗读最近一次回答…（点击停止）' : '点击播放：朗读最近一次回答内容（参考 deeptutor 音频概览，后续可升级为双人讨论播客）'}
             </p>
           </div>
         )}
@@ -198,7 +223,7 @@ export default function SpecialOutputPane({ projectId, dialogueId }: { projectId
           <div className="flex flex-col gap-2">
             {flash.length === 0 ? (
               <p className="text-[11px] text-dim text-center py-6">暂无闪卡（回答生成测试题后展示）</p>
-            ) : flash.map((q, i) => <FlashCard key={i} q={q.q} a={q.a} />)}
+            ) : flash.map((q, i) => <FlashCard key={i} q={(q as any).front || (q as any).q} a={(q as any).back || (q as any).a} />)}
           </div>
         )}
       </div>
