@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useRef } from 'react'
-import { Send, Bot, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Cpu, SlidersHorizontal, Check, AlertTriangle, Search, FileText, LayoutTemplate, Image as ImageIcon, PenLine } from 'lucide-react'
+import { Send, Bot, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Cpu, SlidersHorizontal, AlertTriangle, Search, FileText, LayoutTemplate, Image as ImageIcon, PenLine } from 'lucide-react'
 import type { Message, Project } from '../types'
 import MarkdownIt from 'markdown-it'
 
@@ -379,16 +379,6 @@ const TEMPLATE_OPTIONS = [
                       <AgentThinkList think={msg.think} />
                     )}
                     <div dangerouslySetInnerHTML={{ __html: renderContent(msg.content) }} />
-                    {msg.steps && msg.steps.length > 0 && (
-                      <div className="mt-3 flex flex-wrap gap-1.5">
-                        {msg.steps.map((s, i) => (
-                          <span key={i} className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200"
-                            title={s.detail || s.agent}>
-                            <Check size={9} /> {s.agent}
-                          </span>
-                        ))}
-                      </div>
-                    )}
                     {/* 新建课程引导消息：右下角「手动初始化」按钮（仅初次创建、未完成手动填写时显示） */}
                     {msg.content.includes('课程创建成功') && onManualSetup && !(currentProject && (() => {
                       try { return (JSON.parse(localStorage.getItem('coagent-manual-setup-done') || '[]') as string[]).includes(currentProject.id) } catch { return false }
