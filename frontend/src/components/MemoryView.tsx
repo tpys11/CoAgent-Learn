@@ -847,7 +847,8 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                       </div>
                     </div>
                     </div>
-                    {/* 右侧：记忆对话（直接输入修改记忆）——sticky 固定悬浮，随窗口滚动始终可见 */}
+                    {/* 右侧：记忆对话（直接输入修改记忆）——sticky 固定悬浮；初始化时不显示 */}
+                    {!initialEdit && (
                     <div className="w-[340px] flex-shrink-0 self-start sticky top-0 border hairline rounded-2xl bg-[var(--bg-panel)] flex flex-col overflow-hidden">
                       <div className="px-4 py-3 border-b hairline flex items-center justify-between">
                         <span className="text-xs font-bold">修改记忆</span>
@@ -877,6 +878,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                         </button>
                       </div>
                     </div>
+                    )}
                     </div>
                   )
                 })()}
