@@ -639,15 +639,6 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
         {/* ========== 课程记忆 ========== */}
         {level === 'project' && (
           <div className="w-full flex flex-col gap-4">
-            {/* 初始化时删除"课程记忆"占位标题，直接进入填写 */}
-            {!initialEdit && (
-            <div>
-              <h2 className="text-base font-bold flex items-center gap-2">
-                <FolderTree size={16} /> 课程记忆
-              </h2>
-            </div>
-            )}
-
             {projLoading ? <p className="text-xs text-dim text-center py-10">加载中…</p> : projects.length === 0 ? (
               <p className="text-xs text-dim text-center py-10">暂无课程</p>
             ) : (
@@ -675,11 +666,6 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                     <div className="flex items-start gap-4">
                     <div className="flex-1 min-w-0">
                     <div className="border hairline rounded-2xl bg-[var(--bg-panel)] overflow-hidden">
-                      <div className="flex items-center gap-2 px-4 py-3 border-b hairline">
-                        <span className="text-[10px] text-dim ml-auto">
-                          {p?.created_at ? String(p.created_at).slice(0, 10) : ''}{data ? ` · ${data.count} 次对话` : ''}
-                        </span>
-                      </div>
                       <div className="px-4 py-3 flex flex-col gap-4">
                         {/* 基本情况（上） */}
                           <div className="max-w-3xl">
