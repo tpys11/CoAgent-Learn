@@ -548,11 +548,11 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                   return (
                     <button key={s.name} onClick={() => toggleSkill(s.name)}
                       title={s.description}
-                      className={`relative rounded-xl border-2 overflow-hidden flex flex-col transition-all ${
+                      className={`relative rounded-xl border-2 flex flex-col transition-all ${
                         disabled ? 'opacity-30 cursor-not-allowed' :
                         linked ? 'border-[#1a1a1a] bg-[var(--bg-hover)]' : 'border-dashed border-[var(--border-color)] hover:border-[var(--border-strong)]'
                       }`}>
-                      <img src={coverOf(s.name)} alt="" className="w-full h-16 object-cover" />
+                      <img src={coverOf(s.name)} alt="" className="w-full h-16 object-cover rounded-t-[10px]" />
                       <span className="flex items-center justify-center gap-1.5 px-1 py-2">
                         <Square size={12} className={linked ? 'text-[#1a1a1a]' : 'text-dim'} />
                         <span className="text-[10px] font-medium leading-tight text-center truncate">{s.name}</span>
