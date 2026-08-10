@@ -22,49 +22,24 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
     { key: 'memory', label: '记忆与进程' },
     { key: 'resource', label: '资源' },
   ]
-  // 初次手动填写：基本信息表单 + 确认弹窗
+  // 初次手动初始化：直接在项目记忆的「基本情况/目的/初始情况」区域原地填写（MemoryView initialEdit），右上角保存
   const [confirming, setConfirming] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [name, setName] = useState(projectName || '')
-  const [purpose, setPurpose] = useState('')
-  const [overview, setOverview] = useState('')
-  const [start, setStart] = useState('')
-  const [level, setLevel] = useState('')
-  const [goal, setGoal] = useState('')
-  const [prefer, setPrefer] = useState('')
-  useEffect(() => {
-    if (!initialOnly || !projectId) return
-    setName(projectName || '')
-    fetch('/api/project-memory/' + encodeURIComponent(projectId), { cache: 'no-store' })
-      .then(r => r.json())
-      .then(d => {
-        const m = d.memory || {}
-        setPurpose(String(m['抽象目的'] || ''))
-        setOverview(String(m['抽象项目情况'] || ''))
-        setStart(String(m['起点'] || ''))
-        setLevel(String(m['当前水平'] || ''))
-        setGoal(String(m['目标'] || ''))
-        const p = m['偏好']
-        setPrefer(Array.isArray(p) ? p.join('、') : String(p || ''))
-      })
-      .catch(() => {})
-  }, [initialOnly, projectId, projectName])
+  const [collected, setCollected] = useState<Record<string, string>>({})
 
   const doSave = async () => {
     if (!projectId) return
     setSaving(true)
     try {
-      await fetch('/api/project-memory/' + encodeURIComponent(projectId), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profile: {
-          抽象目的: purpose, 抽象项目情况: overview, 起点: start, 当前水平: level, 目标: goal,
-          偏好: prefer.split(/[,，、\n]+/).map(s => s.trim()).filter(Boolean),
-        } }),
-      })
-      if (name.trim() && name.trim() !== projectName) {
-        await fetch('/api/projects/' + encodeURIComponent(projectId), {
-          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: name.trim() }),
+      // 只提交三个字段：基本情况（抽象项目情况）/ 目的（抽象目的）/ 初始情况（起点）
+      const profile: Record<string, string> = {}
+      if (collected['抽象项目情况']) profile['抽象项目情况'] = collected['抽象项目情况']
+      if (collected['抽象目的']) profile['抽象目的'] = collected['抽象目的']
+      if (collected['起点']) profile['起点'] = collected['起点']
+      if (Object.keys(profile).length) {
+        await fetch('/api/project-memory/' + encodeURIComponent(projectId), {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ profile }),
         })
       }
       // 标记该课程已完成初次手动填写
@@ -80,15 +55,6 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
       setSaving(false)
     }
   }
-
-  const field = (label: string, placeholder: string, value: string, set: (v: string) => void, rows = 1) => (
-    <label className="flex flex-col gap-1 min-w-0">
-      <span className="text-[10px] font-semibold text-dim">{label}</span>
-      <textarea rows={rows} value={value} placeholder={placeholder}
-        onChange={(e) => set(e.target.value)}
-        className="w-full px-2.5 py-1.5 rounded-lg border hairline outline-none text-xs resize-none bg-[var(--bg-input)] focus:border-[var(--accent)]" />
-    </label>
-  )
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-6" onClick={onClose}>
@@ -118,23 +84,15 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
           {tab === 'memory'
             ? (
               <div className="h-full flex flex-col min-h-0">
-                {/* 初次手动填写：基本信息填写区（仅初次创建显示，后续只能通过对话间接填写） */}
+                {/* 初次手动初始化：直接在项目记忆的「基本情况/目的/初始情况」区域原地填写，不额外加输入框 */}
                 {initialOnly && (
-                  <div className="flex-shrink-0 px-6 py-3 border-b hairline">
-                    <p className="text-[11px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--accent)' }}>基本信息（仅初次创建可手动填写）</p>
-                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
-                      {field('课程名', '例如：Python 数据分析实战', name, setName)}
-                      {field('学习目的', '求职 / 兴趣 / 考试…', purpose, setPurpose)}
-                      {field('课程概述', '一句话说说学什么', overview, setOverview, 2)}
-                      {field('起点水平', '开始前的水平', start, setStart)}
-                      {field('当前水平', '现在的水平', level, setLevel)}
-                      {field('学习目标', '想最终学会什么', goal, setGoal, 2)}
-                      {field('偏好', '逗号分隔，如：例子驱动、图文', prefer, setPrefer)}
-                    </div>
+                  <div className="flex-shrink-0 px-6 py-2 border-b hairline text-[11px] text-dim">
+                    请在下方「基本情况 / 目的 / 初始情况」区域直接填写，填写完毕后点击右上角「保存」。
                   </div>
                 )}
                 <div className="flex-1 min-h-0 overflow-hidden">
-                  <MemoryView projectId={projectId} projectOnly onRequestModify={onRequestModify} onRequestAnalyze={onRequestAnalyze} />
+                  <MemoryView projectId={projectId} projectOnly initialEdit={initialOnly} onEditChange={setCollected}
+                    onRequestModify={onRequestModify} onRequestAnalyze={onRequestAnalyze} />
                 </div>
               </div>
             )

@@ -272,7 +272,15 @@ function TimeLineChart({ days, height = 90 }: { days: Record<string, any[]>; hei
   )
 }
 
-export default function MemoryView({ projectId, onRequestModify, onRequestAnalyze, projectOnly }: { projectId: string | null; onRequestModify?: (label: string, pid?: string) => void; onRequestAnalyze?: (projectName: string) => void; projectOnly?: boolean }) {
+export default function MemoryView({ projectId, onRequestModify, onRequestAnalyze, projectOnly, initialEdit, onEditChange }: {
+  projectId: string | null
+  onRequestModify?: (label: string, pid?: string) => void
+  onRequestAnalyze?: (projectName: string) => void
+  projectOnly?: boolean
+  /** 初次手动初始化：基本情况/目的/初始情况三个区域原地可编辑，编辑内容通过 onEditChange 上报 */
+  initialEdit?: boolean
+  onEditChange?: (f: Record<string, string>) => void
+}) {
   const [level, setLevel] = useState<'global' | 'project'>(projectOnly ? 'project' : 'global')
   // 课程列表
   const [projects, setProjects] = useState<Array<{ id: string; name: string; is_default?: boolean; created_at?: string }>>([])
@@ -286,9 +294,21 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
 
   // 课程记忆（全部课程，默认展开显示）
   const [projData, setProjData] = useState<Record<string, { fields: Record<string, string>; count: number; latest: string; days: Record<string, any[]>; progress: { items: any[]; daily: Array<{ date: string; count: number }>; pace: string }; treeDocs: Array<{ source: string; tree: any[] }> }>>({})
+  // 初次手动初始化：基本情况/目的/初始情况 三个区域的编辑值
   const [projLoading, setProjLoading] = useState(false)
   // 当前查看的课程（点击课程按钮切换）
   const [activeProject, setActiveProject] = useState<string | null>(projectOnly ? projectId : null)
+  // 初次手动初始化：基本情况/目的/初始情况 三个区域的编辑值（随课程数据加载初始化）
+  const [editFields, setEditFields] = useState<Record<string, string>>({})
+  useEffect(() => {
+    if (!initialEdit || !activeProject) return
+    const data = projData[activeProject]
+    setEditFields({
+      '抽象项目情况': data?.fields?.['抽象项目情况'] || '',
+      '抽象目的': data?.fields?.['抽象目的'] || '',
+      '起点': data?.fields?.['起点'] || '',
+    })
+  }, [initialEdit, activeProject, projData])
   // 日历数据：date → 当天对话项列表（全局）
   const [globalDays, setGlobalDays] = useState<Record<string, any[]>>({})
   const [globalStats, setGlobalStats] = useState<{ count: number; latest: string }>({ count: 0, latest: '' })
@@ -671,9 +691,16 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                                 {/* 第二栏：基本情况（大框） */}
                                 <section>
                                   <h3 className="text-[11px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--accent)' }}>基本情况</h3>
-                                  <div className="border hairline rounded-xl px-5 py-4 bg-[var(--bg-input)] min-h-[120px] text-[13px] leading-7 text-[var(--text)]">
-                                    {(data?.fields['抽象项目情况'] || '').trim() ? <MiniMD text={data?.fields['抽象项目情况'] || ''} /> : null}
-                                  </div>
+                                  {initialEdit ? (
+                                    <textarea value={editFields['抽象项目情况'] || ''} rows={4}
+                                      placeholder="一句话描述这门课程的整体情况"
+                                      onChange={(e) => { const v = e.target.value; setEditFields(prev => ({ ...prev, '抽象项目情况': v })); onEditChange?.({ ...editFields, '抽象项目情况': v }) }}
+                                      className="w-full border hairline rounded-xl px-3 py-2 bg-[var(--bg-input)] text-[13px] leading-6 outline-none resize-y focus:border-[var(--accent)]" />
+                                  ) : (
+                                    <div className="border hairline rounded-xl px-5 py-4 bg-[var(--bg-input)] min-h-[120px] text-[13px] leading-7 text-[var(--text)]">
+                                      {(data?.fields['抽象项目情况'] || '').trim() ? <MiniMD text={data?.fields['抽象项目情况'] || ''} /> : null}
+                                    </div>
+                                  )}
                                 </section>
                                 {/* 第三栏：大框内三个横向矩形（目的 / 初始情况 / 当前情况） */}
                                 <section>
@@ -682,9 +709,16 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                                       {[['目的', '抽象目的'], ['初始情况', '起点'], ['当前情况', '当前水平']].map(([title, k]) => (
                                         <div key={k} className="rounded-xl border hairline bg-[var(--bg-panel)] px-4 py-3.5 flex flex-col gap-2 min-h-[110px]">
                                           <span className="text-[10px] font-semibold uppercase tracking-wider text-dim">{title}</span>
-                                          <div className="text-xs leading-relaxed text-[var(--text)] line-clamp-5">
-                                            {(data?.fields[k] || '').trim() ? <MiniMD text={data?.fields[k] || ''} /> : null}
-                                          </div>
+                                          {initialEdit && k !== '当前水平' ? (
+                                            <textarea value={editFields[k] || ''} rows={4}
+                                              placeholder={k === '抽象目的' ? '学习目的（求职 / 兴趣 / 考试…）' : '开始学习前的水平'}
+                                              onChange={(e) => { const v = e.target.value; setEditFields(prev => ({ ...prev, [k]: v })); onEditChange?.({ ...editFields, [k]: v }) }}
+                                              className="w-full border hairline rounded-lg px-2 py-1.5 bg-[var(--bg-input)] text-xs leading-relaxed outline-none resize-y focus:border-[var(--accent)]" />
+                                          ) : (
+                                            <div className="text-xs leading-relaxed text-[var(--text)] line-clamp-5">
+                                              {(data?.fields[k] || '').trim() ? <MiniMD text={data?.fields[k] || ''} /> : null}
+                                            </div>
+                                          )}
                                         </div>
                                       ))}
                                     </div>
