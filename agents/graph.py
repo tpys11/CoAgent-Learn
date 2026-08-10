@@ -398,9 +398,10 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 state["sub_outputs"] = {**(state.get("sub_outputs") or {}), "gen": "\n\n".join(sub_parts)}
                 context += "\n\n【子Agent 专项产出（请基于这些产出组织最终回答）】\n" + state["sub_outputs"]["gen"]
         try:
-            # 简单问题/快速模板：思考模式+effort=low（很短的思维链，响应最快）；复杂问题：深入思考
+            # 简单问题/快速模板：非思考模式直接生成回答（无说明文字，规划后马上流式输出，不再显示生成阶段）；
+            # 复杂问题：思考模式深入生成
             _is_simple = (state.get("complexity") == "simple" or tpl == "快速")
-            _gen_llm = _pick_llm(cfg, llm_main_low if _is_simple else llm_main)
+            _gen_llm = _pick_llm(cfg, llm_main_no_think if _is_simple else llm_main)
             # 简单问题：系统提示改为纯文本回答（直接输出回答文本，无解释/无JSON/无围栏），content 即回答本身
             _gen_sys = "你是一个友好的AI助手。请直接、简洁地回答用户的问题，只输出回答文本本身，" \
                        "不要输出任何解释、说明、JSON或代码围栏，直接开始回答。" if _is_simple else _GENERATE_PROMPT
@@ -411,7 +412,8 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             def _gen_answer(piece):
                 if on_answer:
                     on_answer(piece)
-            if on_token:
+            # 简单问题不触发"生成"step：思维链只显示规划（规划后直接流式输出回答）
+            if on_token and not _is_simple:
                 on_token("主Agent·生成", "")  # 触发 step：状态"正在思考生成…"
             _gen_llm.chat_stream(
                 [{"role": "system", "content": _gen_sys},
