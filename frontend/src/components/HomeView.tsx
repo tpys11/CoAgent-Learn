@@ -18,11 +18,12 @@ interface HomeProject {
 }
 
 /** 主页：按课程展开的大卡片（上 70% 图片/名称/进度，下 30% 三方面描述），点击进入该课程对话 */
-export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
+export default function HomeView({ projects, onEnter, onCreate, onDelete, onRename }: {
   projects: HomeProject[]
   onEnter: (id: string) => void
   onCreate: (name: string) => void
   onDelete: (id: string) => void
+  onRename?: (id: string, name: string) => void
 }) {
   const [stats, setStats] = useState<Record<string, number>>({})
   const [mems, setMems] = useState<Record<string, Record<string, any>>>({})
@@ -175,9 +176,17 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
                         <p className="text-[10px] leading-relaxed text-[var(--text-muted)]"><span className="font-semibold text-[var(--text)]">上次</span>：{short(unsolved)}</p>
                         <p className="text-[10px] leading-relaxed text-[var(--text-muted)]"><span className="font-semibold text-[var(--text)]">后续</span>：{short(toLearn)}</p>
                       </div>
-                      <p className="text-[9px] text-dim flex items-center gap-1">
-                        <Clock size={9} /> {p.created_at ? String(p.created_at).slice(0, 10) : '—'}{p.domain ? ` · ${p.domain}` : ''}
-                      </p>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[9px] text-dim flex items-center gap-1 truncate">
+                          <Clock size={9} /> {p.created_at ? String(p.created_at).slice(0, 10) : '—'}{p.domain ? ` · ${p.domain}` : ''}
+                        </p>
+                        {onRename && (
+                          <button onClick={(e) => { e.stopPropagation(); const n = window.prompt('课程名称：', p.name); if (n && n.trim()) onRename(p.id, n.trim()) }}
+                            className="text-[9px] px-1.5 py-0.5 rounded-md text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors flex-shrink-0" title="改名">
+                            改名
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )

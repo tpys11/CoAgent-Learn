@@ -458,6 +458,7 @@ function App() {
           onEnter={(id) => { setCurrentProjectId(id); setChatOpen(true) }}
           onCreate={handleCreateProject}
           onDelete={handleDeleteProject}
+          onRename={handleRenameProject}
         />
       ))}
       </div>
