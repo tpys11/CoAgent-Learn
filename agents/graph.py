@@ -38,6 +38,7 @@ class AgentState(TypedDict):
     dialogue_id: str
     session_id: str
     processed_input: str
+    complexity: str
     profile: dict
     knowledge: list
     search_results: list
@@ -92,6 +93,8 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 fast_model = fm
                 break
     llm_fast = DeepSeekLLM(api_key=api_key, model=fast_model, base_url=base_url, thinking=False) if (fast_model and fast_model != model) else llm_main
+    # 非思考模式主模型：简单问题（complexity=simple）直接生成，不推理（大幅减少等待）
+    llm_main_no_think = DeepSeekLLM(api_key=api_key, model=model, base_url=base_url, thinking=False)
 
     def _agent_cfg(aid: str) -> dict:
         """按 Agent id 取配置（缺失时返回空）"""
@@ -185,6 +188,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             state["processed_input"] = state["user_input"]
             state["_plan"] = []
             state["_output_subs"] = []
+            state["complexity"] = "simple"  # 快速模板：跳过规划直接生成，视为简单问题
             _stats(state, "plan", int((time.time() - t0) * 1000), 0, 0)
             state["mindchain"].append({"agent": "主Agent", "content": thinking})
             state.setdefault("steps", []).append({"agent": "主Agent", "status": "done", "detail": "快速模板：跳过规划"})
@@ -194,6 +198,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 _append_example(cfg, state["user_input"]), "主Agent")
             state["processed_input"] = result.get("processed", state["user_input"])
             state["_plan"] = result.get("plan", []) or []
+            state["complexity"] = result.get("complexity", "normal")
             # 输出增强模板：解析主 Agent 按需选择的输出子 Agent
             if tpl == "输出增强":
                 _all_subs = cfg.get("subAgents") or []
@@ -389,7 +394,9 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 state["sub_outputs"] = {**(state.get("sub_outputs") or {}), "gen": "\n\n".join(sub_parts)}
                 context += "\n\n【子Agent 专项产出（请基于这些产出组织最终回答）】\n" + state["sub_outputs"]["gen"]
         try:
-            thinking, result = think_then_json(_pick_llm(cfg, llm_main), _GENERATE_PROMPT,
+            # 简单问题（或快速模板）：关闭思考模式直接生成（快）；复杂问题：思考模式（保留思维链展示）
+            _gen_llm = llm_main_no_think if (state.get("complexity") == "simple" or tpl == "快速") else llm_main
+            thinking, result = think_then_json(_pick_llm(cfg, _gen_llm), _GENERATE_PROMPT,
                 _append_example(cfg, context), "主Agent")
             if isinstance(result, dict) and result.get("讲义"):
                 parts = ["## 📘 定制讲义", str(result.get("讲义", "")), "", "## 🛠 实操指南", str(result.get("实操指南", ""))]
