@@ -189,7 +189,7 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
                     </div>
                     {/* 下 30%：顶部课程名（重命名按钮在名称右边一点），下面进度一段话 */}
                     <div className="h-[30%] p-3.5 bg-[var(--bg-panel)] flex flex-col justify-center gap-1.5">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1 min-w-0">
                         {renamingId === p.id ? (
                           <input autoFocus defaultValue={p.name}
                             onClick={(e) => e.stopPropagation()}
@@ -205,9 +205,9 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
                               if (v && v !== p.name) onRename?.(p.id, v)
                               setRenamingId(null)
                             }}
-                            className="flex-1 min-w-0 text-sm font-bold rounded-md px-1.5 py-0.5 outline-none border hairline bg-[var(--bg-input)]" />
+                            className="min-w-0 flex-1 text-sm font-bold rounded-md px-1.5 py-0.5 outline-none border hairline bg-[var(--bg-input)]" />
                         ) : (
-                          <p className="flex-1 text-sm font-bold truncate">{p.name}</p>
+                          <p className="text-sm font-bold truncate min-w-0">{p.name}</p>
                         )}
                         {onRename && (
                           <button onClick={(e) => { e.stopPropagation(); setRenamingId(renamingId === p.id ? null : p.id) }}
