@@ -399,10 +399,12 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 context += "\n\n【子Agent 专项产出（请基于这些产出组织最终回答）】\n" + state["sub_outputs"]["gen"]
         try:
             # 简单问题/快速模板：思考模式+effort=low（很短的思维链，响应最快）；复杂问题：深入思考
-            _gen_llm = _pick_llm(cfg, llm_main_low if (state.get("complexity") == "simple" or tpl == "快速") else llm_main)
-            _short_hint = ("（用户问题为简单问答：请直接给出简洁准确的回答，用 content 字段返回，"
-                           "不要生成讲义/实操指南/测试题等长内容）") if state.get("complexity") == "simple" else ""
-            # 生成节点的思考不进思维链；最终回答 content 逐 token 直接流式推送给前端（对话区实时显示）
+            _is_simple = (state.get("complexity") == "simple" or tpl == "快速")
+            _gen_llm = _pick_llm(cfg, llm_main_low if _is_simple else llm_main)
+            # 简单问题：系统提示改为纯文本回答（直接输出回答文本，无解释/无JSON/无围栏），content 即回答本身
+            _gen_sys = "你是一个友好的AI助手。请直接、简洁地回答用户的问题，只输出回答文本本身，" \
+                       "不要输出任何解释、说明、JSON或代码围栏，直接开始回答。" if _is_simple else _GENERATE_PROMPT
+            # 生成节点的思考不进思维链；简单问题：回答内容逐 token 直接流式推送给前端（对话区实时显示）
             _gen_collected = []
             def _gen_collect(chunk):
                 _gen_collected.append(chunk)
@@ -412,24 +414,29 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             if on_token:
                 on_token("主Agent·生成", "")  # 触发 step：状态"正在思考生成…"
             _gen_llm.chat_stream(
-                [{"role": "system", "content": _GENERATE_PROMPT},
-                 {"role": "user", "content": _append_example(cfg, context) + _short_hint}],
-                _gen_collect, on_content=_gen_answer
+                [{"role": "system", "content": _gen_sys},
+                 {"role": "user", "content": _append_example(cfg, context)}],
+                _gen_collect, on_content=_gen_answer if _is_simple else None
             )
             _raw = "".join(_gen_collected)
-            # 提取 JSON（复用 think_then_json 逻辑）
-            _m = re.search(r'```json\s*([\s\S]*?)\s*```', _raw)
-            if _m:
-                thinking = _raw[:_m.start()].strip()
-                result = json.loads(_m.group(1))
+            if _is_simple:
+                # 纯文本回答：直接作为生成内容
+                thinking = ""
+                result = {"content": _raw.strip()}
             else:
-                _m2 = re.search(r'\{[\s\S]*\}', _raw)
-                if _m2:
-                    thinking = _raw[:_m2.start()].strip()
-                    result = json.loads(_m2.group())
+                # 提取 JSON（复用 think_then_json 逻辑；JSON 原文不流式，完成后统一展示）
+                _m = re.search(r'```json\s*([\s\S]*?)\s*```', _raw)
+                if _m:
+                    thinking = _raw[:_m.start()].strip()
+                    result = json.loads(_m.group(1))
                 else:
-                    thinking = _raw[:200]
-                    result = {"content": _raw}
+                    _m2 = re.search(r'\{[\s\S]*\}', _raw)
+                    if _m2:
+                        thinking = _raw[:_m2.start()].strip()
+                        result = json.loads(_m2.group())
+                    else:
+                        thinking = _raw[:200]
+                        result = {"content": _raw}
             if not isinstance(result, dict):
                 result = {"content": str(result)}
             if isinstance(result, dict) and result.get("讲义"):
