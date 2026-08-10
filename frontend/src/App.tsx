@@ -539,10 +539,9 @@ function App() {
       }
       try{
         if(_buf.trim()){var _blines=_buf.split(String.fromCharCode(10));for(var _bi=0;_bi<_blines.length;_bi++){var _bl=_blines[_bi];if(!_bl.startsWith("data: "))continue;try{var _bd=JSON.parse(_bl.slice(6));if(_bd.type==="done"){finalReply=_bd.reply||finalReply;taskStats=_bd.task_stats||taskStats;var _mc=_bd.mindchain||[];if(_mc.length>0&&_mc.length>=mindchainRef.current.length){mindchainRef.current=_mc;setFlowMindchain(_mc)}}}catch(_be){}}}
-        // 调试模式：在回复底部追加各 Agent 耗时/token 摘要
-        const debugOn = localStorage.getItem('coagent-debug') === '1'
+        // 运行统计：各 Agent 耗时/token 摘要（回答下方展示）
         let debugLine = ''
-        if (debugOn && taskStats && Object.keys(taskStats).length) {
+        if (taskStats && Object.keys(taskStats).length) {
           const NODE_CN: Record<string, string> = { plan: '规划', study_memory: '学情', kb: '知识库', generate: '生成', review: '审核' }
           const nodes = Object.entries(taskStats).filter(([k]) => k !== 'token_estimate')
           const total = nodes.reduce((s, [, v]: any) => s + (v.ms || 0), 0)

@@ -380,6 +380,16 @@ const TEMPLATE_OPTIONS = [
                       <AgentThinkList think={msg.think} />
                     )}
                     <div dangerouslySetInnerHTML={{ __html: renderContent(msg.content) }} />
+                    {/* 运行统计：回答下面、追问上面，直接展开显示 */}
+                    {(() => {
+                      const stat = (msg.think || []).find(t => typeof t !== 'string' && (t as any).agent === '运行统计')
+                      if (!stat) return null
+                      return (
+                        <div className="mt-2.5 text-[10px] leading-relaxed text-dim border hairline rounded-lg px-3 py-2 bg-[var(--bg-panel)]">
+                          {(stat as any).content}
+                        </div>
+                      )
+                    })()}
                     {/* 新建课程引导消息：右下角「手动初始化」按钮（仅初次创建、未完成手动填写时显示） */}
                     {msg.content.includes('课程创建成功') && onManualSetup && !(currentProject && (() => {
                       try { return (JSON.parse(localStorage.getItem('coagent-manual-setup-done') || '[]') as string[]).includes(currentProject.id) } catch { return false }
@@ -753,6 +763,7 @@ function ThinkBlock({ items, plain, activeAgent, activeStatus }: { items: Array<
 function AgentThinkList({ think }: { think?: Array<{ agent: string; content: string }> | string[] }) {
   const [openSet, setOpenSet] = useState<Set<number>>(new Set())
   const items = (think || []).map((it, i) => (typeof it === 'string' ? { agent: '', content: it, i } : { ...it, i }))
+    .filter(it => it.agent !== '运行统计')  // 运行统计独立显示在回答下方
   if (items.length === 0) return null
   const toggle = (i: number) => setOpenSet(prev => {
     const n = new Set(prev)
