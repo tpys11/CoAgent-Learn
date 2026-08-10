@@ -1,5 +1,5 @@
-﻿import { useState, useEffect, useRef } from 'react'
-import { Settings, Square, Upload, Folder, Download, Layers, Wrench, Store, ExternalLink, Plus, Trash2, LayoutTemplate, X, Workflow, Brain, Database, Scale, CheckCircle2, ChevronRight } from 'lucide-react'
+﻿import { useState, useEffect } from 'react'
+import { Settings, Square, Upload, Folder, Download, Layers, Wrench, ExternalLink, Plus, Trash2, LayoutTemplate, X, Workflow, Brain, Database, Scale } from 'lucide-react'
 import type { AgentConfig } from '../types'
 import { DEFAULT_AGENTS } from '../types'
 
@@ -194,8 +194,6 @@ function FlowNode({ icon: Icon, name, level = 0, active, onClick }: { icon: any;
     </button>
   )
 }
-const FlowArrow = () => <span className="text-dim flex-shrink-0 text-base">→</span>
-
 /** 子 Agent 独立矩形节点 */
 function SubNode({ name, active, onClick }: { name: string; active?: boolean; onClick?: () => void }) {
   return (
@@ -205,28 +203,6 @@ function SubNode({ name, active, onClick }: { name: string; active?: boolean; on
       } ${active ? 'bg-[#1a1a1a] text-white border-[#1a1a1a]' : 'bg-[var(--bg-panel)] text-dim border-[var(--border-color)]'}`}>
       {name}
     </button>
-  )
-}
-
-/** 父 Agent 节点 + 弯曲连线 + 子 Agent 独立矩形（每条线从父节点底中心弯曲到对应子节点） */
-function AgentWithSubs({ node, subs, subActive }: { node: React.ReactNode; subs?: string[]; subActive?: boolean }) {
-  if (!subs || subs.length === 0) return <>{node}</>
-  return (
-    <div className="flex items-center">
-      {node}
-      {/* 父节点右侧曲线 → 子 Agent 竖列（与输出增强展示统一：子节点在右侧） */}
-      <svg width="44" height="44" viewBox="0 0 44 44" className="flex-shrink-0">
-        <path d="M 0 22 C 16 22, 28 22, 44 22" stroke="#d4d4d4" strokeWidth="1.5" fill="none" />
-      </svg>
-      <div className="flex flex-col gap-2">
-        {subs.map(s => (
-          <div key={s} className="flex items-center">
-            <span className="w-3 h-px bg-[#d4d4d4] flex-shrink-0" />
-            <SubNode name={s} active={subActive} />
-          </div>
-        ))}
-      </div>
-    </div>
   )
 }
 
