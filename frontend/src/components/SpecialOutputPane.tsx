@@ -19,12 +19,13 @@ export default function SpecialOutputPane() {
   const cur = FORMS.find(f => f.key === form) || FORMS[0]
   return (
     <div className="w-full h-full flex flex-col min-h-0">
-      {/* 形式标签条 */}
-      <div className="flex flex-wrap gap-1 px-3 pt-2 flex-shrink-0">
+      {/* 形式选项：正方形宫格（图标+名称竖排） */}
+      <div className="grid grid-cols-7 gap-1.5 px-3 pt-2.5 flex-shrink-0">
         {FORMS.map(f => (
-          <button key={f.key} onClick={() => setForm(f.key)}
-            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium transition-colors ${form === f.key ? 'bg-[#1a1a1a] text-white' : 'text-dim hover:bg-[var(--bg-hover)]'}`}>
-            <f.icon size={11} /> {f.label}
+          <button key={f.key} onClick={() => setForm(f.key)} title={f.desc}
+            className={`flex flex-col items-center justify-center gap-1.5 rounded-xl aspect-square transition-colors ${form === f.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] text-dim hover:opacity-80'}`}>
+            <f.icon size={18} strokeWidth={1.8} />
+            <span className="text-[9px] leading-none">{f.label}</span>
           </button>
         ))}
       </div>
