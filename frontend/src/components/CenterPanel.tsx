@@ -398,22 +398,6 @@ const TEMPLATE_OPTIONS = [
       {/* 底部：追问 chips + 浮动输入坞 */}
       <div className="flex-shrink-0 px-6 pb-5">
         <div className="flex flex-col gap-2.5">
-          {/* 上次会话保存的三条追问：胶囊抢占注意力 */}
-          {followups.length > 0 && !isLoading && messages.length > 0 && (
-            <div className="flex flex-col gap-1.5 items-start animate-[fadeIn_0.3s_ease]">
-              <p className="text-[11px] text-dim font-medium flex items-center gap-1 px-1"><Lightbulb size={12} /> 继续追问</p>
-              {followups.map((q, i) => (
-                <button
-                  key={i}
-                  onClick={() => sendFollowup(q)}
-                  className="chip text-left text-[13px] px-4 py-2 transition-all"
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
-          )}
-
           {projectInitialized === false ? (
             <div className="px-3 py-2 border border-dashed border-orange-400 rounded-xl bg-orange-50 text-xs text-orange-600 flex items-center gap-2">
               <AlertTriangle size={13} /> 课程未初始化
@@ -433,8 +417,21 @@ const TEMPLATE_OPTIONS = [
             </div>
           )}
 
-          {/* 浮动输入坞 */}
+          {/* 浮动输入坞：追问建议嵌入卡片内部，附着于输入框 */}
           <div className="card-lift p-3 flex flex-col gap-2">
+            {followups.length > 0 && !isLoading && messages.length > 0 && (
+              <div className="flex flex-col gap-1 animate-[fadeIn_0.3s_ease]">
+                <p className="text-[10px] text-dim font-medium flex items-center gap-1 px-0.5"><Lightbulb size={11} /> 继续追问 · 推进学习目标</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {followups.map((q, i) => (
+                    <button key={i} onClick={() => sendFollowup(q)}
+                      className="chip text-left text-[11px] px-2.5 py-1.5 transition-all">
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}

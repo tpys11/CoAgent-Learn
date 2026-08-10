@@ -333,28 +333,32 @@ export default function RightPanel({ messageCount, projectId, onCollapse }: Prop
                   )}
                   {sideLoading && <p className="text-[10px] text-dim text-center">思考中…</p>}
                 </div>
-                {/* 横向拓展/闲聊追问建议 */}
-                {sideFollowups.length > 0 && !sideLoading && (
-                  <div className="px-3 pb-1 flex flex-col gap-1 items-start flex-shrink-0">
-                    <p className="text-[10px] text-dim font-medium">横向拓展 · 闲聊</p>
-                    {sideFollowups.map((q, i) => (
-                      <button key={i} onClick={() => sendSide(q)}
-                        className="chip text-left text-[11px] px-2.5 py-1.5 transition-all">
-                        {q}
-                      </button>
-                    ))}
-                  </div>
-                )}
                 <div className="p-2.5 flex-shrink-0">
-                  <div className="chip flex items-center gap-1.5 px-2 py-1">
-                    <textarea placeholder="在此提问..." rows={1} value={sideInput}
+                  <div className="chip flex flex-col gap-1.5 px-2 py-1.5">
+                    {/* 横向拓展/闲聊追问建议：附着于输入框 */}
+                    {sideFollowups.length > 0 && !sideLoading && (
+                      <div className="w-full flex flex-col gap-1 border-b hairline pb-1.5 animate-[fadeIn_0.3s_ease]">
+                        <p className="text-[10px] text-dim font-medium">横向拓展 · 闲聊</p>
+                        <div className="flex flex-wrap gap-1">
+                          {sideFollowups.map((q, i) => (
+                            <button key={i} onClick={() => sendSide(q)}
+                              className="chip text-left text-[10px] px-2 py-1 transition-all">
+                              {q}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1.5 w-full">
+                      <textarea placeholder="在此提问..." rows={1} value={sideInput}
                       onChange={e => setSideInput(e.target.value)}
                       className="flex-1 px-1.5 py-1 bg-transparent text-xs outline-none resize-none"
                       style={{ background: 'transparent' }}
                       onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendSide() } }} />
-                    <button onClick={() => sendSide()} disabled={sideLoading} className="w-7 h-7 btn-primary flex items-center justify-center flex-shrink-0 disabled:opacity-50">
-                      <Send size={12} />
-                    </button>
+                      <button onClick={() => sendSide()} disabled={sideLoading} className="w-7 h-7 btn-primary flex items-center justify-center flex-shrink-0 disabled:opacity-50">
+                        <Send size={12} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
