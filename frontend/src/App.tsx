@@ -280,8 +280,30 @@ function App() {
       })
   }, [currentDialogueId])
   const handleRenameDialogue = useCallback((id: string, name: string) => {
-    if (name.trim()) setDialogues(prev => prev.map(d => d.id === id ? { ...d, name: name.trim() } : d))
+    if (name.trim()) {
+      setDialogues(prev => prev.map(d => d.id === id ? { ...d, name: name.trim() } : d))
+      // 持久化到后端（POST /update {name}）
+      fetch('/api/dialogues/' + id + '/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name.trim() }) }).catch(() => {})
+    }
   }, [])
+  // 对话删除：自定义确认弹窗（删除此处的对话记忆；课程记忆与生成的资源保留）
+  const [deleteDialogueTarget, setDeleteDialogueTarget] = useState<{ id: string; name: string } | null>(null)
+  const handleDeleteDialogue = useCallback((id: string) => {
+    const d = dialogues.find(x => x.id === id)
+    setDeleteDialogueTarget({ id, name: (d && d.name) || '对话' })
+  }, [dialogues])
+  const confirmDeleteDialogue = useCallback(() => {
+    const t = deleteDialogueTarget
+    if (!t) return
+    setDeleteDialogueTarget(null)
+    fetch('/api/dialogues/' + t.id, { method: 'DELETE' })
+      .then(() => {
+        setDialogues(prev => prev.filter(d => d.id !== t.id))
+        setAllMessages(prev => { const n = { ...prev }; delete n[t.id]; return n })
+        if (currentDialogueId === t.id) setCurrentDialogueId(null)
+      })
+      .catch(() => {})
+  }, [deleteDialogueTarget, currentDialogueId])
   /** 记忆修改：跳转主对话界面，输入框预填 [模块名] 引用 + 修改引导（可指定项目） */
   const handleRequestModify = (label: string, pid?: string) => {
     setShowProjectConfig(false)
@@ -555,7 +577,8 @@ function App() {
             onHome={() => setChatOpen(false)}
             onSelectDialogue={handleSelectDialogue}
             onCreateDialogue={() => currentProjectId && handleCreateDialogue(currentProjectId)}
-            onArchiveDialogue={handleArchiveDialogue}
+            onRenameDialogue={handleRenameDialogue}
+            onDeleteDialogue={handleDeleteDialogue}
             onOpenMemory={() => { setProjectConfigTab('memory'); setShowProjectConfig(true) }}
             onOpenResource={() => { setProjectConfigTab('resource'); setShowProjectConfig(true) }}
             onCollapse={() => setSidebarCollapsed(true)}
@@ -637,6 +660,25 @@ function App() {
         }} />}
       {showApiKeyPrompt && <ApiKeyPrompt onClose={() => { setShowApiKeyPrompt(false); localStorage.setItem('coagent-apikey-skipped', '1') }} />}
       {showIntro && <IntroPanel onClose={() => { setShowIntro(false); localStorage.setItem('coagent-intro-seen', '1') }} />}
+      {/* 删除对话确认弹窗 */}
+      {deleteDialogueTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-6" onClick={() => setDeleteDialogueTarget(null)}>
+          <div className="card-lift rounded-2xl p-5 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+            <p className="text-sm font-bold">删除对话「{deleteDialogueTarget.name}」？</p>
+            <p className="mt-2 text-[11px] leading-relaxed text-dim">
+              这样会删除此处的对话记忆，<br />
+              保存到课程中的记忆不会删除，<br />
+              这个对话生成的资源也不会删除。
+            </p>
+            <div className="mt-4 flex gap-2">
+              <button onClick={() => setDeleteDialogueTarget(null)}
+                className="flex-1 py-2 rounded-xl text-[11px] font-medium border hairline row-hover transition-colors">取消</button>
+              <button onClick={confirmDeleteDialogue}
+                className="flex-1 py-2 rounded-xl text-[11px] font-medium text-white bg-red-500 hover:bg-red-600 transition-colors">确认删除</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

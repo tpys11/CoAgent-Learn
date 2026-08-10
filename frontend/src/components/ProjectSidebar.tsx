@@ -1,17 +1,18 @@
 ﻿import { useEffect, useState } from 'react'
-import { ArrowLeft, MessageSquare, FileText, X, Plus, ChevronDown, SlidersHorizontal } from 'lucide-react'
+import { ArrowLeft, MessageSquare, FileText, X, Plus, ChevronDown, SlidersHorizontal, Pencil } from 'lucide-react'
 
 interface Dialogue { id: string; name: string; archived?: boolean }
 
 /** 课程专属侧栏：课程记忆 / 课程资源 / 对话（不再与其他课程并列） */
-export default function ProjectSidebar({ project, dialogues, currentDialogueId, onHome, onSelectDialogue, onCreateDialogue, onArchiveDialogue, onOpenMemory, onOpenResource, onCollapse }: {
+export default function ProjectSidebar({ project, dialogues, currentDialogueId, onHome, onSelectDialogue, onCreateDialogue, onRenameDialogue, onDeleteDialogue, onOpenMemory, onOpenResource, onCollapse }: {
   project: { id: string; name: string } | null
   dialogues: Dialogue[]
   currentDialogueId: string | null
   onHome: () => void
   onSelectDialogue: (id: string) => void
   onCreateDialogue: () => void
-  onArchiveDialogue: (id: string) => void
+  onRenameDialogue: (id: string, name: string) => void
+  onDeleteDialogue: (id: string) => void
   onOpenMemory: () => void
   onOpenResource: () => void
   onCollapse: () => void
@@ -26,6 +27,8 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
     try { return { memory: true, resource: true, chat: true, ...(JSON.parse(localStorage.getItem('coagent-project-sidebar-v') || '{}')) } } catch { return { memory: true, resource: true, chat: true } }
   })
   const [showSettings, setShowSettings] = useState(false)
+  // 正在行内重命名的对话 id
+  const [editingId, setEditingId] = useState<string | null>(null)
   const toggleVisible = (k: 'memory' | 'resource' | 'chat') => {
     setVisible(prev => {
       const next = { ...prev, [k]: !prev[k] }
@@ -146,15 +149,31 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
                 if (active.length === 0) return <p className="text-[10px] text-dim">暂无对话，新建一个开始</p>
                 return active.map(d => (
                 <div key={d.id} className="group relative">
+                  {editingId === d.id ? (
+                    <input autoFocus defaultValue={d.name}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') { onRenameDialogue(d.id, (e.target as HTMLInputElement).value); setEditingId(null) }
+                        if (e.key === 'Escape') setEditingId(null)
+                      }}
+                      onBlur={(e) => { onRenameDialogue(d.id, e.target.value); setEditingId(null) }}
+                      className="w-full px-2 py-1.5 rounded-lg text-[11px] border hairline outline-none bg-[var(--bg-input)]" />
+                  ) : (
+                  <>
                   <button onClick={() => onSelectDialogue(d.id)}
                     className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-[11px] text-left transition-colors ${d.id === currentDialogueId ? 'bg-[#1a1a1a] text-white' : 'hover:bg-[var(--bg-hover)]'}`}>
                     <MessageSquare size={11} className="flex-shrink-0 opacity-70" />
                     <span className="truncate flex-1">{d.name}</span>
                   </button>
-                  <button onClick={() => onArchiveDialogue(d.id)}
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded-md text-dim opacity-0 group-hover:opacity-100 hover:text-red-500 transition-all" title="归档对话">
-                    <X size={11} />
-                  </button>
+                  <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all">
+                    <button onClick={() => setEditingId(d.id)} className="p-1 rounded-md text-dim hover:text-[var(--text)]" title="重命名">
+                      <Pencil size={10} />
+                    </button>
+                    <button onClick={() => onDeleteDialogue(d.id)} className="p-1 rounded-md text-dim hover:text-red-500" title="删除对话">
+                      <X size={11} />
+                    </button>
+                  </div>
+                  </>
+                  )}
                 </div>
               ))
               })()}
