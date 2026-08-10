@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from 'react'
-import { ArrowLeft, MessageSquare, FileText, X, Plus, ChevronDown, PanelLeftClose, SlidersHorizontal } from 'lucide-react'
+import { ArrowLeft, MessageSquare, FileText, X, Plus, ChevronDown, SlidersHorizontal } from 'lucide-react'
 
 interface Dialogue { id: string; name: string; archived?: boolean }
 
@@ -78,8 +78,8 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
                 </div>
               )}
             </div>
-            <button onClick={onCollapse} className="w-6 h-6 flex items-center justify-center rounded-lg icon-btn" title="收起侧栏">
-              <PanelLeftClose size={14} />
+            <button onClick={onCollapse} className="w-6 h-6 flex items-center justify-center rounded-lg icon-btn hover:text-red-500 transition-colors" title="关闭侧栏">
+              <X size={14} />
             </button>
           </div>
         </div>

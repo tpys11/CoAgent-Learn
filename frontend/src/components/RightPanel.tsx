@@ -1,4 +1,4 @@
-﻿import { Map, Search, Send, MessagesSquare, PanelRightClose, ChevronUp, ChevronDown, SlidersHorizontal, FileText } from 'lucide-react'
+﻿import { Map, Search, Send, MessagesSquare, X, ChevronUp, ChevronDown, SlidersHorizontal, FileText } from 'lucide-react'
 import { useEffect, useRef, useState, Fragment } from 'react'
 import * as echarts from 'echarts'
 
@@ -291,9 +291,7 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
     <aside className="w-full h-full flex flex-col overflow-hidden px-2.5 py-3 gap-1">
       {/* 右栏顶部：折叠按钮 + 展示设置 */}
       <div className="flex items-center justify-between flex-shrink-0 h-6 mb-1">
-        <button onClick={onCollapse} className="w-6 h-6 flex items-center justify-center rounded-lg icon-btn" title="收起侧栏">
-          <PanelRightClose size={14} />
-        </button>
+        <span className="flex-1" />
         <div className="relative">
           <button onClick={() => setShowWinSettings(!showWinSettings)} className="w-6 h-6 flex items-center justify-center rounded-lg icon-btn" title="右侧栏展示设置">
             <SlidersHorizontal size={13} />
@@ -313,6 +311,9 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
             </div>
           )}
         </div>
+        <button onClick={onCollapse} className="w-6 h-6 ml-1 flex items-center justify-center rounded-lg icon-btn hover:text-red-500 transition-colors" title="关闭侧栏">
+          <X size={14} />
+        </button>
       </div>
 
       {/* 动态窗口：按展示设置过滤，最后一个窗口 flex 填满，相邻窗口间有拖拽手柄 */}
