@@ -396,8 +396,8 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 state["sub_outputs"] = {**(state.get("sub_outputs") or {}), "gen": "\n\n".join(sub_parts)}
                 context += "\n\n【子Agent 专项产出（请基于这些产出组织最终回答）】\n" + state["sub_outputs"]["gen"]
         try:
-            # 简单问题：思考模式+effort=low（思维链保留但模型自然短思考）+精简回答；快速模板：非思考直接生成；复杂问题：深入思考
-            _gen_llm = llm_main_low if state.get("complexity") == "simple" else (llm_main_no_think if tpl == "快速" else llm_main)
+            # 简单问题/快速模板：思考模式+effort=low（很短的思维链，响应最快）；复杂问题：深入思考
+            _gen_llm = llm_main_low if (state.get("complexity") == "simple" or tpl == "快速") else llm_main
             _short_hint = ("（用户问题为简单问答：请直接给出简洁准确的回答，用 content 字段返回，"
                            "不要生成讲义/实操指南/测试题等长内容）") if state.get("complexity") == "simple" else ""
             thinking, result = think_then_json(_pick_llm(cfg, _gen_llm), _GENERATE_PROMPT,
