@@ -220,7 +220,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         memory_txt = ""
         try:
             if (cfg.get("memoryEnabled") is not False):
-                mem = registry.execute("memory_ops", action="read", layer=settings.get('memoryLayer', 'L2'))
+                mem = registry.execute("memory_ops", action="read", layer=settings.get('memoryLayer', 'L2'), project_id=state.get("project_id", "default"))
                 state["memory"] = mem.get("memory", {})
                 if state["memory"]:
                     memory_txt = "\n已有记忆: " + json.dumps(state["memory"], ensure_ascii=False)
