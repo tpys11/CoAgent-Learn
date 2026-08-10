@@ -849,11 +849,11 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                     </div>
                     {/* 右侧：记忆对话（直接输入修改记忆）——sticky 固定悬浮；初始化时不显示 */}
                     {!initialEdit && (
-                    <div className="w-[340px] flex-shrink-0 self-start sticky top-0 border hairline rounded-2xl bg-[var(--bg-panel)] flex flex-col overflow-hidden">
+                    <div className="w-[340px] h-[calc(90vh-100px)] flex-shrink-0 self-start sticky top-0 border hairline rounded-2xl bg-[var(--bg-panel)] flex flex-col overflow-hidden">
                       <div className="px-4 py-3 border-b hairline">
                         <span className="text-xs font-bold">修改记忆</span>
                       </div>
-                      <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2 min-h-[220px] max-h-[430px]">
+                      <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2">
                         {mcMsgs.length === 0 ? (
                           <p className="text-[10px] text-dim text-center py-6 leading-relaxed">
                             手动修改记忆很容易发生冲突，agent可以帮助您完成这件事情
