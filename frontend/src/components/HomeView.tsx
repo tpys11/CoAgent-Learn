@@ -156,6 +156,11 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
                           {p.name.slice(0, 1)}
                         </div>
                       )}
+                      {/* 右上角：红色叉删除 */}
+                      <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`删除课程「${p.name}」？`)) onDelete(p.id) }}
+                        className="absolute top-2.5 right-2.5 p-1.5 rounded-full bg-black/45 text-white opacity-0 group-hover:opacity-100 hover:bg-red-600 transition-all" title="删除课程">
+                        <X size={13} />
+                      </button>
                       <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/70 to-transparent">
                         <div className="flex items-center justify-between gap-2">
                           {renamingId === p.id ? (
@@ -177,10 +182,6 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
                           ) : (
                             <p className="text-base font-bold text-white truncate">{p.name}</p>
                           )}
-                          <button onClick={(e) => { e.stopPropagation(); setRenamingId(renamingId === p.id ? null : p.id) }}
-                            className="p-1 rounded-lg text-white/70 opacity-0 group-hover:opacity-100 hover:text-white transition-all flex-shrink-0" title="改名">
-                            <Pencil size={13} />
-                          </button>
                         </div>
                         <div className="flex items-center gap-2 mt-2">
                           <div className="flex-1 h-1.5 rounded-full bg-white/25 overflow-hidden">
@@ -202,9 +203,9 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
                           <Clock size={9} /> {p.created_at ? String(p.created_at).slice(0, 10) : '—'}{p.domain ? ` · ${p.domain}` : ''}
                         </p>
                         {onRename && (
-                          <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`删除课程「${p.name}」？`)) onDelete(p.id) }}
-                            className="text-[9px] px-1.5 py-0.5 rounded-md text-dim hover:bg-[var(--bg-hover)] hover:text-red-500 transition-colors flex-shrink-0" title="删除课程">
-                            删除
+                          <button onClick={(e) => { e.stopPropagation(); setRenamingId(renamingId === p.id ? null : p.id) }}
+                            className="p-1.5 rounded-md text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors flex-shrink-0" title="改名">
+                            <Pencil size={12} />
                           </button>
                         )}
                       </div>
