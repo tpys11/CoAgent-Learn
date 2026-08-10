@@ -399,12 +399,9 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         state["mindchain"].append({"agent": "审核", "content": thinking[:400]})
         state.setdefault("steps", []).append({"agent": "审核", "status": "done",
             "detail": f"score={state['reviewed'].get('score', 0)} passed={state['reviewed'].get('passed', True)}"})
-        return state
-
-    def output_node(state: AgentState) -> AgentState:
+        # 输出：审核通过直接交付；不通过（已到重试上限）交付并标注
         generated = state.get("generated") or "（系统未生成内容）"
-        reviewed = state.get("reviewed", {})
-        passed = reviewed.get("passed", True)
+        passed = state.get("reviewed", {}).get("passed", True)
         if passed:
             state["final_reply"] = generated
         else:
@@ -442,7 +439,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
 
     graph = StateGraph(AgentState)
     for name, node in [("plan", plan_node), ("study_memory", study_memory_node), ("kb", kb_node),
-                       ("generate", generate_node), ("review", review_node), ("output", output_node)]:
+                       ("generate", generate_node), ("review", review_node)]:
         graph.add_node(name, node)
     graph.set_entry_point("plan")
     graph.add_conditional_edges("plan", route_plan,
@@ -451,6 +448,5 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
     graph.add_edge("kb", "generate")
     graph.add_edge("generate", "review")
     graph.add_conditional_edges("review", route_review,
-        {"passed": "output", "retry": "generate", "max_retry": "output"})
-    graph.add_edge("output", END)
+        {"passed": END, "retry": "generate", "max_retry": END})
     return graph.compile()
