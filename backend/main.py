@@ -1344,6 +1344,8 @@ async def chat(req: ChatRequest):
                 elif msg[0] == "token":
                     _, agent, chunk = msg
                     yield f"data: {json.dumps({'type': 'thought_token', 'agent': agent, 'chunk': chunk})}\n\n"
+                elif msg[0] == "answer":
+                    yield f"data: {json.dumps({'type': 'answer_token', 'chunk': msg[1]})}\n\n"
                 elif msg[0] == "done":
                     result = msg[1]
                     yield f"data: {json.dumps({'type': 'done', 'reply': result.get('final_reply', '处理完成'), 'steps': result.get('steps', []), 'mindchain': result.get('mindchain', []), 'task_stats': result.get('task_stats', {})})}\n\n"

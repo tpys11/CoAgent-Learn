@@ -360,12 +360,16 @@ const TEMPLATE_OPTIONS = [
               </div>
             ) : (
               <div key={idx} className="w-full text-sm leading-7 animate-[fadeIn_0.25s_ease]">
-                {msg.content === '' ? (
+                {(msg.content === '' || (isLoading && idx === messages.length - 1)) ? (
                   <div>
                     {/* 实时思维链：以对话形式推送（Agent 小标题+内容，随消息流滚动，不限定框；plain 纯文本渲染保帧率） */}
                     {msg.think && msg.think.length > 0 && (
                       <div className="mb-2"><ThinkBlock items={msg.think} plain activeAgent={flowActiveAgent} activeStatus={flowStatus} /></div>
                     )}
+                    {/* 主Agent生成内容：直接流式输出在对话区（纯文本实时显示，完成后 markdown 渲染） */}
+                    {msg.content ? (
+                      <div className="text-sm leading-7 whitespace-pre-wrap break-words">{msg.content}</div>
+                    ) : null}
                     <div className="flex items-center gap-2 text-dim">
                       <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" />
                       <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }} />

@@ -142,6 +142,8 @@ function App() {
   const revealTimerRef = useRef<number | null>(null)
   const revealTickRef = useRef(0)
   const activeDidRef = useRef<string | null>(null)
+  // 本次回答是否已通过 answer_token 流式显示（是则 done 后直接替换，不二次打字机）
+  const streamedRef = useRef(false)
   const stopReveal = () => {
     if (revealTimerRef.current != null) { cancelAnimationFrame(revealTimerRef.current); revealTimerRef.current = null }
     pendingQueueRef.current = []
@@ -392,6 +394,7 @@ function App() {
     setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = []
     setFlowStatus('正在等待模型响应…')
     setFlowActiveAgent(null)
+    streamedRef.current = false
     activeDidRef.current = did || null
     stopReveal()
     // 自动命名：对话名为「对话 N」时，按首条消息内容改名
@@ -512,6 +515,21 @@ function App() {
             }
             startReveal()
           }
+          if (data.type === 'answer_token') {
+            const ch = data.chunk || ''
+            if (ch) {
+              streamedRef.current = true
+              // 实时追加到占位消息 content：回答在对话区直接流式显示
+              setAllMessages(prev => {
+                const arr = prev[activeDidRef.current || ''] || []
+                const lastMsg = arr[arr.length - 1]
+                if (lastMsg && lastMsg.role === 'assistant') {
+                  return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, content: (lastMsg.content || '') + ch }] }
+                }
+                return prev
+              })
+            }
+          }
           if (data.type === 'done') {
             finalReply = data.reply; steps.push(...(data.steps || [])); taskStats = data.task_stats || null
             setFlowStatus('')
@@ -552,7 +570,10 @@ function App() {
         const finalContent = finalReply || (flowError ? '⚠️ ' + flowError : '处理完成')
         // 打字机效果（设置开关）
         const typingOn = true  // 流式逐字输出固定开启
-        if (typingOn) {
+        if (typingOn && streamedRef.current) {
+          // 回答已通过 answer_token 流式显示：直接替换为完整内容（markdown 渲染），不再二次打字机
+          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: finalContent, steps, think: thinkArr }) }))
+        } else if (typingOn) {
           setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: '', steps, think: thinkArr }) }))
           let i = 0
           const iv = setInterval(() => {

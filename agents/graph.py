@@ -79,7 +79,9 @@ def _build_out_cand(agents: list, tpl: str) -> str:
 
 
 def create_workflow(api_key: str | None = None, settings: dict | None = None, on_token=None,
-                    model: str | None = None, base_url: str | None = None, agents: list | None = None):
+                    model: str | None = None, base_url: str | None = None, agents: list | None = None,
+                    on_answer=None):
+    # on_answer：主Agent生成节点的最终回答逐 token 直接流式推送（不进思维链，对话区实时显示）
     settings = settings or {}
     agents = agents or []
     tpl = settings.get("template") or "基础"  # 基础 / 检索增强 / 快速 / 输出增强
@@ -397,11 +399,39 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 context += "\n\n【子Agent 专项产出（请基于这些产出组织最终回答）】\n" + state["sub_outputs"]["gen"]
         try:
             # 简单问题/快速模板：思考模式+effort=low（很短的思维链，响应最快）；复杂问题：深入思考
-            _gen_llm = llm_main_low if (state.get("complexity") == "simple" or tpl == "快速") else llm_main
+            _gen_llm = _pick_llm(cfg, llm_main_low if (state.get("complexity") == "simple" or tpl == "快速") else llm_main)
             _short_hint = ("（用户问题为简单问答：请直接给出简洁准确的回答，用 content 字段返回，"
                            "不要生成讲义/实操指南/测试题等长内容）") if state.get("complexity") == "simple" else ""
-            thinking, result = think_then_json(_pick_llm(cfg, _gen_llm), _GENERATE_PROMPT,
-                _append_example(cfg, context) + _short_hint, "主Agent·生成")
+            # 生成节点的思考不进思维链；最终回答 content 逐 token 直接流式推送给前端（对话区实时显示）
+            _gen_collected = []
+            def _gen_collect(chunk):
+                _gen_collected.append(chunk)
+            def _gen_answer(piece):
+                if on_answer:
+                    on_answer(piece)
+            if on_token:
+                on_token("主Agent·生成", "")  # 触发 step：状态"正在思考生成…"
+            _gen_llm.chat_stream(
+                [{"role": "system", "content": _GENERATE_PROMPT},
+                 {"role": "user", "content": _append_example(cfg, context) + _short_hint}],
+                _gen_collect, on_content=_gen_answer
+            )
+            _raw = "".join(_gen_collected)
+            # 提取 JSON（复用 think_then_json 逻辑）
+            _m = re.search(r'```json\s*([\s\S]*?)\s*```', _raw)
+            if _m:
+                thinking = _raw[:_m.start()].strip()
+                result = json.loads(_m.group(1))
+            else:
+                _m2 = re.search(r'\{[\s\S]*\}', _raw)
+                if _m2:
+                    thinking = _raw[:_m2.start()].strip()
+                    result = json.loads(_m2.group())
+                else:
+                    thinking = _raw[:200]
+                    result = {"content": _raw}
+            if not isinstance(result, dict):
+                result = {"content": str(result)}
             if isinstance(result, dict) and result.get("讲义"):
                 parts = ["## 📘 定制讲义", str(result.get("讲义", "")), "", "## 🛠 实操指南", str(result.get("实操指南", ""))]
                 tests = result.get("测试题") or []
@@ -422,7 +452,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         except Exception as e:
             state["generated"] = f"抱歉，生成内容时出现错误：{str(e)[:200]}"
         _stats(state, "generate", int((time.time() - t0) * 1000), 1, len(thinking) // 2)
-        state["mindchain"].append({"agent": "主Agent·生成", "content": thinking})
+        # 生成节点的思考不写入思维链（回答已直接流式输出）
         state.setdefault("steps", []).append({"agent": "主Agent·生成", "status": "done", "detail": "生成完成"})
         return state
 

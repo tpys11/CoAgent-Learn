@@ -127,10 +127,11 @@ class BaseLLM:
             )
 
 
-    def chat_stream(self, messages: list[dict], on_token, temperature: float = 0.7):
+    def chat_stream(self, messages: list[dict], on_token, temperature: float = 0.7, on_content=None):
         """流式对话，每收到一个token调用on_token(chunk_text)。
         同时消费 delta.reasoning_content（v4 思考模式的推理内容，作为思维链推送）与 delta.content（最终回答），
-        推理阶段 content 为空时仍能持续推送推理文本，保证前端思维链实时可见。"""
+        推理阶段 content 为空时仍能持续推送推理文本，保证前端思维链实时可见。
+        on_content：仅 content（最终回答）token 时调用——生成节点的回答内容直接流式推给前端。"""
         kwargs = {}
         if getattr(self, "thinking", None) is not None:
             # DeepSeek v4 思考模式开关：extra_body 透传（兼容旧版 openai SDK）
@@ -151,6 +152,8 @@ class BaseLLM:
                         on_token(reasoning)
                     if piece:
                         on_token(piece)
+                        if on_content:
+                            on_content(piece)
                 return
             except Exception as e:
                 logger.warning(f"chat_stream 第{attempt+1}次失败: {e}")
