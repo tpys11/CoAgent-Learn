@@ -51,9 +51,20 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
     prevLoading.current = isLoading
   }, [isLoading])
   const msgScrollRef = useRef<HTMLDivElement>(null)
+  // stick-to-bottom：仅在用户位于底部附近时自动跟随流式内容；用户上滑查看历史则停止跟随，可自由滑动
+  const stickToBottomRef = useRef(true)
   useEffect(() => {
     const el = msgScrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
+    if (!el) return
+    const onScroll = () => {
+      stickToBottomRef.current = (el.scrollHeight - el.scrollTop - el.clientHeight) < 60
+    }
+    el.addEventListener('scroll', onScroll, { passive: true })
+    return () => el.removeEventListener('scroll', onScroll)
+  }, [])
+  useEffect(() => {
+    const el = msgScrollRef.current
+    if (el && stickToBottomRef.current) el.scrollTop = el.scrollHeight
   }, [messages, isLoading])
   const [stats, setStats] = useState<{dialogue_count: number; tokens_estimate: number; metrics: any}>({dialogue_count: 0, tokens_estimate: 0, metrics: null})
   useEffect(() => {
