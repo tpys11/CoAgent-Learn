@@ -2,11 +2,12 @@
 import { Plus, X, FolderOpen, Clock } from 'lucide-react'
 import TrendCalendar from './TrendCalendar'
 
-/** 系统预设领域 → 预存图片（非系统自带领域无图，显示首字占位） */
+/** 系统预设领域 → 预存图片；非预设领域/未设置领域使用默认学习封面 */
 const DOMAIN_IMAGES: Record<string, string> = {
   'Agent 应用与开发': '/domain-images/agent.jpg',
   'Python 编程': '/domain-images/python.jpg',
 }
+const DEFAULT_COURSE_IMG = '/domain-images/default-course.jpg'
 
 interface HomeProject {
   id: string
@@ -111,7 +112,7 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
               {projects.map(p => {
-                const img = p.domain ? DOMAIN_IMAGES[p.domain] : undefined
+                const img = (p.domain && DOMAIN_IMAGES[p.domain]) || DEFAULT_COURSE_IMG
                 const count = stats[p.id] ?? 0
                 const pct = Math.min(95, 8 + count * 4)
                 const mem = mems[p.id] || {}
