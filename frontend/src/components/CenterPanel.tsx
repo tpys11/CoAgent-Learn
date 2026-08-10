@@ -379,8 +379,8 @@ const TEMPLATE_OPTIONS = [
             )
           ))}
 
-          {/* 思考过程 */}
-          {flowMindchain.length > 0 && (
+          {/* 思考过程（发送后立即显示，思维链 token 实时累积） */}
+          {(flowMindchain.length > 0 || isLoading) && (
             <div className="card-surface overflow-hidden">
               <button onClick={() => setThinkingCollapsed(!thinkingCollapsed)}
                 className="w-full flex items-center justify-between px-4 py-2.5 text-xs row-hover transition-colors">

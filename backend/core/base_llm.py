@@ -30,6 +30,10 @@ class BaseLLM:
 
     def chat(self, messages: list[dict], temperature: float = 0.7) -> str:
         """普通对话，返回文本"""
+        kwargs = {}
+        if getattr(self, "thinking", None) is not None:
+            # DeepSeek v4 思考模式开关：extra_body 透传（兼容旧版 openai SDK）
+            kwargs["extra_body"] = {"thinking": {"type": "enabled" if self.thinking else "disabled"}}
         for attempt in range(1, self.max_retries + 1):
             try:
                 resp = self.client.chat.completions.create(
@@ -37,6 +41,7 @@ class BaseLLM:
                     messages=messages,
                     temperature=temperature,
                     timeout=config.LLM_REQUEST_TIMEOUT,
+                    **kwargs,
                 )
                 content = resp.choices[0].message.content or ""
                 self._log_tokens(resp, "chat", attempt)
@@ -121,15 +126,26 @@ class BaseLLM:
 
 
     def chat_stream(self, messages: list[dict], on_token, temperature: float = 0.7):
-        """流式对话，每收到一个token调用on_token(chunk_text)"""
+        """流式对话，每收到一个token调用on_token(chunk_text)。
+        同时消费 delta.reasoning_content（v4 思考模式的推理内容，作为思维链推送）与 delta.content（最终回答），
+        推理阶段 content 为空时仍能持续推送推理文本，保证前端思维链实时可见。"""
+        kwargs = {}
+        if getattr(self, "thinking", None) is not None:
+            # DeepSeek v4 思考模式开关：extra_body 透传（兼容旧版 openai SDK）
+            kwargs["extra_body"] = {"thinking": {"type": "enabled" if self.thinking else "disabled"}}
         for attempt in range(self.max_retries):
             try:
                 response = self.client.chat.completions.create(
-                    model=self.model_name, messages=messages, temperature=temperature, stream=True
+                    model=self.model_name, messages=messages, temperature=temperature, stream=True, **kwargs
                 )
                 for chunk in response:
-                    if chunk.choices[0].delta.content:
-                        on_token(chunk.choices[0].delta.content)
+                    delta = chunk.choices[0].delta
+                    reasoning = getattr(delta, "reasoning_content", None) or ""
+                    piece = delta.content or ""
+                    if reasoning:
+                        on_token(reasoning)
+                    if piece:
+                        on_token(piece)
                 return
             except Exception as e:
                 logger.warning(f"chat_stream 第{attempt+1}次失败: {e}")
@@ -140,10 +156,13 @@ class BaseLLM:
 class DeepSeekLLM(BaseLLM):
     """OpenAI 兼容协议实现（DeepSeek/OpenAI/通义/GLM/Kimi/豆包等）"""
 
-    def __init__(self, api_key: str | None = None, model: str | None = None, base_url: str | None = None):
+    def __init__(self, api_key: str | None = None, model: str | None = None, base_url: str | None = None,
+                 thinking: bool | None = None):
         self.model_name = model or "deepseek-v4-flash"
         self._api_key = api_key
         self._base_url = base_url
+        # thinking: None=跟随 API 默认（v4 为思考模式，推理内容可作思维链展示）；False=非思考模式（决策快）
+        self.thinking = thinking
         super().__init__()
 
     def _create_client(self) -> OpenAI:

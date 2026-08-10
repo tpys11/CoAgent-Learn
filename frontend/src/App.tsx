@@ -257,6 +257,17 @@ function App() {
     if (v === 'chat') setChatOpen(false) // 点「主页」回到主页
   }
 
+  /** 替换/追加最后一条 assistant 消息：发送时插入的空占位（content=''）被结果替换，避免重复气泡 */
+  const upsertLastAssistant = (prev: Message[], msg: Message) => {
+    const arr = [...prev]
+    const last = arr[arr.length - 1]
+    if (last && last.role === 'assistant' && last.content === '') {
+      arr[arr.length - 1] = msg
+    } else {
+      arr.push(msg)
+    }
+    return arr
+  }
   const handleSendMessage = useCallback(async (text: string, settings?: Record<string, any>) => {
     let did = currentDialogueId
     if (!did && currentProjectId) {
@@ -284,6 +295,8 @@ function App() {
     }
     if (!did) return
     setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'user', content: text }] }))
+    // 立即插入空 assistant 占位：界面马上显示"思考中…"，结果到达后替换（思维链实时展示于底部卡片）
+    setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'assistant', content: '' }] }))
     setIsLoading(true)
     setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = []
     // 自动命名：对话名为「对话 N」时，按首条消息内容改名
@@ -408,7 +421,7 @@ function App() {
         // 打字机效果（设置开关）
         const typingOn = (() => { try { return (JSON.parse(localStorage.getItem('coagent-context-settings') || '{}') as any).typing === true } catch { return false } })()
         if (typingOn) {
-          setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'assistant', content: '', steps, think: thinkArr }] }))
+          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: '', steps, think: thinkArr }) }))
           let i = 0
           const iv = setInterval(() => {
             i += 3
@@ -421,11 +434,11 @@ function App() {
             if (i >= finalContent.length) clearInterval(iv)
           }, 16)
         } else {
-          setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'assistant', content: finalContent, steps, think: thinkArr }] }))
+          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: finalContent, steps, think: thinkArr }) }))
         }
       }catch(_ex){}
     } catch (e: any) {
-      setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'assistant', content: (e && e.name === 'AbortError') ? '⚠️ 请求超时：生成时间过长已中断，请重试或减少内容复杂度。' : ('抱歉，请求失败。' + (e && e.message ? '（' + e.message + '）' : '')) }] }))
+      setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: (e && e.name === 'AbortError') ? '⚠️ 请求超时：生成时间过长已中断，请重试或减少内容复杂度。' : ('抱歉，请求失败。' + (e && e.message ? '（' + e.message + '）' : '')) }) }))
     } finally { clearTimeout(timeoutTimer); setIsLoading(false) }
   }, [currentDialogueId, agents, dialogues, currentProjectId])
   const handleSaveAgent = useCallback((updated: AgentConfig) => {

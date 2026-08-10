@@ -91,7 +91,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             if host in base_url:
                 fast_model = fm
                 break
-    llm_fast = DeepSeekLLM(api_key=api_key, model=fast_model, base_url=base_url) if (fast_model and fast_model != model) else llm_main
+    llm_fast = DeepSeekLLM(api_key=api_key, model=fast_model, base_url=base_url, thinking=False) if (fast_model and fast_model != model) else llm_main
 
     def _agent_cfg(aid: str) -> dict:
         """按 Agent id 取配置（缺失时返回空）"""

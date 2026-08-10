@@ -61,7 +61,7 @@ def generate_followups(api_key, project_id, dialogue_id, db):
         h = {"Authorization": "Bearer " + (api_key or _cfg.DEEPSEEK_API_KEY), "Content-Type": "application/json"}
         resp = _req.post(
             _cfg.DEEPSEEK_BASE_URL + "/chat/completions",
-            json={"model": "deepseek-v4-flash", "messages": [{"role": "user", "content": prompt}]},
+            json={"model": "deepseek-v4-flash", "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]},
             headers=h, timeout=60,
         )
         if resp.status_code != 200:

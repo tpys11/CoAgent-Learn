@@ -1016,7 +1016,7 @@ def _auto_settings(api_key: str, message: str, template: str = "基础", infer_m
     try:
         import requests as _req
         resp = _req.post(_cfg.DEEPSEEK_BASE_URL + "/chat/completions",
-                         json={"model": "deepseek-v4-flash", "messages": [{"role": "user", "content": prompt}]},
+                         json={"model": "deepseek-v4-flash", "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]},
                          headers=h, timeout=60)
         if resp.status_code != 200:
             return {}
@@ -1095,7 +1095,7 @@ def _memory_edit(api_key: str, message: str, project_id: str, session_id: str) -
     try:
         import requests as _req
         resp = _req.post(_cfg.DEEPSEEK_BASE_URL + "/chat/completions",
-                         json={"model": "deepseek-v4-flash", "messages": [{"role": "user", "content": prompt}]},
+                         json={"model": "deepseek-v4-flash", "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]},
                          headers=h, timeout=60)
         if resp.status_code != 200:
             return {"reply": f"⚠️ 修改失败：LLM 调用错误（{resp.status_code}）", "steps": [{"agent": "记忆管理", "status": "done", "detail": "修改失败"}]}
@@ -1163,7 +1163,7 @@ async def memory_chat(req: ChatRequest):
     try:
         import requests as _req
         resp = _req.post(_cfg.DEEPSEEK_BASE_URL + "/chat/completions",
-                         json={"model": "deepseek-v4-flash", "messages": [{"role": "user", "content": prompt}]},
+                         json={"model": "deepseek-v4-flash", "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]},
                          headers=h, timeout=90)
         if resp.status_code != 200:
             return {"reply": "⚠️ 记忆更新失败：模型调用出错（检查 API Key 是否有效）。"}
