@@ -135,33 +135,39 @@ function App() {
   const mindchainRef = useRef<Array<{agent: string; content: string}>>([])
   // 思维链逐字 reveal：收到 token 进队列，interval 按 16ms/字 逐字追加（打字机效果）
   const pendingQueueRef = useRef<Array<{ agent: string; text: string }>>([])
-  const revealTimerRef = useRef<any>(null)
+  const revealTimerRef = useRef<number | null>(null)
   const activeDidRef = useRef<string | null>(null)
   const stopReveal = () => {
-    if (revealTimerRef.current) { clearInterval(revealTimerRef.current); revealTimerRef.current = null }
+    if (revealTimerRef.current != null) { cancelAnimationFrame(revealTimerRef.current); revealTimerRef.current = null }
     pendingQueueRef.current = []
   }
   const startReveal = () => {
-    if (revealTimerRef.current) return
-    revealTimerRef.current = setInterval(() => {
+    if (revealTimerRef.current != null) return
+    const tick = () => {
+      revealTimerRef.current = requestAnimationFrame(tick)
       const q = pendingQueueRef.current
-      while (q.length > 0 && q[0].text === '') q.shift()
       if (q.length === 0) return
-      const head = q[0]
-      const ch = head.text[0]
-      head.text = head.text.slice(1)
-      if (head.text === '') q.shift()
-      if (ch === undefined) return
+      // 本帧消费全部已到达的字符：显示速度 = 模型输出速度（极限），形态为逐帧流动
+      const updates: Array<{ agent: string; text: string }> = []
+      for (const seg of q) {
+        if (seg.text === '') continue
+        updates.push({ agent: seg.agent, text: seg.text })
+        seg.text = ''
+      }
+      q.length = 0
+      if (updates.length === 0) return
       setFlowMindchain(prev => {
-        const last = prev[prev.length - 1]
-        let next
-        if (last && last.agent === head.agent) {
-          next = [...prev.slice(0, -1), { agent: head.agent, content: last.content + ch }]
-        } else {
-          next = [...prev, { agent: head.agent, content: ch }]
+        let cur = prev
+        for (const u of updates) {
+          const last = cur[cur.length - 1]
+          if (last && last.agent === u.agent) {
+            cur = [...cur.slice(0, -1), { agent: u.agent, content: last.content + u.text }]
+          } else {
+            cur = [...cur, { agent: u.agent, content: u.text }]
+          }
         }
-        mindchainRef.current = next
-        return next
+        mindchainRef.current = cur
+        return cur
       })
       // 同步到对话流中最后一条 assistant 占位消息的 think（思维链以对话形式实时推送）
       setAllMessages(prev => {
@@ -172,7 +178,8 @@ function App() {
         }
         return prev
       })
-    }, 16)
+    }
+    revealTimerRef.current = requestAnimationFrame(tick)
   }
   const sessionId = useRef(SESSION_ID)
   const dragging = useRef<'left' | 'right' | 'flow' | null>(null)
