@@ -90,12 +90,6 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
           {tab === 'memory'
             ? (
               <div className="h-full flex flex-col min-h-0">
-                {/* 初次手动初始化：直接在项目记忆的「基本情况/目的/初始情况」区域原地填写，不额外加输入框 */}
-                {initialOnly && (
-                  <div className="flex-shrink-0 px-6 py-2 border-b hairline text-[11px] text-dim">
-                    请在下方「基本情况 / 目的 / 初始情况」区域直接填写，填写完毕后点击右上角「保存」。
-                  </div>
-                )}
                 <div className="flex-1 min-h-0 overflow-hidden">
                   <MemoryView projectId={projectId} projectOnly initialEdit={initialOnly} onEditChange={setCollected}
                     onRequestModify={onRequestModify} onRequestAnalyze={onRequestAnalyze} />
