@@ -729,19 +729,17 @@ function AgentThinkList({ think }: { think?: Array<{ agent: string; content: str
     return n
   })
   return (
-    <div className="mb-3 flex flex-col gap-1">
+    <div className="mb-3 flex flex-col gap-0.5">
       {items.map(it => (
-        <div key={it.i} className="border hairline rounded-lg overflow-hidden">
+        <div key={it.i} className="flex flex-col">
           <button onClick={() => toggle(it.i)}
-            className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] row-hover transition-colors">
-            <span className="text-dim flex-shrink-0">{openSet.has(it.i) ? '▾' : '▸'}</span>
-            <span className="font-semibold flex-shrink-0">{it.agent || '思考'}</span>
-            {!openSet.has(it.i) && it.content && (
-              <span className="ml-auto text-dim truncate">{it.content.slice(0, 26)}</span>
-            )}
+            className="flex items-center gap-1.5 py-0.5 text-[11px] font-semibold hover:opacity-80 transition-opacity text-left">
+            <span className="flex-shrink-0">{it.agent || '思考'}</span>
+            {/* 右侧小箭头：点击展开该 Agent 的思考内容 */}
+            <span className={`text-dim text-[9px] transition-transform ${openSet.has(it.i) ? 'rotate-90' : ''}`}>▸</span>
           </button>
           {openSet.has(it.i) && (
-            <div className="px-3 pb-2 pt-1.5 border-t hairline">
+            <div className="pl-1">
               <ThinkBlock items={[{ agent: '', content: it.content }]} />
             </div>
           )}
