@@ -31,10 +31,16 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
     if (!projectId) return
     setSaving(true)
     try {
-      // 提交编辑过的字段：基本情况（抽象项目情况/学习时间/强度与频率/学习周期）/ 目的（抽象目的）/ 初始情况（起点）
+      // 提交编辑过的字段：项目名（PATCH）/ 基本情况（课程结束时间/平均每日投入时间/其他）/ 目的（抽象目的）/ 初始情况（起点）
       const profile: Record<string, string> = {}
       for (const k of ['课程结束时间', '平均每日投入时间', '其他', '抽象目的', '起点']) {
         if (collected[k]) profile[k] = collected[k]
+      }
+      if (collected['项目名'] && collected['项目名'].trim() && collected['项目名'].trim() !== projectName) {
+        await fetch('/api/projects/' + encodeURIComponent(projectId), {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: collected['项目名'].trim() }),
+        })
       }
       if (Object.keys(profile).length) {
         await fetch('/api/project-memory/' + encodeURIComponent(projectId), {

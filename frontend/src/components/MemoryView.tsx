@@ -695,7 +695,13 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                                   <h3 className="text-[11px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--accent)' }}>基本情况</h3>
                                   {initialEdit ? (
                                     <div className="flex flex-col gap-2.5">
-                                      {/* 只保留三项：每项一行「设置项提示：输入」，用户跟着冒号填写 */}
+                                      {/* 每项一行「设置项提示：输入」，用户跟着冒号填写；项目名在最前 */}
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-xs font-semibold flex-shrink-0">项目名：</span>
+                                        <input value={editFields['项目名'] ?? p?.name ?? ''} placeholder="课程名称，如：Python 数据分析实战"
+                                          onChange={(e) => { const v = e.target.value; setEditFields(prev => ({ ...prev, '项目名': v })); onEditChange?.({ ...editFields, '项目名': v }) }}
+                                          className="flex-1 min-w-0 border hairline rounded-lg px-2.5 py-1.5 bg-[var(--bg-input)] text-xs outline-none focus:border-[var(--accent)]" />
+                                      </div>
                                       {[['课程结束时间', '什么日期验收，如：8 月 30 日完成验收'], ['平均每日投入时间', '如：每天 2 小时']].map(([label, ph]) => (
                                         <div key={label} className="flex items-center gap-2">
                                           <span className="text-xs font-semibold flex-shrink-0">{label}：</span>
