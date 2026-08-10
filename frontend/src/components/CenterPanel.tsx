@@ -359,9 +359,9 @@ const TEMPLATE_OPTIONS = [
               <div key={idx} className="w-full text-sm leading-7 animate-[fadeIn_0.25s_ease]">
                 {msg.content === '' ? (
                   <div>
-                    {/* 实时思维链：以对话形式推送（Agent 小标题+内容，随消息流滚动，不限定框） */}
+                    {/* 实时思维链：以对话形式推送（Agent 小标题+内容，随消息流滚动，不限定框；plain 纯文本渲染保帧率） */}
                     {msg.think && msg.think.length > 0 && (
-                      <div className="mb-2"><ThinkBlock items={msg.think} /></div>
+                      <div className="mb-2"><ThinkBlock items={msg.think} plain /></div>
                     )}
                     <div className="flex items-center gap-2 text-dim">
                       <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" />
@@ -691,8 +691,10 @@ const TEMPLATE_OPTIONS = [
   )
 }
 
-/** 思维链内容块：Agent 小标题 + Markdown 渲染内容（以对话形式推送，不限定高度框） */
-function ThinkBlock({ items }: { items: Array<{ agent: string; content: string }> | string[] }) {
+/** 思维链内容块：Agent 小标题 + 内容（以对话形式推送，不限定高度框）。
+ * plain=true 时用纯文本渲染（实时逐字阶段，避免每帧 markdown 重解析，保证 60fps 流畅）；
+ * 完成态（CollapsibleThink 展开）用 markdown 渲染。 */
+function ThinkBlock({ items, plain }: { items: Array<{ agent: string; content: string }> | string[]; plain?: boolean }) {
   const list = (items || []).map(it => typeof it === 'string' ? { agent: '', content: it } : it)
   if (list.length === 0) return null
   return (
@@ -700,8 +702,12 @@ function ThinkBlock({ items }: { items: Array<{ agent: string; content: string }
       {list.map((it, i) => (
         <div key={i} className="animate-[fadeIn_0.15s_ease]">
           {it.agent && <div className="text-[11px] font-semibold mb-0.5">{it.agent}</div>}
-          <div className="md-think-body text-[11px] leading-relaxed text-dim pl-2 border-l-2 hairline">
-            <div dangerouslySetInnerHTML={{ __html: renderMd(it.content) }} />
+          <div className="text-[11px] leading-relaxed text-dim pl-2 border-l-2 hairline">
+            {plain ? (
+              <div className="whitespace-pre-wrap break-words">{it.content}</div>
+            ) : (
+              <div className="md-think-body" dangerouslySetInnerHTML={{ __html: renderMd(it.content) }} />
+            )}
           </div>
         </div>
       ))}

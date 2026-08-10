@@ -136,6 +136,7 @@ function App() {
   // 思维链逐字 reveal：收到 token 进队列，interval 按 16ms/字 逐字追加（打字机效果）
   const pendingQueueRef = useRef<Array<{ agent: string; text: string }>>([])
   const revealTimerRef = useRef<number | null>(null)
+  const revealTickRef = useRef(0)
   const activeDidRef = useRef<string | null>(null)
   const stopReveal = () => {
     if (revealTimerRef.current != null) { cancelAnimationFrame(revealTimerRef.current); revealTimerRef.current = null }
@@ -146,38 +147,34 @@ function App() {
     const tick = () => {
       revealTimerRef.current = requestAnimationFrame(tick)
       const q = pendingQueueRef.current
+      while (q.length > 0 && q[0].text === '') q.shift()
       if (q.length === 0) return
-      // 本帧消费全部已到达的字符：显示速度 = 模型输出速度（极限），形态为逐帧流动
-      const updates: Array<{ agent: string; text: string }> = []
-      for (const seg of q) {
-        if (seg.text === '') continue
-        updates.push({ agent: seg.agent, text: seg.text })
-        seg.text = ''
-      }
-      q.length = 0
-      if (updates.length === 0) return
+      // 每帧固定消费 1 个字符：均匀逐字输出（帧率极限 ~60字/秒，流畅不跳动）
+      const head = q[0]
+      const ch = head.text[0]
+      head.text = head.text.slice(1)
+      if (head.text === '') q.shift()
+      if (ch === undefined) return
       setFlowMindchain(prev => {
-        let cur = prev
-        for (const u of updates) {
-          const last = cur[cur.length - 1]
-          if (last && last.agent === u.agent) {
-            cur = [...cur.slice(0, -1), { agent: u.agent, content: last.content + u.text }]
-          } else {
-            cur = [...cur, { agent: u.agent, content: u.text }]
+        const last = prev[prev.length - 1]
+        const next = (last && last.agent === head.agent)
+          ? [...prev.slice(0, -1), { agent: head.agent, content: last.content + ch }]
+          : [...prev, { agent: head.agent, content: ch }]
+        mindchainRef.current = next
+        return next
+      })
+      // 同步到对话流占位消息的 think：每 4 帧一次（~64ms），降低渲染压力保证逐字帧率
+      revealTickRef.current += 1
+      if (revealTickRef.current % 4 === 1) {
+        setAllMessages(prev => {
+          const arr = prev[activeDidRef.current || ''] || []
+          const lastMsg = arr[arr.length - 1]
+          if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content === '') {
+            return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, think: mindchainRef.current }] }
           }
-        }
-        mindchainRef.current = cur
-        return cur
-      })
-      // 同步到对话流中最后一条 assistant 占位消息的 think（思维链以对话形式实时推送）
-      setAllMessages(prev => {
-        const arr = prev[activeDidRef.current || ''] || []
-        const lastMsg = arr[arr.length - 1]
-        if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content === '') {
-          return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, think: mindchainRef.current }] }
-        }
-        return prev
-      })
+          return prev
+        })
+      }
     }
     revealTimerRef.current = requestAnimationFrame(tick)
   }
@@ -437,19 +434,30 @@ function App() {
           if (data.type === 'thought_token') {
             setFlowAgents(prev => prev.includes(data.agent) ? prev : [...prev, data.agent])
             setFlowActiveAgent(data.agent)
-            // 进入逐字 reveal 队列（打字机效果，一个字一个字冒出来）
+            // 进入逐字 reveal 队列（打字机效果，一个字一个字冒出来）；清洗 ```json 围栏
+            const cleanChunk = data.chunk.replace(/```json[\s\S]*?```/g, '').replace(/```[\s\S]*?```/g, '')
+            if (!cleanChunk.trim()) return
             const q = pendingQueueRef.current
             const lastQ = q[q.length - 1]
             if (lastQ && lastQ.agent === data.agent) {
-              lastQ.text += data.chunk
+              lastQ.text += cleanChunk
             } else {
-              q.push({ agent: data.agent, text: data.chunk })
+              q.push({ agent: data.agent, text: cleanChunk })
             }
             startReveal()
           }
           if (data.type === 'done') {
             finalReply = data.reply; steps.push(...(data.steps || [])); taskStats = data.task_stats || null
             stopReveal()
+            // 最终同步一次占位消息 think（降频期间可能滞后）
+            setAllMessages(prev => {
+              const arr = prev[activeDidRef.current || ''] || []
+              const lastMsg = arr[arr.length - 1]
+              if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content === '') {
+                return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, think: mindchainRef.current }] }
+              }
+              return prev
+            })
             // 思维链兜底：后端返回完整 mindchain（各节点思考），流式片段缺失/不完整时覆盖
             const mc: Array<{ agent: string; content: string }> = data.mindchain || []
             if (mc.length > 0 && mc.length >= mindchainRef.current.length) {
