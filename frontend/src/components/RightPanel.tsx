@@ -1,4 +1,4 @@
-﻿import { Map, Send, MessagesSquare, X, ChevronUp, ChevronDown, SlidersHorizontal, FileText } from 'lucide-react'
+﻿import { Map, Send, MessagesSquare, X, PanelRightClose, ChevronUp, ChevronDown, SlidersHorizontal, FileText } from 'lucide-react'
 import { useEffect, useRef, useState, Fragment } from 'react'
 import { KnowledgeTree } from './KbTree'
 
@@ -23,9 +23,10 @@ const MIN_H = 56
 const MAX_H = 800
 const WINDOWS_KEY = 'coagent-rp-windows'
 
-/** 可折叠窗口：header 常驻（点击展开/收起），内容区高度可被拖拽调整；flex 模式自动填满剩余空间 */
-function Pane({ title, icon: Icon, collapsed, height, flex, onToggle, children }: {
-  title: string; icon: any; collapsed: boolean; height: number; flex?: boolean; onToggle: () => void; children: React.ReactNode
+/** 可折叠窗口：header 常驻（点击展开/收起），内容区高度可被拖拽调整；flex 模式自动填满剩余空间。
+ * 右上角独立叉 = 关闭该窗口（visible=false，可在顶部"在此处展示"重新打开） */
+function Pane({ title, icon: Icon, collapsed, height, flex, onToggle, onClose, children }: {
+  title: string; icon: any; collapsed: boolean; height: number; flex?: boolean; onToggle: () => void; onClose: () => void; children: React.ReactNode
 }) {
   return (
     <div
@@ -40,8 +41,14 @@ function Pane({ title, icon: Icon, collapsed, height, flex, onToggle, children }
         <span className="text-[11px] font-semibold text-dim uppercase tracking-widest flex items-center gap-1.5">
           <Icon size={13} /> {title}
         </span>
-        <span className="p-0.5 rounded icon-btn">
-          {collapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
+        <span className="flex items-center gap-1">
+          <span className="p-0.5 rounded icon-btn">
+            {collapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
+          </span>
+          <span onClick={(e) => { e.stopPropagation(); onClose() }}
+            className="p-0.5 rounded icon-btn hover:text-red-500 transition-colors" title="关闭此窗口（可在上方「在此处展示」重新打开）">
+            <X size={13} />
+          </span>
         </span>
       </div>
       {/* 内容区占满窗口剩余高度（折叠时高度 0 并禁止伸缩） */}
@@ -242,7 +249,9 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
     <aside className="w-full h-full flex flex-col overflow-hidden px-2.5 py-3 gap-1">
       {/* 右栏顶部：折叠按钮 + 展示设置 */}
       <div className="flex items-center justify-between flex-shrink-0 h-6 mb-1">
-        <span className="flex-1" />
+        <button onClick={onCollapse} className="w-6 h-6 flex items-center justify-center rounded-lg icon-btn" title="收起侧栏">
+          <PanelRightClose size={14} />
+        </button>
         <div className="relative">
           <button onClick={() => setShowWinSettings(!showWinSettings)} className="w-6 h-6 flex items-center justify-center rounded-lg icon-btn" title="右侧栏展示设置">
             <SlidersHorizontal size={13} />
@@ -262,16 +271,13 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
             </div>
           )}
         </div>
-        <button onClick={onCollapse} className="w-6 h-6 ml-1 flex items-center justify-center rounded-lg icon-btn hover:text-red-500 transition-colors" title="关闭侧栏">
-          <X size={14} />
-        </button>
       </div>
 
       {/* 动态窗口：按展示设置过滤，最后一个窗口 flex 填满，相邻窗口间有拖拽手柄 */}
       {shown.map((w, i) => (
         <Fragment key={w.key}>
           {i > 0 && <DragHandle onDown={startDrag(shown[i - 1].key, w.key)} />}
-          <Pane title={w.title} icon={w.icon} collapsed={collapsed[w.key]} height={heights[w.key]} flex={i === shown.length - 1} onToggle={() => toggle(w.key)}>
+          <Pane title={w.title} icon={w.icon} collapsed={collapsed[w.key]} height={heights[w.key]} flex={i === shown.length - 1} onToggle={() => toggle(w.key)} onClose={() => toggleWin(w.key)}>
             {w.key === 'graph' && (
               <div className="w-full h-full overflow-y-auto px-2 py-1.5">
                 <KnowledgeTree treeDocs={treeDocs} progressItems={progressItems} />
