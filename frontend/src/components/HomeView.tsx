@@ -84,13 +84,33 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
   }
   const tips = buildTips()
 
+  // 顶部问候：按时间打招呼 + 最近状态简述与鼓励（仿 deeptutor）
+  const hour = new Date().getHours()
+  const greeting = hour < 5 ? '夜深了' : hour < 11 ? '早上好' : hour < 13 ? '中午好' : hour < 18 ? '下午好' : '晚上好'
+  const staleCount = projects.filter(p => (stats[p.id] ?? 0) === 0).length
+  const projName = projects[0]?.name || '我的学习空间'
+  const statusTxt = projects.length === 0
+    ? '还没有课程，从新建第一个课程开始吧'
+    : staleCount > 0
+      ? `${staleCount} 个课程还未开始`
+      : `最近学习${latestDate ? '于 ' + latestDate : '暂无记录'}`
+  const encourage = projects.length === 0 ? '每一步都算数，加油！' : staleCount > 0 ? '今天迈出第一步，加油！' : '坚持学习，继续加油！'
+
   return (
     <div className="flex-1 h-full min-w-0 flex panel rounded-3xl overflow-hidden">
       <div className="flex-1 overflow-y-auto">
         <div className="px-14 py-12 flex gap-14">
           {/* 左：主内容 */}
           <div className="flex-1 min-w-0 flex flex-col gap-10">
-          {/* 快速引导：系统提示建议（一栏直展，无折叠） */}
+          {/* 顶部：项目名称（左）与 时间问候+状态鼓励（右）平行 */}
+          <div className="flex items-start justify-between gap-8">
+            <h1 className="text-2xl font-bold leading-snug">{projName}</h1>
+            <div className="text-right flex flex-col gap-1">
+              <p className="text-2xl font-bold leading-snug">{greeting}！</p>
+              <p className="text-[11px] text-dim">{statusTxt} · {encourage}</p>
+            </div>
+          </div>
+          {/* 留白后：快速引导 */}
           <div className="flex flex-col gap-3">
             <h2 className="text-lg font-bold">快速引导</h2>
             <div className="border hairline rounded-2xl p-5 bg-[var(--bg-panel)] flex flex-col gap-4">
