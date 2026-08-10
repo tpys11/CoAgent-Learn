@@ -179,28 +179,7 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
                         <X size={15} strokeWidth={2.5} />
                       </button>
                       <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/70 to-transparent">
-                        <div className="flex items-center justify-between gap-2">
-                          {renamingId === p.id ? (
-                            <input autoFocus defaultValue={p.name}
-                              onClick={(e) => e.stopPropagation()}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  const v = (e.target as HTMLInputElement).value.trim()
-                                  if (v && v !== p.name) onRename?.(p.id, v)
-                                  setRenamingId(null)
-                                } else if (e.key === 'Escape') setRenamingId(null)
-                              }}
-                              onBlur={(e) => {
-                                const v = e.target.value.trim()
-                                if (v && v !== p.name) onRename?.(p.id, v)
-                                setRenamingId(null)
-                              }}
-                              className="flex-1 min-w-0 bg-white/95 text-black text-sm font-bold rounded-md px-2 py-0.5 outline-none" />
-                          ) : (
-                            <p className="text-base font-bold text-white truncate">{p.name}</p>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 mt-2">
+                        <div className="flex items-center gap-2">
                           <div className="flex-1 h-1.5 rounded-full bg-white/25 overflow-hidden">
                             <div className="h-full rounded-full bg-white" style={{ width: pct + '%' }} />
                           </div>
@@ -208,17 +187,36 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
                         </div>
                       </div>
                     </div>
-                    {/* 下 30%：只保留进度——一段话描述现状（学了多少/上次学到哪/接下来建议学什么） */}
+                    {/* 下 30%：顶部课程名（重命名按钮在名称右边一点），下面进度一段话 */}
                     <div className="h-[30%] p-3.5 bg-[var(--bg-panel)] flex flex-col justify-center gap-1.5">
-                      <div className="flex items-start gap-1.5">
-                        <p className="flex-1 text-[10px] leading-relaxed text-[var(--text-muted)]">{progressSentence}</p>
+                      <div className="flex items-center gap-1.5">
+                        {renamingId === p.id ? (
+                          <input autoFocus defaultValue={p.name}
+                            onClick={(e) => e.stopPropagation()}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                const v = (e.target as HTMLInputElement).value.trim()
+                                if (v && v !== p.name) onRename?.(p.id, v)
+                                setRenamingId(null)
+                              } else if (e.key === 'Escape') setRenamingId(null)
+                            }}
+                            onBlur={(e) => {
+                              const v = e.target.value.trim()
+                              if (v && v !== p.name) onRename?.(p.id, v)
+                              setRenamingId(null)
+                            }}
+                            className="flex-1 min-w-0 text-sm font-bold rounded-md px-1.5 py-0.5 outline-none border hairline bg-[var(--bg-input)]" />
+                        ) : (
+                          <p className="flex-1 text-sm font-bold truncate">{p.name}</p>
+                        )}
                         {onRename && (
                           <button onClick={(e) => { e.stopPropagation(); setRenamingId(renamingId === p.id ? null : p.id) }}
-                            className="p-1.5 rounded-md text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors flex-shrink-0" title="改名">
+                            className="p-1 rounded-md text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors flex-shrink-0" title="改名">
                             <Pencil size={12} />
                           </button>
                         )}
                       </div>
+                      <p className="text-[10px] leading-relaxed text-[var(--text-muted)]">{progressSentence}</p>
                     </div>
                   </div>
                 )
