@@ -698,31 +698,50 @@ const TEMPLATE_OPTIONS = [
 }
 
 /** 思维链内容块：Agent 小标题 + 内容（以对话形式推送，不限定高度框）。
- * plain=true 时用纯文本渲染（实时逐字阶段，避免每帧 markdown 重解析，保证 60fps 流畅）；
- * 完成态（CollapsibleThink 展开）用 markdown 渲染。 */
+ * 折叠交互：新 Agent 默认展开；点击标题手动折叠/展开；Agent 执行完（活跃切换到下一个）自动折叠。
+ * plain=true 时用纯文本渲染（实时逐字阶段）；完成态用 markdown 渲染。 */
 function ThinkBlock({ items, plain, activeAgent, activeStatus }: { items: Array<{ agent: string; content: string }> | string[]; plain?: boolean; activeAgent?: string | null; activeStatus?: string }) {
   const list = (items || []).map(it => typeof it === 'string' ? { agent: '', content: it } : it)
   if (list.length === 0) return null
+  // 每个条目的展开状态（按 index，新条目默认展开）
+  const [openMap, setOpenMap] = useState<Record<number, boolean>>({})
+  // 记录每个 Agent 最新条目的 index（用于活跃切换时自动折叠）
+  const lastIdxRef = useRef<Record<string, number>>({})
+  list.forEach((it, i) => { if (it.agent) lastIdxRef.current[it.agent] = i })
+  const prevActive = useRef<string | null | undefined>(activeAgent)
+  useEffect(() => {
+    // Agent 执行完（活跃 agent 切换）：前一个自动折叠
+    if (prevActive.current && prevActive.current !== activeAgent) {
+      const idx = lastIdxRef.current[prevActive.current]
+      if (idx !== undefined) setOpenMap(prev => ({ ...prev, [idx]: false }))
+    }
+    prevActive.current = activeAgent
+  }, [activeAgent])
+  const toggle = (i: number) => setOpenMap(prev => ({ ...prev, [i]: !(prev[i] ?? true) }))
   return (
     <div className="flex flex-col gap-2">
       {list.map((it, i) => (
         <div key={i} className="animate-[fadeIn_0.15s_ease]">
           {it.agent && (
-            <div className="text-[11px] font-semibold mb-0.5">
-              {it.agent}
+            <button onClick={() => toggle(i)} className="flex items-center gap-1 text-[11px] font-semibold mb-0.5 hover:opacity-80 transition-opacity text-left">
+              {/* 折叠箭头：▾ 展开 / ▸ 折叠 */}
+              <span className="text-dim text-[9px] flex-shrink-0">{openMap[i] === false ? '▸' : '▾'}</span>
+              <span>{it.agent}</span>
               {/* 正在干什么：显示在 Agent 标题后面（仅当前活跃的 Agent） */}
               {it.agent === activeAgent && activeStatus && (
-                <span className="ml-1.5 font-normal text-[10px] text-dim">{activeStatus}</span>
+                <span className="ml-1 font-normal text-[10px] text-dim">{activeStatus}</span>
+              )}
+            </button>
+          )}
+          {openMap[i] !== false && (
+            <div className="text-[11px] leading-relaxed text-dim pl-2 border-l-2 hairline">
+              {plain ? (
+                <div className="whitespace-pre-wrap break-words">{it.content}</div>
+              ) : (
+                <div className="md-think-body" dangerouslySetInnerHTML={{ __html: renderMd(it.content) }} />
               )}
             </div>
           )}
-          <div className="text-[11px] leading-relaxed text-dim pl-2 border-l-2 hairline">
-            {plain ? (
-              <div className="whitespace-pre-wrap break-words">{it.content}</div>
-            ) : (
-              <div className="md-think-body" dangerouslySetInnerHTML={{ __html: renderMd(it.content) }} />
-            )}
-          </div>
         </div>
       ))}
     </div>
