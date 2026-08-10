@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useRef } from 'react'
-import { Send, Bot, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Cpu, SlidersHorizontal, Check, AlertTriangle, Search, FileText, LayoutTemplate, Image as ImageIcon } from 'lucide-react'
+import { Send, Bot, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Cpu, SlidersHorizontal, Check, AlertTriangle, Search, FileText, LayoutTemplate, Image as ImageIcon, PenLine } from 'lucide-react'
 import type { Message, Project } from '../types'
 import MarkdownIt from 'markdown-it'
 
@@ -22,9 +22,10 @@ interface CenterPanelProps {
   draft?: string
   analyzeHint?: { label: string; project: string } | null
   onClearAnalyzeHint?: () => void
+  onManualSetup?: () => void
 }
 
-export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, statsCollapsed, onToggleStats, onOpenGuide, onOpenSettings, projectInitialized, draft, analyzeHint, onClearAnalyzeHint }: CenterPanelProps) {
+export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, statsCollapsed, onToggleStats, onOpenGuide, onOpenSettings, projectInitialized, draft, analyzeHint, onClearAnalyzeHint, onManualSetup }: CenterPanelProps) {
   const [input, setInput] = useState('')
   // 记忆修改预填：draft 变化时写入输入框（从记忆界面跳转）
   useEffect(() => { if (draft) setInput(draft) }, [draft])
@@ -385,6 +386,15 @@ const TEMPLATE_OPTIONS = [
                             <Check size={9} /> {s.agent}
                           </span>
                         ))}
+                      </div>
+                    )}
+                    {/* 新建课程引导消息：右下角「手动填写」按钮（打开课程基本信息弹窗） */}
+                    {msg.content.includes('课程创建成功') && onManualSetup && (
+                      <div className="mt-3 flex justify-end">
+                        <button onClick={onManualSetup}
+                          className="text-[11px] px-3 py-1.5 rounded-lg border hairline text-dim hover:text-[var(--text)] hover:bg-[var(--bg-hover)] transition-colors flex items-center gap-1">
+                          <PenLine size={11} /> 手动填写
+                        </button>
                       </div>
                     )}
                     {/* 继续追问：附着于该条 AI 输出下方（豆包样式，仅最后一条输出） */}
