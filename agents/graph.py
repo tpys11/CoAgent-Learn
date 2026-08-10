@@ -30,6 +30,30 @@ FAST_MODEL_BY_BASE = {
 AGENT_NODE = {'main': 'main', 'study': 'study', 'kb': 'kb', 'review': 'review'}
 
 
+def _is_rule_simple(text: str) -> bool:
+    """程序规则优先判定"简单问题"：问候/闲聊/极短问答 → True（确定性，不依赖模型判断）。
+    命中后跳过规划 LLM，直接生成回答（最快路径）。"""
+    t = (text or "").strip()
+    if not t:
+        return True
+    if len(t) > 30:
+        return False
+    # 学习/深度类关键词：出现则不算简单（宁可交给模型/深度路径）
+    hard_keys = ["讲解", "推导", "证明", "为什么", "原理", "详解", "如何", "区别", "教程",
+                 "学习", "分析", "比较", "介绍", "总结", "作业", "题", "公式", "推导", "应用"]
+    if any(k in t for k in hard_keys):
+        return False
+    # 问候/闲聊/简短问答
+    soft = ["你好", "您好", "hi", "hello", "嗨", "哈喽", "在吗", "谢谢", "感谢", "再见", "拜拜",
+            "你是谁", "你能做什么", "早上好", "中午好", "晚上好", "晚安", "1+1", "2+2", "几点"]
+    if any(k in t.lower() for k in soft):
+        return True
+    # 极短输入（≤10字）且无硬关键词 → 简单
+    if len(t) <= 10:
+        return True
+    return False
+
+
 class AgentState(TypedDict):
     user_input: str
     mode: str
@@ -186,6 +210,17 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         state.setdefault("mindchain", [])
         t0 = time.time()
         cfg = _agent_cfg("main")
+        # 程序规则优先：问候/闲聊/极短问答 → 直接判 simple 并跳过规划 LLM（马上生成，最快路径）
+        if _is_rule_simple(state["user_input"]):
+            _t0 = time.time()
+            state["processed_input"] = state["user_input"]
+            state["_plan"] = []
+            state["_output_subs"] = []
+            state["complexity"] = "simple"
+            _stats(state, "plan", int((time.time() - _t0) * 1000), 0, 0)
+            state["mindchain"].append({"agent": "主Agent·规划", "content": "简单问题（规则判定）：直接简洁回答"})
+            state.setdefault("steps", []).append({"agent": "主Agent·规划", "status": "done", "detail": "规则判定简单，跳过规划"})
+            return state
         # 快速模板：主 Agent 直接从综合概述性记忆生成，规划不再调用 LLM（流程只剩主 Agent 与审核与输出）
         if tpl == "快速":
             thinking = "快速模板：跳过规划，直接基于综合概述性记忆生成"
