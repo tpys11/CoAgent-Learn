@@ -1,4 +1,4 @@
-import { MessageSquare, GraduationCap, Library, Brain, BookOpen, Bot, FolderOpen } from 'lucide-react'
+import { MessageSquare, GraduationCap, Library, Brain, BookOpen, Bot, FolderOpen, Settings, HelpCircle } from 'lucide-react'
 
 export type ViewKey = 'chat' | 'tutorial' | 'resources' | 'memory' | 'knowledge' | 'agents' | 'obsidian'
 
@@ -6,10 +6,12 @@ interface Props {
   view: ViewKey
   onChange: (v: ViewKey) => void
   expanded?: boolean
+  onSettings?: () => void
+  onOpenGuide?: () => void
 }
 
 const ITEMS: Array<{ key: ViewKey; icon: any; label: string }> = [
-  { key: 'chat', icon: MessageSquare, label: '对话' },
+  { key: 'chat', icon: MessageSquare, label: '主页' },
   { key: 'tutorial', icon: GraduationCap, label: '教程' },
   { key: 'resources', icon: Library, label: '资源' },
   { key: 'memory', icon: Brain, label: '记忆' },
@@ -19,7 +21,7 @@ const ITEMS: Array<{ key: ViewKey; icon: any; label: string }> = [
 ]
 
 /** 最左侧细轨（无边框，融入底色）：主页时展开加宽（图标在文字前横排），离开主页变窄（图标在上、文字在下） */
-export default function ActivityBar({ view, onChange, expanded }: Props) {
+export default function ActivityBar({ view, onChange, expanded, onSettings, onOpenGuide }: Props) {
   const renderBtn = (key: ViewKey, Icon: any, label: string, active: boolean) => (
     expanded ? (
       <button
@@ -53,6 +55,30 @@ export default function ActivityBar({ view, onChange, expanded }: Props) {
       <div className={`bg-[#e5e5e5] my-1 ${expanded ? 'w-full h-px' : 'w-px h-3'}`} />
       {ITEMS.slice(3).map(({ key, icon, label }) => renderBtn(key, icon, label, view === key))}
       <div className="flex-1" />
+      {/* 底部：使用引导 挨着 设置（宽栏横排、窄栏上下） */}
+      {expanded ? (
+        <div className="flex items-center gap-1.5">
+          <button onClick={onOpenGuide} title="使用引导" className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-xl icon-btn transition-all">
+            <HelpCircle size={16} strokeWidth={1.6} />
+            <span className="text-[11px]">使用引导</span>
+          </button>
+          <button onClick={onSettings} title="设置" className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-xl icon-btn transition-all">
+            <Settings size={16} strokeWidth={1.6} />
+            <span className="text-[11px]">设置</span>
+          </button>
+        </div>
+      ) : (
+        <>
+          <button onClick={onOpenGuide} title="使用引导" className="w-14 mb-1.5 flex flex-col items-center justify-center gap-1 py-2 rounded-2xl icon-btn transition-all">
+            <HelpCircle size={18} strokeWidth={1.6} />
+            <span className="text-[8px] leading-none">引导</span>
+          </button>
+          <button onClick={onSettings} title="设置" className="w-14 flex flex-col items-center justify-center gap-1 py-2 rounded-2xl icon-btn transition-all">
+            <Settings size={18} strokeWidth={1.6} />
+            <span className="text-[8px] leading-none">设置</span>
+          </button>
+        </>
+      )}
     </nav>
   )
 }
