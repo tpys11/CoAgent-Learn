@@ -306,7 +306,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
     setEditFields({
       '抽象目的': data?.fields?.['抽象目的'] || '',
       '起点': data?.fields?.['起点'] || '',
-      '时间限制': data?.fields?.['时间限制'] || '',
+      '课程结束时间': data?.fields?.['课程结束时间'] || data?.fields?.['时间限制'] || '',
       '平均每日投入时间': data?.fields?.['平均每日投入时间'] || '',
       '其他': data?.fields?.['其他'] || '',
     })
@@ -696,7 +696,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                                   {initialEdit ? (
                                     <div className="flex flex-col gap-2.5">
                                       {/* 只保留三项：每项一行「设置项提示：输入」，用户跟着冒号填写 */}
-                                      {[['时间限制', '什么日期验收，如：8 月 30 日完成验收'], ['平均每日投入时间', '如：每天 2 小时']].map(([label, ph]) => (
+                                      {[['课程结束时间', '什么日期验收，如：8 月 30 日完成验收'], ['平均每日投入时间', '如：每天 2 小时']].map(([label, ph]) => (
                                         <div key={label} className="flex items-center gap-2">
                                           <span className="text-xs font-semibold flex-shrink-0">{label}：</span>
                                           <input value={editFields[label] || ''} placeholder={ph}
@@ -714,7 +714,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                                     </div>
                                   ) : (
                                     <div className="border hairline rounded-xl px-5 py-4 bg-[var(--bg-input)] min-h-[120px] text-[13px] leading-7 text-[var(--text)]">
-                                      {['时间限制', '平均每日投入时间', '其他'].map(k => (data?.fields[k] || '').trim() ? (
+                                      {['课程结束时间', '平均每日投入时间', '其他'].map(k => (data?.fields[k] || (k === '课程结束时间' ? data?.fields?.['时间限制'] : '') || '').trim() ? (
                                         <div key={k} className="flex items-baseline gap-2 text-[11px] leading-6">
                                           <span className="font-semibold text-[var(--text)] flex-shrink-0">{k}</span>
                                           <span className="text-[var(--text-muted)]">{data?.fields[k]}</span>
