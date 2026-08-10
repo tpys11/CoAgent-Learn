@@ -164,13 +164,13 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
                               onKeyDown={(e) => {
                                 if (e.key === 'Enter') {
                                   const v = (e.target as HTMLInputElement).value.trim()
-                                  if (v && v !== p.name) onRename(p.id, v)
+                                  if (v && v !== p.name) onRename?.(p.id, v)
                                   setRenamingId(null)
                                 } else if (e.key === 'Escape') setRenamingId(null)
                               }}
                               onBlur={(e) => {
                                 const v = e.target.value.trim()
-                                if (v && v !== p.name) onRename(p.id, v)
+                                if (v && v !== p.name) onRename?.(p.id, v)
                                 setRenamingId(null)
                               }}
                               className="flex-1 min-w-0 bg-white/95 text-black text-sm font-bold rounded-md px-2 py-0.5 outline-none" />
