@@ -244,17 +244,22 @@ const FlowGraph = ({ agents, templateName, templateAgentId, onSelect }: { agents
   const kbSubs = templateName === '检索增强' ? subOf('kb') : []
   // 输出增强模板：生成节点只连接一个「输出增强」节点（规划节点不展示子 Agent）
   const mainSubs = templateName === '输出增强' ? ['输出增强'] : []
-  // 快速模板：流程只剩 主 Agent（左侧虚线框：综合概述性记忆）→ 审核与输出，排布宽松
+  // 快速模板：流程只剩 主 Agent（左侧虚线框：综合概述性记忆，箭头指向主 Agent）→ 审核与输出，排布宽松
   if (templateName === '快速') {
     return (
-      <div className="flex flex-col items-center gap-5 py-8">
-        {/* 主 Agent：虚线框绝对定位在左侧（不参与布局，主干保持居中），矩形比节点略大 */}
+      <div className="flex flex-col items-center gap-8 py-10">
+        {/* 主 Agent：虚线框绝对定位在左侧（不参与布局，主干保持居中），矩形比节点略大，箭头指向主 Agent */}
         <div className="relative">
           <FlowNode icon={Workflow} name="主 Agent" level={lv('plan')} active={act('main')} onClick={pick('main')} />
-          <div className="absolute right-full mr-4 top-1/2 -translate-y-1/2 w-[132px] border-2 border-dashed border-[var(--border-color)] rounded-xl px-3 py-3.5 flex flex-col items-center justify-center gap-1.5 text-center">
-            <span className="text-[11px] font-semibold text-dim leading-snug">综合概述性记忆</span>
-            <span className="text-[8.5px] text-dim/70 leading-snug">对话记忆 · 个人记忆<br />项目记忆 · 知识库概述</span>
+          <div className="absolute right-full mr-8 top-1/2 -translate-y-1/2 w-[164px] border-2 border-dashed border-[var(--border-color)] rounded-xl px-4 py-4 flex flex-col items-center justify-center gap-2 text-center">
+            <span className="text-xs font-semibold text-dim leading-snug">综合概述性记忆</span>
+            <span className="text-[9px] text-dim/70 leading-snug">对话记忆 · 个人记忆<br />项目记忆 · 知识库概述</span>
           </div>
+          {/* 虚线框 → 主 Agent 的箭头 */}
+          <svg className="absolute left-full top-1/2 -translate-y-1/2" width="30" height="10" viewBox="0 0 30 10">
+            <line x1="0" y1="5" x2="23" y2="5" stroke="var(--border-strong)" strokeWidth="1.5" />
+            <path d="M 21 1.5 L 28 5 L 21 8.5" fill="none" stroke="var(--border-strong)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
         </div>
         <DownArrow />
         <FlowNode icon={Scale} name="审核与输出" level={lv('review')} active={act('review')} onClick={pick('review')} />
