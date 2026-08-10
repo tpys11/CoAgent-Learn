@@ -255,8 +255,8 @@ const FlowGraph = ({ agents, templateName, templateAgentId, onSelect }: { agents
             <span className="text-xs font-semibold text-dim leading-snug">综合概述性记忆</span>
             <span className="text-[9px] text-dim/70 leading-snug">对话记忆 · 个人记忆<br />项目记忆 · 知识库概述</span>
           </div>
-          {/* 虚线框 → 主 Agent 的箭头 */}
-          <svg className="absolute left-full top-1/2 -translate-y-1/2" width="30" height="10" viewBox="0 0 30 10">
+          {/* 虚线框 → 主 Agent 的箭头（画在主 Agent 左侧空隙，起点虚线框、终点主 Agent） */}
+          <svg className="absolute right-full top-1/2 -translate-y-1/2" width="30" height="10" viewBox="0 0 30 10">
             <line x1="0" y1="5" x2="23" y2="5" stroke="var(--border-strong)" strokeWidth="1.5" />
             <path d="M 21 1.5 L 28 5 L 21 8.5" fill="none" stroke="var(--border-strong)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
