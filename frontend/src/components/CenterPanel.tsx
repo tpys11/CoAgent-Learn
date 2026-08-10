@@ -16,7 +16,6 @@ interface CenterPanelProps {
   onSendMessage: (text: string, settings?: Record<string, any>) => void
   statsCollapsed: boolean
   onToggleStats: () => void
-  flowMindchain: Array<{agent: string; content: string}>
   onOpenGuide?: () => void
   onOpenSettings?: () => void
   projectInitialized?: boolean
@@ -25,7 +24,7 @@ interface CenterPanelProps {
   onClearAnalyzeHint?: () => void
 }
 
-export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, statsCollapsed, onToggleStats, flowMindchain, onOpenGuide, onOpenSettings, projectInitialized, draft, analyzeHint, onClearAnalyzeHint }: CenterPanelProps) {
+export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, statsCollapsed, onToggleStats, onOpenGuide, onOpenSettings, projectInitialized, draft, analyzeHint, onClearAnalyzeHint }: CenterPanelProps) {
   const [input, setInput] = useState('')
   // 记忆修改预填：draft 变化时写入输入框（从记忆界面跳转）
   useEffect(() => { if (draft) setInput(draft) }, [draft])
@@ -55,7 +54,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   useEffect(() => {
     const el = msgScrollRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [messages, flowMindchain, isLoading])
+  }, [messages, isLoading])
   const [stats, setStats] = useState<{dialogue_count: number; tokens_estimate: number; metrics: any}>({dialogue_count: 0, tokens_estimate: 0, metrics: null})
   useEffect(() => {
     if (!currentProject) return
@@ -129,7 +128,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   const [outputStyle, setOutputStyle] = useState(0)
   const [outputVolume, setOutputVolume] = useState(1)
   const [depth, setDepth] = useState(1)
-  const [thinkingCollapsed, setThinkingCollapsed] = useState(true)
   const [showSearch, setShowSearch] = useState(false)
   const [showModelModal, setShowModelModal] = useState(false)
   // 模板模式：与「模板与编排」预设模板一致
@@ -201,8 +199,6 @@ const TEMPLATE_OPTIONS = [
     }, 10000)
     return () => clearInterval(timer)
   }, [])
-  useEffect(() => { if (!isLoading && flowMindchain.length > 0) setThinkingCollapsed(true) }, [isLoading, flowMindchain.length])
-
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (formatRef.current && !formatRef.current.contains(e.target as Node)) setShowFormat(false)
@@ -351,11 +347,17 @@ const TEMPLATE_OPTIONS = [
             ) : (
               <div key={idx} className="w-full text-sm leading-7 animate-[fadeIn_0.25s_ease]">
                 {msg.content === '' ? (
-                  <div className="flex items-center gap-2 text-dim">
-                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" />
-                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }} />
-                    <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }} />
-                    <span className="text-xs ml-1">思考中…</span>
+                  <div>
+                    {/* 实时思维链：以对话形式推送（Agent 小标题+内容，随消息流滚动，不限定框） */}
+                    {msg.think && msg.think.length > 0 && (
+                      <div className="mb-2"><ThinkBlock items={msg.think} /></div>
+                    )}
+                    <div className="flex items-center gap-2 text-dim">
+                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" />
+                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }} />
+                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }} />
+                      <span className="text-xs ml-1">思考中…</span>
+                    </div>
                   </div>
                 ) : (
                   <>
@@ -379,31 +381,6 @@ const TEMPLATE_OPTIONS = [
             )
           ))}
 
-          {/* 思考过程（发送后立即显示，思维链 token 实时累积） */}
-          {(flowMindchain.length > 0 || isLoading) && (
-            <div className="card-surface overflow-hidden">
-              <button onClick={() => setThinkingCollapsed(!thinkingCollapsed)}
-                className="w-full flex items-center justify-between px-4 py-2.5 text-xs row-hover transition-colors">
-                <span className="flex items-center gap-1.5 text-dim">
-                  {isLoading && <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" />}
-                  {isLoading ? '思考中…' : <><CheckCircle2 size={12} /> 思考过程</>}
-                </span>
-                <span className="text-dim">{thinkingCollapsed || isLoading ? '▸ 展开' : '▾ 收起'}</span>
-              </button>
-              {!thinkingCollapsed && (
-                <div className="px-4 pb-3 flex flex-col gap-2 border-t hairline pt-2 max-h-60 overflow-y-auto">
-                  {flowMindchain.map((item, i) => (
-                    <div key={i} className="animate-[fadeIn_0.2s_ease]">
-                      <div className="text-[11px] font-semibold mb-0.5">{item.agent}</div>
-                      <div className="md-think-body text-[11px] leading-relaxed text-dim pl-2 border-l-2 hairline">
-                        <div dangerouslySetInnerHTML={{ __html: renderMd(item.content) }} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </div>
       </div>
 
@@ -706,6 +683,24 @@ const TEMPLATE_OPTIONS = [
   )
 }
 
+/** 思维链内容块：Agent 小标题 + Markdown 渲染内容（以对话形式推送，不限定高度框） */
+function ThinkBlock({ items }: { items: Array<{ agent: string; content: string }> | string[] }) {
+  const list = (items || []).map(it => typeof it === 'string' ? { agent: '', content: it } : it)
+  if (list.length === 0) return null
+  return (
+    <div className="flex flex-col gap-2">
+      {list.map((it, i) => (
+        <div key={i} className="animate-[fadeIn_0.15s_ease]">
+          {it.agent && <div className="text-[11px] font-semibold mb-0.5">{it.agent}</div>}
+          <div className="md-think-body text-[11px] leading-relaxed text-dim pl-2 border-l-2 hairline">
+            <div dangerouslySetInnerHTML={{ __html: renderMd(it.content) }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function CollapsibleThink({ think }: { think?: Array<{ agent: string; content: string }> | string[] }) {
   const [open, setOpen] = useState(false)
   const items = (think || []).map(it => typeof it === 'string' ? { agent: '', content: it } : it)
@@ -717,15 +712,8 @@ function CollapsibleThink({ think }: { think?: Array<{ agent: string; content: s
         <span>{open ? '▾' : '▸'}</span> 思考过程{agents > 0 ? ` · ${agents} 个 Agent` : ''}
       </button>
       {open && (
-        <div className="mt-2 flex flex-col gap-2 max-h-72 overflow-y-auto pr-1">
-          {items.map((it, i) => (
-            <div key={i} className="animate-[fadeIn_0.2s_ease]">
-              {it.agent && <div className="text-[11px] font-semibold mb-0.5">{it.agent}</div>}
-              <div className="md-think-body text-[11px] leading-relaxed text-dim pl-2 border-l-2 hairline">
-                <div dangerouslySetInnerHTML={{ __html: renderMd(it.content) }} />
-              </div>
-            </div>
-          ))}
+        <div className="mt-2">
+          <ThinkBlock items={items} />
         </div>
       )}
     </div>
