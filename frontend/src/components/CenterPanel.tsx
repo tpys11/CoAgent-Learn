@@ -372,6 +372,10 @@ const TEMPLATE_OPTIONS = [
                   </div>
                 ) : (
                   <>
+                    {/* 思考过程（按 Agent 逐个折叠）在输出内容上方 */}
+                    {msg.think && msg.think.length > 0 && (
+                      <AgentThinkList think={msg.think} />
+                    )}
                     <div dangerouslySetInnerHTML={{ __html: renderContent(msg.content) }} />
                     {msg.steps && msg.steps.length > 0 && (
                       <div className="mt-3 flex flex-wrap gap-1.5">
@@ -382,9 +386,6 @@ const TEMPLATE_OPTIONS = [
                           </span>
                         ))}
                       </div>
-                    )}
-                    {msg.think && msg.think.length > 0 && (
-                      <CollapsibleThink think={msg.think} />
                     )}
                   </>
                 )}
@@ -715,21 +716,36 @@ function ThinkBlock({ items, plain }: { items: Array<{ agent: string; content: s
   )
 }
 
-function CollapsibleThink({ think }: { think?: Array<{ agent: string; content: string }> | string[] }) {
-  const [open, setOpen] = useState(false)
-  const items = (think || []).map(it => typeof it === 'string' ? { agent: '', content: it } : it)
+/** 思考过程（按 Agent 逐个折叠）：每个 Agent 一行折叠头，点击展开该 Agent 的思考内容；
+ * 未展开时显示内容预览；展开后 markdown 渲染。 */
+function AgentThinkList({ think }: { think?: Array<{ agent: string; content: string }> | string[] }) {
+  const [openSet, setOpenSet] = useState<Set<number>>(new Set())
+  const items = (think || []).map((it, i) => (typeof it === 'string' ? { agent: '', content: it, i } : { ...it, i }))
   if (items.length === 0) return null
-  const agents = items.filter(i => i.agent).length
+  const toggle = (i: number) => setOpenSet(prev => {
+    const n = new Set(prev)
+    if (n.has(i)) n.delete(i); else n.add(i)
+    return n
+  })
   return (
-    <div className="mt-3">
-      <button onClick={() => setOpen(!open)} className="text-[11px] text-dim hover:text-[#1a1a1a] flex items-center gap-1">
-        <span>{open ? '▾' : '▸'}</span> 思考过程{agents > 0 ? ` · ${agents} 个 Agent` : ''}
-      </button>
-      {open && (
-        <div className="mt-2">
-          <ThinkBlock items={items} />
+    <div className="mb-3 flex flex-col gap-1">
+      {items.map(it => (
+        <div key={it.i} className="border hairline rounded-lg overflow-hidden">
+          <button onClick={() => toggle(it.i)}
+            className="w-full flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] row-hover transition-colors">
+            <span className="text-dim flex-shrink-0">{openSet.has(it.i) ? '▾' : '▸'}</span>
+            <span className="font-semibold flex-shrink-0">{it.agent || '思考'}</span>
+            {!openSet.has(it.i) && it.content && (
+              <span className="ml-auto text-dim truncate">{it.content.slice(0, 26)}</span>
+            )}
+          </button>
+          {openSet.has(it.i) && (
+            <div className="px-3 pb-2 pt-1.5 border-t hairline">
+              <ThinkBlock items={[{ agent: '', content: it.content }]} />
+            </div>
+          )}
         </div>
-      )}
+      ))}
     </div>
   )
 }
