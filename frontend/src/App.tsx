@@ -179,6 +179,8 @@ function App() {
     revealTimerRef.current = requestAnimationFrame(tick)
   }
   const sessionId = useRef(SESSION_ID)
+  // 第二对话 id：App 持有（主对话完成后为它生成横向拓展追问），传给 RightPanel 使用
+  const secondDialogueIdRef = useRef('sd-' + Math.random().toString(36).slice(2) + Date.now().toString(36))
   const dragging = useRef<'left' | 'right' | 'flow' | null>(null)
   const appRef = useRef<HTMLDivElement>(null)
 
@@ -395,7 +397,7 @@ function App() {
       resetTimer()
       const res = await fetch('/api/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text.trim(), session_id: sessionId.current, dialogue_id: did, project_id: currentProjectId, api_key: apiKey, model: model, base_url: providerBaseUrls[provider], settings: mergedSettings, mode: (mergedSettings && mergedSettings.chatMode) || 'kb', image: (mergedSettings && mergedSettings.image) || undefined, agents: agents }),
+        body: JSON.stringify({ message: text.trim(), session_id: sessionId.current, dialogue_id: did, project_id: currentProjectId, api_key: apiKey, model: model, base_url: providerBaseUrls[provider], settings: mergedSettings, mode: (mergedSettings && mergedSettings.chatMode) || 'kb', image: (mergedSettings && mergedSettings.image) || undefined, agents: agents, extra_followup_did: secondDialogueIdRef.current, extra_followup_focus: 'expand' }),
         signal: ctrl.signal,
       })
       if (!res.ok || !res.body) {
@@ -458,6 +460,8 @@ function App() {
               }
               return prev
             })
+            // 通知第二对话：主对话已完成，可拉取同步生成的横向拓展追问
+            try { window.dispatchEvent(new Event('side-followups-ready')) } catch (e) {}
             // 思维链兜底：后端返回完整 mindchain（各节点思考），流式片段缺失/不完整时覆盖
             const mc: Array<{ agent: string; content: string }> = data.mindchain || []
             if (mc.length > 0 && mc.length >= mindchainRef.current.length) {
@@ -591,7 +595,7 @@ function App() {
             <span className="w-1 h-10 rounded-full bg-[#d0d0d0] opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
           <div style={{ width: rightPanelWidth, minWidth: 260 }} className="h-full flex-shrink-0 relative panel rounded-3xl overflow-hidden">
-            <RightPanel messageCount={currentMessages.filter(m => m.role === 'assistant').length} projectId={currentProjectId} onCollapse={() => setRightCollapsed(true)} />
+            <RightPanel messageCount={currentMessages.filter(m => m.role === 'assistant').length} projectId={currentProjectId} sideDialogueId={secondDialogueIdRef.current} onCollapse={() => setRightCollapsed(true)} />
           </div>
         </>
       )}

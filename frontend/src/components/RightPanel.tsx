@@ -5,6 +5,8 @@ import * as echarts from 'echarts'
 interface Props {
   messageCount: number
   projectId?: string | null
+  /** 第二对话 id（App 持有，主对话完成后为它同步生成横向拓展追问） */
+  sideDialogueId?: string
   onCollapse: () => void
 }
 
@@ -85,7 +87,7 @@ function ReportPane({ projectId }: { projectId?: string | null }) {
   )
 }
 
-export default function RightPanel({ messageCount, projectId, onCollapse }: Props) {
+export default function RightPanel({ messageCount, projectId, sideDialogueId, onCollapse }: Props) {
   // 三个窗口高度（px）与折叠状态
   const [heights, setHeights] = useState<Record<WinKey, number>>({ ...DEFAULT_HEIGHTS })
   const [collapsed, setCollapsed] = useState<Record<WinKey, boolean>>({ flow: false, graph: false, chat: false, report: false })
@@ -139,8 +141,8 @@ export default function RightPanel({ messageCount, projectId, onCollapse }: Prop
   const [graphErr, setGraphErr] = useState('')
   const chartRef = useRef<HTMLDivElement>(null)
   const chartInst = useRef<any>(null)
-  // 第二对话窗口：独立会话
-  const sideDialogueId = useRef('sd-' + Math.random().toString(36).slice(2) + Date.now().toString(36))
+  // 第二对话窗口：独立会话（id 由 App 持有，保证主对话完成后能为其生成追问）
+  const sideDialogueIdRef = useRef(sideDialogueId || ('sd-' + Math.random().toString(36).slice(2) + Date.now().toString(36)))
   const [sideMessages, setSideMessages] = useState<Array<{role: string; content: string}>>([])
   const [sideInput, setSideInput] = useState('')
   const [sideLoading, setSideLoading] = useState(false)
@@ -148,7 +150,7 @@ export default function RightPanel({ messageCount, projectId, onCollapse }: Prop
   // 第二对话追问建议：横向拓展/轻松闲聊风格（后端 followup_focus=expand 生成）
   const [sideFollowups, setSideFollowups] = useState<string[]>([])
   const loadSideFollowups = () => {
-    fetch('/api/dialogues/' + encodeURIComponent(sideDialogueId.current) + '/followups', { cache: 'no-store' })
+    fetch('/api/dialogues/' + encodeURIComponent(sideDialogueIdRef.current) + '/followups', { cache: 'no-store' })
       .then(r => r.json())
       .then(d => setSideFollowups(Array.isArray(d.questions) ? d.questions.slice(0, 3) : []))
       .catch(() => {})
@@ -164,6 +166,15 @@ export default function RightPanel({ messageCount, projectId, onCollapse }: Prop
     }
     prevSideLoading.current = sideLoading
   }, [sideLoading])
+  // 主对话完成后：后台已同步为第二对话生成横向拓展追问，延迟拉取（生成是异步的）
+  useEffect(() => {
+    const onSideReady = () => {
+      const t1 = setTimeout(loadSideFollowups, 5000)
+      const t2 = setTimeout(loadSideFollowups, 12000)
+    }
+    window.addEventListener('side-followups-ready', onSideReady)
+    return () => window.removeEventListener('side-followups-ready', onSideReady)
+  }, [])
   const [nodeDetail, setNodeDetail] = useState<{name: string; relations: any[]; kb_refs: any[]} | null>(null)
 
   const sendSide = async (q?: string) => {
@@ -176,7 +187,7 @@ export default function RightPanel({ messageCount, projectId, onCollapse }: Prop
       const resp = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, dialogue_id: sideDialogueId.current, project_id: projectId || 'default', api_key: localStorage.getItem('coagent-apikey') || undefined, mode: sideMode, followup_focus: 'expand' })
+        body: JSON.stringify({ message: text, dialogue_id: sideDialogueIdRef.current, project_id: projectId || 'default', api_key: localStorage.getItem('coagent-apikey') || undefined, mode: sideMode, followup_focus: 'expand' })
       })
       const reader = resp.body ? resp.body.getReader() : null
       let buf = ''

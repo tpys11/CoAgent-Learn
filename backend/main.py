@@ -967,6 +967,8 @@ class ChatRequest(BaseModel):
     image: str | None = None
     agents: list = []
     followup_focus: str | None = None  # 追问风格：purpose=目的推进（默认）/ expand=横向拓展闲聊
+    extra_followup_did: str | None = None  # 额外生成追问的目标对话（主对话完成后同步给第二对话）
+    extra_followup_focus: str | None = None  # 额外追问风格（默认 expand）
 
 class ChatStep(BaseModel):
     agent: str
@@ -1316,6 +1318,12 @@ async def chat(req: ChatRequest):
                             if not (req.settings and req.settings.get('autoFollowups') is False):
                                 from core.followups import generate_followups
                                 threading.Thread(target=generate_followups, args=(req.api_key, pid, _did, pg_client, req.followup_focus or "purpose"), daemon=True).start()
+                            # 主对话完成后同步为第二对话生成横向拓展/闲聊追问（第二对话发送时不会带 extra 字段，互不影响）
+                            if req.extra_followup_did:
+                                try:
+                                    threading.Thread(target=generate_followups, args=(req.api_key, pid, req.extra_followup_did, pg_client, req.extra_followup_focus or "expand"), daemon=True).start()
+                                except Exception as _e:
+                                    print("[extra-followups]", _e)
                     except Exception as e:
                         print("[记忆] err:", e)
                 except Exception as e:
