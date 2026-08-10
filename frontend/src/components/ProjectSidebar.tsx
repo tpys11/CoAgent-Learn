@@ -1,7 +1,7 @@
 ﻿import { useEffect, useState } from 'react'
 import { ArrowLeft, MessageSquare, FileText, X, Plus, ChevronDown, PanelLeftClose, SlidersHorizontal } from 'lucide-react'
 
-interface Dialogue { id: string; name: string }
+interface Dialogue { id: string; name: string; archived?: boolean }
 
 /** 课程专属侧栏：课程记忆 / 课程资源 / 对话（不再与其他课程并列） */
 export default function ProjectSidebar({ project, dialogues, currentDialogueId, onHome, onSelectDialogue, onCreateDialogue, onArchiveDialogue, onOpenMemory, onOpenResource, onCollapse }: {
@@ -141,9 +141,10 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
           </div>
           {!collapsed.chat && (
             <div className="flex flex-col gap-1">
-              {dialogues.length === 0 ? (
-                <p className="text-[10px] text-dim">暂无对话，新建一个开始</p>
-              ) : dialogues.map(d => (
+              {(() => {
+                const active = dialogues.filter(d => !d.archived)
+                if (active.length === 0) return <p className="text-[10px] text-dim">暂无对话，新建一个开始</p>
+                return active.map(d => (
                 <div key={d.id} className="group relative">
                   <button onClick={() => onSelectDialogue(d.id)}
                     className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-[11px] text-left transition-colors ${d.id === currentDialogueId ? 'bg-[#1a1a1a] text-white' : 'hover:bg-[var(--bg-hover)]'}`}>
@@ -155,7 +156,8 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
                     <X size={11} />
                   </button>
                 </div>
-              ))}
+              ))
+              })()}
             </div>
           )}
         </div>

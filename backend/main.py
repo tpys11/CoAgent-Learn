@@ -852,6 +852,38 @@ async def list_dialogues(pid: str):
     return {"dialogues": rows}
 
 
+@app.post("/api/dialogues")
+async def create_dialogue(req: dict):
+    """创建对话（落库，前端本地 id 与后端一致：用前端生成 id 或后端生成）"""
+    from core.postgres_client import pg_client
+    pid = req.get("project_id") or "default"
+    name = req.get("name") or "对话"
+    did = req.get("id") or ("dlg-" + str(int(time.time() * 1000)) + "-" + str(abs(hash(name)) % 10000))
+    pg_client.execute("INSERT OR IGNORE INTO dialogues (id, name, project_id) VALUES (%s,%s,%s)", (did, name, pid))
+    return {"id": did, "name": name}
+
+
+@app.get("/api/dialogues/{did}/messages")
+async def get_dialogue_messages(did: str):
+    from core.sqlite_client import get_db
+    rows = get_db().execute("SELECT role, content, created_at FROM messages WHERE dialogue_id=%s ORDER BY created_at ASC", (did,))
+    return {"messages": rows or []}
+
+
+@app.post("/api/dialogues/{did}/messages")
+async def post_dialogue_message(did: str, req: dict):
+    """写入一条对话消息（静态引导等），保证 dialogue 存在"""
+    from core.postgres_client import pg_client
+    from core.sqlite_client import get_db
+    role = req.get("role") if req.get("role") in ("user", "assistant", "thinking") else "assistant"
+    content = str(req.get("content") or "")
+    if not content:
+        return {"status": "ok"}
+    pg_client.execute("INSERT OR IGNORE INTO dialogues (id, name, project_id) VALUES (%s,%s,%s)", (did, "对话", "default"))
+    get_db().execute("INSERT INTO messages (dialogue_id, role, content) VALUES (%s,%s,%s)", (did, role, content))
+    return {"status": "ok"}
+
+
 @app.delete("/api/dialogues/{did}")
 async def delete_dialogue(did: str):
     """级联删除对话：消息+对话画像；并作为一次事件更新项目记忆（移除该对话概要）"""
@@ -1154,9 +1186,15 @@ async def memory_chat(req: ChatRequest):
                         pg_client.execute("INSERT INTO global_profile (session_id, data) VALUES (%s,%s)",
                                           ("default", json.dumps(merged, ensure_ascii=False)))
                 else:
-                    pg_client.execute(
-                        "UPDATE project_memories SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE project_id=%s",
-                        (json.dumps(merged, ensure_ascii=False), pid))
+                    _rows = pg_client.execute("SELECT session_id FROM project_memories WHERE project_id=%s", (pid,))
+                    if _rows:
+                        pg_client.execute(
+                            "UPDATE project_memories SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE project_id=%s",
+                            (json.dumps(merged, ensure_ascii=False), pid))
+                    else:
+                        pg_client.execute(
+                            "INSERT INTO project_memories (session_id, project_id, data) VALUES (%s,%s,%s)",
+                            ("project", pid, json.dumps(merged, ensure_ascii=False)))
         if not changed and not reply.strip():
             reply = "⚠️ 没有需要更新的字段。"
         return {"reply": reply, "changed": changed}
@@ -1283,7 +1321,9 @@ async def chat(req: ChatRequest):
                 try:
                     msg = token_queue.get(timeout=0.05)
                 except queue.Empty:
+                    # 心跳：空闲期保持连接活跃（前端按首字节/空闲超时判定，避免被误判为无响应）
                     await asyncio.sleep(0.05)
+                    yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
                     continue
                 if msg[0] == "step":
                     yield f"data: {json.dumps({'type': 'step', 'agent': msg[1]})}\n\n"

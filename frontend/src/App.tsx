@@ -106,7 +106,16 @@ function App() {
         if (projs.length > 0) {
           setCurrentProjectId(projs[0].id)
           const first = allD.find(d => d.projectId === projs[0].id)
-          if (first) setCurrentDialogueId(first.id)
+          if (first) {
+            setCurrentDialogueId(first.id)
+            // 加载默认对话的历史消息
+            fetch('/api/dialogues/' + first.id + '/messages', { cache: 'no-store' })
+              .then(r => r.json()).then(dm => {
+                if (cancelled) return
+                const msgs = (dm.messages || []).map((m: any) => ({ role: m.role, content: m.content || '', steps: m.steps, think: m.think }))
+                setAllMessages(prev => ({ ...prev, [first.id]: msgs }))
+              }).catch(() => {})
+          }
         }
       })
       .catch(() => {})
@@ -157,6 +166,9 @@ function App() {
         setDialogues(prev => [...prev, dia])
         setCurrentDialogueId(did)
         setAllMessages(prev => ({ ...prev, [did]: [{ role: 'assistant' as const, content: PROJECT_GUIDE(name) }] }))
+        // 落库：对话 + 静态引导消息（刷新后保留）
+        fetch('/api/dialogues', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project_id: id, name: dia.name, id: did }) }).catch(() => {})
+        fetch('/api/dialogues/' + did + '/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role: 'assistant', content: PROJECT_GUIDE(name) }) }).catch(() => {})
         setChatOpen(true)
       })
   }, [])
@@ -166,13 +178,13 @@ function App() {
       .then(() => {
         setProjects(prev => prev.filter(p => p.id !== id))
         setDialogues(prev => prev.filter(d => d.projectId !== id))
-        if (currentProjectId === id) setCurrentProjectId(projects.find(p => p.id !== id)?.id ?? null)
+        if (currentProjectId === id) { setCurrentProjectId(projects.find(p => p.id !== id)?.id ?? null); setCurrentDialogueId(null) }
       })
   }, [currentProjectId, projects])
   const handleRenameProject = useCallback((id: string, name: string) => {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, name } : p))
-    // 持久化到后端
-    fetch('/api/projects/' + id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) }).catch(() => {})
+    // 持久化到后端（PATCH）
+    fetch('/api/projects/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) }).catch(() => {})
   }, [])
 
   const handleSelectProject = useCallback((id: string) => {
@@ -192,18 +204,31 @@ function App() {
     setDialogues(prev => [...prev, d])
     setCurrentDialogueId(d.id)
     setAllMessages(prev => ({ ...prev, [d.id]: [] }))
+    // 落库：后端创建对话（刷新后保留）
+    fetch('/api/dialogues', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project_id: projectId, name: d.name, id: d.id }) }).catch(() => {})
     // 无画像（[简]）项目：不弹对话画像向导
     const proj = projects.find(p => p.id === projectId)
     if (!(proj && proj.simple)) {
       setWizard({ mode: 'dialogue', id: d.id, name: d.name })
     }
   }, [dialogues, projects])
-  const handleSelectDialogue = useCallback((id: string) => { setCurrentDialogueId(id); setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = [] }, [])
+  const loadDialogueMessages = useCallback((id: string) => {
+    fetch('/api/dialogues/' + id + '/messages', { cache: 'no-store' })
+      .then(r => r.json()).then(d => {
+        const msgs = (d.messages || []).map((m: any) => ({ role: m.role, content: m.content || '', steps: m.steps, think: m.think }))
+        setAllMessages(prev => ({ ...prev, [id]: msgs }))
+      }).catch(() => {})
+  }, [])
+  const handleSelectDialogue = useCallback((id: string) => {
+    setCurrentDialogueId(id); setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = []
+    loadDialogueMessages(id)
+  }, [loadDialogueMessages])
   const handleArchiveDialogue = useCallback((id: string) => {
-    if (!window.confirm('确定删除该对话？')) return
-    fetch('/api/dialogues/' + id, { method: 'DELETE' })
+    if (!window.confirm('确定归档该对话？')) return
+    // 软归档（与自动清理一致），侧栏不再显示
+    fetch('/api/dialogues/' + id + '/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: true }) })
       .then(() => {
-        setDialogues(prev => prev.filter(d => d.id !== id))
+        setDialogues(prev => prev.map(d => d.id === id ? { ...d, archived: true } : d))
         if (currentDialogueId === id) setCurrentDialogueId(null)
       })
   }, [currentDialogueId])
@@ -286,31 +311,47 @@ function App() {
         doubao: 'https://ark.cn-beijing.volces.com/api/v3',
       }
       const apiKey = provKeys[provider] || localStorage.getItem('coagent-apikey') || undefined
-      // 合并默认对话参数（设置里可配）+ 记住上次设置
-      const defSettings = (() => { try { return JSON.parse(localStorage.getItem('coagent-default-settings') || '{}') } catch { return {} } })()
+      // 合并设置：上下文(历史条数/记忆层级/打字机) + 对话后动作(自动保存/追问) + 上次设置 + 本次设置
+      const ctxSettings = (() => { try { return JSON.parse(localStorage.getItem('coagent-context-settings') || '{}') } catch { return {} } })()
+      const postActions = (() => { try { return JSON.parse(localStorage.getItem('coagent-post-actions') || '{}') } catch { return {} } })()
       const lastSettings = (() => { try { return JSON.parse(localStorage.getItem('coagent-last-settings') || '{}') } catch { return {} } })()
-      const mergedSettings = { ...defSettings, ...lastSettings, ...(settings || {}) }
+      const mergedSettings = { ...ctxSettings, ...postActions, ...lastSettings, ...(settings || {}) }
       try { localStorage.setItem('coagent-last-settings', JSON.stringify(mergedSettings)) } catch {}
-      // 请求超时（设置里可配 1-30s，默认 30）
-      const timeoutMs = (Math.min(30, Math.max(1, parseInt(localStorage.getItem('coagent-timeout') || '30', 10) || 30))) * 1000
+      // 超时：首字节超时（无任何数据到达 timeoutMs 则中止）+ 流中空闲超时（每收到数据重置，60s 无数据才断）
+      const timeoutMs = (Math.min(120, Math.max(1, parseInt(localStorage.getItem('coagent-timeout') || '30', 10) || 30))) * 1000
       const ctrl = new AbortController()
-      timeoutTimer = setTimeout(() => ctrl.abort(), timeoutMs)
+      let firstByte = true
+      const resetTimer = () => {
+        clearTimeout(timeoutTimer)
+        timeoutTimer = setTimeout(() => ctrl.abort(), firstByte ? timeoutMs : 60000)
+      }
+      resetTimer()
       const res = await fetch('/api/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text.trim(), session_id: sessionId.current, dialogue_id: currentDialogueId, project_id: currentProjectId, api_key: apiKey, model: model, base_url: providerBaseUrls[provider], settings: mergedSettings, mode: (mergedSettings && mergedSettings.chatMode) || 'kb', image: (mergedSettings && mergedSettings.image) || undefined, agents: agents }),
+        body: JSON.stringify({ message: text.trim(), session_id: sessionId.current, dialogue_id: did, project_id: currentProjectId, api_key: apiKey, model: model, base_url: providerBaseUrls[provider], settings: mergedSettings, mode: (mergedSettings && mergedSettings.chatMode) || 'kb', image: (mergedSettings && mergedSettings.image) || undefined, agents: agents }),
         signal: ctrl.signal,
       })
+      if (!res.ok || !res.body) {
+        setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'assistant', content: '⚠️ 请求失败（HTTP ' + res.status + '），请检查后端服务与 API Key。' }] }))
+        return
+      }
       const reader = res.body!.getReader(); const decoder = new TextDecoder()
-      let finalReply = ''; const steps: any[] = []; let taskStats: any = null
+      let finalReply = ''; const steps: any[] = []; let taskStats: any = null; let flowError = ''
       var _buf=""
       while (true) {
         const { done, value } = await reader.read(); if (done) break
+        resetTimer()
+        if (firstByte && value && value.length) firstByte = false
         _buf+=decoder.decode(value,{stream:true})
         var _lines=_buf.split(String.fromCharCode(10))
         _buf=_lines.pop()||""
         for (const line of _lines) {
           if (!line.startsWith('data: ')) continue
           const data = JSON.parse(line.slice(6))
+          if (data.type === 'error') {
+            flowError = data.message || '请求出错'
+            continue
+          }
           if (data.type === 'step') {
             setFlowAgents(prev => prev.includes(data.agent) ? prev : [...prev, data.agent])
             setFlowActiveAgent(data.agent)
@@ -319,7 +360,7 @@ function App() {
             setFlowAgents(prev => prev.includes(data.agent) ? prev : [...prev, data.agent])
             setFlowActiveAgent(data.agent)
             setFlowMindchain(prev => {
-              const cleanChunk = data.chunk.replace(/```json[\s\S]*?```/g, '').replace(/```[\s\S]*?```/g, '').replace(/[{}\[\]"']/g, '')
+              const cleanChunk = data.chunk.replace(/```json[\s\S]*?```/g, '').replace(/```[\s\S]*?```/g, '')
               if (!cleanChunk.trim()) return prev
               const last = prev[prev.length - 1]
               let next
@@ -356,7 +397,7 @@ function App() {
         }
         const thinkArr = mindchainRef.current.map(m => m.content)
         if (debugLine) thinkArr.push(debugLine)
-        const finalContent = finalReply || '处理完成'
+        const finalContent = finalReply || (flowError ? '⚠️ ' + flowError : '处理完成')
         // 打字机效果（设置开关）
         const typingOn = (() => { try { return (JSON.parse(localStorage.getItem('coagent-context-settings') || '{}') as any).typing === true } catch { return false } })()
         if (typingOn) {
@@ -376,10 +417,10 @@ function App() {
           setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'assistant', content: finalContent, steps, think: thinkArr }] }))
         }
       }catch(_ex){}
-    } catch {
-      setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'assistant', content: '抱歉，请求失败。' }] }))
+    } catch (e: any) {
+      setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'assistant', content: (e && e.name === 'AbortError') ? '⚠️ 请求超时：生成时间过长已中断，请重试或减少内容复杂度。' : ('抱歉，请求失败。' + (e && e.message ? '（' + e.message + '）' : '')) }] }))
     } finally { clearTimeout(timeoutTimer); setIsLoading(false) }
-  }, [currentDialogueId])
+  }, [currentDialogueId, agents, dialogues, currentProjectId])
   const handleSaveAgent = useCallback((updated: AgentConfig) => {
     setAgents(prev => prev.map(a => a.id === updated.id ? updated : a))
   }, [])

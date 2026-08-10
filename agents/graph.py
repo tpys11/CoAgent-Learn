@@ -458,9 +458,12 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         cfg_study = _agent_cfg("study")
         cfg_kb = _agent_cfg("kb")
         targets = []
+        # 检索增强模板：强制执行知识库节点（检索+联网+子Agent整理），不依赖主 Agent 规划
+        if (settings.get("template") or "基础") == "检索增强" and (cfg_kb.get("enabled") is not False):
+            targets.append("kb")
         if "学情与记忆管理" in plan and (cfg_study.get("enabled") is not False):
             targets.append("study_memory")
-        if "知识库管理" in plan and (cfg_kb.get("enabled") is not False):
+        if "知识库管理" in plan and (cfg_kb.get("enabled") is not False) and "kb" not in targets:
             targets.append("kb")
         return targets or ["generate"]
 
@@ -469,7 +472,11 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         if _agent_cfg("review").get("enabled") is False:
             state["reviewed"] = {"passed": True, "score": 80, "verdict": "审核已禁用"}
             return "passed"
-        if state.get("reviewed", {}).get("passed", True):
+        # passed 兼容字符串 "false"/"0"/"no"（LLM 偶发输出字符串）
+        _p = state.get("reviewed", {}).get("passed", True)
+        if isinstance(_p, str):
+            _p = _p.strip().lower() not in ("false", "0", "no", "")
+        if _p:
             return "passed"
         max_retry = int(_agent_cfg("review").get("retryMax") or 2)
         if state.get("retry_count", 0) >= max_retry:
