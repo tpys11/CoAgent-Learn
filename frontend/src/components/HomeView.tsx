@@ -84,16 +84,20 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
   }
   const tips = buildTips()
 
-  // 顶部问候：按时间打招呼 + 最近状态简述与鼓励（仿 deeptutor）
+  // 顶部问候：按时间打招呼 + 最近学习时间与连续学习天数
   const hour = new Date().getHours()
   const greeting = hour < 5 ? '夜深了' : hour < 11 ? '早上好' : hour < 13 ? '中午好' : hour < 18 ? '下午好' : '晚上好'
-  const staleCount = projects.filter(p => (stats[p.id] ?? 0) === 0).length
-  const statusTxt = projects.length === 0
-    ? '还没有课程，从新建第一个课程开始吧'
-    : staleCount > 0
-      ? `${staleCount} 个课程还未开始`
-      : `最近学习${latestDate ? '于 ' + latestDate : '暂无记录'}`
-  const encourage = projects.length === 0 ? '每一步都算数，加油！' : staleCount > 0 ? '今天迈出第一步，加油！' : '坚持学习，继续加油！'
+  // 连续学习天数：从今日（或昨日）向前连续有学习记录的日期数
+  const streakDays = (() => {
+    const daySet = new Set(Object.keys(trendDays))
+    const key = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+    const d = new Date()
+    if (!daySet.has(key(d))) d.setDate(d.getDate() - 1)
+    let streak = 0
+    while (daySet.has(key(d))) { streak++; d.setDate(d.getDate() - 1) }
+    return streak
+  })()
+  const statusTxt = `最近学习${latestDate ? ' ' + latestDate : ' 暂无记录'} · 连续学习 ${streakDays} 天`
 
   return (
     <div className="flex-1 h-full min-w-0 flex panel rounded-3xl overflow-hidden">
@@ -101,10 +105,10 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete }: {
         <div className="px-14 py-12 flex gap-14">
           {/* 左：主内容 */}
           <div className="flex-1 min-w-0 flex flex-col gap-10">
-          {/* 顶部：时间问候+状态鼓励（从左侧起始，替代原项目名位置） */}
-          <div className="flex flex-col gap-1">
-            <p className="text-2xl font-bold leading-snug">{greeting}！</p>
-            <p className="text-[11px] text-dim">{statusTxt} · {encourage}</p>
+          {/* 顶部：时间问候（大字号）+ 最近学习时间与连续天数（小字） */}
+          <div className="flex flex-col gap-1.5">
+            <p className="text-3xl font-bold leading-snug">{greeting}！</p>
+            <p className="text-xs text-dim">{statusTxt}</p>
           </div>
           {/* 留白后：快速引导 */}
           <div className="flex flex-col gap-3">
