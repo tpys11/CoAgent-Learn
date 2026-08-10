@@ -244,17 +244,16 @@ const FlowGraph = ({ agents, templateName, templateAgentId, onSelect }: { agents
   const kbSubs = templateName === '检索增强' ? subOf('kb') : []
   // 输出增强模板：生成节点只连接一个「输出增强」节点（规划节点不展示子 Agent）
   const mainSubs = templateName === '输出增强' ? ['输出增强'] : []
-  // 快速模板：流程只剩 主 Agent（左侧虚线框：综合概述性记忆）→ 审核与输出
+  // 快速模板：流程只剩 主 Agent（左侧虚线框：综合概述性记忆）→ 审核与输出，排布宽松
   if (templateName === '快速') {
     return (
-      <div className="flex flex-col items-center gap-1 py-6">
-        {/* 主 Agent：虚线框绝对定位在左侧（不参与布局，主干保持居中） */}
+      <div className="flex flex-col items-center gap-5 py-8">
+        {/* 主 Agent：虚线框绝对定位在左侧（不参与布局，主干保持居中），矩形比节点略大 */}
         <div className="relative">
           <FlowNode icon={Workflow} name="主 Agent" level={lv('plan')} active={act('main')} onClick={pick('main')} />
-          <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 border-2 border-dashed border-[var(--border-color)] rounded-xl px-3 py-2.5 text-[10px] text-dim text-center leading-snug max-w-[150px]">
-            综合概述性记忆
-            <br />
-            <span className="text-[9px] opacity-70">对话记忆 · 个人记忆 · 项目记忆 · 知识库概述</span>
+          <div className="absolute right-full mr-4 top-1/2 -translate-y-1/2 w-[132px] border-2 border-dashed border-[var(--border-color)] rounded-xl px-3 py-3.5 flex flex-col items-center justify-center gap-1.5 text-center">
+            <span className="text-[11px] font-semibold text-dim leading-snug">综合概述性记忆</span>
+            <span className="text-[8.5px] text-dim/70 leading-snug">对话记忆 · 个人记忆<br />项目记忆 · 知识库概述</span>
           </div>
         </div>
         <DownArrow />
