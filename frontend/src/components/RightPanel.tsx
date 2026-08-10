@@ -8,8 +8,6 @@ interface Props {
   projectId?: string | null
   /** 第二对话 id（App 持有，主对话完成后为它同步生成横向拓展追问） */
   sideDialogueId?: string
-  /** 当前主对话 id（特殊形式输出的音频/测试题/闪卡数据源） */
-  dialogueId?: string | null
   onCollapse: () => void
 }
 
@@ -65,7 +63,7 @@ function DragHandle({ onDown }: { onDown: (e: React.MouseEvent) => void }) {
   )
 }
 
-export default function RightPanel({ messageCount, projectId, sideDialogueId, dialogueId, onCollapse }: Props) {
+export default function RightPanel({ messageCount, projectId, sideDialogueId, onCollapse }: Props) {
   // 三个窗口高度（px）
   const [heights, setHeights] = useState<Record<WinKey, number>>({ ...DEFAULT_HEIGHTS })
   // 右侧栏展示设置（可勾选要显示的窗口，持久化）
@@ -296,7 +294,7 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, di
                 </div>
               </div>
             )}
-            {w.key === 'special' && <SpecialOutputPane projectId={projectId} dialogueId={dialogueId} />}
+            {w.key === 'special' && <SpecialOutputPane />}
           </Pane>
         </Fragment>
       ))}
