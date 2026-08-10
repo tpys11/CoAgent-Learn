@@ -301,10 +301,13 @@ function AgentRow({ node, subs }: { node: React.ReactNode; subs?: string[] }) {
     <div className="relative">
       {node}
       <div className="absolute left-full top-1/2 -translate-y-1/2 ml-4 flex flex-col gap-4 items-start">
-        {subs.map(s => (
+        {subs.map((s, i) => (
           <div key={s} className="flex items-center">
+            {/* 弯曲曲线：父节点水平引出 → 拱起 → 回落子 Agent（上下交替拱向，更美观） */}
             <svg width="50" height="48" viewBox="0 0 50 48" className="flex-shrink-0">
-              <path d="M 0 24 L 50 24" stroke="#d4d4d4" strokeWidth="1.5" fill="none" strokeDasharray="4 3" />
+              {i % 2 === 0
+                ? <path d="M 0 24 C 15 24, 35 8, 50 24" stroke="#d4d4d4" strokeWidth="1.5" fill="none" strokeDasharray="4 3" />
+                : <path d="M 0 24 C 15 24, 35 40, 50 24" stroke="#d4d4d4" strokeWidth="1.5" fill="none" strokeDasharray="4 3" />}
             </svg>
             <SubNode name={s} />
           </div>
