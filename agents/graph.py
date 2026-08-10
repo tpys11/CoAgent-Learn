@@ -58,7 +58,7 @@ class AgentState(TypedDict):
 # 检索增强模板的内置默认子 Agent（知识库与搜索 Agent 强制调用；用户配置了 subAgents 则用自定义）
 _DEFAULT_KB_SUBS = [
     {"id": "kb-manage", "name": "知识库管理", "subPrompt": "你是知识库检索整理助手。把检索到的知识库片段整理为「来源→核心观点→关键数据」的条目，只输出整理结果本身。", "form": "检索"},
-    {"id": "search", "name": "搜索", "subPrompt": "你是搜索整理助手。把联网搜索到的资料整理为「来源→核心观点→关键数据」的条目并标注来源网址，只输出整理结果本身。", "form": "搜索"},
+    {"id": "search", "name": "搜索增强", "subPrompt": "你是搜索增强整理助手。把联网搜索到的资料整理为「来源→核心观点→关键数据」的条目并标注来源网址，只输出整理结果本身。", "form": "搜索"},
 ]
 
 
@@ -179,6 +179,16 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         state.setdefault("mindchain", [])
         t0 = time.time()
         cfg = _agent_cfg("main")
+        # 快速模板：主 Agent 直接从综合概述性记忆生成，规划不再调用 LLM（流程只剩主 Agent 与审核与输出）
+        if tpl == "快速":
+            thinking = "快速模板：跳过规划，直接基于综合概述性记忆生成"
+            state["processed_input"] = state["user_input"]
+            state["_plan"] = []
+            state["_output_subs"] = []
+            _stats(state, "plan", int((time.time() - t0) * 1000), 0, 0)
+            state["mindchain"].append({"agent": "主Agent", "content": thinking})
+            state.setdefault("steps", []).append({"agent": "主Agent", "status": "done", "detail": "快速模板：跳过规划"})
+            return state
         try:
             thinking, result = think_then_json(_pick_llm(cfg, llm_fast), _PLAN_PROMPT,
                 _append_example(cfg, state["user_input"]), "主Agent")
