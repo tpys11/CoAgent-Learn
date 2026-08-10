@@ -1,24 +1,27 @@
 ﻿import { Map, Send, MessagesSquare, X, PanelRightClose, SlidersHorizontal, FileText } from 'lucide-react'
 import { useEffect, useRef, useState, Fragment } from 'react'
 import { KnowledgeTree } from './KbTree'
+import SpecialOutputPane from './SpecialOutputPane'
 
 interface Props {
   messageCount: number
   projectId?: string | null
   /** 第二对话 id（App 持有，主对话完成后为它同步生成横向拓展追问） */
   sideDialogueId?: string
+  /** 当前主对话 id（特殊形式输出的音频/测试题/闪卡数据源） */
+  dialogueId?: string | null
   onCollapse: () => void
 }
 
-type WinKey = 'flow' | 'graph' | 'chat' | 'report'
+type WinKey = 'flow' | 'graph' | 'chat' | 'special'
 
 const WINDOWS: Array<{ key: WinKey; title: string; icon: any }> = [
   { key: 'graph', title: '知识图谱', icon: Map },
   { key: 'chat', title: '第二对话', icon: MessagesSquare },
-  { key: 'report', title: '报告', icon: FileText },
+  { key: 'special', title: '特殊形式输出', icon: FileText },
 ]
 
-const DEFAULT_HEIGHTS: Record<WinKey, number> = { flow: 200, graph: 190, chat: 240, report: 180 }
+const DEFAULT_HEIGHTS: Record<WinKey, number> = { flow: 200, graph: 190, chat: 240, special: 200 }
 const MIN_H = 56
 const MAX_H = 800
 const WINDOWS_KEY = 'coagent-rp-windows'
@@ -62,38 +65,15 @@ function DragHandle({ onDown }: { onDown: (e: React.MouseEvent) => void }) {
   )
 }
 
-/** 报告窗口：汇总最近对话生成的讲义/实操指南/测试题 */
-function ReportPane({ projectId }: { projectId?: string | null }) {
-  const [items, setItems] = useState<Array<{ id: string; title: string; type: string }>>([])
-  useEffect(() => {
-    if (!projectId) return
-    fetch('/api/artifacts?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' })
-      .then(r => r.json()).then(d => setItems(d.artifacts || [])).catch(() => {})
-  }, [projectId])
-  return (
-    <div className="w-full h-full overflow-y-auto p-3 flex flex-col gap-1.5">
-      {items.length === 0 ? (
-        <p className="text-[11px] text-dim text-center py-6">暂无报告（对话生成讲义/指南/测试题后会汇总于此）</p>
-      ) : (
-        items.map(it => (
-          <div key={it.id} className="chip px-2.5 py-1.5 text-[11px]">
-            <b>{it.title}</b> <span className="text-dim">· {it.type}</span>
-          </div>
-        ))
-      )}
-    </div>
-  )
-}
-
-export default function RightPanel({ messageCount, projectId, sideDialogueId, onCollapse }: Props) {
+export default function RightPanel({ messageCount, projectId, sideDialogueId, dialogueId, onCollapse }: Props) {
   // 三个窗口高度（px）
   const [heights, setHeights] = useState<Record<WinKey, number>>({ ...DEFAULT_HEIGHTS })
   // 右侧栏展示设置（可勾选要显示的窗口，持久化）
   const [visible, setVisible] = useState<Record<WinKey, boolean>>(() => {
     try {
       const s = JSON.parse(localStorage.getItem(WINDOWS_KEY) || '')
-      return { flow: true, graph: true, chat: true, report: false, ...s }
-    } catch { return { flow: true, graph: true, chat: true, report: false } }
+      return { flow: true, graph: true, chat: true, special: false, ...s }
+    } catch { return { flow: true, graph: true, chat: true, special: false } }
   })
   const [showWinSettings, setShowWinSettings] = useState(false)
   const dragRef = useRef<{ a: WinKey; b: WinKey; isLast: boolean; startY: number; startHa: number; startHb: number } | null>(null)
@@ -316,7 +296,7 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
                 </div>
               </div>
             )}
-            {w.key === 'report' && <ReportPane projectId={projectId} />}
+            {w.key === 'special' && <SpecialOutputPane projectId={projectId} dialogueId={dialogueId} />}
           </Pane>
         </Fragment>
       ))}
