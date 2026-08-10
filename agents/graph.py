@@ -93,8 +93,10 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 fast_model = fm
                 break
     llm_fast = DeepSeekLLM(api_key=api_key, model=fast_model, base_url=base_url, thinking=False) if (fast_model and fast_model != model) else llm_main
-    # 非思考模式主模型：简单问题（complexity=simple）直接生成，不推理（大幅减少等待）
+    # 非思考模式主模型：快速模板用（直接生成，不推理）
     llm_main_no_think = DeepSeekLLM(api_key=api_key, model=model, base_url=base_url, thinking=False)
+    # 简单问题主模型：保留思考模式（思维链展示）但 effort=low（极短思考，秒级完成）
+    llm_main_low = DeepSeekLLM(api_key=api_key, model=model, base_url=base_url, thinking=True, effort='low')
 
     def _agent_cfg(aid: str) -> dict:
         """按 Agent id 取配置（缺失时返回空）"""
@@ -394,8 +396,8 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 state["sub_outputs"] = {**(state.get("sub_outputs") or {}), "gen": "\n\n".join(sub_parts)}
                 context += "\n\n【子Agent 专项产出（请基于这些产出组织最终回答）】\n" + state["sub_outputs"]["gen"]
         try:
-            # 简单问题（或快速模板）：关闭思考模式直接生成（快）；复杂问题：思考模式（保留思维链展示）
-            _gen_llm = llm_main_no_think if (state.get("complexity") == "simple" or tpl == "快速") else llm_main
+            # 简单问题：思考模式 + effort=low（保留思维链但极短思考）；快速模板：关闭思考直接生成；复杂问题：深入思考
+            _gen_llm = llm_main_low if state.get("complexity") == "simple" else (llm_main_no_think if tpl == "快速" else llm_main)
             thinking, result = think_then_json(_pick_llm(cfg, _gen_llm), _GENERATE_PROMPT,
                 _append_example(cfg, context), "主Agent")
             if isinstance(result, dict) and result.get("讲义"):

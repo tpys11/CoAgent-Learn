@@ -34,6 +34,8 @@ class BaseLLM:
         if getattr(self, "thinking", None) is not None:
             # DeepSeek v4 思考模式开关：extra_body 透传（兼容旧版 openai SDK）
             kwargs["extra_body"] = {"thinking": {"type": "enabled" if self.thinking else "disabled"}}
+            if self.thinking and self.effort:
+                kwargs["reasoning_effort"] = self.effort
         for attempt in range(1, self.max_retries + 1):
             try:
                 resp = self.client.chat.completions.create(
@@ -133,6 +135,9 @@ class BaseLLM:
         if getattr(self, "thinking", None) is not None:
             # DeepSeek v4 思考模式开关：extra_body 透传（兼容旧版 openai SDK）
             kwargs["extra_body"] = {"thinking": {"type": "enabled" if self.thinking else "disabled"}}
+            # 思考强度：low=极短思考（简单问题保留思维链但秒级完成）
+            if self.thinking and self.effort:
+                kwargs["reasoning_effort"] = self.effort
         for attempt in range(self.max_retries):
             try:
                 response = self.client.chat.completions.create(
@@ -157,12 +162,14 @@ class DeepSeekLLM(BaseLLM):
     """OpenAI 兼容协议实现（DeepSeek/OpenAI/通义/GLM/Kimi/豆包等）"""
 
     def __init__(self, api_key: str | None = None, model: str | None = None, base_url: str | None = None,
-                 thinking: bool | None = None):
+                 thinking: bool | None = None, effort: str | None = None):
         self.model_name = model or "deepseek-v4-flash"
         self._api_key = api_key
         self._base_url = base_url
         # thinking: None=跟随 API 默认（v4 为思考模式，推理内容可作思维链展示）；False=非思考模式（决策快）
         self.thinking = thinking
+        # effort: 思考强度（low=极短思考/high=深入思考），思考模式开启时生效；None=默认 high
+        self.effort = effort
         super().__init__()
 
     def _create_client(self) -> OpenAI:
