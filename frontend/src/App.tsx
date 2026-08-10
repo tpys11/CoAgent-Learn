@@ -392,6 +392,7 @@ function App() {
     setIsLoading(true)
     setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = []
     setFlowStatus('正在等待模型响应…')
+    setFlowActiveAgent(null)
     mainCountRef.current = 0
     activeDidRef.current = did || null
     stopReveal()
@@ -475,18 +476,18 @@ function App() {
           if (data.type === 'step') {
             setFlowAgents(prev => prev.includes(data.agent) ? prev : [...prev, data.agent])
             setFlowActiveAgent(data.agent)
-            // 状态文案：Agent 名称 + 正在干什么（主Agent出现2次：规划→生成思考）
+            // 状态文案（纯动作，显示在思维链中该 Agent 标题后面）
             if (data.agent === '主Agent') {
               mainCountRef.current += 1
-              setFlowStatus(mainCountRef.current === 1 ? '主Agent 正在规划…' : '主Agent 正在思考生成…')
+              setFlowStatus(mainCountRef.current === 1 ? '正在规划…' : '正在思考生成…')
             } else if (data.agent === '学情与记忆管理') {
-              setFlowStatus('学情与记忆管理 正在阅读记忆…')
+              setFlowStatus('正在阅读记忆…')
             } else if (data.agent === '知识库管理') {
-              setFlowStatus('知识库管理 正在检索知识库…')
+              setFlowStatus('正在检索知识库…')
             } else if (data.agent === '审核') {
-              setFlowStatus('审核 正在审核…')
+              setFlowStatus('正在审核…')
             } else {
-              setFlowStatus(data.agent + ' 处理中…')
+              setFlowStatus('处理中…')
             }
             // Agent 标题立即出现在思维链（内容由后续 thought_token 逐字填充）
             setFlowMindchain(prev => {
@@ -515,6 +516,7 @@ function App() {
           if (data.type === 'done') {
             finalReply = data.reply; steps.push(...(data.steps || [])); taskStats = data.task_stats || null
             setFlowStatus('')
+            setFlowActiveAgent(null)
             stopReveal()
             // 最终同步一次占位消息 think（降频期间可能滞后）
             setAllMessages(prev => {
@@ -645,6 +647,7 @@ function App() {
         projectInitialized={currentProject?.initialized !== false}
         draft={prefillInput}
         flowStatus={flowStatus}
+        flowActiveAgent={flowActiveAgent}
         onManualSetup={() => {
           if (!currentProjectId) return
           try {
