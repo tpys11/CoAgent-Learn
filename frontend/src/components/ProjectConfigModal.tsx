@@ -86,14 +86,12 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
         </div>
         <div className="flex-1 min-h-0 overflow-hidden">
           {initialOnly ? (
-            // 初始化：记忆与资源同一界面，上下分层（上：记忆基本情况填写；下：资源）
-            <div className="h-full flex flex-col min-h-0">
-              <div className="flex-1 min-h-0 overflow-hidden">
-                <MemoryView projectId={projectId} projectOnly initialEdit onEditChange={setCollected}
-                  onRequestModify={onRequestModify} onRequestAnalyze={onRequestAnalyze} />
-              </div>
-              <div className="flex-shrink-0 border-t hairline" style={{ height: '36%' }}>
-                <ProjectResources projectId={projectId} />
+            // 初始化：记忆与资源同一界面整体滚动（一个滚动容器，一起滑动）
+            <div className="h-full overflow-y-auto flex flex-col">
+              <MemoryView projectId={projectId} projectOnly initialEdit onEditChange={setCollected}
+                onRequestModify={onRequestModify} onRequestAnalyze={onRequestAnalyze} />
+              <div className="border-t hairline">
+                <ProjectResources projectId={projectId} naturalHeight />
               </div>
             </div>
           ) : tab === 'memory' ? (
@@ -130,7 +128,7 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
 }
 
 /** 课程资源：栏目一为课程资源（可上传文件、拖入文件或系统资源），栏目二为系统内置资源（可拖入/加入） */
-function ProjectResources({ projectId }: { projectId: string | null }) {
+function ProjectResources({ projectId, naturalHeight }: { projectId: string | null; naturalHeight?: boolean }) {
   const [docs, setDocs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState('')
@@ -189,7 +187,7 @@ function ProjectResources({ projectId }: { projectId: string | null }) {
     if (e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files)
   }
   return (
-    <div className="h-full p-6 flex flex-col gap-5 overflow-hidden">
+    <div className={`p-6 flex flex-col gap-5 ${naturalHeight ? '' : 'h-full overflow-hidden'}`}>
       {/* 上：课程资源（可上传 / 拖入） */}
       <div className="flex-shrink-0 flex flex-col gap-2.5"
         onDragOver={e => { e.preventDefault(); setDragOver(true) }}
@@ -231,7 +229,7 @@ function ProjectResources({ projectId }: { projectId: string | null }) {
       {/* 下：系统内置资源（可拖入 / 加入课程），撑满剩余空间 */}
       <div className="flex-1 min-h-0 flex flex-col gap-2.5 overflow-hidden">
         <p className="text-xs font-semibold text-dim uppercase tracking-wider flex items-center gap-1.5 flex-shrink-0"><BookOpen size={13} /> 系统内置资源<span className="font-normal text-[10px] text-dim">（卡片可拖入上方，或点卡片详情「加入课程」）</span></p>
-        <div className="flex-1 min-h-0 border hairline rounded-2xl overflow-hidden">
+        <div className={`border hairline rounded-2xl overflow-hidden ${naturalHeight ? 'h-[45vh]' : 'flex-1 min-h-0'}`}>
           <ResourceView projectId={projectId} onUseItem={addPreset} />
         </div>
       </div>

@@ -490,7 +490,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
   )
 
   return (
-    <div className="flex-1 h-full min-w-0 flex panel rounded-3xl overflow-hidden">
+    <div className={`flex-1 min-w-0 flex panel rounded-3xl ${initialEdit ? '' : 'h-full overflow-hidden'}`}>
       {/* 左侧：层级列表导航（个人全局性记忆 / 课程记忆） */}
       {!projectOnly && (
       <div className="w-52 bg-[var(--bg-sidebar)] border-r hairline flex flex-col flex-shrink-0">
@@ -512,8 +512,8 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
       </div>
       )}
 
-      {/* 右侧内容 */}
-      <div className="flex-1 overflow-y-auto p-6">
+      {/* 右侧内容：初始化时自然高度（随外层整体滚动），否则内部滚动 */}
+      <div className={`flex-1 p-6 ${initialEdit ? '' : 'overflow-y-auto'}`}>
         {/* ========== 个人全局性记忆 ========== */}
         {level === 'global' && (
           <div className="flex items-start gap-4">
