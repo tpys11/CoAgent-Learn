@@ -468,7 +468,7 @@ function App() {
             <span className="w-1 h-10 rounded-full bg-[#d0d0d0] opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
           <div style={{ width: rightPanelWidth, minWidth: 260 }} className="h-full flex-shrink-0 relative panel rounded-3xl overflow-hidden">
-            <RightPanel messageCount={currentMessages.filter(m => m.role === 'assistant').length} projectId={currentProjectId} flowAgents={flowAgents} flowActiveAgent={flowActiveAgent} onCollapse={() => setRightCollapsed(true)} />
+            <RightPanel messageCount={currentMessages.filter(m => m.role === 'assistant').length} projectId={currentProjectId} onCollapse={() => setRightCollapsed(true)} />
           </div>
         </>
       )}

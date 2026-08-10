@@ -1,20 +1,16 @@
-﻿import { Map, Search, Send, MessagesSquare, PanelRightClose, Workflow, ChevronUp, ChevronDown, SlidersHorizontal, FileText } from 'lucide-react'
-import { useState, useEffect, useRef, Fragment } from 'react'
+﻿import { Map, Search, Send, MessagesSquare, PanelRightClose, ChevronUp, ChevronDown, SlidersHorizontal, FileText } from 'lucide-react'
+import { useEffect, useRef, useState, Fragment } from 'react'
 import * as echarts from 'echarts'
-import AgentFlow from './AgentFlow'
 
 interface Props {
   messageCount: number
   projectId?: string | null
   onCollapse: () => void
-  flowAgents: string[]
-  flowActiveAgent: string | null
 }
 
 type WinKey = 'flow' | 'graph' | 'chat' | 'report'
 
 const WINDOWS: Array<{ key: WinKey; title: string; icon: any }> = [
-  { key: 'flow', title: '多智能体协作流程', icon: Workflow },
   { key: 'graph', title: '知识图谱', icon: Map },
   { key: 'chat', title: '第二对话', icon: MessagesSquare },
   { key: 'report', title: '报告', icon: FileText },
@@ -89,7 +85,7 @@ function ReportPane({ projectId }: { projectId?: string | null }) {
   )
 }
 
-export default function RightPanel({ messageCount, projectId, onCollapse, flowAgents, flowActiveAgent }: Props) {
+export default function RightPanel({ messageCount, projectId, onCollapse }: Props) {
   // 三个窗口高度（px）与折叠状态
   const [heights, setHeights] = useState<Record<WinKey, number>>({ ...DEFAULT_HEIGHTS })
   const [collapsed, setCollapsed] = useState<Record<WinKey, boolean>>({ flow: false, graph: false, chat: false, report: false })
@@ -294,11 +290,6 @@ export default function RightPanel({ messageCount, projectId, onCollapse, flowAg
         <Fragment key={w.key}>
           {i > 0 && <DragHandle onDown={startDrag(shown[i - 1].key, w.key)} />}
           <Pane title={w.title} icon={w.icon} collapsed={collapsed[w.key]} height={heights[w.key]} flex={i === shown.length - 1} onToggle={() => toggle(w.key)}>
-            {w.key === 'flow' && (
-              <div className="w-full h-full">
-                <AgentFlow visible={true} agents={flowAgents} activeAgent={flowActiveAgent} />
-              </div>
-            )}
             {w.key === 'graph' && (
               <div className="w-full h-full relative">
                 {graphEmpty && (
