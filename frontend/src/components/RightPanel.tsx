@@ -337,31 +337,32 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
                     <p className="text-[11px] text-dim text-center py-4">独立会话 · 追问聚焦横向拓展 / 轻松闲聊</p>
                   ) : (
                     sideMessages.map((m, i) => (
-                      <div key={i} className={`max-w-[90%] px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap ${m.role === 'user' ? 'self-end btn-primary' : 'self-start chip'}`} style={{ borderRadius: m.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px' }}>
-                        {m.content}
+                      <div key={i} className="flex flex-col gap-1.5 max-w-[95%]">
+                        <div className={`max-w-full px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap ${m.role === 'user' ? 'self-end btn-primary' : 'self-start chip'}`} style={{ borderRadius: m.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px' }}>
+                          {m.content}
+                        </div>
+                        {/* 横向拓展/闲聊追问：附着于该条 AI 输出下方（豆包样式，仅最后一条输出） */}
+                        {m.role === 'assistant' && i === sideMessages.length - 1 && sideFollowups.length > 0 && !sideLoading && (
+                          <div className="self-start flex flex-col gap-1 animate-[fadeIn_0.3s_ease]">
+                            <p className="text-[10px] text-dim font-medium">横向拓展 · 闲聊</p>
+                            <div className="flex flex-wrap gap-1">
+                              {sideFollowups.map((q, k) => (
+                                <button key={k} onClick={() => sendSide(q)}
+                                  className="chip text-left text-[10px] px-2 py-1 transition-all">
+                                  {q}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     ))
                   )}
                   {sideLoading && <p className="text-[10px] text-dim text-center">思考中…</p>}
                 </div>
                 <div className="p-2.5 flex-shrink-0">
-                  <div className="chip flex flex-col gap-1.5 px-2 py-1.5">
-                    {/* 横向拓展/闲聊追问建议：附着于输入框 */}
-                    {sideFollowups.length > 0 && !sideLoading && (
-                      <div className="w-full flex flex-col gap-1 border-b hairline pb-1.5 animate-[fadeIn_0.3s_ease]">
-                        <p className="text-[10px] text-dim font-medium">横向拓展 · 闲聊</p>
-                        <div className="flex flex-wrap gap-1">
-                          {sideFollowups.map((q, i) => (
-                            <button key={i} onClick={() => sendSide(q)}
-                              className="chip text-left text-[10px] px-2 py-1 transition-all">
-                              {q}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    <div className="flex items-center gap-1.5 w-full">
-                      <textarea placeholder="在此提问..." rows={1} value={sideInput}
+                  <div className="chip flex items-center gap-1.5 px-2 py-1">
+                    <textarea placeholder="在此提问..." rows={1} value={sideInput}
                       onChange={e => setSideInput(e.target.value)}
                       className="flex-1 px-1.5 py-1 bg-transparent text-xs outline-none resize-none"
                       style={{ background: 'transparent' }}
@@ -369,7 +370,6 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
                       <button onClick={() => sendSide()} disabled={sideLoading} className="w-7 h-7 btn-primary flex items-center justify-center flex-shrink-0 disabled:opacity-50">
                         <Send size={12} />
                       </button>
-                    </div>
                   </div>
                 </div>
               </div>

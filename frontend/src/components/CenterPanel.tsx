@@ -387,6 +387,20 @@ const TEMPLATE_OPTIONS = [
                         ))}
                       </div>
                     )}
+                    {/* 继续追问：附着于该条 AI 输出下方（豆包样式，仅最后一条输出） */}
+                    {idx === messages.length - 1 && followups.length > 0 && !isLoading && (
+                      <div className="mt-3 flex flex-col gap-1.5 animate-[fadeIn_0.3s_ease]">
+                        <p className="text-[11px] text-dim font-medium flex items-center gap-1"><Lightbulb size={12} /> 继续追问 · 推进学习目标</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {followups.map((q, k) => (
+                            <button key={k} onClick={() => sendFollowup(q)}
+                              className="chip text-left text-[12px] px-3 py-1.5 transition-all">
+                              {q}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -418,21 +432,8 @@ const TEMPLATE_OPTIONS = [
             </div>
           )}
 
-          {/* 浮动输入坞：追问建议嵌入卡片内部，附着于输入框 */}
+          {/* 浮动输入坞 */}
           <div className="card-lift p-3 flex flex-col gap-2">
-            {followups.length > 0 && !isLoading && messages.length > 0 && (
-              <div className="flex flex-col gap-1 animate-[fadeIn_0.3s_ease]">
-                <p className="text-[10px] text-dim font-medium flex items-center gap-1 px-0.5"><Lightbulb size={11} /> 继续追问 · 推进学习目标</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {followups.map((q, i) => (
-                    <button key={i} onClick={() => sendFollowup(q)}
-                      className="chip text-left text-[11px] px-2.5 py-1.5 transition-all">
-                      {q}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
