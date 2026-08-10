@@ -171,6 +171,8 @@ function App() {
   }, [currentProjectId, projects])
   const handleRenameProject = useCallback((id: string, name: string) => {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, name } : p))
+    // 持久化到后端
+    fetch('/api/projects/' + id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) }).catch(() => {})
   }, [])
 
   const handleSelectProject = useCallback((id: string) => {

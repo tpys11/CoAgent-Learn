@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from 'react'
-import { Plus, X, FolderOpen, Clock } from 'lucide-react'
+import { Plus, X, FolderOpen, Clock, Pencil } from 'lucide-react'
 import TrendCalendar from './TrendCalendar'
 
 /** 系统预设领域 → 预存图片；非预设领域/未设置领域使用默认学习封面 */
@@ -85,6 +85,9 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
   }
   const tips = buildTips()
 
+  // 行内改名：正在编辑名称的课程 id
+  const [renamingId, setRenamingId] = useState<string | null>(null)
+
   // 顶部问候：按时间打招呼 + 最近学习时间与连续学习天数
   const hour = new Date().getHours()
   const greeting = hour < 5 ? '夜深了' : hour < 11 ? '早上好' : hour < 13 ? '中午好' : hour < 18 ? '下午好' : '晚上好'
@@ -155,10 +158,28 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
                       )}
                       <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/70 to-transparent">
                         <div className="flex items-center justify-between gap-2">
-                          <p className="text-base font-bold text-white truncate">{p.name}</p>
-                          <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`删除课程「${p.name}」？`)) onDelete(p.id) }}
-                            className="p-1 rounded-lg text-white/70 opacity-0 group-hover:opacity-100 hover:text-red-400 transition-all flex-shrink-0" title="删除课程">
-                            <X size={14} />
+                          {renamingId === p.id ? (
+                            <input autoFocus defaultValue={p.name}
+                              onClick={(e) => e.stopPropagation()}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  const v = (e.target as HTMLInputElement).value.trim()
+                                  if (v && v !== p.name) onRename(p.id, v)
+                                  setRenamingId(null)
+                                } else if (e.key === 'Escape') setRenamingId(null)
+                              }}
+                              onBlur={(e) => {
+                                const v = e.target.value.trim()
+                                if (v && v !== p.name) onRename(p.id, v)
+                                setRenamingId(null)
+                              }}
+                              className="flex-1 min-w-0 bg-white/95 text-black text-sm font-bold rounded-md px-2 py-0.5 outline-none" />
+                          ) : (
+                            <p className="text-base font-bold text-white truncate">{p.name}</p>
+                          )}
+                          <button onClick={(e) => { e.stopPropagation(); setRenamingId(renamingId === p.id ? null : p.id) }}
+                            className="p-1 rounded-lg text-white/70 opacity-0 group-hover:opacity-100 hover:text-white transition-all flex-shrink-0" title="改名">
+                            <Pencil size={13} />
                           </button>
                         </div>
                         <div className="flex items-center gap-2 mt-2">
@@ -181,9 +202,9 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
                           <Clock size={9} /> {p.created_at ? String(p.created_at).slice(0, 10) : '—'}{p.domain ? ` · ${p.domain}` : ''}
                         </p>
                         {onRename && (
-                          <button onClick={(e) => { e.stopPropagation(); const n = window.prompt('课程名称：', p.name); if (n && n.trim()) onRename(p.id, n.trim()) }}
-                            className="text-[9px] px-1.5 py-0.5 rounded-md text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors flex-shrink-0" title="改名">
-                            改名
+                          <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`删除课程「${p.name}」？`)) onDelete(p.id) }}
+                            className="text-[9px] px-1.5 py-0.5 rounded-md text-dim hover:bg-[var(--bg-hover)] hover:text-red-500 transition-colors flex-shrink-0" title="删除课程">
+                            删除
                           </button>
                         )}
                       </div>
