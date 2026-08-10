@@ -1,16 +1,16 @@
 import { useState } from 'react'
-import { FileText, GitBranch, Table as TableIcon, BarChart3, Volume2, ClipboardList, Layers } from 'lucide-react'
+import { FileText, Workflow, Network, Table as TableIcon, BarChart3, Volume2, ClipboardList } from 'lucide-react'
 
-type FormKey = 'report' | 'mindmap' | 'table' | 'chart' | 'audio' | 'quiz' | 'flash'
+type FormKey = 'report' | 'flow' | 'tree' | 'table' | 'chart' | 'audio' | 'quiz'
 
 const FORMS: Array<{ key: FormKey; label: string; icon: any; desc: string }> = [
   { key: 'report', label: '报告', icon: FileText, desc: '汇总对话生成的讲义、实操指南与测试题' },
-  { key: 'mindmap', label: '思维导图', icon: GitBranch, desc: '基于上传资料的层级结构，以思维导图展示' },
+  { key: 'flow', label: '流程图', icon: Workflow, desc: '流程步骤图' },
+  { key: 'tree', label: '树状图', icon: Network, desc: '基于上传资料的层级树状展示' },
   { key: 'table', label: '表格', icon: TableIcon, desc: '知识点掌握度等数据以表格呈现' },
   { key: 'chart', label: '统计图', icon: BarChart3, desc: '学习趋势统计图' },
   { key: 'audio', label: '音频', icon: Volume2, desc: '音频概览（朗读 / 双人讨论播客形式）' },
   { key: 'quiz', label: '测试题', icon: ClipboardList, desc: '分阶测试题' },
-  { key: 'flash', label: '闪卡', icon: Layers, desc: '闪卡（front / back 翻转复习）' },
 ]
 
 /** 特殊形式输出：先以矩形占位（具体实现后续补充） */
