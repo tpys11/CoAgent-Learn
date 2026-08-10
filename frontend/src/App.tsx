@@ -214,9 +214,11 @@ function App() {
 
   const currentProject = projects.find(p => p.id === currentProjectId) ?? null
   const handleCreateProject = useCallback((name: string) => {
-    fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) })
-      .then(r => r.json())
-      .then((d) => {
+    (async () => {
+      try {
+        const r = await fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) })
+        if (!r.ok) throw new Error('HTTP ' + r.status)
+        const d = await r.json()
         const id = d.id
         setProjects(prev => [...prev, { id, name, simple: false }])
         setCurrentProjectId(id)
@@ -230,7 +232,10 @@ function App() {
         fetch('/api/dialogues', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project_id: id, name: dia.name, id: did }) }).catch(() => {})
         fetch('/api/dialogues/' + did + '/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role: 'assistant', content: PROJECT_GUIDE(name) }) }).catch(() => {})
         setChatOpen(true)
-      })
+      } catch (e) {
+        alert('创建课程失败：' + ((e as any)?.message || '网络异常') + '，请检查后端服务。')
+      }
+    })()
   }, [])
   const handleDeleteProject = useCallback((id: string) => {
     // 删除确认由前端弹窗承担（主页删除弹窗已提示后果）

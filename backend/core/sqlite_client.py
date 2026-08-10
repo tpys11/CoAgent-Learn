@@ -21,13 +21,28 @@ class SQLiteClient:
         self._connect()
 
     def _connect(self):
-        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row
-        self.conn.enable_load_extension(True)
-        sqlite_vec.load(self.conn)
-        self.conn.execute("PRAGMA journal_mode=WAL")
-        self.conn.execute("PRAGMA busy_timeout=5000")
-        self.conn.execute("PRAGMA foreign_keys=ON")
+        # Windows 挂载卷上 SQLite WAL 可能瞬时文件锁（unable to open database file），重试几次自动恢复
+        last_err = None
+        for _attempt in range(5):
+            try:
+                conn = sqlite3.connect(self.db_path, check_same_thread=False)
+                conn.row_factory = sqlite3.Row
+                conn.enable_load_extension(True)
+                sqlite_vec.load(conn)
+                conn.execute("PRAGMA journal_mode=WAL")
+                conn.execute("PRAGMA busy_timeout=5000")
+                conn.execute("PRAGMA foreign_keys=ON")
+                self.conn = conn
+                return
+            except sqlite3.Error as e:
+                last_err = e
+                try:
+                    if 'conn' in dir() and conn:
+                        conn.close()
+                except Exception:
+                    pass
+                time.sleep(1)
+        raise last_err
 
     def execute(self, sql: str, params: tuple | list | None = None, fetch: bool = True):
         """执行 SQL，返回 list[dict]（SELECT）或空列表。
