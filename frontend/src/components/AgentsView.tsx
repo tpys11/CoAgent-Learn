@@ -571,6 +571,21 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                 <button onClick={() => { setSubName(''); setSubForm(''); setSubPrompt(''); setShowSubAdd(true) }}
                   className="text-[10px] px-2 py-1 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">＋ 添加能力</button>
               </div>
+              {agent.id === 'main' ? (
+                /* 主 Agent：保持单个「输出增强」卡片样式 */
+                <div className="border hairline rounded-xl bg-[var(--bg-panel)] overflow-hidden">
+                  <button onClick={() => setSubIntroOpen(true)}
+                    className="w-full flex flex-col items-stretch gap-2.5 px-3.5 py-9 hover:bg-[var(--bg-hover)] transition-colors">
+                    <span className="flex items-center gap-2">
+                      <span className="text-xs font-bold">输出增强</span>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--bg-hover)] text-dim flex-shrink-0">子 Agent</span>
+                      <span className="flex-1" />
+                      <span className="text-[10px] text-dim">查看介绍</span>
+                    </span>
+                    <span className="text-[10px] text-dim leading-relaxed text-left">按需调用输出增强子 Agent 产出结构化内容，选择「输出增强」模板后才会调用。</span>
+                  </button>
+                </div>
+              ) : (
               <div className="flex flex-col gap-2">
                 {/* 子 Agent 卡片：每个子 Agent 独立一张（知识库管理 / 搜索增强），整块点击弹出介绍弹窗 */}
                 {(agent.subAgents || []).map(s => (
@@ -587,6 +602,8 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                     </button>
                   </div>
                 ))}
+              </div>
+              )}
               </div>
             </div>
           )}
