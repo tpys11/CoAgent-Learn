@@ -42,11 +42,12 @@ const PRESET_TEMPLATES: Array<{ name: string; desc: string; intro: string; detai
   },
   {
     name: '快速', desc: '主 Agent 生成使用快模型',
-    intro: '面向简单快速的问答——快速概念确认、即兴提问、碎片化学习。使用快模型，各节点分析从简，速度最快、消耗最低；复杂推导类问题不建议用。',
+    intro: '面向简单快速的问答——快速概念确认、即兴提问、碎片化学习。流程只保留主 Agent 与审核与输出：主 Agent 直接接收「综合概述性记忆」（对话记忆、知识库与个人记忆概述、项目记忆概述合并），不再额外调用各 Agent，速度最快、消耗最低；复杂推导类问题不建议用。',
     detail: [
-      ['编排流程', '规划（简化）→ 学情与记忆（简化）∥ 知识库与搜索（简化）→ 生成 → 审核（简化）→ 输出'],
+      ['编排流程', '主 Agent（接收综合概述性记忆）→ 审核与输出'],
+      ['综合概述性记忆', '将对话记忆、知识库与个人记忆概述、项目记忆概述合并后直接发送给主 Agent，不再额外调用各 Agent；前提：首次使用时各 Agent 调用后已保存信息'],
       ['生成模型', '快模型（速度优先）'],
-      ['知识库与搜索', '视问题需要自动调用'],
+      ['知识库与搜索', '不调用（直接使用已保存的知识库概述）'],
       ['子 Agent 调用', '无'],
       ['审核', '简化审核'],
     ],
@@ -223,6 +224,25 @@ const FlowGraph = ({ agents, templateName, templateAgentId, onSelect }: { agents
   const kbSubs = templateName === '检索增强' ? subOf('kb') : []
   // 输出增强模板：生成节点只连接一个「输出增强」节点（规划节点不展示子 Agent）
   const mainSubs = templateName === '输出增强' ? ['输出增强'] : []
+  // 快速模板：流程只剩 主 Agent（左侧虚线框：综合概述性记忆）→ 审核与输出
+  if (templateName === '快速') {
+    return (
+      <div className="flex flex-col items-center gap-1 py-6">
+        <div className="flex items-center gap-3">
+          {/* 主 Agent 左侧虚线框：综合概述性记忆（合并已保存的对话记忆/个人记忆/项目记忆/知识库概述） */}
+          <div className="border-2 border-dashed border-[var(--border-color)] rounded-xl px-3 py-2.5 text-[10px] text-dim text-center leading-snug max-w-[150px]">
+            综合概述性记忆
+            <br />
+            <span className="text-[9px] opacity-70">对话记忆 · 个人记忆 · 项目记忆 · 知识库概述</span>
+          </div>
+          <FlowArrow />
+          <FlowNode icon={Workflow} name="主 Agent" level={lv('plan')} active={act('main')} onClick={pick('main')} />
+        </div>
+        <DownArrow />
+        <FlowNode icon={Scale} name="审核与输出" level={lv('review')} active={act('review')} onClick={pick('review')} />
+      </div>
+    )
+  }
   return (
     <div className="flex flex-col items-center gap-1 py-6">
       {/* 规划节点：不展示子 Agent（规划职责不调用输出子 Agent） */}
@@ -238,9 +258,7 @@ const FlowGraph = ({ agents, templateName, templateAgentId, onSelect }: { agents
       {/* 生成（输出增强 子 Agent 右侧连接） */}
       <AgentRow node={<FlowNode icon={Workflow} name="生成" level={lv('generate')} active={act('main')} onClick={pick('main')} />} subs={mainSubs} />
       <DownArrow />
-      <FlowNode icon={Scale} name="审核" level={lv('review')} active={act('review')} onClick={pick('review')} />
-      <DownArrow />
-      <FlowNode icon={CheckCircle2} name="输出" />
+      <FlowNode icon={Scale} name="审核与输出" level={lv('review')} active={act('review')} onClick={pick('review')} />
     </div>
   )
 }

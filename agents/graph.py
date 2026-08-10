@@ -307,6 +307,34 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             context += f"学情: {json.dumps(state['profile'], ensure_ascii=False)}" + NL
         if state.get("knowledge"): context += f"知识库: {json.dumps(state['knowledge'], ensure_ascii=False)}" + NL
         if state.get("search_results"): context += f"联网搜索: {json.dumps(state['search_results'], ensure_ascii=False)}" + NL
+        # 快速模板：不调用学情与记忆管理/知识库管理，改为合并已保存的信息为「综合概述性记忆」直接发送
+        # 前提：首次使用时各 Agent 调用后已保存（个人全局记忆 / 项目记忆 / 知识库概述）
+        if tpl == "快速":
+            _summary = []
+            try:
+                from core.postgres_client import pg_client
+                from core.memory_analysis import _as_dict
+                _pid = state.get("project_id") or "default"
+                _g = pg_client.execute("SELECT data FROM global_profile ORDER BY updated_at DESC LIMIT 1")
+                if _g and _g[0].get("data"):
+                    _summary.append("个人记忆概述：" + json.dumps(_as_dict(_g[0]["data"]), ensure_ascii=False))
+                _m = pg_client.execute("SELECT data FROM project_memories WHERE project_id=%s", (_pid,))
+                if _m and _m[0].get("data"):
+                    _summary.append("项目记忆概述：" + json.dumps(_as_dict(_m[0]["data"]), ensure_ascii=False))
+                try:
+                    from core.knowledge_service import list_docs
+                    _docs = list_docs(_pid)
+                    if _docs:
+                        _summary.append("知识库概述：" + "；".join(f"{d.get('source','')}({d.get('chunks',0)}块)" for d in _docs[:20]))
+                except Exception:
+                    pass
+            except Exception:
+                pass
+            if _summary:
+                context += NL + "【综合概述性记忆】" + NL + NL.join(_summary) + NL
+                state.setdefault("mindchain", []).append({"agent": "综合概述性记忆", "content": "快速模板：合并个人/项目记忆与知识库概述，不额外调用各 Agent"})
+            else:
+                context += NL + "【综合概述性记忆】暂无已保存的记忆与知识库数据（首次使用时请先走完整流程，让各 Agent 保存信息后再用快速模板）。" + NL
         if state.get("sub_outputs") and state["sub_outputs"].get("kb"):
             context += NL + "【知识库子Agent整理】" + NL + state["sub_outputs"]["kb"] + NL
         if state.get("review_feedback"): context += NL + "【审核修正要求】上一版未通过审核，请针对以下意见修改后再生成：" + NL + state["review_feedback"] + NL
@@ -412,7 +440,10 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
     # ---------------- 路由 ----------------
 
     def route_plan(state: AgentState) -> list[str]:
-        """一次规划 → 并行分发到需要的子 Agent（跳过被禁用的节点）"""
+        """一次规划 → 并行分发到需要的子 Agent（跳过被禁用的节点）
+        快速模板：不调用任何 Agent，直接进入主 Agent 生成（综合概述性记忆由生成节点合并已保存信息）"""
+        if (settings.get("template") or "基础") == "快速":
+            return ["generate"]
         plan = state.get("_plan") or []
         cfg_study = _agent_cfg("study")
         cfg_kb = _agent_cfg("kb")
