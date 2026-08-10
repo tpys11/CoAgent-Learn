@@ -768,13 +768,16 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                             </div>
                           </div>
                         {/* 进度与细节（下） */}
-                        {/* 知识图谱：树状结构（复用资料章节层级，节点颜色=掌握状态） */}
+                        {/* 知识图谱：树状结构（复用资料章节层级，节点颜色=掌握状态）；初始化时不展示 */}
+                        {!initialEdit && (
                         <div className="flex flex-col gap-2 max-w-3xl">
                           <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">知识图谱</p>
                           <KnowledgeTree treeDocs={data?.treeDocs || []} progressItems={data?.progress.items || []} />
                         </div>
+                        )}
 
-                        {/* 进度：里程碑时间线 */}
+                        {/* 进度：里程碑时间线；初始化时不展示 */}
+                        {!initialEdit && (
                         <div className="flex flex-col gap-2 max-w-3xl">
                           <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-3">
                             <div className="flex items-center justify-between">
@@ -825,7 +828,9 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                             })()}
                           </div>
                         </div>
-                        {/* 时间：内容量趋势 + 日历（横向排布，占满详情宽度） */}
+                        )}
+                        {/* 时间：内容量趋势 + 日历（横向排布，占满详情宽度）；初始化时不展示 */}
+                        {!initialEdit && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                           <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col">
                             <TimeLineChart days={data?.days || {}} />
@@ -841,6 +846,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                             />
                           </div>
                         </div>
+                        )}
                       </div>
                     </div>
                     </div>
