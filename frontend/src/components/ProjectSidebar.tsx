@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from 'react'
-import { ArrowLeft, MessageSquare, FileText, X, Plus, ChevronDown, SlidersHorizontal, Pencil, PanelLeftClose } from 'lucide-react'
+import { ArrowLeft, MessageSquare, FileText, X, Plus, SlidersHorizontal, Pencil, PanelLeftClose } from 'lucide-react'
 
 interface Dialogue { id: string; name: string; archived?: boolean }
 
@@ -19,9 +19,6 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
 }) {
   const [memSummary, setMemSummary] = useState<Record<string, any>>({})
   const [kbDocs, setKbDocs] = useState<Array<{ source: string; chunks: number }>>([])
-  // 区块折叠：记忆与进程 / 资源 / 对话（点击标题栏展开/收起，与右侧栏一致）
-  const [collapsed, setCollapsed] = useState<Record<'memory' | 'resource' | 'chat', boolean>>({ memory: false, resource: false, chat: false })
-  const toggle = (k: 'memory' | 'resource' | 'chat') => setCollapsed(prev => ({ ...prev, [k]: !prev[k] }))
   // 栏目展示开关（与右侧栏一致，持久化）
   const [visible, setVisible] = useState<Record<'memory' | 'resource' | 'chat', boolean>>(() => {
     try { return { memory: true, resource: true, chat: true, ...(JSON.parse(localStorage.getItem('coagent-project-sidebar-v') || '{}')) } } catch { return { memory: true, resource: true, chat: true } }
@@ -88,14 +85,16 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
         </div>
       </div>
       <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-4">
-        {/* 记忆与进程：点击标题展开/收起 */}
+        {/* 记忆与进程：常开，右上角 ✕ 关闭（顶部「展示设置」可重新打开） */}
         {visible.memory && (
         <div className="flex flex-col gap-2">
-          <button onClick={() => toggle('memory')} className="flex items-center gap-1.5 text-xs font-semibold text-dim uppercase tracking-wider">
-            记忆与进程
-            <ChevronDown size={12} className={`transition-transform ${collapsed.memory ? '' : 'rotate-180'}`} />
-          </button>
-          {!collapsed.memory && (
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-dim uppercase tracking-wider">记忆与进程</span>
+            <button onClick={() => toggleVisible('memory')} className="p-1 rounded-md text-dim hover:text-red-500 transition-colors" title="关闭此模块（可在上方「展示设置」重新打开）">
+              <X size={12} />
+            </button>
+          </div>
+          {true && (
             <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
               <p className="text-[10px] leading-relaxed text-[var(--text-muted)]">
                 {memLines.length === 0
@@ -109,14 +108,16 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
           )}
         </div>
         )}
-        {/* 资源：点击标题展开/收起，一段介绍 + 「查看更多」 */}
+        {/* 资源：常开，右上角 ✕ 关闭（顶部「展示设置」可重新打开） */}
         {visible.resource && (
         <div className="flex flex-col gap-2">
-          <button onClick={() => toggle('resource')} className="flex items-center gap-1.5 text-xs font-semibold text-dim uppercase tracking-wider">
-            资源
-            <ChevronDown size={12} className={`transition-transform ${collapsed.resource ? '' : 'rotate-180'}`} />
-          </button>
-          {!collapsed.resource && (
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-dim uppercase tracking-wider">资源</span>
+            <button onClick={() => toggleVisible('resource')} className="p-1 rounded-md text-dim hover:text-red-500 transition-colors" title="关闭此模块（可在上方「展示设置」重新打开）">
+              <X size={12} />
+            </button>
+          </div>
+          {true && (
             <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
               <p className="text-[10px] leading-relaxed text-[var(--text-muted)]">
                 {kbDocs.length === 0
@@ -130,19 +131,19 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
           )}
         </div>
         )}
-        {/* 对话：点击标题展开/收起 */}
+        {/* 对话：常开，右上角 ✕ 关闭（顶部「展示设置」可重新打开） */}
         {visible.chat && (
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <button onClick={() => toggle('chat')} className="flex items-center gap-1.5 text-xs font-semibold text-dim uppercase tracking-wider">
-              对话
-              <ChevronDown size={12} className={`transition-transform ${collapsed.chat ? '' : 'rotate-180'}`} />
-            </button>
-            {!collapsed.chat && (
+            <span className="text-xs font-semibold text-dim uppercase tracking-wider">对话</span>
+            <div className="flex items-center gap-1">
               <button onClick={onCreateDialogue} className="text-[10px] px-2 py-1 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">＋ 新建</button>
-            )}
+              <button onClick={() => toggleVisible('chat')} className="p-1 rounded-md text-dim hover:text-red-500 transition-colors" title="关闭此模块（可在上方「展示设置」重新打开）">
+                <X size={12} />
+              </button>
+            </div>
           </div>
-          {!collapsed.chat && (
+          {true && (
             <div className="flex flex-col gap-1">
               {(() => {
                 const active = dialogues.filter(d => !d.archived)

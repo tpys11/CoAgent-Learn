@@ -1,4 +1,4 @@
-﻿import { Map, Send, MessagesSquare, X, PanelRightClose, ChevronUp, ChevronDown, SlidersHorizontal, FileText } from 'lucide-react'
+﻿import { Map, Send, MessagesSquare, X, PanelRightClose, SlidersHorizontal, FileText } from 'lucide-react'
 import { useEffect, useRef, useState, Fragment } from 'react'
 import { KnowledgeTree } from './KbTree'
 
@@ -23,36 +23,27 @@ const MIN_H = 56
 const MAX_H = 800
 const WINDOWS_KEY = 'coagent-rp-windows'
 
-/** 可折叠窗口：header 常驻（点击展开/收起），内容区高度可被拖拽调整；flex 模式自动填满剩余空间。
+/** 窗口：header 常驻，内容区高度可被拖拽调整；flex 模式自动填满剩余空间。
  * 右上角独立叉 = 关闭该窗口（visible=false，可在顶部"在此处展示"重新打开） */
-function Pane({ title, icon: Icon, collapsed, height, flex, onToggle, onClose, children }: {
-  title: string; icon: any; collapsed: boolean; height: number; flex?: boolean; onToggle: () => void; onClose: () => void; children: React.ReactNode
+function Pane({ title, icon: Icon, height, flex, onClose, children }: {
+  title: string; icon: any; height: number; flex?: boolean; onClose: () => void; children: React.ReactNode
 }) {
   return (
     <div
       className="card-surface flex flex-col overflow-hidden flex-shrink-0"
-      style={collapsed ? { height: 32 } : flex ? { flex: 1, minHeight: 56 } : { height }}
+      style={flex ? { flex: 1, minHeight: 56 } : { height }}
     >
-      <div
-        onClick={onToggle}
-        className="flex items-center justify-between px-4 py-1.5 flex-shrink-0 cursor-pointer select-none"
-        title={collapsed ? '展开' : '收起'}
-      >
+      <div className="flex items-center justify-between px-4 py-1.5 flex-shrink-0 select-none">
         <span className="text-[11px] font-semibold text-dim uppercase tracking-widest flex items-center gap-1.5">
           <Icon size={13} /> {title}
         </span>
-        <span className="flex items-center gap-1">
-          <span className="p-0.5 rounded icon-btn">
-            {collapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
-          </span>
-          <span onClick={(e) => { e.stopPropagation(); onClose() }}
-            className="p-0.5 rounded icon-btn hover:text-red-500 transition-colors" title="关闭此窗口（可在上方「在此处展示」重新打开）">
-            <X size={13} />
-          </span>
+        <span onClick={(e) => { e.stopPropagation(); onClose() }}
+          className="p-0.5 rounded icon-btn hover:text-red-500 transition-colors" title="关闭此窗口（可在上方「在此处展示」重新打开）">
+          <X size={13} />
         </span>
       </div>
-      {/* 内容区占满窗口剩余高度（折叠时高度 0 并禁止伸缩） */}
-      <div className="min-h-0" style={collapsed ? { height: 0, flex: '0 0 0', overflow: 'hidden' } : { flex: 1, minHeight: 0, overflow: 'hidden' }}>
+      {/* 内容区占满窗口剩余高度 */}
+      <div className="min-h-0" style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
         {children}
       </div>
     </div>
@@ -95,9 +86,8 @@ function ReportPane({ projectId }: { projectId?: string | null }) {
 }
 
 export default function RightPanel({ messageCount, projectId, sideDialogueId, onCollapse }: Props) {
-  // 三个窗口高度（px）与折叠状态
+  // 三个窗口高度（px）
   const [heights, setHeights] = useState<Record<WinKey, number>>({ ...DEFAULT_HEIGHTS })
-  const [collapsed, setCollapsed] = useState<Record<WinKey, boolean>>({ flow: false, graph: false, chat: false, report: false })
   // 右侧栏展示设置（可勾选要显示的窗口，持久化）
   const [visible, setVisible] = useState<Record<WinKey, boolean>>(() => {
     try {
@@ -108,7 +98,6 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
   const [showWinSettings, setShowWinSettings] = useState(false)
   const dragRef = useRef<{ a: WinKey; b: WinKey; isLast: boolean; startY: number; startHa: number; startHb: number } | null>(null)
 
-  const toggle = (k: WinKey) => setCollapsed(prev => ({ ...prev, [k]: !prev[k] }))
   const toggleWin = (k: WinKey) => {
     setVisible(prev => {
       const next = { ...prev, [k]: !prev[k] }
@@ -277,7 +266,7 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
       {shown.map((w, i) => (
         <Fragment key={w.key}>
           {i > 0 && <DragHandle onDown={startDrag(shown[i - 1].key, w.key)} />}
-          <Pane title={w.title} icon={w.icon} collapsed={collapsed[w.key]} height={heights[w.key]} flex={i === shown.length - 1} onToggle={() => toggle(w.key)} onClose={() => toggleWin(w.key)}>
+          <Pane title={w.title} icon={w.icon} height={heights[w.key]} flex={i === shown.length - 1} onClose={() => toggleWin(w.key)}>
             {w.key === 'graph' && (
               <div className="w-full h-full overflow-y-auto px-2 py-1.5">
                 <KnowledgeTree treeDocs={treeDocs} progressItems={progressItems} />
