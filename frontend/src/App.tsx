@@ -161,7 +161,7 @@ function App() {
       })
   }, [])
   const handleDeleteProject = useCallback((id: string) => {
-    if (!window.confirm('确定删除该项目及其所有对话/知识库/图谱？')) return
+    // 删除确认由前端弹窗承担（主页删除弹窗已提示后果）
     fetch('/api/projects/' + id, { method: 'DELETE' })
       .then(() => {
         setProjects(prev => prev.filter(p => p.id !== id))

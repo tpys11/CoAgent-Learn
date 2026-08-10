@@ -87,6 +87,8 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
 
   // 行内改名：正在编辑名称的课程 id
   const [renamingId, setRenamingId] = useState<string | null>(null)
+  // 删除确认弹窗：待删除的课程 id
+  const [deleteId, setDeleteId] = useState<string | null>(null)
 
   // 顶部问候：按时间打招呼 + 最近学习时间与连续学习天数
   const hour = new Date().getHours()
@@ -156,8 +158,8 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
                           {p.name.slice(0, 1)}
                         </div>
                       )}
-                      {/* 右上角：灰色叉删除（持久显示、显眼） */}
-                      <button onClick={(e) => { e.stopPropagation(); if (window.confirm(`删除课程「${p.name}」？`)) onDelete(p.id) }}
+                      {/* 右上角：灰色叉删除（持久显示、显眼，点击弹确认窗） */}
+                      <button onClick={(e) => { e.stopPropagation(); setDeleteId(p.id) }}
                         className="absolute top-1.5 right-1.5 p-1.5 rounded-full bg-gray-400/90 text-white shadow-md hover:bg-red-500 hover:scale-110 transition-all" title="删除课程">
                         <X size={15} strokeWidth={2.5} />
                       </button>
@@ -223,6 +225,26 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
           <div className="w-[380px] flex-shrink-0">
             <TrendCalendar days={trendDays} />
           </div>
+          {/* 删除课程确认弹窗 */}
+          {deleteId && (() => {
+            const dp = projects.find(x => x.id === deleteId)
+            return (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-6" onClick={() => setDeleteId(null)}>
+                <div className="w-[360px] card-lift rounded-2xl p-5 flex flex-col gap-3.5" onClick={e => e.stopPropagation()}>
+                  <p className="text-sm font-bold">删除课程「{dp?.name || ''}」？</p>
+                  <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+                    删除后，对应资源、入口、对话历史会被删除；<br />已写入抽象记忆的部分不会删除。
+                  </p>
+                  <div className="flex gap-2">
+                    <button onClick={() => setDeleteId(null)}
+                      className="flex-1 py-2 rounded-xl border hairline text-[11px] text-dim hover:bg-[var(--bg-hover)] transition-colors">取消</button>
+                    <button onClick={() => { setDeleteId(null); onDelete(deleteId) }}
+                      className="flex-1 py-2 rounded-xl text-[11px] font-medium text-white bg-red-500 hover:bg-red-600 transition-colors">确认删除</button>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
         </div>
       </div>
     </div>
