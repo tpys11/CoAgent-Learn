@@ -1,4 +1,4 @@
-services:
+﻿services:
   frontend:
     build:
       context: ../frontend
@@ -12,6 +12,7 @@ services:
       - ../frontend/postcss.config.js:/app/postcss.config.js
       - ../frontend/vite.config.ts:/app/vite.config.ts
       - ../frontend/index.html:/app/index.html
+      - ../frontend/public:/app/public
     depends_on:
       - backend
     networks:
@@ -55,3 +56,4 @@ services:
 networks:
   guashuai-network:
     driver: bridge
+
