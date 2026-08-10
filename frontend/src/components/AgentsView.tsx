@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useRef } from 'react'
-import { Settings, Square, Upload, Folder, Activity, Download, Layers, Wrench, Store, ExternalLink, Plus, Trash2, LayoutTemplate, X, Workflow, Brain, Database, Scale, CheckCircle2, ChevronRight } from 'lucide-react'
+import { Settings, Square, Upload, Folder, Download, Layers, Wrench, Store, ExternalLink, Plus, Trash2, LayoutTemplate, X, Workflow, Brain, Database, Scale, CheckCircle2, ChevronRight } from 'lucide-react'
 import type { AgentConfig } from '../types'
 import { DEFAULT_AGENTS } from '../types'
 
@@ -13,11 +13,6 @@ interface Props {
 }
 
 type Block = 'agents' | 'skills' | 'templates'
-
-/** Agent id → 其工作流节点（运行监控按节点过滤） */
-const NODE_BY_AGENT: Record<string, string[]> = {
-  main: ['plan', 'generate'], study: ['study_memory'], kb: ['kb'], review: ['review'],
-}
 
 /** 预设模板库（基础 / 检索增强 / 快速 / 输出增强），intro=适用场景概述，detail=预设内部细节（只读展示） */
 const PRESET_TEMPLATES: Array<{ name: string; desc: string; intro: string; detail: Array<[string, string]>; agents: AgentConfig[] }> = [
@@ -129,6 +124,16 @@ const SKILL_TABS: Array<{ key: string; label: string }> = [
   { key: 'mcp', label: 'MCP 市场' },
   { key: 'dev', label: '开发者' },
 ]
+
+/** 系统预设 Skill 封面图（public/skill-covers/） */
+const SKILL_COVER: Record<string, string> = {
+  fetch_web: '/skill-covers/fetch-web.svg',
+  calculator: '/skill-covers/calculator.svg',
+  execute_code: '/skill-covers/execute-code.svg',
+  pdf_parse: '/skill-covers/pdf-parse.svg',
+  doc_parse: '/skill-covers/doc-parse.svg',
+}
+const coverOf = (name: string) => SKILL_COVER[name] || '/skill-covers/generic.svg'
 
 /** Skill 分类（已安装视图左侧栏） */
 const SKILL_CATS = [
@@ -328,8 +333,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   const [mcpList, setMcpList] = useState<Array<{ id: string; name: string; type: string; target: string }>>(() => {
     try { return JSON.parse(localStorage.getItem('coagent-mcp-servers') || '[]') } catch { return [] }
   })
-  // 该 Agent 的运行监控（最近任务中其节点的耗时/调用）
-  const [agentRuns, setAgentRuns] = useState<Array<{ created_at: string; ms: number; calls: number }>>([])
 
   useEffect(() => {
     setMode(agent?.mode || '均衡')
@@ -341,22 +344,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
       setLinkedSkills(names.filter((n: string) => (d.skills || []).some((s: SkillInfo) => s.name === n)))
     })
   }, [selectedId])
-
-  // 运行监控：该 Agent 最近任务统计（按节点过滤）
-  useEffect(() => {
-    if (block !== 'agents' || !agent || !projectId) return
-    const nodes = NODE_BY_AGENT[agent.id] || []
-    fetch('/api/task-stats?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' })
-      .then(r => r.json()).then(d => {
-        const runs = (d.tasks || []).map((t: any): { created_at: string; ms: number; calls: number } => {
-          const data = t.data || {}
-          let ms = 0, calls = 0
-          for (const n of nodes) { const v = data[n]; if (v) { ms += v.ms || 0; calls += v.llm_calls || 0 } }
-          return { created_at: t.created_at || '', ms, calls }
-        }).filter((r: { created_at: string; ms: number; calls: number }) => r.ms > 0).slice(0, 5)
-        setAgentRuns(runs)
-      }).catch(() => setAgentRuns([]))
-  }, [block, agent?.id, projectId])
 
   /** 自动保存：任何修改立即持久化 */
   const commit = (patch: Partial<AgentConfig>) => {
@@ -569,26 +556,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                     </div>
                   </div>
                 </div>
-
-                {/* 该 Agent 运行监控 */}
-                <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
-                  <p className={`${fieldLabel} flex items-center gap-1`}><Activity size={13} /> 运行监控（该 Agent 最近任务）</p>
-                  {agentRuns.length === 0 ? (
-                    <p className="text-[11px] text-dim">暂无运行记录，发送消息后自动统计</p>
-                  ) : (
-                    <div className="flex flex-col gap-1.5">
-                      {agentRuns.map((r, i) => (
-                        <div key={i} className="flex items-center gap-2 text-[11px]">
-                          <span className="text-dim flex-1 truncate">{r.created_at || '—'}</span>
-                          <div className="flex-1 h-1.5 rounded-full bg-[var(--bg-hover)] overflow-hidden">
-                            <div className="h-full rounded-full bg-[#1a1a1a]" style={{ width: Math.max(4, Math.min(100, r.ms / 20)) + '%' }} />
-                          </div>
-                          <span className="text-dim w-24 text-right">{r.ms}ms{r.calls ? ` ×${r.calls}` : ''}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
               </>
             )}
           </div>
@@ -653,7 +620,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
 
         {/* ========== Skill 管理 ========== */}
         {block === 'skills' && (
-          <div className="max-w-3xl flex flex-col gap-4">
+          <div className="max-w-5xl flex flex-col gap-4">
             <div>
               <h2 className="text-base font-bold flex items-center gap-2"><Layers size={16} /> Skill 管理</h2>
             </div>
@@ -689,13 +656,15 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                         {filtered.map(s => {
                           return (
                             <div key={s.name} onClick={() => setSkillDetail({ name: s.name, description: s.description, folder: s.folder, category: SKILL_CAT_MAP[s.name] || '其他' })}
-                              className="card-surface rounded-2xl p-5 flex flex-col gap-3 cursor-pointer transition-all hover:shadow-lg hover:-translate-y-1">
-                              <div className="flex items-start justify-between">
-                                <span className="w-10 h-10 rounded-xl bg-[#1a1a1a] text-white flex items-center justify-center"><Wrench size={17} /></span>
-                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--bg-hover)] text-dim">{SKILL_CAT_MAP[s.name] || '其他'}</span>
+                              className="card-surface rounded-2xl flex flex-col cursor-pointer transition-all hover:shadow-lg hover:-translate-y-1 overflow-hidden">
+                              <img src={coverOf(s.name)} alt="" className="w-full h-20 object-cover" />
+                              <div className="p-4 flex flex-col gap-2">
+                                <div className="flex items-start justify-between">
+                                  <span className="text-sm font-semibold truncate">{s.name}</span>
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--bg-hover)] text-dim flex-shrink-0">{SKILL_CAT_MAP[s.name] || '其他'}</span>
+                                </div>
+                                <p className="text-[11px] text-dim truncate">{s.description}</p>
                               </div>
-                              <p className="text-sm font-semibold truncate">{s.name}</p>
-                              <p className="text-[11px] text-dim truncate">{s.description}</p>
                             </div>
                           )
                         })}
@@ -714,16 +683,18 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                     const installed = allSkills.some(x => x.name === s.name)
                     return (
                       <div key={s.name} onClick={() => setSkillDetail({ name: s.name, description: s.desc, folder: '内置', category: s.category })}
-                        className="card-surface rounded-2xl p-5 flex flex-col gap-3 cursor-pointer transition-all hover:shadow-lg hover:-translate-y-1">
-                        <div className="flex items-start justify-between">
-                          <span className="w-10 h-10 rounded-xl bg-[#1a1a1a] text-white flex items-center justify-center"><Store size={17} /></span>
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--bg-hover)] text-dim">{s.category}</span>
-                            {installed && <span className="text-[10px] text-green-600">已安装</span>}
+                        className="card-surface rounded-2xl flex flex-col cursor-pointer transition-all hover:shadow-lg hover:-translate-y-1 overflow-hidden">
+                        <img src={coverOf(s.name)} alt="" className="w-full h-20 object-cover" />
+                        <div className="p-4 flex flex-col gap-2">
+                          <div className="flex items-start justify-between">
+                            <span className="text-sm font-semibold truncate">{s.name}</span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--bg-hover)] text-dim">{s.category}</span>
+                              {installed && <span className="text-[10px] text-green-600">已安装</span>}
+                            </div>
                           </div>
+                          <p className="text-[11px] text-dim truncate">{s.desc}</p>
                         </div>
-                        <p className="text-sm font-semibold truncate">{s.name}</p>
-                        <p className="text-[11px] text-dim truncate">{s.desc}</p>
                       </div>
                     )
                   })}
