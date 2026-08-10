@@ -33,7 +33,7 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
     try {
       // 提交编辑过的字段：基本情况（抽象项目情况/学习时间/强度与频率/学习周期）/ 目的（抽象目的）/ 初始情况（起点）
       const profile: Record<string, string> = {}
-      for (const k of ['抽象项目情况', '学习时间', '强度与频率', '学习周期', '抽象目的', '起点']) {
+      for (const k of ['时间限制', '平均每日投入时间', '其他', '抽象目的', '起点']) {
         if (collected[k]) profile[k] = collected[k]
       }
       if (Object.keys(profile).length) {
