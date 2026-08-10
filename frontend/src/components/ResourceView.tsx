@@ -70,6 +70,23 @@ const fmtTime = (s?: string) => {
 /** 领域：系统预设，不可增删（教程资源为预设内容，手动添加仅限我的上传） */
 const DEFAULT_DOMAINS = ['Agent 应用与开发', 'Python 编程']
 
+/** 领域小方框配色：按名称稳定取一组柔和色调（浅底 + 彩色文字 + 彩色边框） */
+const DOMAIN_PALETTE = [
+  { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', hover: 'hover:bg-blue-100' },
+  { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', hover: 'hover:bg-emerald-100' },
+  { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', hover: 'hover:bg-amber-100' },
+  { bg: 'bg-violet-50', text: 'text-violet-700', border: 'border-violet-200', hover: 'hover:bg-violet-100' },
+  { bg: 'bg-rose-50', text: 'text-rose-700', border: 'border-rose-200', hover: 'hover:bg-rose-100' },
+  { bg: 'bg-cyan-50', text: 'text-cyan-700', border: 'border-cyan-200', hover: 'hover:bg-cyan-100' },
+  { bg: 'bg-orange-50', text: 'text-orange-700', border: 'border-orange-200', hover: 'hover:bg-orange-100' },
+  { bg: 'bg-teal-50', text: 'text-teal-700', border: 'border-teal-200', hover: 'hover:bg-teal-100' },
+]
+const domainColor = (name: string) => {
+  let h = 0
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0
+  return DOMAIN_PALETTE[h % DOMAIN_PALETTE.length]
+}
+
 /** 分类：固定三类 */
 const CATEGORIES: Array<{ key: string; desc: string }> = [
   { key: '系统学习', desc: '入门路线与系统性教程' },
@@ -682,19 +699,19 @@ const exportItem = (item: ListItem) => {
       <div className="flex-shrink-0 px-8 pt-6 pb-6 bg-[var(--bg-panel)] border-b border-[var(--border-color)]">
           {/* 领域选择（逻辑上最先选领域：置于最顶、靠左展开） */}
           <div className="flex items-center gap-3 mb-4 flex-wrap">
-            {DEFAULT_DOMAINS.map(d => (
+            {DEFAULT_DOMAINS.map(d => { const c = domainColor(d); return (
               <button
                 key={d}
                 onClick={() => { setSelectedDomain(d); setSelectedCat(CATEGORIES[0].key); setDetail(null) }}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-all ${
                   selectedDomain === d
-                    ? 'bg-[#1a1a1a] text-white shadow-soft'
-                    : 'bg-[var(--bg-panel)] text-dim border hairline hover:border-[var(--border-strong)] hover:text-[var(--text)]'
+                    ? 'bg-[#1a1a1a] text-white border-[#1a1a1a] shadow-soft'
+                    : `${c.bg} ${c.text} ${c.border} ${c.hover}`
                 }`}
               >
                 {d}
               </button>
-            ))}
+            ) })}
           </div>
 
           {/* 三个区域选择（教程资源 / 我的生成 / 我的上传） */}
