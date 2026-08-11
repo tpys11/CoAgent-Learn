@@ -168,12 +168,13 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         """运行统计（返回局部 dict，不就地改 state）：节点随 partial 返回，_merge_stats reducer 合并各节点统计"""
         return {node: {"ms": ms, "llm_calls": llm_calls}, "token_estimate": tokens}
 
-    def think_then_json(llm, system_prompt: str, user_prompt: str, agent_name: str) -> tuple[str, dict]:
-        """流式思考：用chat_stream逐token推送，收集完整文本后提取JSON"""
+    def think_then_json(llm, system_prompt: str, user_prompt: str, agent_name: str, silent: bool = False) -> tuple[str, dict]:
+        """流式思考：用chat_stream逐token推送，收集完整文本后提取JSON。
+        silent=True：不推 step/thought_token（子 Agent 内部工作不展示在主思维链，产出仍返回给调用方）"""
         collected = []
         def collect(chunk):
             collected.append(chunk)
-            if on_token:
+            if on_token and not silent:
                 on_token(agent_name, chunk)
         try:
             llm.chat_stream(
@@ -370,7 +371,8 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                     else:
                         _feed = {"knowledge": state.get("knowledge", []), "search": state.get("search_results", [])}
                     _in = "检索材料：\n" + json.dumps(_feed, ensure_ascii=False)[:4000]
-                    _t, _r = think_then_json(llm_fast, _sp, _in, sub.get("name") or "资料解析")
+                    # silent：子 Agent 内部整理工作不展示在主思维链（产出供主流程使用）
+                    _t, _r = think_then_json(llm_fast, _sp, _in, sub.get("name") or "资料解析", silent=True)
                     _c = (_r.get("content") if isinstance(_r, dict) and _r.get("content") else _t) or ""
                     if _c:
                         sub_parts.append(f"【{sub.get('name')}】\n" + str(_c)[:1200])
@@ -378,7 +380,6 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                     pass
             if sub_parts:
                 state["sub_outputs"] = {**(state.get("sub_outputs") or {}), "kb": "\n".join(sub_parts)}
-                new_mc.append({"agent": "知识库与搜索·子Agent", "content": f"强制调用 {len(sub_parts)} 个子Agent整理资料"})
                 thinking += f"；子Agent整理 {len(sub_parts)} 项"
         new_mc.append({"agent": "知识库管理", "content": thinking})
         new_steps.append({"agent": "知识库管理", "status": "done"})
@@ -481,11 +482,10 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                     _sp = (sub.get("subPrompt") or "") + "\n只输出该形式的内容本身。"
                     _form = sub.get("form") or ""
                     _in = f"主题：{state['user_input'][:500]}\n\n参考材料：\n" + context[-2500:]
-                    _t, _r = think_then_json(llm_fast, _sp, _in, sub.get("name") or "输出子Agent")
+                    _t, _r = think_then_json(llm_fast, _sp, _in, sub.get("name") or "输出子Agent", silent=True)
                     _c = (_r.get("content") if isinstance(_r, dict) and _r.get("content") else _t) or ""
                     if _c:
                         sub_parts.append(f"【{sub.get('name')}{'（' + _form + '）' if _form else ''}】\n" + str(_c)[:1500])
-                        new_mc.append({"agent": "主Agent·子Agent", "content": f"{sub.get('name')} 产出完成"})
                 except Exception:
                     pass
             if sub_parts:
