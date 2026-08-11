@@ -10,7 +10,7 @@ def _call_llm(prompt, api_key=""):
         from core.config import config as _cfg
         h = {"Authorization": "Bearer " + (api_key or _cfg.DEEPSEEK_API_KEY), "Content-Type": "application/json"}
         resp = _req.post(_cfg.DEEPSEEK_BASE_URL + "/chat/completions",
-            json={"model": "deepseek-v4-flash", "thinking": {"type": "disabled"}, "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}], "max_tokens": 500},
+            json={"model": "deepseek-v4-flash", "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}], "max_tokens": 500},
             headers=h, timeout=60)
         if resp.status_code == 200:
             return resp.json()["choices"][0]["message"]["content"] or ""

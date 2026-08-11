@@ -1238,8 +1238,6 @@ async def chat(req: ChatRequest):
             from agents.graph import create_workflow
             import queue, threading, asyncio
             token_queue = queue.Queue()
-            import sys as _s
-            _s.stderr.write(f"[chat-dbg] api_key_len={len(req.api_key or '')} model={req.model} base_url={req.base_url}\n"); _s.stderr.flush()
             # 生成请求 id + 取消事件：前端点"停止"时 POST /api/chat/stop 置位，run_workflow 各 LLM 调用尽早中断
             import uuid as _uuid
             request_id = _uuid.uuid4().hex[:16]
@@ -1352,8 +1350,6 @@ async def chat(req: ChatRequest):
                     # 后台异步分析记忆 + 生成追问（开关可配）
                     try:
                         reply = result.get("final_reply", "")
-                        import sys as _s
-                        _s.stderr.write("[mem] reply_len="+str(len(reply or ""))+chr(10));_s.stderr.flush()
                         if reply:
                             from core.memory_analysis import update_memories
                             from core.postgres_client import pg_client

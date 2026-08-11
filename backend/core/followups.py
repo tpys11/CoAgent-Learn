@@ -112,6 +112,5 @@ def generate_followups(api_key, project_id, dialogue_id, db, focus="purpose"):
             db.execute("UPDATE followups SET questions=%s, updated_at=CURRENT_TIMESTAMP WHERE dialogue_id=%s", (payload, dialogue_id))
         else:
             db.execute("INSERT INTO followups (dialogue_id, project_id, questions) VALUES (%s,%s,%s)", (dialogue_id, project_id, payload))
-        _s.stderr.write("[followups] 写入 " + str(len(questions)) + " 条" + NL); _s.stderr.flush()
     except Exception as e:
         _s.stderr.write("[followups] err=" + str(e)[:150] + NL); _s.stderr.flush()

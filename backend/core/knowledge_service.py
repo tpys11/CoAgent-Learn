@@ -3,7 +3,6 @@
 替换原 Chroma 实现；embedding 用 bge-small-zh-v1.5（中文，512维）。
 """
 import hashlib
-import json
 import re
 
 from core.sqlite_client import get_db
@@ -132,7 +131,7 @@ def _gen_context(chunk: str, full_text: str, api_key: str = "") -> str:
         )
         h = {"Authorization": "Bearer " + (api_key or _cfg.DEEPSEEK_API_KEY), "Content-Type": "application/json"}
         resp = _req.post(_cfg.DEEPSEEK_BASE_URL + "/chat/completions",
-            json={"model": "deepseek-v4-flash", "thinking": {"type": "disabled"}, "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}], "max_tokens": 80},
+            json={"model": "deepseek-v4-flash", "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}], "max_tokens": 80},
             headers=h, timeout=30)
         if resp.status_code == 200:
             txt = (resp.json()["choices"][0]["message"]["content"] or "").strip()

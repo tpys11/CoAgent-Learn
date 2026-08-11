@@ -2,7 +2,6 @@
 """SQLite 统一数据层：业务表 + sqlite-vec 向量表
 接口兼容原 pg_client（execute 返回 list[dict]），替换 PostgreSQL+Chroma。
 """
-import json
 import os
 import sqlite3
 import time
@@ -317,10 +316,6 @@ def get_db() -> SQLiteClient:
         get_db._instance = SQLiteClient()
         get_db._instance.init_tables()
     return get_db._instance
-
-
-# 兼容旧引用名
-db_client = get_db()
 
 
 if __name__ == "__main__":

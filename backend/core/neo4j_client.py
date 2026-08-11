@@ -40,7 +40,6 @@ class Neo4jClient:
             self.run("CREATE CONSTRAINT entity_project_unique IF NOT EXISTS FOR (e:Entity) REQUIRE (e.name, e.project_id) IS UNIQUE")
         except Exception:
             pass
-        print("[Neo4j] 约束初始化完成")
 
     def close(self):
         if self.driver:

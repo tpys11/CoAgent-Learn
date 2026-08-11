@@ -36,7 +36,6 @@ def update_memories(api_key, project_id, dialogue_id, db, session_id="default"):
     """读 messages 表，AI 提炼生成情景记忆(project_memories)和个人记忆(global_profile)"""
     NL = chr(10)
     import sys as _s
-    _s.stderr.write("[um] start pid=" + str(project_id)[:10] + " did=" + str(dialogue_id)[:10] + " sid=" + str(session_id)[:10] + NL); _s.stderr.flush()
 
     import requests as _req
     from core.config import config as _cfg
@@ -47,7 +46,6 @@ def update_memories(api_key, project_id, dialogue_id, db, session_id="default"):
             resp = _req.post(_cfg.DEEPSEEK_BASE_URL + "/chat/completions",
                 json={"model": "deepseek-v4-flash", "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]},
                 headers=h, timeout=60)
-            _s.stderr.write("[call] status=" + str(resp.status_code) + " len=" + str(len(resp.text)) + NL); _s.stderr.flush()
             if resp.status_code == 200:
                 return resp.json()["choices"][0]["message"]["content"] or ""
             return ""
@@ -65,7 +63,6 @@ def update_memories(api_key, project_id, dialogue_id, db, session_id="default"):
         msgs = db.execute("SELECT role, content FROM messages WHERE dialogue_id IN (" + ph + ") ORDER BY created_at LIMIT 60", tuple(d_ids))
         if not msgs:
             return
-        _s.stderr.write("[um] msgs=" + str(len(msgs)) + NL); _s.stderr.flush()
         convo = ""
         for m in msgs:
             c = str(m["content"] or "")[:300]
@@ -107,7 +104,6 @@ def update_memories(api_key, project_id, dialogue_id, db, session_id="default"):
                 db.execute("UPDATE project_memories SET data=%s,updated_at=CURRENT_TIMESTAMP WHERE project_id=%s", (json.dumps(old, ensure_ascii=False), project_id))
             else:
                 db.execute("INSERT INTO project_memories (session_id,project_id,data) VALUES (%s,%s,%s)", (session_id, project_id, json.dumps(data, ensure_ascii=False)))
-            _s.stderr.write("[um] 情景写入完成" + NL); _s.stderr.flush()
     except Exception as e:
         _s.stderr.write("[um] 情景异常=" + str(e)[:150] + NL); _s.stderr.flush()
 
@@ -151,6 +147,5 @@ def update_memories(api_key, project_id, dialogue_id, db, session_id="default"):
                 db.execute("UPDATE global_profile SET data=%s,updated_at=CURRENT_TIMESTAMP WHERE session_id=%s", (json.dumps(old, ensure_ascii=False), session_id))
             else:
                 db.execute("INSERT INTO global_profile (session_id,data) VALUES (%s,%s)", (session_id, json.dumps(old, ensure_ascii=False)))
-            _s.stderr.write("[um] 个人写入完成" + NL); _s.stderr.flush()
     except Exception as e:
         _s.stderr.write("[um] 个人异常=" + str(e)[:150] + NL); _s.stderr.flush()
