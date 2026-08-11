@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useRef } from 'react'
-import { Send, Bot, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Cpu, SlidersHorizontal, AlertTriangle, Search, FileText, LayoutTemplate, Image as ImageIcon, PenLine } from 'lucide-react'
+import { Send, Bot, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Cpu, SlidersHorizontal, AlertTriangle, Search, FileText, LayoutTemplate, Image as ImageIcon, PenLine, Square } from 'lucide-react'
 import type { Message, Project } from '../types'
 import MarkdownIt from 'markdown-it'
 
@@ -14,6 +14,7 @@ interface CenterPanelProps {
   currentProject: Project | null
   dialogueId?: string | null
   onSendMessage: (text: string, settings?: Record<string, any>) => void
+  onStop?: () => void
   statsCollapsed: boolean
   onToggleStats: () => void
   onOpenGuide?: () => void
@@ -27,7 +28,7 @@ interface CenterPanelProps {
   flowActiveAgent?: string | null
 }
 
-export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, statsCollapsed, onToggleStats, onOpenGuide, onOpenSettings, projectInitialized, draft, analyzeHint, onClearAnalyzeHint, onManualSetup, flowStatus, flowActiveAgent }: CenterPanelProps) {
+export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, onStop, statsCollapsed, onToggleStats, onOpenGuide, onOpenSettings, projectInitialized, draft, analyzeHint, onClearAnalyzeHint, onManualSetup, flowStatus, flowActiveAgent }: CenterPanelProps) {
   const [input, setInput] = useState('')
   // 记忆修改预填：draft 变化时写入输入框（从记忆界面跳转）
   useEffect(() => { if (draft) setInput(draft) }, [draft])
@@ -54,13 +55,13 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
     prevLoading.current = isLoading
   }, [isLoading])
   const msgScrollRef = useRef<HTMLDivElement>(null)
-  // stick-to-bottom：仅在用户位于底部附近时自动跟随流式内容；用户上滑查看历史则停止跟随，可自由滑动
+  // stick-to-bottom：仅在用户完全贴紧底部时自动跟随流式内容（容差 8px 防滚动抖动）；用户上滑查看历史则停止跟随，可自由滑动
   const stickToBottomRef = useRef(true)
   useEffect(() => {
     const el = msgScrollRef.current
     if (!el) return
     const onScroll = () => {
-      stickToBottomRef.current = (el.scrollHeight - el.scrollTop - el.clientHeight) < 60
+      stickToBottomRef.current = (el.scrollHeight - el.scrollTop - el.clientHeight) < 8
     }
     el.addEventListener('scroll', onScroll, { passive: true })
     return () => el.removeEventListener('scroll', onScroll)
@@ -235,6 +236,7 @@ const TEMPLATE_OPTIONS = [
   }
 
   const handleSend = () => {
+    if (isLoading) return  // 生成中：发送按钮已变为"停止"，Enter 等途径不触发新消息（避免并行流）
     const text = input.trim()
     if (!text && attachments.length === 0) return
     let full = text
@@ -694,12 +696,11 @@ const TEMPLATE_OPTIONS = [
                 )}
               </div>
               <button
-                onClick={handleSend}
-                disabled={isLoading}
-                className="w-9 h-9 ml-2 btn-primary flex items-center justify-center disabled:opacity-50"
-                title="发送"
+                onClick={isLoading ? (onStop || handleSend) : handleSend}
+                className={"w-9 h-9 ml-2 flex items-center justify-center" + (isLoading ? " bg-red-500 hover:bg-red-600 text-white" : " btn-primary")}
+                title={isLoading ? "停止生成" : "发送"}
               >
-                <Send size={15} />
+                {isLoading ? <Square size={14} /> : <Send size={15} />}
               </button>
             </div>
           </div>

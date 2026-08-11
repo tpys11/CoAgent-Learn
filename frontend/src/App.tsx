@@ -144,6 +144,10 @@ function App() {
   const activeDidRef = useRef<string | null>(null)
   // 本次回答是否已通过 answer_token 流式显示（是则 done 后直接替换，不二次打字机）
   const streamedRef = useRef(false)
+  // 手动停止：abort 控制器 + 用户停止标记 + 生成请求 id（POST /api/chat/stop 通知后端取消生成）
+  const abortCtrlRef = useRef<AbortController | null>(null)
+  const userStoppedRef = useRef(false)
+  const requestIdRef = useRef<string | null>(null)
   const stopReveal = () => {
     if (revealTimerRef.current != null) { cancelAnimationFrame(revealTimerRef.current); revealTimerRef.current = null }
     pendingQueueRef.current = []
@@ -395,6 +399,8 @@ function App() {
     setFlowStatus('正在等待模型响应…')
     setFlowActiveAgent(null)
     streamedRef.current = false
+    userStoppedRef.current = false
+    requestIdRef.current = null
     activeDidRef.current = did || null
     stopReveal()
     // 自动命名：对话名为「对话 N」时，按首条消息内容改名
@@ -442,6 +448,7 @@ function App() {
       // 超时：首字节超时（无任何数据到达 timeoutMs 则中止）+ 流中空闲超时（每收到数据重置，60s 无数据才断）
       const timeoutMs = (Math.min(120, Math.max(1, parseInt(localStorage.getItem('coagent-timeout') || '30', 10) || 30))) * 1000
       const ctrl = new AbortController()
+      abortCtrlRef.current = ctrl
       let firstByte = true
       const resetTimer = () => {
         clearTimeout(timeoutTimer)
@@ -470,6 +477,7 @@ function App() {
         for (const line of _lines) {
           if (!line.startsWith('data: ')) continue
           const data = JSON.parse(line.slice(6))
+          if (data.type === 'start') { requestIdRef.current = data.request_id || null; continue }
           if (data.type === 'error') {
             flowError = data.message || '请求出错'
             continue
@@ -593,9 +601,31 @@ function App() {
         }
       }catch(_ex){}
     } catch (e: any) {
-      setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: (e && e.name === 'AbortError') ? '⚠️ 请求超时：生成时间过长已中断，请重试或减少内容复杂度。' : ('抱歉，请求失败。' + (e && e.message ? '（' + e.message + '）' : '')) }) }))
-    } finally { clearTimeout(timeoutTimer); stopReveal(); setIsLoading(false) }
+      if (userStoppedRef.current) {
+        // 用户手动停止：保留已流式显示的内容为最终消息 + 标记（后端已取消且不落库，仅前端展示；输入框立即可继续提问）
+        setAllMessages(prev => {
+          const arr = [...(prev[did || ''] || [])]
+          if (arr.length) {
+            const last = arr[arr.length - 1]
+            if (last.role === 'assistant') {
+              arr[arr.length - 1] = { ...last, content: ((last.content || '').trim() ? last.content + '\n\n' : '') + '⏹ 已停止生成', think: mindchainRef.current }
+            }
+          }
+          return { ...prev, [did || '']: arr }
+        })
+      } else {
+        setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: (e && e.name === 'AbortError') ? '⚠️ 请求超时：生成时间过长已中断，请重试或减少内容复杂度。' : ('抱歉，请求失败。' + (e && e.message ? '（' + e.message + '）' : '')) }) }))
+      }
+    } finally { clearTimeout(timeoutTimer); stopReveal(); setIsLoading(false); abortCtrlRef.current = null }
   }, [currentDialogueId, agents, dialogues, currentProjectId])
+  // 手动停止生成：前端中断 SSE 流 + 通知后端取消（后端置位 cancel_event 后中断 LLM、不落库不后处理；已流式内容保留展示）
+  const handleStopGeneration = useCallback(() => {
+    userStoppedRef.current = true
+    try { if (abortCtrlRef.current) abortCtrlRef.current.abort() } catch (e) {}
+    if (requestIdRef.current) {
+      fetch('/api/chat/stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: requestIdRef.current }) }).catch(() => {})
+    }
+  }, [])
   const handleSaveAgent = useCallback((updated: AgentConfig) => {
     setAgents(prev => prev.map(a => a.id === updated.id ? updated : a))
   }, [])
@@ -662,6 +692,7 @@ function App() {
         messages={currentMessages} isLoading={isLoading} currentProject={currentProject}
         dialogueId={currentDialogueId}
         onSendMessage={handleSendMessage}
+        onStop={handleStopGeneration}
         statsCollapsed={statsCollapsed} onToggleStats={() => setStatsCollapsed(!statsCollapsed)}
           onOpenGuide={() => setShowGuide(true)}
           onOpenSettings={() => setShowSettings(true)}
