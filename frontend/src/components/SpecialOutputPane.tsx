@@ -4,7 +4,7 @@ import { FileText, Workflow, Network, Table as TableIcon, BarChart3, Volume2, Cl
 type FormKey = 'report' | 'flow' | 'tree' | 'table' | 'chart' | 'audio' | 'quiz'
 
 const FORMS: Array<{ key: FormKey; label: string; icon: any; desc: string }> = [
-  { key: 'report', label: '报告', icon: FileText, desc: '汇总对话生成的讲义、实操指南与测试题' },
+  { key: 'report', label: '报告', icon: FileText, desc: '汇总对话生成的讲解、测试题等学习内容' },
   { key: 'flow', label: '流程图', icon: Workflow, desc: '流程步骤图' },
   { key: 'tree', label: '树状图', icon: Network, desc: '基于上传资料的层级树状展示' },
   { key: 'table', label: '表格', icon: TableIcon, desc: '知识点掌握度等数据以表格呈现' },
