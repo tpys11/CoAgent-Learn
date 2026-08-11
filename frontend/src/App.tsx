@@ -159,10 +159,9 @@ function App() {
       const q = pendingQueueRef.current
       if (q.length === 0) return  // 队列空：停止调度（下一 token 到达时重新启动），避免空转
       revealTimerRef.current = requestAnimationFrame(tick)
-      // 逐字 reveal：正常每帧 1 字（≈60字/秒，"一个字一个字蹦出来"）；积压超阈值自动加速（2-3字/帧）跟上模型速度不落后
-      const headLen = q[0].text.length
-      const MAX_PER_FRAME = headLen > 40 ? 3 : (headLen > 12 ? 2 : 1)
-      let budget = MAX_PER_FRAME
+      // 思维链：到达即显示（每帧全部消费，显示速度 = 模型输出速度，reasonix 同款流畅体验；
+      // 队列仅做 ≤1 帧的渲染聚合，不人为限速——限速会导致积压滞后、观感变慢）
+      let budget = Number.MAX_SAFE_INTEGER
       const updates: Array<{ agent: string; text: string }> = []
       while (budget > 0 && q.length > 0) {
         const head = q[0]
