@@ -104,8 +104,9 @@ def _build_out_cand(agents: list, tpl: str) -> str:
 
 def create_workflow(api_key: str | None = None, settings: dict | None = None, on_token=None,
                     model: str | None = None, base_url: str | None = None, agents: list | None = None,
-                    on_answer=None):
+                    on_answer=None, cancel_event=None):
     # on_answer：主Agent生成节点的最终回答逐 token 直接流式推送（不进思维链，对话区实时显示）
+    # cancel_event：用户手动停止时置位（threading.Event），所有 LLM 流式调用内检查，尽早中断生成
     settings = settings or {}
     agents = agents or []
     tpl = settings.get("template") or "基础"  # 基础 / 检索增强 / 快速 / 输出增强
@@ -166,7 +167,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             llm.chat_stream(
                 [{"role": "system", "content": system_prompt},
                  {"role": "user", "content": user_prompt}],
-                collect
+                collect, cancel_event=cancel_event
             )
             raw = "".join(collected)
             m = re.search(r'```json\s*([\s\S]*?)\s*```', raw)
@@ -238,6 +239,10 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             state["processed_input"] = result.get("processed", state["user_input"])
             state["_plan"] = result.get("plan", []) or []
             state["complexity"] = result.get("complexity", "normal")
+            # 轻量分类兜底（flash 三分类：chat/qa/learn）：判为 chat 且无需子 Agent → 降级 simple 极速路径，
+            # 覆盖程序规则（_is_rule_simple）暂无覆盖的闲聊/寒暄场景（替代部分关键词规则）
+            if result.get("category") == "chat" and not state["_plan"]:
+                state["complexity"] = "simple"
             # 输出增强模板：解析主 Agent 按需选择的输出子 Agent
             if tpl == "输出增强":
                 _all_subs = cfg.get("subAgents") or []
@@ -454,8 +459,15 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 [{"role": "system", "content": _gen_sys},
                  {"role": "user", "content": _append_example(cfg, context)}],
                 (lambda _c: None),  # 思考（reasoning_content）不推送、不进思维链
-                on_content=lambda piece: (_gen_collect(piece), _gen_answer(piece))  # 仅回答 token：收集 + 直推对话区
+                on_content=lambda piece: (_gen_collect(piece), _gen_answer(piece)),  # 仅回答 token：收集 + 直推对话区
+                cancel_event=cancel_event
             )
+            # 用户手动停止：标记取消，不继续生成（已流式到前端的部分由前端保留展示）
+            if cancel_event and cancel_event.is_set():
+                state["cancelled"] = True
+                state["generated"] = "".join(_gen_collected).strip()
+                _stats(state, "generate", int((time.time() - t0) * 1000), 1, 0)
+                return state
             # markdown 直出：content 即最终回答（不再 JSON 提取组装；回答全程真流式，中断/出错时已输出内容仍可读）
             _raw = "".join(_gen_collected)
             state["generated"] = _raw.strip()
@@ -468,7 +480,15 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
 
     def review_node(state: AgentState) -> AgentState:
         """审核：一次调用完成符实性/难度适配/规范性三维审查 + 综合裁定（快模型）。
-        简单问题（complexity=simple）跳过审核直接交付，保证极短响应。"""
+        简单问题（complexity=simple）跳过审核直接交付，保证极短响应。
+        用户手动停止（cancelled）：跳过审核直接交付已生成部分（不浪费调用）。"""
+        if state.get("cancelled"):
+            generated = state.get("generated") or "（系统未生成内容）"
+            state["final_reply"] = generated
+            state.setdefault("steps", []).append({"agent": "审核", "status": "done", "detail": "已停止生成，跳过审核"})
+            state["reviewed"] = {"passed": True, "score": 0, "issues": [], "suggestion": "用户手动停止"}
+            _stats(state, "review", 0, 0, 0)
+            return state
         if state.get("complexity") == "simple":
             generated = state.get("generated") or "（系统未生成内容）"
             state["final_reply"] = generated

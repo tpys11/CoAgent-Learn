@@ -127,11 +127,12 @@ class BaseLLM:
             )
 
 
-    def chat_stream(self, messages: list[dict], on_token, temperature: float = 0.7, on_content=None):
+    def chat_stream(self, messages: list[dict], on_token, temperature: float = 0.7, on_content=None, cancel_event=None):
         """流式对话，每收到一个token调用on_token(chunk_text)。
         同时消费 delta.reasoning_content（v4 思考模式的推理内容，作为思维链推送）与 delta.content（最终回答），
         推理阶段 content 为空时仍能持续推送推理文本，保证前端思维链实时可见。
-        on_content：仅 content（最终回答）token 时调用——生成节点的回答内容直接流式推给前端。"""
+        on_content：仅 content（最终回答）token 时调用——生成节点的回答内容直接流式推给前端。
+        cancel_event：用户手动停止时置位（threading.Event），chunk 循环内检查，最多延迟一个 chunk 即中断生成。"""
         kwargs = {}
         if getattr(self, "thinking", None) is not None:
             # DeepSeek v4 思考模式开关：extra_body 透传（兼容旧版 openai SDK）
@@ -140,11 +141,15 @@ class BaseLLM:
             if self.thinking and self.effort:
                 kwargs["reasoning_effort"] = self.effort
         for attempt in range(self.max_retries):
+            if cancel_event and cancel_event.is_set():
+                return  # 用户手动停止：重试/等待间隙也立即退出
             try:
                 response = self.client.chat.completions.create(
                     model=self.model_name, messages=messages, temperature=temperature, stream=True, **kwargs
                 )
                 for chunk in response:
+                    if cancel_event and cancel_event.is_set():
+                        return  # 用户手动停止：立即中断（不抛错，上层按已取消处理）
                     delta = chunk.choices[0].delta
                     reasoning = getattr(delta, "reasoning_content", None) or ""
                     piece = delta.content or ""

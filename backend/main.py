@@ -84,6 +84,9 @@ async def get_project_memory(project_id: str, session_id: str = "default"):
 
 import threading as _threading
 
+# 手动停止注册表：request_id -> cancel_event（POST /api/chat/stop 置位，run_workflow 检查后中断生成）
+_active_cancels: dict = {}
+
 
 def _process_upload(project_id, text, source, session_id, api_key):
     """后台处理上传：切块+前缀+入库+抽取图谱"""
@@ -970,6 +973,9 @@ class ChatRequest(BaseModel):
     extra_followup_did: str | None = None  # 额外生成追问的目标对话（主对话完成后同步给第二对话）
     extra_followup_focus: str | None = None  # 额外追问风格（默认 expand）
 
+class StopRequest(BaseModel):
+    request_id: str  # /api/chat 的 start 事件返回的生成请求 id（用户手动停止时置位取消）
+
 class ChatStep(BaseModel):
     agent: str
     status: str
@@ -1218,6 +1224,11 @@ async def chat(req: ChatRequest):
             token_queue = queue.Queue()
             import sys as _s
             _s.stderr.write(f"[chat-dbg] api_key_len={len(req.api_key or '')} model={req.model} base_url={req.base_url}\n"); _s.stderr.flush()
+            # 生成请求 id + 取消事件：前端点"停止"时 POST /api/chat/stop 置位，run_workflow 各 LLM 调用尽早中断
+            import uuid as _uuid
+            request_id = _uuid.uuid4().hex[:16]
+            cancel_evt = threading.Event()
+            _active_cancels[request_id] = cancel_evt
 
             _seen_agents = set()
 
@@ -1243,7 +1254,7 @@ async def chat(req: ChatRequest):
                     _tpl = _settings.get("template") or "基础"
                     _agents = _apply_template(req.agents, _tpl)
                     wf = create_workflow(req.api_key, _settings, on_token, model=_model, base_url=req.base_url, agents=_agents,
-                                         on_answer=lambda piece: token_queue.put(("answer", piece)))
+                                         on_answer=lambda piece: token_queue.put(("answer", piece)), cancel_event=cancel_evt)
                     pid = req.project_id or "default"
                     _did = req.dialogue_id or "default"
                     # 先存用户消息（invoke 时 generate_node 才能读到）
@@ -1271,6 +1282,9 @@ async def chat(req: ChatRequest):
                         token_queue.put(("done", {"final_reply": _reply2, "steps": _edit["steps"], "mindchain": [], "task_stats": {}}))
                         return
                     result = wf.invoke({"user_input": req.message, "project_id": pid, "dialogue_id": _did, "session_id": req.session_id or "default", "mode": req.mode or "kb", "image": req.image or "", "steps": [], "mindchain": []})
+                    # 用户手动停止：不落库、不执行记忆/追问等后处理（前端已保留流式显示内容；避免旧线程与新消息乱序/竞态）
+                    if cancel_evt.is_set():
+                        return
                     # 记录本次任务的运行统计（Agent 界面·运行监控）
                     try:
                         import json as _json
@@ -1329,9 +1343,11 @@ async def chat(req: ChatRequest):
                         print("[记忆] err:", e)
                 except Exception as e:
                     token_queue.put(("error", str(e)))
+                finally:
+                    _active_cancels.pop(request_id, None)
 
             threading.Thread(target=run_workflow, daemon=True).start()
-            yield f"data: {json.dumps({'type': 'start'})}\n\n"
+            yield f"data: {json.dumps({'type': 'start', 'request_id': request_id})}\n\n"
             while True:
                 try:
                     msg = token_queue.get(timeout=0.05)
@@ -1357,3 +1373,14 @@ async def chat(req: ChatRequest):
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
     return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+@app.post("/api/chat/stop")
+async def chat_stop(req: StopRequest):
+    """用户手动停止：置位该请求的 cancel_event（幂等；未知/已结束请求直接返回 ok）。
+    与断线（不做任何事，服务端继续跑完、落库，客户端重连可取结果）语义区分：
+    只有收到明确的 stop 请求才取消生成，保证"非用户意愿断开继续跑完"。"""
+    evt = _active_cancels.get(req.request_id)
+    if evt:
+        evt.set()
+    return {"status": "ok"}
