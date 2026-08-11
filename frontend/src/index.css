@@ -169,3 +169,23 @@ body { font-size: var(--ui-font); }
 .md-think-body pre { background: var(--bg-hover); padding: 6px 8px; border-radius: 8px; overflow-x: auto; margin: 4px 0; }
 .md-think-body pre code { background: transparent; padding: 0; }
 .md-think-body blockquote { border-left: 2px solid var(--border-strong); padding-left: 8px; margin: 4px 0; color: var(--text-muted); }
+
+/* 回答 markdown 正文（对话区 AI 回答）：完整渲染标题/列表/代码/表格/引用 */
+.md-answer-body { line-height: 1.8; word-break: break-word; }
+.md-answer-body p { margin: 0.55em 0; }
+.md-answer-body h1 { font-size: 1.45em; font-weight: 700; margin: 1.1em 0 0.55em; }
+.md-answer-body h2 { font-size: 1.25em; font-weight: 700; margin: 1em 0 0.5em; padding-bottom: 0.2em; border-bottom: 1px solid var(--border-strong); }
+.md-answer-body h3 { font-size: 1.1em; font-weight: 700; margin: 0.9em 0 0.45em; }
+.md-answer-body h4 { font-size: 1em; font-weight: 600; margin: 0.8em 0 0.4em; }
+.md-answer-body ul, .md-answer-body ol { margin: 0.5em 0; padding-left: 1.6em; }
+.md-answer-body li { margin: 0.28em 0; }
+.md-answer-body strong { font-weight: 600; }
+.md-answer-body code { background: var(--bg-hover); padding: 1px 5px; border-radius: 4px; font-size: 0.9em; }
+.md-answer-body pre { background: var(--bg-hover); padding: 10px 12px; border-radius: 8px; overflow-x: auto; margin: 0.6em 0; }
+.md-answer-body pre code { background: transparent; padding: 0; font-size: 0.88em; }
+.md-answer-body blockquote { border-left: 3px solid var(--border-strong); padding-left: 12px; margin: 0.6em 0; color: var(--text-muted); }
+.md-answer-body table { border-collapse: collapse; margin: 0.7em 0; width: 100%; font-size: 0.95em; }
+.md-answer-body th, .md-answer-body td { border: 1px solid var(--border-strong); padding: 6px 12px; text-align: left; }
+.md-answer-body th { background: var(--bg-hover); font-weight: 600; }
+.md-answer-body a { color: var(--accent); text-decoration: underline; }
+.md-answer-body hr { border: none; border-top: 1px solid var(--border-strong); margin: 1em 0; }

@@ -2,6 +2,11 @@
 import { useEffect, useRef, useState, Fragment } from 'react'
 import { KnowledgeTree } from './KbTree'
 import SpecialOutputPane from './SpecialOutputPane'
+import MarkdownIt from 'markdown-it'
+
+// 第二对话回答渲染：markdown-it 轻量渲染（html:false 防 XSS，breaks 换行生效）
+const mdSide = new MarkdownIt({ html: false, linkify: true, breaks: true })
+const renderSideMd = (text: string) => mdSide.render(text || '')
 
 interface Props {
   messageCount: number
@@ -258,8 +263,8 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
                   ) : (
                     sideMessages.map((m, i) => (
                       <div key={i} className="flex flex-col gap-1.5 max-w-[95%]">
-                        <div className={`max-w-full px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap ${m.role === 'user' ? 'self-end btn-primary' : 'self-start chip'}`} style={{ borderRadius: m.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px' }}>
-                          {m.content}
+                        <div className={`max-w-full px-3 py-2 text-xs leading-relaxed ${m.role === 'user' ? 'self-end btn-primary whitespace-pre-wrap' : 'self-start chip'}`} style={{ borderRadius: m.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px' }}>
+                          {m.role === 'user' ? m.content : <div className="md-answer-body" dangerouslySetInnerHTML={{ __html: renderSideMd(m.content) }} />}
                         </div>
                         {/* 横向拓展/闲聊追问：附着于该条 AI 输出下方（豆包样式，仅最后一条输出） */}
                         {m.role === 'assistant' && i === sideMessages.length - 1 && sideFollowups.length > 0 && !sideLoading && (

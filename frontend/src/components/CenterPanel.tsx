@@ -368,9 +368,9 @@ const TEMPLATE_OPTIONS = [
                     {msg.think && msg.think.length > 0 && (
                       <div className="mb-2"><ThinkBlock items={msg.think} plain activeAgent={flowActiveAgent} activeStatus={flowStatus} /></div>
                     )}
-                    {/* 主Agent生成内容：直接流式输出在对话区（纯文本实时显示，完成后 markdown 渲染） */}
+                    {/* 主Agent生成内容：直接流式输出在对话区（逐字 reveal，节流 markdown 渲染） */}
                     {msg.content ? (
-                      <div className="text-sm leading-7 whitespace-pre-wrap break-words">{msg.content}</div>
+                      <StreamingMd text={msg.content} />
                     ) : null}
                     <div className="flex items-center gap-2 text-dim">
                       <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" />
@@ -385,7 +385,7 @@ const TEMPLATE_OPTIONS = [
                     {msg.think && msg.think.length > 0 && (
                       <AgentThinkList think={msg.think} />
                     )}
-                    <div dangerouslySetInnerHTML={{ __html: renderContent(msg.content) }} />
+                    <div className="md-answer-body" dangerouslySetInnerHTML={{ __html: renderMd(msg.content) }} />
                     {/* 运行统计：回答下面、追问上面，直接展开显示 */}
                     {(() => {
                       const stat = (msg.think || []).find(t => typeof t !== 'string' && (t as any).agent === '运行统计')
@@ -710,6 +710,22 @@ const TEMPLATE_OPTIONS = [
       </div>
     </main>
   )
+}
+
+/** 流式 markdown 渲染：reveal 逐字期间节流渲染（100ms 防抖），渲染未就绪时纯文本兜底；
+ * 完成后（shown===text）显示最终渲染结果，与完成态 renderMd 一致无跳变。 */
+function StreamingMd({ text }: { text: string }) {
+  const [html, setHtml] = useState('')
+  const [shown, setShown] = useState('')
+  useEffect(() => {
+    if (text === shown) return
+    const t = setTimeout(() => { setShown(text); setHtml(renderMd(text)) }, 100)
+    return () => clearTimeout(t)
+  }, [text, shown])
+  if (html && shown === text) {
+    return <div className="md-answer-body" dangerouslySetInnerHTML={{ __html: html }} />
+  }
+  return <div className="whitespace-pre-wrap break-words">{text}</div>
 }
 
 /** 思维链内容块：Agent 小标题 + 内容（以对话形式推送，不限定高度框）。
