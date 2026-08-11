@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useRef } from 'react'
-import { Send, Bot, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Cpu, SlidersHorizontal, AlertTriangle, Search, FileText, LayoutTemplate, Image as ImageIcon, PenLine, Square } from 'lucide-react'
+import { Send, Bot, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Cpu, SlidersHorizontal, AlertTriangle, Search, FileText, LayoutTemplate, Image as ImageIcon, PenLine, Square, ArrowDownToLine } from 'lucide-react'
 import type { Message, Project } from '../types'
 import MarkdownIt from 'markdown-it'
 
@@ -57,15 +57,25 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   const msgScrollRef = useRef<HTMLDivElement>(null)
   // stick-to-bottom：仅在用户完全贴紧底部时自动跟随流式内容（容差 8px 防滚动抖动）；用户上滑查看历史则停止跟随，可自由滑动
   const stickToBottomRef = useRef(true)
+  // 上滑超过阈值时显示"回到底部"悬浮按钮
+  const [showJumpBottom, setShowJumpBottom] = useState(false)
   useEffect(() => {
     const el = msgScrollRef.current
     if (!el) return
     const onScroll = () => {
-      stickToBottomRef.current = (el.scrollHeight - el.scrollTop - el.clientHeight) < 8
+      const dist = el.scrollHeight - el.scrollTop - el.clientHeight
+      stickToBottomRef.current = dist < 8
+      setShowJumpBottom(dist > 160)
     }
     el.addEventListener('scroll', onScroll, { passive: true })
     return () => el.removeEventListener('scroll', onScroll)
   }, [])
+  const jumpToBottom = () => {
+    const el = msgScrollRef.current
+    if (!el) return
+    stickToBottomRef.current = true
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+  }
   useEffect(() => {
     const el = msgScrollRef.current
     if (el && stickToBottomRef.current) el.scrollTop = el.scrollHeight
@@ -332,8 +342,9 @@ const TEMPLATE_OPTIONS = [
         </button>
       </div>
 
-      {/* 消息流：内容限宽居中 */}
-      <div ref={msgScrollRef} className="flex-1 overflow-y-auto">
+      {/* 消息流：内容限宽居中（外层 relative 用于"回到底部"悬浮按钮定位） */}
+      <div className="relative flex-1 min-h-0">
+      <div ref={msgScrollRef} className="h-full overflow-y-auto">
         <div className="max-w-3xl mx-auto px-6 py-6 flex flex-col gap-6">
           {/* 持久提示：课程记忆分析/基本情况修改（从记忆界面跳转进入时显示） */}
           {analyzeHint && (
@@ -428,6 +439,15 @@ const TEMPLATE_OPTIONS = [
           ))}
 
         </div>
+      </div>
+      {/* 上滑后悬浮"回到底部"按钮：点击平滑回到最新消息并恢复自动跟随 */}
+      {showJumpBottom && (
+        <button onClick={jumpToBottom}
+          className="absolute bottom-20 right-8 w-9 h-9 rounded-full flex items-center justify-center bg-white border hairline shadow-lg hover:shadow-xl text-dim hover:text-[#1a1a1a] transition-all z-10"
+          title="回到最新消息">
+          <ArrowDownToLine size={16} />
+        </button>
+      )}
       </div>
 
       {/* 底部：追问 chips + 浮动输入坞 */}
