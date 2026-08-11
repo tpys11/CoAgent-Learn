@@ -275,27 +275,44 @@ async def list_artifacts(project_id: str = "default"):
     msgs = pg_client.execute(
         "SELECT dialogue_id, content, created_at FROM messages WHERE role='assistant' AND dialogue_id IN (" + ph + ") ORDER BY created_at",
         tuple(d_ids))
-    # 生成物小节标题（graph.py 输出格式：## 📘 定制讲义 / ## 🛠 实操指南 / ## 📝 分阶测试题）
+    # 生成物小节标题（graph.py 新输出格式：正文即讲解、无板块标题；"## 📝 分阶测试题" 按需出现；
+    # 正则同时兼容旧格式 ## 📘 定制讲义 / ## 🛠 实操指南 / ## 溯源 历史数据）
     section_re = re.compile(r"^##\s*(?:📘|🛠|📝|🔍)?\s*(定制讲义|讲义|实操指南|分阶测试题|测试题|溯源)\s*$", re.M)
     artifacts = []
     for m in msgs:
         content = str(m["content"] or "")
         marks = list(section_re.finditer(content))
-        for i, mk in enumerate(marks):
-            title = mk.group(1)
-            if title == "溯源":
-                continue
-            end = marks[i + 1].start() if i + 1 < len(marks) else len(content)
-            body = content[mk.end():end].strip()
-            if not body:
-                continue
+        # 测试题：按 "## 分阶测试题" 标题截取（新格式按需出现）
+        quiz_m = next((mk for mk in marks if mk.group(1) in ("分阶测试题", "测试题")), None)
+        if quiz_m:
+            body = content[quiz_m.end():]
+            body = re.sub(r"_溯源：.*$", "", body, flags=re.S).strip()
+            if body:
+                artifacts.append({
+                    "id": str(m["dialogue_id"]) + "-quiz",
+                    "dialogue_id": m["dialogue_id"],
+                    "dialogue_name": d_names.get(m["dialogue_id"], ""),
+                    "type": "测试题",
+                    "title": "分阶测试题",
+                    "content": body,
+                    "created_at": m["created_at"],
+                })
+        # 讲解正文：新格式无板块标题直接全篇；旧格式取"定制讲义"段；去掉残留板块标题/溯源行
+        lec_m = next((mk for mk in marks if mk.group(1) in ("定制讲义", "讲义")), None)
+        if lec_m:
+            lecture = content[lec_m.end():quiz_m.start() if quiz_m else len(content)]
+        else:
+            lecture = content[:quiz_m.start() if quiz_m else len(content)]
+        lecture = section_re.sub("", lecture)
+        lecture = re.sub(r"_溯源：.*$", "", lecture, flags=re.S).strip()
+        if len(lecture) >= 100:
             artifacts.append({
-                "id": str(m["dialogue_id"]) + "-" + str(mk.start()),
+                "id": str(m["dialogue_id"]) + "-lec",
                 "dialogue_id": m["dialogue_id"],
                 "dialogue_name": d_names.get(m["dialogue_id"], ""),
-                "type": title,
-                "title": title,
-                "content": body,
+                "type": "讲义",
+                "title": "讲义",
+                "content": lecture,
                 "created_at": m["created_at"],
             })
     return {"artifacts": artifacts}
@@ -471,12 +488,11 @@ async def get_learning_log(project_id: str = ""):
             msgs = get_db().execute("SELECT content FROM messages WHERE dialogue_id=%s ORDER BY created_at", (d["id"],))
             for m in msgs or []:
                 c = str(m.get("content") or "")
-                if "## 📘 定制讲义" in c and not any(a["type"] == "讲义" for a in arts):
-                    arts.append({"type": "讲义", "title": "定制讲义"})
-                elif "## 🛠 实操指南" in c and not any(a["type"] == "实操指南" for a in arts):
-                    arts.append({"type": "实操指南", "title": "实操指南"})
-                elif "## 📝 分阶测试题" in c and not any(a["type"] == "测试题" for a in arts):
+                # 新格式：正文即讲解（无板块标题）→ 讲义；"## 📝 分阶测试题" 按需出现 → 测试题（兼容旧标题）
+                if "## 📝 分阶测试题" in c and not any(a["type"] == "测试题" for a in arts):
                     arts.append({"type": "测试题", "title": "分阶测试题"})
+                if len(c) >= 100 and not any(a["type"] == "讲义" for a in arts):
+                    arts.append({"type": "讲义", "title": "讲义"})
         except Exception:
             pass
         item = {
