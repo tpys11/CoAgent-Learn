@@ -519,6 +519,8 @@ function App() {
             const ch = data.chunk || ''
             if (ch) {
               streamedRef.current = true
+              // simple 流程无 step 事件：回答开始流式即更新状态（避免一直显示"等待模型响应"）
+              setFlowStatus('正在输出回答…')
               // 实时追加到占位消息 content：回答在对话区直接流式显示
               setAllMessages(prev => {
                 const arr = prev[activeDidRef.current || ''] || []
