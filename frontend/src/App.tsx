@@ -135,9 +135,9 @@ function App() {
   const [flowActiveAgent, setFlowActiveAgent] = useState<string | null>(null)
   // 当前对话状态文案（等待模型响应/正在规划/正在阅读/正在思考/正在审核…）
   const [flowStatus, setFlowStatus] = useState('')
-  // 需求澄清（reasonix 式）：plan 判定需求不明确时中断流程，前端弹选项；选项点击后作为新消息重发
-  const [activeClarify, setActiveClarify] = useState<{ question: string; options: string[] } | null>(null)
-  // 最近一次发送的用户消息（澄清选项点击后拼回原问题重发）
+  // 需求澄清（reasonix 式）：澄清条目直接写进思维链（"主Agent·规划"下弹选项），选择后同一轮流程内继续
+  const clarifyContinueRef = useRef(false)
+  // 最近一次发送的用户消息（澄清选项点击后拼回原问题继续）
   const lastUserMsgRef = useRef('')
   const [flowMindchain, setFlowMindchain] = useState<Array<{agent: string; content: string}>>([])
   const mindchainRef = useRef<Array<{agent: string; content: string}>>([])
@@ -417,7 +417,9 @@ function App() {
   }
   const handleSendMessage = useCallback(async (text: string, settings?: Record<string, any>) => {
     let did = currentDialogueId
-    setActiveClarify(null)
+    // 澄清继续模式：复用当前占位消息继续（不新建消息、不清空思维链），流程在同一轮内衔接
+    const continuing = clarifyContinueRef.current
+    clarifyContinueRef.current = false
     lastUserMsgRef.current = text.trim()
     if (!did && currentProjectId) {
       // 自动创建对话
@@ -443,11 +445,13 @@ function App() {
       } catch {}
     }
     if (!did) return
-    setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'user', content: text }] }))
-    // 立即插入空 assistant 占位：界面马上显示"思考中…"，结果到达后替换（思维链实时展示于底部卡片）
-    setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'assistant', content: '' }] }))
+    if (!continuing) {
+      setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'user', content: text }] }))
+      // 立即插入空 assistant 占位：界面马上显示"思考中…"，结果到达后替换（思维链实时展示于底部卡片）
+      setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'assistant', content: '' }] }))
+    }
     setIsLoading(true)
-    setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = []
+    if (!continuing) { setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = [] }
     setFlowStatus('正在等待模型响应…')
     setFlowActiveAgent(null)
     streamedRef.current = false
@@ -513,7 +517,7 @@ function App() {
       resetTimer()
       const res = await fetch('/api/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text.trim(), session_id: sessionId.current, dialogue_id: did, project_id: currentProjectId, api_key: apiKey, model: model, base_url: providerBaseUrls[provider], settings: mergedSettings, mode: (mergedSettings && mergedSettings.chatMode) || 'kb', image: (mergedSettings && mergedSettings.image) || undefined, agents: agents, extra_followup_did: secondDialogueIdRef.current, extra_followup_focus: 'expand' }),
+        body: JSON.stringify({ message: text.trim(), session_id: sessionId.current, dialogue_id: did, project_id: currentProjectId, api_key: apiKey, model: model, base_url: providerBaseUrls[provider], settings: mergedSettings, mode: (mergedSettings && mergedSettings.chatMode) || 'kb', image: (mergedSettings && mergedSettings.image) || undefined, agents: agents, extra_followup_did: secondDialogueIdRef.current, extra_followup_focus: 'expand', clarified: continuing }),
         signal: ctrl.signal,
       })
       if (!res.ok || !res.body) {
@@ -537,12 +541,16 @@ function App() {
           const data = JSON.parse(line.slice(6))
           if (data.type === 'start') { requestIdRef.current = data.request_id || null; continue }
           if (data.type === 'clarify') {
-            // 需求澄清：中断流，弹出选项让用户明确需求（删除空占位消息；选项点击后拼原问题重发）
-            setActiveClarify({ question: data.question || '请明确你的需求', options: Array.isArray(data.options) ? data.options : [] })
+            // 需求澄清（reasonix 式）：把澄清问题+选项写进思维链"主Agent·规划"条目（不结束流程、不删占位消息）；
+            // 用户点选项后同一轮流程内继续（复用占位消息与思维链）
+            const item: any = { agent: '主Agent·规划', content: '', clarify: { question: data.question || '请明确你的需求', options: Array.isArray(data.options) ? data.options : [] } }
+            setFlowMindchain(prev => { const next = [...prev, item]; mindchainRef.current = next; return next })
             setAllMessages(prev => {
               const arr = [...(prev[did || ''] || [])]
               const last = arr[arr.length - 1]
-              if (last && last.role === 'assistant' && !last.content && !(last.think && last.think.length)) arr.pop()
+              if (last && last.role === 'assistant' && last.content === '') {
+                arr[arr.length - 1] = { ...last, think: mindchainRef.current }
+              }
               return { ...prev, [did || '']: arr }
             })
             continue
@@ -704,12 +712,12 @@ function App() {
       fetch('/api/chat/stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: requestIdRef.current }) }).catch(() => {})
     }
   }, [])
-  // 需求澄清选项点击：原问题 + 选择作为新消息重发（option=null 表示直接生成、跳过澄清）
+  // 需求澄清选项点击（reasonix 式）：同一轮流程内继续——复用占位消息与思维链，以"原问题+选择"继续生成
   const handleClarifyPick = useCallback((option: string | null) => {
     const original = lastUserMsgRef.current || ''
-    setActiveClarify(null)
     if (!original) return
-    handleSendMessage(option ? `${original}\n（我选择：${option}）` : original)
+    clarifyContinueRef.current = true
+    handleSendMessage(option ? `${original}\n（我选择：${option}）` : original, { clarified: true })
   }, [handleSendMessage])
   const handleSaveAgent = useCallback((updated: AgentConfig) => {
     setAgents(prev => prev.map(a => a.id === updated.id ? updated : a))
@@ -778,7 +786,6 @@ function App() {
         dialogueId={currentDialogueId}
         onSendMessage={handleSendMessage}
         onStop={handleStopGeneration}
-        activeClarify={activeClarify}
         onClarifyPick={handleClarifyPick}
         statsCollapsed={statsCollapsed} onToggleStats={() => setStatsCollapsed(!statsCollapsed)}
           onOpenGuide={() => setShowGuide(true)}

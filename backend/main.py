@@ -988,6 +988,7 @@ class ChatRequest(BaseModel):
     followup_focus: str | None = None  # 追问风格：purpose=目的推进（默认）/ expand=横向拓展闲聊
     extra_followup_did: str | None = None  # 额外生成追问的目标对话（主对话完成后同步给第二对话）
     extra_followup_focus: str | None = None  # 额外追问风格（默认 expand）
+    clarified: bool = False  # 需求澄清后继续：用户已在思维链内选择，跳过再次澄清（同一轮流程内继续）
 
 class StopRequest(BaseModel):
     request_id: str  # /api/chat 的 start 事件返回的生成请求 id（用户手动停止时置位取消）
@@ -1258,6 +1259,9 @@ async def chat(req: ChatRequest):
                 try:
                     # Auto / 模型 Auto：AI 读取输入自动推断设置（模型 Auto 同时推断模型）
                     _settings = dict(req.settings or {})
+                    # 需求澄清后继续：用户已在思维链内选择，plan 跳过再次澄清（同一轮流程内继续）
+                    if req.clarified:
+                        _settings["clarified"] = True
                     _model = req.model
                     _tpl0 = _settings.get("template") or "基础"
                     if _settings.get("modelAuto") or _settings.get("auto"):

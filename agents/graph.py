@@ -266,6 +266,9 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 }
             else:
                 state["clarify"] = {}
+            # 需求澄清后继续（同一轮流程内）：用户已在思维链内选择，忽略模型再次输出的澄清
+            if settings.get("clarified"):
+                state["clarify"] = {}
             # 轻量分类兜底（flash 三分类：chat/qa/learn）：判为 chat 且无需子 Agent → 降级 simple 极速路径，
             # 覆盖程序规则（_is_rule_simple）暂无覆盖的闲聊/寒暄场景（替代部分关键词规则）
             if result.get("category") == "chat" and not state["_plan"]:

@@ -15,8 +15,7 @@ interface CenterPanelProps {
   dialogueId?: string | null
   onSendMessage: (text: string, settings?: Record<string, any>) => void
   onStop?: () => void
-  /** 需求澄清（reasonix 式）：plan 判定需求不明确时弹出的选项；option=null 表示直接生成 */
-  activeClarify?: { question: string; options: string[] } | null
+  /** 需求澄清（reasonix 式）：思维链内选项点击回调；option=null 表示直接生成 */
   onClarifyPick?: (option: string | null) => void
   statsCollapsed: boolean
   onToggleStats: () => void
@@ -31,7 +30,7 @@ interface CenterPanelProps {
   flowActiveAgent?: string | null
 }
 
-export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, onStop, activeClarify, onClarifyPick, statsCollapsed, onToggleStats, onOpenGuide, onOpenSettings, projectInitialized, draft, analyzeHint, onClearAnalyzeHint, onManualSetup, flowStatus, flowActiveAgent }: CenterPanelProps) {
+export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, onStop, onClarifyPick, statsCollapsed, onToggleStats, onOpenGuide, onOpenSettings, projectInitialized, draft, analyzeHint, onClearAnalyzeHint, onManualSetup, flowStatus, flowActiveAgent }: CenterPanelProps) {
   const [input, setInput] = useState('')
   // 记忆修改预填：draft 变化时写入输入框（从记忆界面跳转）
   useEffect(() => { if (draft) setInput(draft) }, [draft])
@@ -383,7 +382,7 @@ const TEMPLATE_OPTIONS = [
                   <div>
                     {/* 实时思维链：以对话形式推送（Agent 小标题+内容，随消息流滚动，不限定框；plain 纯文本渲染保帧率） */}
                     {msg.think && msg.think.length > 0 && (
-                      <div className="mb-2"><ThinkBlock items={msg.think} plain activeAgent={flowActiveAgent} activeStatus={flowStatus} /></div>
+                      <div className="mb-2"><ThinkBlock items={msg.think} plain activeAgent={flowActiveAgent} activeStatus={flowStatus} onClarifyPick={onClarifyPick} /></div>
                     )}
                     {/* 主Agent生成内容：直接流式输出在对话区（逐字 reveal，节流 markdown 渲染） */}
                     {msg.content ? (
@@ -400,7 +399,7 @@ const TEMPLATE_OPTIONS = [
                   <>
                     {/* 思考过程（按 Agent 逐个折叠）在输出内容上方 */}
                     {msg.think && msg.think.length > 0 && (
-                      <AgentThinkList think={msg.think} />
+                      <AgentThinkList think={msg.think} onClarifyPick={onClarifyPick} />
                     )}
                     <div className="md-answer-body" dangerouslySetInnerHTML={{ __html: renderMd(msg.content) }} />
                     {/* 运行统计：回答下面、追问上面，直接展开显示 */}
@@ -479,24 +478,6 @@ const TEMPLATE_OPTIONS = [
 
         </div>
       </div>
-      {/* 需求澄清卡片（reasonix 式）：plan 判定需求不明确时弹出，选项点击后以原问题+选择重发 */}
-      {activeClarify && (
-        <div className="mx-6 mb-3 border hairline rounded-xl px-4 py-3.5 bg-[var(--bg-panel)] flex flex-col gap-2.5">
-          <p className="text-xs font-semibold flex items-center gap-1.5"><MessagesSquare size={13} className="text-[var(--accent)]" /> {activeClarify.question}</p>
-          <div className="flex flex-wrap gap-1.5">
-            {activeClarify.options.map(o => (
-              <button key={o} onClick={() => onClarifyPick && onClarifyPick(o)}
-                className="chip text-left text-[12px] px-3 py-1.5 transition-all hover:opacity-80">
-                {o}
-              </button>
-            ))}
-          </div>
-          <div className="flex justify-end">
-            <button onClick={() => onClarifyPick && onClarifyPick(null)}
-              className="text-[10px] text-dim hover:text-[var(--text)]">直接生成（跳过澄清）</button>
-          </div>
-        </div>
-      )}
       {/* 上滑后悬浮"回到底部"按钮：点击平滑回到最新消息并恢复自动跟随 */}
       {showJumpBottom && (
         <button onClick={jumpToBottom}
@@ -808,7 +789,7 @@ function StreamingMd({ text }: { text: string }) {
 /** 思维链内容块：Agent 小标题 + 内容（以对话形式推送，不限定高度框）。
  * 折叠交互：新 Agent 默认展开；点击标题手动折叠/展开；Agent 执行完（活跃切换到下一个）自动折叠。
  * plain=true 时用纯文本渲染（实时逐字阶段）；完成态用 markdown 渲染。 */
-function ThinkBlock({ items, plain, activeAgent, activeStatus }: { items: Array<{ agent: string; content: string }> | string[]; plain?: boolean; activeAgent?: string | null; activeStatus?: string }) {
+function ThinkBlock({ items, plain, activeAgent, activeStatus, onClarifyPick }: { items: Array<{ agent: string; content: string; clarify?: { question: string; options: string[] } }> | string[]; plain?: boolean; activeAgent?: string | null; activeStatus?: string; onClarifyPick?: (option: string | null) => void }) {
   const list = (items || []).map(it => typeof it === 'string' ? { agent: '', content: it } : it)
   if (list.length === 0) return null
   // 每个条目的展开状态（按 index，新条目默认展开）
@@ -843,7 +824,22 @@ function ThinkBlock({ items, plain, activeAgent, activeStatus }: { items: Array<
           )}
           {openMap[i] !== false && (
             <div className="text-[11px] leading-relaxed text-dim pl-2 border-l-2 hairline">
-              {plain ? (
+              {/* 需求澄清（reasonix 式）：思维链内直接提问，选项点击后同一轮流程内继续 */}
+              {(it as any).clarify ? (
+                <div className="flex flex-col gap-1.5 py-1">
+                  <p className="text-[11px] font-medium text-[var(--text)]">🤔 {(it as any).clarify.question}</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {((it as any).clarify.options as string[]).map(o => (
+                      <button key={o} onClick={() => onClarifyPick && onClarifyPick(o)}
+                        className="chip text-left text-[11px] px-2.5 py-1 transition-all hover:opacity-80">
+                        {o}
+                      </button>
+                    ))}
+                  </div>
+                  <button onClick={() => onClarifyPick && onClarifyPick(null)}
+                    className="text-[10px] text-dim hover:text-[var(--text)] w-fit">直接生成（跳过澄清）</button>
+                </div>
+              ) : plain ? (
                 <div className="whitespace-pre-wrap break-words">{it.content}</div>
               ) : (
                 <div className="md-think-body" dangerouslySetInnerHTML={{ __html: renderMd(it.content) }} />
@@ -858,7 +854,7 @@ function ThinkBlock({ items, plain, activeAgent, activeStatus }: { items: Array<
 
 /** 思考过程（按 Agent 逐个折叠）：每个 Agent 一行折叠头，点击展开该 Agent 的思考内容；
  * 未展开时显示内容预览；展开后 markdown 渲染。 */
-function AgentThinkList({ think }: { think?: Array<{ agent: string; content: string }> | string[] }) {
+function AgentThinkList({ think, onClarifyPick }: { think?: Array<{ agent: string; content: string; clarify?: { question: string; options: string[] } }> | string[]; onClarifyPick?: (option: string | null) => void }) {
   const [openSet, setOpenSet] = useState<Set<number>>(new Set())
   const items = (think || []).map((it, i) => (typeof it === 'string' ? { agent: '', content: it, i } : { ...it, i }))
     .filter(it => it.agent !== '运行统计')  // 运行统计独立显示在回答下方
@@ -880,7 +876,7 @@ function AgentThinkList({ think }: { think?: Array<{ agent: string; content: str
           </button>
           {openSet.has(it.i) && (
             <div className="pl-1">
-              <ThinkBlock items={[{ agent: '', content: it.content }]} />
+              <ThinkBlock items={[{ agent: '', content: it.content, clarify: (it as any).clarify }]} onClarifyPick={onClarifyPick} />
             </div>
           )}
         </div>
