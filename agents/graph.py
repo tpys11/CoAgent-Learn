@@ -41,7 +41,8 @@ def _is_rule_simple(text: str) -> bool:
         return False
     # 学习/深度类关键词：出现则不算简单（宁可交给模型/深度路径）
     hard_keys = ["讲解", "推导", "证明", "为什么", "原理", "详解", "如何", "区别", "教程",
-                 "学习", "分析", "比较", "介绍", "总结", "作业", "题", "公式", "推导", "应用"]
+                 "学习", "分析", "比较", "介绍", "总结", "作业", "题", "公式", "推导", "应用",
+                 "讲讲", "讲一下", "说说", "说下", "什么是", "啥是", "解释", "了解", "理解", "掌握"]
     if any(k in t for k in hard_keys):
         return False
     # 问候/闲聊/简短问答
@@ -92,6 +93,7 @@ class AgentState(TypedDict):
     task_stats: Annotated[dict, _merge_stats]  # 并行节点各写各的统计
     sub_outputs: dict  # 子Agent产出：{kb: str, gen: str}
     _output_subs: list  # 输出增强模板：主Agent规划时按需选择的输出子Agent列表
+    clarify: dict  # 需求澄清（reasonix 式）：{question, options}，非空时中断流程，前端弹选项让用户明确需求
 
 
 # 检索增强模板的内置默认子 Agent（知识库与搜索 Agent 强制调用；用户配置了 subAgents 则用自定义）
@@ -255,6 +257,15 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             state["processed_input"] = result.get("processed", state["user_input"])
             state["_plan"] = result.get("plan", []) or []
             state["complexity"] = result.get("complexity", "normal")
+            # 需求澄清（reasonix 式）：learn 类且需求不明确 → 中断流程，前端弹选项让用户明确需求（不继续规划）
+            _clarify = result.get("clarify") if isinstance(result, dict) else None
+            if isinstance(_clarify, dict) and _clarify.get("options"):
+                state["clarify"] = {
+                    "question": str(_clarify.get("question", "")).strip() or "请明确你的需求",
+                    "options": [str(o).strip() for o in _clarify["options"] if str(o).strip()][:4],
+                }
+            else:
+                state["clarify"] = {}
             # 轻量分类兜底（flash 三分类：chat/qa/learn）：判为 chat 且无需子 Agent → 降级 simple 极速路径，
             # 覆盖程序规则（_is_rule_simple）暂无覆盖的闲聊/寒暄场景（替代部分关键词规则）
             if result.get("category") == "chat" and not state["_plan"]:
@@ -278,6 +289,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             "_plan": state.get("_plan", []),
             "_output_subs": state.get("_output_subs", []),
             "complexity": state.get("complexity", "normal"),
+            "clarify": state.get("clarify", {}),
             "mindchain": new_mc,
             "steps": new_steps,
             "task_stats": _stats("plan", int((time.time() - t0) * 1000), 1, len(thinking) // 2),
@@ -608,7 +620,10 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
 
     def route_plan(state: AgentState) -> list[str]:
         """一次规划 → 并行分发到需要的子 Agent（跳过被禁用的节点）
-        快速模板：不调用任何 Agent，直接进入主 Agent 生成（综合概述性记忆由生成节点合并已保存信息）"""
+        快速模板：不调用任何 Agent，直接进入主 Agent 生成（综合概述性记忆由生成节点合并已保存信息）
+        需求澄清：plan 判定需求不明确 → 中断流程（返回 end，前端弹选项，选择后作为新消息重发）"""
+        if state.get("clarify"):
+            return ["end"]
         if (settings.get("template") or "基础") == "快速":
             return ["generate"]
         plan = state.get("_plan") or []
@@ -648,7 +663,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         graph.add_node(name, node)
     graph.set_entry_point("plan")
     graph.add_conditional_edges("plan", route_plan,
-        {"study_memory": "study_memory", "kb": "kb", "generate": "generate"})
+        {"study_memory": "study_memory", "kb": "kb", "generate": "generate", "end": END})
     graph.add_edge("study_memory", "generate")
     graph.add_edge("kb", "generate")
     graph.add_edge("generate", "review")

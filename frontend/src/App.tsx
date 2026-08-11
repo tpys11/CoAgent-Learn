@@ -135,6 +135,10 @@ function App() {
   const [flowActiveAgent, setFlowActiveAgent] = useState<string | null>(null)
   // 当前对话状态文案（等待模型响应/正在规划/正在阅读/正在思考/正在审核…）
   const [flowStatus, setFlowStatus] = useState('')
+  // 需求澄清（reasonix 式）：plan 判定需求不明确时中断流程，前端弹选项；选项点击后作为新消息重发
+  const [activeClarify, setActiveClarify] = useState<{ question: string; options: string[] } | null>(null)
+  // 最近一次发送的用户消息（澄清选项点击后拼回原问题重发）
+  const lastUserMsgRef = useRef('')
   const [flowMindchain, setFlowMindchain] = useState<Array<{agent: string; content: string}>>([])
   const mindchainRef = useRef<Array<{agent: string; content: string}>>([])
   // 思维链逐字 reveal：收到 token 进队列，interval 按 16ms/字 逐字追加（打字机效果）
@@ -413,6 +417,8 @@ function App() {
   }
   const handleSendMessage = useCallback(async (text: string, settings?: Record<string, any>) => {
     let did = currentDialogueId
+    setActiveClarify(null)
+    lastUserMsgRef.current = text.trim()
     if (!did && currentProjectId) {
       // 自动创建对话
       const count = dialogues.filter(d => d.projectId === currentProjectId && !d.archived).length
@@ -530,6 +536,17 @@ function App() {
           if (!line.startsWith('data: ')) continue
           const data = JSON.parse(line.slice(6))
           if (data.type === 'start') { requestIdRef.current = data.request_id || null; continue }
+          if (data.type === 'clarify') {
+            // 需求澄清：中断流，弹出选项让用户明确需求（删除空占位消息；选项点击后拼原问题重发）
+            setActiveClarify({ question: data.question || '请明确你的需求', options: Array.isArray(data.options) ? data.options : [] })
+            setAllMessages(prev => {
+              const arr = [...(prev[did || ''] || [])]
+              const last = arr[arr.length - 1]
+              if (last && last.role === 'assistant' && !last.content && !(last.think && last.think.length)) arr.pop()
+              return { ...prev, [did || '']: arr }
+            })
+            continue
+          }
           if (data.type === 'error') {
             flowError = data.message || '请求出错'
             continue
@@ -687,6 +704,13 @@ function App() {
       fetch('/api/chat/stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: requestIdRef.current }) }).catch(() => {})
     }
   }, [])
+  // 需求澄清选项点击：原问题 + 选择作为新消息重发（option=null 表示直接生成、跳过澄清）
+  const handleClarifyPick = useCallback((option: string | null) => {
+    const original = lastUserMsgRef.current || ''
+    setActiveClarify(null)
+    if (!original) return
+    handleSendMessage(option ? `${original}\n（我选择：${option}）` : original)
+  }, [handleSendMessage])
   const handleSaveAgent = useCallback((updated: AgentConfig) => {
     setAgents(prev => prev.map(a => a.id === updated.id ? updated : a))
   }, [])
@@ -754,6 +778,8 @@ function App() {
         dialogueId={currentDialogueId}
         onSendMessage={handleSendMessage}
         onStop={handleStopGeneration}
+        activeClarify={activeClarify}
+        onClarifyPick={handleClarifyPick}
         statsCollapsed={statsCollapsed} onToggleStats={() => setStatsCollapsed(!statsCollapsed)}
           onOpenGuide={() => setShowGuide(true)}
           onOpenSettings={() => setShowSettings(true)}

@@ -1303,6 +1303,12 @@ async def chat(req: ChatRequest):
                     # 用户手动停止：不落库、不执行记忆/追问等后处理（前端已保留流式显示内容；避免旧线程与新消息乱序/竞态）
                     if cancel_evt.is_set():
                         return
+                    # 需求澄清（reasonix 式）：plan 判定用户需求不明确 → 发 clarify 事件中断流程，前端弹选项；
+                    # 不落库、不后处理（用户选择后作为新消息重发，走完整流程）
+                    _clarify = result.get("clarify") if isinstance(result, dict) else None
+                    if _clarify and _clarify.get("options"):
+                        token_queue.put(("clarify", {"question": _clarify.get("question", ""), "options": _clarify.get("options", [])}))
+                        return
                     # 特殊形式输出建议（M10 触发条件-模型判断）：normal 未取消时 flash 判断回答适合哪些形式；simple/失败返回 []
                     if result.get("complexity") != "simple":
                         result["special_suggestions"] = _suggest_special_forms(req.api_key, result.get("final_reply", ""), req.base_url)
@@ -1386,6 +1392,9 @@ async def chat(req: ChatRequest):
                     yield f"data: {json.dumps({'type': 'thought_token', 'agent': agent, 'chunk': chunk})}\n\n"
                 elif msg[0] == "answer":
                     yield f"data: {json.dumps({'type': 'answer_token', 'chunk': msg[1]})}\n\n"
+                elif msg[0] == "clarify":
+                    yield f"data: {json.dumps({'type': 'clarify', 'question': msg[1].get('question', ''), 'options': msg[1].get('options', [])})}\n\n"
+                    break
                 elif msg[0] == "done":
                     result = msg[1]
                     yield f"data: {json.dumps({'type': 'done', 'reply': result.get('final_reply', '处理完成'), 'steps': result.get('steps', []), 'mindchain': result.get('mindchain', []), 'task_stats': result.get('task_stats', {}), 'special_suggestions': result.get('special_suggestions', [])})}\n\n"

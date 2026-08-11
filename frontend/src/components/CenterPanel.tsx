@@ -15,6 +15,9 @@ interface CenterPanelProps {
   dialogueId?: string | null
   onSendMessage: (text: string, settings?: Record<string, any>) => void
   onStop?: () => void
+  /** 需求澄清（reasonix 式）：plan 判定需求不明确时弹出的选项；option=null 表示直接生成 */
+  activeClarify?: { question: string; options: string[] } | null
+  onClarifyPick?: (option: string | null) => void
   statsCollapsed: boolean
   onToggleStats: () => void
   onOpenGuide?: () => void
@@ -28,7 +31,7 @@ interface CenterPanelProps {
   flowActiveAgent?: string | null
 }
 
-export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, onStop, statsCollapsed, onToggleStats, onOpenGuide, onOpenSettings, projectInitialized, draft, analyzeHint, onClearAnalyzeHint, onManualSetup, flowStatus, flowActiveAgent }: CenterPanelProps) {
+export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, onStop, activeClarify, onClarifyPick, statsCollapsed, onToggleStats, onOpenGuide, onOpenSettings, projectInitialized, draft, analyzeHint, onClearAnalyzeHint, onManualSetup, flowStatus, flowActiveAgent }: CenterPanelProps) {
   const [input, setInput] = useState('')
   // 记忆修改预填：draft 变化时写入输入框（从记忆界面跳转）
   useEffect(() => { if (draft) setInput(draft) }, [draft])
@@ -476,6 +479,24 @@ const TEMPLATE_OPTIONS = [
 
         </div>
       </div>
+      {/* 需求澄清卡片（reasonix 式）：plan 判定需求不明确时弹出，选项点击后以原问题+选择重发 */}
+      {activeClarify && (
+        <div className="mx-6 mb-3 border hairline rounded-xl px-4 py-3.5 bg-[var(--bg-panel)] flex flex-col gap-2.5">
+          <p className="text-xs font-semibold flex items-center gap-1.5"><MessagesSquare size={13} className="text-[var(--accent)]" /> {activeClarify.question}</p>
+          <div className="flex flex-wrap gap-1.5">
+            {activeClarify.options.map(o => (
+              <button key={o} onClick={() => onClarifyPick && onClarifyPick(o)}
+                className="chip text-left text-[12px] px-3 py-1.5 transition-all hover:opacity-80">
+                {o}
+              </button>
+            ))}
+          </div>
+          <div className="flex justify-end">
+            <button onClick={() => onClarifyPick && onClarifyPick(null)}
+              className="text-[10px] text-dim hover:text-[var(--text)]">直接生成（跳过澄清）</button>
+          </div>
+        </div>
+      )}
       {/* 上滑后悬浮"回到底部"按钮：点击平滑回到最新消息并恢复自动跟随 */}
       {showJumpBottom && (
         <button onClick={jumpToBottom}
