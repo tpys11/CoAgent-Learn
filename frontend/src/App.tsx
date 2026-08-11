@@ -159,10 +159,10 @@ function App() {
       const q = pendingQueueRef.current
       if (q.length === 0) return  // 队列空：停止调度（下一 token 到达时重新启动），避免空转
       revealTimerRef.current = requestAnimationFrame(tick)
-      // 帧缓冲直显：后端已拆字推送（每字一事件），本队列只等 ≤1 帧（16ms）即全部显示——
-      // 无积压、无人为限速，显示速度 = 模型输出速度，且字粒度到达视觉上就是逐字
+      // 逐字摊派 + 自适应加速：字是成批到达的（模型一个 chunk 几十字），逐字显示必须把每批跨帧摊开
+      // （每帧至少 1 字）；积压每多 10 字每帧多消费 1 字 → 消费速率自动贴住模型速率，既不一段段也不滞后
       const _pendingTotal = q.reduce((s, h) => s + h.text.length, 0)
-      let budget = _pendingTotal
+      let budget = 1 + Math.floor(_pendingTotal / 10)
       const updates: Array<{ agent: string; text: string }> = []
       while (budget > 0 && q.length > 0) {
         const head = q[0]
@@ -217,8 +217,8 @@ function App() {
       const pending = answerPendingRef.current
       if (!pending) return  // 队列空：停止调度（下一 chunk 到达时重新启动）
       answerTimerRef.current = requestAnimationFrame(tick)
-      // 帧缓冲直显：后端已拆字推送，每帧全部显示（队列只等 ≤1 帧），无积压
-      const take = pending.length
+      // 逐字摊派 + 自适应加速（同思维链）：每帧至少 1 字，积压每多 10 字多 1 字/帧
+      const take = 1 + Math.floor(pending.length / 10)
       const piece = pending.slice(0, take)
       answerPendingRef.current = pending.slice(take)
       setAllMessages(prev => {
