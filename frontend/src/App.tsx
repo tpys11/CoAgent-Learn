@@ -159,10 +159,10 @@ function App() {
       const q = pendingQueueRef.current
       if (q.length === 0) return  // 队列空：停止调度（下一 token 到达时重新启动），避免空转
       revealTimerRef.current = requestAnimationFrame(tick)
-      // 思维链：逐字输出且速率自适应——每帧至少 1 字（保持"一个字一个字"），
-      // 积压每多 10 字每帧多消费 1 字：稳态显示速率自动贴近模型输出速率（不人为限速积压、也不整块蹦出）
+      // 帧缓冲直显：后端已拆字推送（每字一事件），本队列只等 ≤1 帧（16ms）即全部显示——
+      // 无积压、无人为限速，显示速度 = 模型输出速度，且字粒度到达视觉上就是逐字
       const _pendingTotal = q.reduce((s, h) => s + h.text.length, 0)
-      let budget = 1 + Math.floor(_pendingTotal / 10)
+      let budget = _pendingTotal
       const updates: Array<{ agent: string; text: string }> = []
       while (budget > 0 && q.length > 0) {
         const head = q[0]
@@ -207,6 +207,9 @@ function App() {
   // 正常每帧 1 字（≈60字/秒，接近模型极限速度且"一个字一个字蹦出来"）；积压超阈值自动加速（2-3字/帧）跟上不落后
   const answerPendingRef = useRef('')
   const answerTimerRef = useRef<number | null>(null)
+  // 围栏状态机（后端拆字推送后，``` 围栏逐字到达）：围栏内内容丢弃
+  const fenceBufRef = useRef('')
+  const fenceInRef = useRef(false)
   const startAnswerReveal = () => {
     if (answerTimerRef.current != null) return
     const tick = () => {
@@ -214,8 +217,8 @@ function App() {
       const pending = answerPendingRef.current
       if (!pending) return  // 队列空：停止调度（下一 chunk 到达时重新启动）
       answerTimerRef.current = requestAnimationFrame(tick)
-      // 逐字（每帧至少 1 字）+ 积压自适应加速（每多 10 字多 1 字/帧）：保持"一个字一个字"同时追上模型速度
-      const take = 1 + Math.floor(pending.length / 10)
+      // 帧缓冲直显：后端已拆字推送，每帧全部显示（队列只等 ≤1 帧），无积压
+      const take = pending.length
       const piece = pending.slice(0, take)
       answerPendingRef.current = pending.slice(take)
       setAllMessages(prev => {
@@ -446,6 +449,8 @@ function App() {
     requestIdRef.current = null
     answerPendingRef.current = ''
     if (answerTimerRef.current != null) { cancelAnimationFrame(answerTimerRef.current); answerTimerRef.current = null }
+    fenceBufRef.current = ''
+    fenceInRef.current = false
     activeDidRef.current = did || null
     stopReveal()
     // 自动命名：对话名为「对话 N」时，按首条消息内容改名
@@ -556,15 +561,22 @@ function App() {
           if (data.type === 'thought_token') {
             setFlowAgents(prev => prev.includes(data.agent) ? prev : [...prev, data.agent])
             setFlowActiveAgent(data.agent)
-            // 进入逐字 reveal 队列（打字机效果，一个字一个字冒出来）；清洗 ```json 围栏
-            const cleanChunk = data.chunk.replace(/```json[\s\S]*?```/g, '').replace(/```[\s\S]*?```/g, '')
-            if (!cleanChunk.trim()) continue  // 跳过空白 chunk（换行等），绝不能中断 SSE 解析循环
+            // 后端已拆字推送（每事件 1 字）：空白字符（换行等）必须保留；``` 围栏段用状态机丢弃（防 json 围栏显示）
+            const c = data.chunk || ''
+            if (c === '`') {
+              fenceBufRef.current += '`'
+              if (fenceBufRef.current.length >= 3) { fenceInRef.current = !fenceInRef.current; fenceBufRef.current = '' }
+              continue
+            }
+            fenceBufRef.current = ''
+            if (fenceInRef.current) continue  // 围栏内内容丢弃
+            if (!c) continue  // 空串跳过，绝不能中断 SSE 解析循环
             const q = pendingQueueRef.current
             const lastQ = q[q.length - 1]
             if (lastQ && lastQ.agent === data.agent) {
-              lastQ.text += cleanChunk
+              lastQ.text += c
             } else {
-              q.push({ agent: data.agent, text: cleanChunk })
+              q.push({ agent: data.agent, text: c })
             }
             startReveal()
           }

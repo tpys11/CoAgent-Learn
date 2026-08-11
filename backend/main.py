@@ -1252,7 +1252,9 @@ async def chat(req: ChatRequest):
                 if agent_name not in _seen_agents:
                     _seen_agents.add(agent_name)
                     token_queue.put(("step", agent_name))
-                token_queue.put(("token", agent_name, chunk))
+                # 拆字推送：chunk 拆成单字（含空白）逐字入队——前端"到达即显示"，逐字且速度=模型速度，无积压
+                for _c in chunk:
+                    token_queue.put(("token", agent_name, _c))
 
             def run_workflow():
                 try:
@@ -1270,7 +1272,7 @@ async def chat(req: ChatRequest):
                     _tpl = _settings.get("template") or "基础"
                     _agents = _apply_template(req.agents, _tpl)
                     wf = create_workflow(req.api_key, _settings, on_token, model=_model, base_url=req.base_url, agents=_agents,
-                                         on_answer=lambda piece: token_queue.put(("answer", piece)), cancel_event=cancel_evt)
+                                         on_answer=lambda piece: [token_queue.put(("answer", _c)) for _c in piece], cancel_event=cancel_evt)
                     pid = req.project_id or "default"
                     _did = req.dialogue_id or "default"
                     # 先存用户消息（invoke 时 generate_node 才能读到）
