@@ -8,7 +8,8 @@
 import json
 import re
 import time
-from typing import TypedDict
+import operator
+from typing import TypedDict, Annotated
 from langgraph.graph import StateGraph, END
 from core.base_llm import DeepSeekLLM
 from agents.prompts import (
@@ -54,6 +55,19 @@ def _is_rule_simple(text: str) -> bool:
     return False
 
 
+def _merge_stats(current: dict, update: dict) -> dict:
+    """task_stats 合并 reducer：并行节点（学情/知识库）各写各的节点统计，token_estimate 累加"""
+    out = dict(current or {})
+    for k, v in (update or {}).items():
+        if k == "token_estimate":
+            out[k] = (out.get(k, 0) or 0) + (v or 0)
+        elif isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = {**out[k], **v}
+        else:
+            out[k] = v
+    return out
+
+
 class AgentState(TypedDict):
     user_input: str
     mode: str
@@ -72,10 +86,10 @@ class AgentState(TypedDict):
     retry_count: int
     review_feedback: str
     final_reply: str
-    steps: list
+    steps: Annotated[list, operator.add]  # 并行节点各自追加步骤，按序合并
     _plan: list
-    mindchain: list  # [{agent, content}]
-    task_stats: dict  # 运行监控：{node: {ms, llm_calls}, token_estimate}
+    mindchain: Annotated[list, operator.add]  # 并行节点各自追加思维链条目，按序合并
+    task_stats: Annotated[dict, _merge_stats]  # 并行节点各写各的统计
     sub_outputs: dict  # 子Agent产出：{kb: str, gen: str}
     _output_subs: list  # 输出增强模板：主Agent规划时按需选择的输出子Agent列表
 
@@ -148,13 +162,9 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             user_prompt += "\n\n【输入输出示例】\n" + str(ex)
         return user_prompt
 
-    def _stats(state: AgentState, node: str, ms: int, llm_calls: int = 0, tokens: int = 0):
-        st = state.setdefault("task_stats", {})
-        cur = st.get(node, {"ms": 0, "llm_calls": 0})
-        cur["ms"] += ms
-        cur["llm_calls"] += llm_calls
-        st[node] = cur
-        st["token_estimate"] = st.get("token_estimate", 0) + tokens
+    def _stats(node: str, ms: int, llm_calls: int = 0, tokens: int = 0) -> dict:
+        """运行统计（返回局部 dict，不就地改 state）：节点随 partial 返回，_merge_stats reducer 合并各节点统计"""
+        return {node: {"ms": ms, "llm_calls": llm_calls}, "token_estimate": tokens}
 
     def think_then_json(llm, system_prompt: str, user_prompt: str, agent_name: str) -> tuple[str, dict]:
         """流式思考：用chat_stream逐token推送，收集完整文本后提取JSON"""
@@ -207,32 +217,38 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
 
     def plan_node(state: AgentState) -> AgentState:
         """主 Agent·规划调度：输入处理 + 一次规划出子 Agent 调用清单（可并行）"""
-        state.setdefault("steps", []).append({"agent": "主Agent·规划", "status": "running", "detail": "规划调度"})
-        state.setdefault("mindchain", [])
+        new_steps = [{"agent": "主Agent·规划", "status": "running", "detail": "规划调度"}]
+        new_mc: list = []
         t0 = time.time()
         cfg = _agent_cfg("main")
         # 程序规则优先：问候/闲聊/极短问答 → 直接判 simple 并跳过规划 LLM（马上生成，最快路径）
         if _is_rule_simple(state["user_input"]):
             _t0 = time.time()
-            state["processed_input"] = state["user_input"]
-            state["_plan"] = []
-            state["_output_subs"] = []
-            state["complexity"] = "simple"
-            _stats(state, "plan", int((time.time() - _t0) * 1000), 0, 0)
-            state["mindchain"].append({"agent": "主Agent·规划", "content": "简单问题（规则判定）：直接简洁回答"})
-            state.setdefault("steps", []).append({"agent": "主Agent·规划", "status": "done", "detail": "规则判定简单，跳过规划"})
-            return state
+            new_mc.append({"agent": "主Agent·规划", "content": "简单问题（规则判定）：直接简洁回答"})
+            new_steps.append({"agent": "主Agent·规划", "status": "done", "detail": "规则判定简单，跳过规划"})
+            return {
+                "processed_input": state["user_input"],
+                "_plan": [],
+                "_output_subs": [],
+                "complexity": "simple",
+                "mindchain": new_mc,
+                "steps": new_steps,
+                "task_stats": _stats("plan", int((time.time() - _t0) * 1000), 0, 0),
+            }
         # 快速模板：主 Agent 直接从综合概述性记忆生成，规划不再调用 LLM（流程只剩主 Agent 与审核与输出）
         if tpl == "快速":
             thinking = "快速模板：跳过规划，直接基于综合概述性记忆生成"
-            state["processed_input"] = state["user_input"]
-            state["_plan"] = []
-            state["_output_subs"] = []
-            state["complexity"] = "simple"  # 快速模板：跳过规划直接生成，视为简单问题
-            _stats(state, "plan", int((time.time() - t0) * 1000), 0, 0)
-            state["mindchain"].append({"agent": "主Agent·规划", "content": thinking})
-            state.setdefault("steps", []).append({"agent": "主Agent·规划", "status": "done", "detail": "快速模板：跳过规划"})
-            return state
+            new_mc.append({"agent": "主Agent·规划", "content": thinking})
+            new_steps.append({"agent": "主Agent·规划", "status": "done", "detail": "快速模板：跳过规划"})
+            return {
+                "processed_input": state["user_input"],
+                "_plan": [],
+                "_output_subs": [],
+                "complexity": "simple",  # 快速模板：跳过规划直接生成，视为简单问题
+                "mindchain": new_mc,
+                "steps": new_steps,
+                "task_stats": _stats("plan", int((time.time() - t0) * 1000), 0, 0),
+            }
         try:
             thinking, result = think_then_json(_pick_llm(cfg, llm_fast), _PLAN_PROMPT,
                 _append_example(cfg, state["user_input"]), "主Agent·规划")
@@ -254,15 +270,22 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             thinking = "规划失败，使用原始输入"
             state["processed_input"] = state["user_input"]
             state["_plan"] = []
-        _stats(state, "plan", int((time.time() - t0) * 1000), 1, len(thinking) // 2)
-        state["mindchain"].append({"agent": "主Agent·规划", "content": thinking})
-        state.setdefault("steps", []).append({"agent": "主Agent·规划", "status": "done",
+        new_mc.append({"agent": "主Agent·规划", "content": thinking})
+        new_steps.append({"agent": "主Agent·规划", "status": "done",
             "detail": f"规划完成，调用: {state['_plan'] if state['_plan'] else '无需子Agent'}"})
-        return state
+        return {
+            "processed_input": state.get("processed_input", state["user_input"]),
+            "_plan": state.get("_plan", []),
+            "_output_subs": state.get("_output_subs", []),
+            "complexity": state.get("complexity", "normal"),
+            "mindchain": new_mc,
+            "steps": new_steps,
+            "task_stats": _stats("plan", int((time.time() - t0) * 1000), 1, len(thinking) // 2),
+        }
 
     def study_memory_node(state: AgentState) -> AgentState:
         """学情与记忆管理：读取记忆（可关）+ 学情画像（快模型，一次调用）"""
-        state.setdefault("steps", []).append({"agent": "学情与记忆管理", "status": "running"})
+        new_steps = [{"agent": "学情与记忆管理", "status": "running"}]
         t0 = time.time()
         cfg = _agent_cfg("study")
         from skills.registry import registry
@@ -284,14 +307,20 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         except Exception:
             thinking = "学情分析异常"
             state["profile"] = {"level": "unknown"}
-        _stats(state, "study_memory", int((time.time() - t0) * 1000), 1, len(thinking) // 2)
-        state["mindchain"].append({"agent": "学情与记忆管理", "content": thinking})
-        state.setdefault("steps", []).append({"agent": "学情与记忆管理", "status": "done"})
-        return state
+        new_steps.append({"agent": "学情与记忆管理", "status": "done"})
+        # 只返回变更字段（partial）：不就地修改共享 state 的可变字段，避免并行分支互相污染/重复合并
+        return {
+            "profile": state.get("profile", {}),
+            "memory": state.get("memory", {}),
+            "mindchain": [{"agent": "学情与记忆管理", "content": thinking}],
+            "steps": new_steps,
+            "task_stats": _stats("study_memory", int((time.time() - t0) * 1000), 1, len(thinking) // 2),
+        }
 
     def kb_node(state: AgentState) -> AgentState:
         """知识库管理：知识库检索 + 联网搜索（工具调用，不耗 LLM 推理）"""
-        state.setdefault("steps", []).append({"agent": "知识库管理", "status": "running"})
+        new_steps = [{"agent": "知识库管理", "status": "running"}]
+        new_mc: list = []
         t0 = time.time()
         from skills.registry import registry
         query = state.get("processed_input", state["user_input"])
@@ -334,16 +363,26 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                     pass
             if sub_parts:
                 state["sub_outputs"] = {**(state.get("sub_outputs") or {}), "kb": "\n".join(sub_parts)}
-                state.setdefault("mindchain", []).append({"agent": "知识库与搜索·子Agent", "content": f"强制调用 {len(sub_parts)} 个子Agent整理资料"})
+                new_mc.append({"agent": "知识库与搜索·子Agent", "content": f"强制调用 {len(sub_parts)} 个子Agent整理资料"})
                 thinking += f"；子Agent整理 {len(sub_parts)} 项"
-        _stats(state, "kb", int((time.time() - t0) * 1000), 0, 0)
-        state["mindchain"].append({"agent": "知识库管理", "content": thinking})
-        state.setdefault("steps", []).append({"agent": "知识库管理", "status": "done"})
-        return state
+        new_mc.append({"agent": "知识库管理", "content": thinking})
+        new_steps.append({"agent": "知识库管理", "status": "done"})
+        # 只返回变更字段（partial）：不就地修改共享 state 的可变字段，避免并行分支互相污染/重复合并
+        out = {
+            "knowledge": state.get("knowledge", []),
+            "search_results": state.get("search_results", []),
+            "mindchain": new_mc,
+            "steps": new_steps,
+            "task_stats": _stats("kb", int((time.time() - t0) * 1000), 0, 0),
+        }
+        if state.get("sub_outputs"):
+            out["sub_outputs"] = state["sub_outputs"]
+        return out
 
     def generate_node(state: AgentState) -> AgentState:
-        """主 Agent·生成：基于学情/知识库/历史生成三种学习资源（强模型）"""
-        state.setdefault("steps", []).append({"agent": "主Agent·生成", "status": "running", "detail": "生成输出"})
+        """主 Agent·生成：基于学情/知识库/历史生成定制学习内容（强模型）"""
+        new_steps = [{"agent": "主Agent·生成", "status": "running", "detail": "生成输出"}]
+        new_mc: list = []
         t0 = time.time()
         cfg = _agent_cfg("main")
         NL = chr(10)
@@ -354,7 +393,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 from core.vision_service import describe_image
                 img_desc = describe_image(state["image"], "请详细描述这张图片的内容，包括其中的文字、物体、图表等")
                 context += "【用户上传的图片内容（已调用视觉分析）】" + NL + img_desc + NL
-                state.setdefault("mindchain", []).append({"agent": "视觉分析", "content": "已调用 glm-4v-flash 分析用户图片：" + img_desc[:150]})
+                new_mc.append({"agent": "视觉分析", "content": "已调用 glm-4v-flash 分析用户图片：" + img_desc[:150]})
             except Exception as e:
                 context += "【用户上传了图片，但视觉分析失败：" + str(e)[:100] + "】" + NL
         mode = state.get("mode", "kb")
@@ -391,7 +430,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 pass
             if _summary:
                 context += NL + "【综合概述性记忆】" + NL + NL.join(_summary) + NL
-                state.setdefault("mindchain", []).append({"agent": "综合概述性记忆", "content": "快速模板：合并个人/项目记忆与知识库概述，不额外调用各 Agent"})
+                new_mc.append({"agent": "综合概述性记忆", "content": "快速模板：合并个人/项目记忆与知识库概述，不额外调用各 Agent"})
             else:
                 context += NL + "【综合概述性记忆】暂无已保存的记忆与知识库数据（首次使用时请先走完整流程，让各 Agent 保存信息后再用快速模板）。" + NL
         if state.get("sub_outputs") and state["sub_outputs"].get("kb"):
@@ -431,7 +470,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                     _c = (_r.get("content") if isinstance(_r, dict) and _r.get("content") else _t) or ""
                     if _c:
                         sub_parts.append(f"【{sub.get('name')}{'（' + _form + '）' if _form else ''}】\n" + str(_c)[:1500])
-                        state.setdefault("mindchain", []).append({"agent": "主Agent·子Agent", "content": f"{sub.get('name')} 产出完成"})
+                        new_mc.append({"agent": "主Agent·子Agent", "content": f"{sub.get('name')} 产出完成"})
                 except Exception:
                     pass
             if sub_parts:
@@ -471,22 +510,34 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             )
             # 生成节点的思考落库进思维链（与前端流式一致；顺序：规划 → 生成 → 审核）
             if _gen_thinking:
-                state.setdefault("mindchain", []).append({"agent": "主Agent·生成", "content": "".join(_gen_thinking)[:1500]})
+                new_mc.append({"agent": "主Agent·生成", "content": "".join(_gen_thinking)[:1500]})
             # 用户手动停止：标记取消，不继续生成（已流式到前端的部分由前端保留展示）
             if cancel_event and cancel_event.is_set():
                 state["cancelled"] = True
                 state["generated"] = "".join(_gen_collected).strip()
-                _stats(state, "generate", int((time.time() - t0) * 1000), 1, 0)
-                return state
+                return {
+                    "cancelled": True,
+                    "generated": state["generated"],
+                    "mindchain": new_mc,
+                    "steps": new_steps,
+                    "task_stats": _stats("generate", int((time.time() - t0) * 1000), 1, 0),
+                }
             # markdown 直出：content 即最终回答（不再 JSON 提取组装；回答全程真流式，中断/出错时已输出内容仍可读）
             _raw = "".join(_gen_collected)
             state["generated"] = _raw.strip()
         except Exception as e:
             state["generated"] = f"抱歉，生成内容时出现错误：{str(e)[:200]}"
-        _stats(state, "generate", int((time.time() - t0) * 1000), 1, len("".join(_gen_collected)) // 2)
-        # 生成节点的思考不写入思维链（回答已直接流式输出）
-        state.setdefault("steps", []).append({"agent": "主Agent·生成", "status": "done", "detail": "生成完成"})
-        return state
+        new_steps.append({"agent": "主Agent·生成", "status": "done", "detail": "生成完成"})
+        # 只返回变更字段（partial）：不就地修改共享 state 的可变字段，避免并行分支互相污染/重复合并
+        out = {
+            "generated": state.get("generated", ""),
+            "mindchain": new_mc,
+            "steps": new_steps,
+            "task_stats": _stats("generate", int((time.time() - t0) * 1000), 1, len("".join(_gen_collected)) // 2),
+        }
+        if state.get("sub_outputs"):
+            out["sub_outputs"] = state["sub_outputs"]
+        return out
 
     def review_node(state: AgentState) -> AgentState:
         """审核：一次调用完成符实性/难度适配/规范性三维审查 + 综合裁定（快模型）。
@@ -495,19 +546,28 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         if state.get("cancelled"):
             generated = state.get("generated") or "（系统未生成内容）"
             state["final_reply"] = generated
-            state.setdefault("steps", []).append({"agent": "审核", "status": "done", "detail": "已停止生成，跳过审核"})
             state["reviewed"] = {"passed": True, "score": 0, "issues": [], "suggestion": "用户手动停止"}
-            _stats(state, "review", 0, 0, 0)
-            return state
+            return {
+                "final_reply": state["final_reply"],
+                "reviewed": state["reviewed"],
+                "mindchain": [],
+                "steps": [{"agent": "审核", "status": "done", "detail": "已停止生成，跳过审核"}],
+                "task_stats": _stats("review", 0, 0, 0),
+            }
         if state.get("complexity") == "simple":
             generated = state.get("generated") or "（系统未生成内容）"
             state["final_reply"] = generated
-            state.setdefault("steps", []).append({"agent": "审核", "status": "done", "detail": "简单问题跳过审核"})
             state["reviewed"] = {"passed": True, "score": 100, "issues": [], "suggestion": "简单问题跳过审核"}
-            _stats(state, "review", 0, 0, 0)
-            return state
+            return {
+                "final_reply": state["final_reply"],
+                "reviewed": state["reviewed"],
+                "mindchain": [],
+                "steps": [{"agent": "审核", "status": "done", "detail": "简单问题跳过审核"}],
+                "task_stats": _stats("review", 0, 0, 0),
+            }
         state["retry_count"] = state.get("retry_count", 0) + 1
-        state.setdefault("steps", []).append({"agent": "审核", "status": "running"})
+        new_steps = [{"agent": "审核", "status": "running"}]
+        new_mc: list = []
         t0 = time.time()
         cfg = _agent_cfg("review")
         generated = state.get("generated", "")
@@ -522,9 +582,8 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         except Exception:
             thinking = "审核异常"
             state["reviewed"] = {"passed": True, "score": 80, "verdict": "审核异常，默认通过"}
-        _stats(state, "review", int((time.time() - t0) * 1000), 1, len(thinking) // 2)
-        state["mindchain"].append({"agent": "审核", "content": thinking})
-        state.setdefault("steps", []).append({"agent": "审核", "status": "done",
+        new_mc.append({"agent": "审核", "content": thinking})
+        new_steps.append({"agent": "审核", "status": "done",
             "detail": f"score={state['reviewed'].get('score', 0)} passed={state['reviewed'].get('passed', True)}"})
         # 输出：审核通过直接交付；不通过（已到重试上限）交付并标注
         generated = state.get("generated") or "（系统未生成内容）"
@@ -533,8 +592,17 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             state["final_reply"] = generated
         else:
             state["final_reply"] = generated + f"\n\n> ⚠️ 审核未完全通过 (重试{state.get('retry_count', 0)}次)"
-        state.setdefault("steps", []).append({"agent": "输出", "status": "done"})
-        return state
+        new_steps.append({"agent": "输出", "status": "done"})
+        # 只返回变更字段（partial）：不就地修改共享 state 的可变字段
+        return {
+            "final_reply": state.get("final_reply", ""),
+            "reviewed": state.get("reviewed", {}),
+            "retry_count": state.get("retry_count", 0),
+            "review_feedback": state.get("review_feedback", ""),
+            "mindchain": new_mc,
+            "steps": new_steps,
+            "task_stats": _stats("review", int((time.time() - t0) * 1000), 1, len(thinking) // 2),
+        }
 
     # ---------------- 路由 ----------------
 
