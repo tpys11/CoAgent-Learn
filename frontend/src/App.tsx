@@ -201,6 +201,46 @@ function App() {
     }
     revealTimerRef.current = requestAnimationFrame(tick)
   }
+  // ---------- 回答区逐字 reveal：answer_token 到达先入 pending，rAF 每帧逐字追加到占位消息 content ----------
+  // 正常每帧 1 字（≈60字/秒，接近模型极限速度且"一个字一个字蹦出来"）；积压超阈值自动加速（2-3字/帧）跟上不落后
+  const answerPendingRef = useRef('')
+  const answerTimerRef = useRef<number | null>(null)
+  const startAnswerReveal = () => {
+    if (answerTimerRef.current != null) return
+    const tick = () => {
+      answerTimerRef.current = null
+      const pending = answerPendingRef.current
+      if (!pending) return  // 队列空：停止调度（下一 chunk 到达时重新启动）
+      answerTimerRef.current = requestAnimationFrame(tick)
+      const take = pending.length > 40 ? 3 : (pending.length > 12 ? 2 : 1)
+      const piece = pending.slice(0, take)
+      answerPendingRef.current = pending.slice(take)
+      setAllMessages(prev => {
+        const arr = prev[activeDidRef.current || ''] || []
+        const lastMsg = arr[arr.length - 1]
+        if (lastMsg && lastMsg.role === 'assistant') {
+          return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, content: (lastMsg.content || '') + piece }] }
+        }
+        return prev
+      })
+    }
+    answerTimerRef.current = requestAnimationFrame(tick)
+  }
+  const flushAnswerReveal = () => {
+    // done/停止前调用：把队列剩余一次性追加（避免内容丢失或结尾跳变）
+    if (answerTimerRef.current != null) { cancelAnimationFrame(answerTimerRef.current); answerTimerRef.current = null }
+    const rest = answerPendingRef.current
+    answerPendingRef.current = ''
+    if (!rest) return
+    setAllMessages(prev => {
+      const arr = prev[activeDidRef.current || ''] || []
+      const lastMsg = arr[arr.length - 1]
+      if (lastMsg && lastMsg.role === 'assistant') {
+        return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, content: (lastMsg.content || '') + rest }] }
+      }
+      return prev
+    })
+  }
   const sessionId = useRef(SESSION_ID)
   // 第二对话 id：App 持有（主对话完成后为它生成横向拓展追问），传给 RightPanel 使用
   const secondDialogueIdRef = useRef('sd-' + Math.random().toString(36).slice(2) + Date.now().toString(36))
@@ -401,6 +441,8 @@ function App() {
     streamedRef.current = false
     userStoppedRef.current = false
     requestIdRef.current = null
+    answerPendingRef.current = ''
+    if (answerTimerRef.current != null) { cancelAnimationFrame(answerTimerRef.current); answerTimerRef.current = null }
     activeDidRef.current = did || null
     stopReveal()
     // 自动命名：对话名为「对话 N」时，按首条消息内容改名
@@ -529,15 +571,9 @@ function App() {
               streamedRef.current = true
               // simple 流程无 step 事件：回答开始流式即更新状态（避免一直显示"等待模型响应"）
               setFlowStatus('正在输出回答…')
-              // 实时追加到占位消息 content：回答在对话区直接流式显示
-              setAllMessages(prev => {
-                const arr = prev[activeDidRef.current || ''] || []
-                const lastMsg = arr[arr.length - 1]
-                if (lastMsg && lastMsg.role === 'assistant') {
-                  return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, content: (lastMsg.content || '') + ch }] }
-                }
-                return prev
-              })
+              // 先入逐字 reveal 队列：一个字一个字蹦出来（不整块追加，避免"一串字一串字"）
+              answerPendingRef.current += ch
+              startAnswerReveal()
             }
           }
           if (data.type === 'done') {
@@ -545,6 +581,8 @@ function App() {
             setFlowStatus('')
             setFlowActiveAgent(null)
             stopReveal()
+            // 回答 reveal 队列剩余一次性追加（content 补全后再走 streamedRef 替换，无跳变）
+            flushAnswerReveal()
             // 最终同步一次占位消息 think（降频期间可能滞后）
             setAllMessages(prev => {
               const arr = prev[activeDidRef.current || ''] || []
@@ -603,6 +641,7 @@ function App() {
     } catch (e: any) {
       if (userStoppedRef.current) {
         // 用户手动停止：保留已流式显示的内容为最终消息 + 标记（后端已取消且不落库，仅前端展示；输入框立即可继续提问）
+        flushAnswerReveal()  // 队列剩余补全，保留尽可能多的内容
         setAllMessages(prev => {
           const arr = [...(prev[did || ''] || [])]
           if (arr.length) {
