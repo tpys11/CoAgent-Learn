@@ -710,14 +710,29 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                                       </div>
                                     </div>
                                   ) : (
-                                    <div className="border hairline rounded-xl px-5 py-4 bg-[var(--bg-input)] min-h-[120px] text-[13px] leading-7 text-[var(--text)]">
-                                      {['课程结束时间', '平均每日投入时间', '其他'].map(k => (data?.fields[k] || (k === '课程结束时间' ? data?.fields?.['时间限制'] : '') || '').trim() ? (
-                                        <div key={k} className="flex items-baseline gap-2 text-[11px] leading-6">
-                                          <span className="font-semibold text-[var(--text)] flex-shrink-0">{k}</span>
-                                          <span className="text-[var(--text-muted)]">{data?.fields[k]}</span>
-                                        </div>
-                                      ) : null)}
-                                      {(data?.fields['抽象项目情况'] || '').trim() ? <MiniMD text={data?.fields['抽象项目情况'] || ''} /> : null}
+                                    <div className="border hairline rounded-xl px-5 py-4 bg-[var(--bg-input)] text-[13px] leading-7 text-[var(--text)]">
+                                      {/* 只显示一点字：截断预览 */}
+                                      <div className="line-clamp-4 overflow-hidden">
+                                        {['课程结束时间', '平均每日投入时间', '其他'].map(k => (data?.fields[k] || (k === '课程结束时间' ? data?.fields?.['时间限制'] : '') || '').trim() ? (
+                                          <div key={k} className="flex items-baseline gap-2 text-[11px] leading-6">
+                                            <span className="font-semibold text-[var(--text)] flex-shrink-0">{k}</span>
+                                            <span className="text-[var(--text-muted)]">{data?.fields[k]}</span>
+                                          </div>
+                                        ) : null)}
+                                        {(data?.fields['抽象项目情况'] || '').trim() ? <MiniMD text={data?.fields['抽象项目情况'] || ''} /> : null}
+                                      </div>
+                                      {/* 右下角高亮字（非按钮）：展开为独立显示窗口 */}
+                                      <div className="flex justify-end mt-1.5">
+                                        <span onClick={() => setDetailCard({
+                                          key: '基本情况', label: '基本情况',
+                                          val: ['课程结束时间', '平均每日投入时间', '其他'].map(k => {
+                                            const v = (data?.fields[k] || (k === '课程结束时间' ? data?.fields?.['时间限制'] : '') || '').trim()
+                                            return v ? `${k}：${v}` : ''
+                                          }).filter(Boolean).join('\n')
+                                            + ((data?.fields['抽象项目情况'] || '').trim() ? '\n\n抽象项目情况：\n' + data?.fields['抽象项目情况'] : '')
+                                        })}
+                                          className="text-[10px] font-semibold text-[var(--accent)] cursor-pointer hover:underline select-none">展开更多</span>
+                                      </div>
                                     </div>
                                   )}
                                 </section>
@@ -734,9 +749,17 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                                               onChange={(e) => { const v = e.target.value; setEditFields(prev => ({ ...prev, [k]: v })); onEditChange?.({ ...editFields, [k]: v }) }}
                                               className="w-full border hairline rounded-lg px-2 py-1.5 bg-[var(--bg-input)] text-xs leading-relaxed outline-none resize-y focus:border-[var(--accent)]" />
                                           ) : (
-                                            <div className="text-xs leading-relaxed text-[var(--text)] line-clamp-5">
-                                              {(data?.fields[k] || '').trim() ? <MiniMD text={data?.fields[k] || ''} /> : null}
-                                            </div>
+                                            <>
+                                              {/* 只显示一点字：截断预览 */}
+                                              <div className="text-xs leading-relaxed text-[var(--text)] line-clamp-5">
+                                                {(data?.fields[k] || '').trim() ? <MiniMD text={data?.fields[k] || ''} /> : null}
+                                              </div>
+                                              {/* 右下角高亮字（非按钮）：展开为独立显示窗口 */}
+                                              <div className="flex justify-end mt-auto">
+                                                <span onClick={() => setDetailCard({ key: k, label: title, val: data?.fields[k] || '' })}
+                                                  className="text-[10px] font-semibold text-[var(--accent)] cursor-pointer hover:underline select-none">展开更多</span>
+                                              </div>
+                                            </>
                                           )}
                                         </div>
                                       ))}
