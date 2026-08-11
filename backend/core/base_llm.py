@@ -127,11 +127,12 @@ class BaseLLM:
             )
 
 
-    def chat_stream(self, messages: list[dict], on_token, temperature: float = 0.7, on_content=None, cancel_event=None):
+    def chat_stream(self, messages: list[dict], on_token, temperature: float = 0.7, on_content=None, cancel_event=None, on_reasoning=None):
         """流式对话，每收到一个token调用on_token(chunk_text)。
         同时消费 delta.reasoning_content（v4 思考模式的推理内容，作为思维链推送）与 delta.content（最终回答），
         推理阶段 content 为空时仍能持续推送推理文本，保证前端思维链实时可见。
         on_content：仅 content（最终回答）token 时调用——生成节点的回答内容直接流式推给前端。
+        on_reasoning：仅 reasoning_content（思考）token 时调用——生成节点的思考单独流式进思维链（与回答内容区分）。
         cancel_event：用户手动停止时置位（threading.Event），chunk 循环内检查，最多延迟一个 chunk 即中断生成。"""
         kwargs = {}
         if getattr(self, "thinking", None) is not None:
@@ -155,6 +156,8 @@ class BaseLLM:
                     piece = delta.content or ""
                     if reasoning:
                         on_token(reasoning)
+                        if on_reasoning:
+                            on_reasoning(reasoning)
                     if piece:
                         on_token(piece)
                         if on_content:

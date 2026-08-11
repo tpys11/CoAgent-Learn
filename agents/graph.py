@@ -445,10 +445,16 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             # 简单问题：系统提示改为纯文本回答（直接输出回答文本，无解释/无JSON/无围栏），content 即回答本身
             _gen_sys = "你是一个友好的AI助手。请直接、简洁地回答用户的问题，只输出回答文本本身，" \
                        "不要输出任何解释、说明、JSON或代码围栏，直接开始回答。" if _is_simple else _GENERATE_PROMPT
-            # 生成节点的思考不进思维链；所有模式：回答内容（content）逐 token 直接流式推送给前端（对话区实时显示）
+            # 生成节点的思考（reasoning）流式进思维链（thought_token，"主Agent·生成"标题下逐字显示）；
+            # 回答内容（content）逐 token 直接流式推送给前端（对话区实时显示）
             _gen_collected = []
+            _gen_thinking = []
             def _gen_collect(chunk):
                 _gen_collected.append(chunk)
+            def _gen_think(chunk):
+                _gen_thinking.append(chunk)
+                if on_token:
+                    on_token("主Agent·生成", chunk)
             def _gen_answer(piece):
                 if on_answer:
                     on_answer(piece)
@@ -458,10 +464,14 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             _gen_llm.chat_stream(
                 [{"role": "system", "content": _gen_sys},
                  {"role": "user", "content": _append_example(cfg, context)}],
-                (lambda _c: None),  # 思考（reasoning_content）不推送、不进思维链
+                (lambda _c: None),  # 通用通道不推（避免回答内容混入思维链）
+                on_reasoning=_gen_think if not _is_simple else None,  # 仅思考（reasoning_content）流式进思维链
                 on_content=lambda piece: (_gen_collect(piece), _gen_answer(piece)),  # 仅回答 token：收集 + 直推对话区
                 cancel_event=cancel_event
             )
+            # 生成节点的思考落库进思维链（与前端流式一致；顺序：规划 → 生成 → 审核）
+            if _gen_thinking:
+                state.setdefault("mindchain", []).append({"agent": "主Agent·生成", "content": "".join(_gen_thinking)[:1500]})
             # 用户手动停止：标记取消，不继续生成（已流式到前端的部分由前端保留展示）
             if cancel_event and cancel_event.is_set():
                 state["cancelled"] = True
