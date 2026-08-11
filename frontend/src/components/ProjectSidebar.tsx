@@ -26,6 +26,8 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
   const [showSettings, setShowSettings] = useState(false)
   // 正在行内重命名的对话 id
   const [editingId, setEditingId] = useState<string | null>(null)
+  // 记忆栏"展开更多"：被展开的字段（独立显示窗口展示完整内容）
+  const [expandMem, setExpandMem] = useState<null | { k: string; v: string }>(null)
   const toggleVisible = (k: 'memory' | 'resource' | 'chat') => {
     setVisible(prev => {
       const next = { ...prev, [k]: !prev[k] }
@@ -95,12 +97,27 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
             </button>
           </div>
           {true && (
-            <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
-              <p className="text-[10px] leading-relaxed text-[var(--text-muted)]">
-                {memLines.length === 0
-                  ? '暂无记忆，对话后自动分析生成。'
-                  : memLines.map(([k, v]) => `${k}：${v}`).join('；')}
-              </p>
+            <div className="flex flex-col gap-1.5">
+              {memLines.length === 0 ? (
+                <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
+                  <p className="text-[10px] leading-relaxed text-[var(--text-muted)]">暂无记忆，对话后自动分析生成。</p>
+                </div>
+              ) : (
+                memLines.map(([k, v]) => (
+                  <div key={k} className="border hairline rounded-xl px-2.5 py-2 bg-[var(--bg-panel)] flex flex-col gap-0.5">
+                    <p className="text-[9px] font-semibold text-dim uppercase tracking-wider">{k}</p>
+                    {/* 每栏只显示一点字：单行截断 */}
+                    <p className="text-[11px] leading-relaxed text-[var(--text-muted)] truncate" title={v}>{v}</p>
+                    {/* 右下角高亮字（非按钮）：点击展开为独立显示窗口 */}
+                    <div className="flex justify-end mt-0.5">
+                      <span onClick={() => setExpandMem({ k, v })}
+                        className="text-[10px] font-semibold text-[var(--accent)] cursor-pointer hover:underline select-none">
+                        展开更多
+                      </span>
+                    </div>
+                  </div>
+                ))
+              )}
               <button onClick={onOpenMemory} className="text-[10px] font-semibold text-[var(--accent)] hover:underline ml-auto">
                 查看更多
               </button>
@@ -184,6 +201,20 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
         </div>
         )}
       </div>
+      {/* 记忆栏"展开更多"独立显示窗口：完整内容 */}
+      {expandMem && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-6" onClick={() => setExpandMem(null)}>
+          <div className="panel rounded-3xl p-6 w-[480px] max-h-[75vh] overflow-y-auto flex flex-col gap-3" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-bold">{expandMem.k}</p>
+              <button onClick={() => setExpandMem(null)} className="p-1 rounded-md text-dim hover:text-red-500 transition-colors" title="关闭">
+                <X size={14} />
+              </button>
+            </div>
+            <div className="text-[13px] leading-relaxed whitespace-pre-wrap text-[var(--text)]">{expandMem.v}</div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
