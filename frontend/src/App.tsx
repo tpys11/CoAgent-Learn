@@ -155,11 +155,13 @@ function App() {
   const startReveal = () => {
     if (revealTimerRef.current != null) return
     const tick = () => {
-      revealTimerRef.current = requestAnimationFrame(tick)
+      revealTimerRef.current = null
       const q = pendingQueueRef.current
-      if (q.length === 0) return
-      // 每帧最多消费 12 字符（≈720字/秒）：跟上模型输出极限速度（不积压滞后），同时分批平滑不跳动
-      const MAX_PER_FRAME = 12
+      if (q.length === 0) return  // 队列空：停止调度（下一 token 到达时重新启动），避免空转
+      revealTimerRef.current = requestAnimationFrame(tick)
+      // 逐字 reveal：正常每帧 1 字（≈60字/秒，"一个字一个字蹦出来"）；积压超阈值自动加速（2-3字/帧）跟上模型速度不落后
+      const headLen = q[0].text.length
+      const MAX_PER_FRAME = headLen > 40 ? 3 : (headLen > 12 ? 2 : 1)
       let budget = MAX_PER_FRAME
       const updates: Array<{ agent: string; text: string }> = []
       while (budget > 0 && q.length > 0) {
