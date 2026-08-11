@@ -59,6 +59,9 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   const stickToBottomRef = useRef(true)
   // 上滑超过阈值时显示"回到底部"悬浮按钮
   const [showJumpBottom, setShowJumpBottom] = useState(false)
+  // 特殊形式输出建议卡片：各消息选中的形式 key（默认全选）+ 已忽略的消息 idx
+  const [specialSel, setSpecialSel] = useState<Record<number, string[]>>({})
+  const [dismissedSpecial, setDismissedSpecial] = useState<Set<number>>(new Set())
   useEffect(() => {
     const el = msgScrollRef.current
     if (!el) return
@@ -407,6 +410,39 @@ const TEMPLATE_OPTIONS = [
                         </div>
                       )
                     })()}
+                    {/* 特殊形式输出建议（模型判断）：弹出选项——是否生成 / 生成哪些 */}
+                    {msg.special && msg.special.length > 0 && !dismissedSpecial.has(idx) && (
+                      <div className="mt-2.5 border hairline rounded-xl px-3 py-2.5 bg-[var(--bg-panel)]">
+                        <p className="text-[10px] font-semibold text-dim mb-1.5">模型建议：内容可生成以下形式</p>
+                        <div className="flex flex-wrap gap-1.5 mb-2">
+                          {msg.special.map(s => {
+                            const sel = (specialSel[idx] ?? msg.special!.map(x => x.key)).includes(s.key)
+                            return (
+                              <button key={s.key}
+                                onClick={() => setSpecialSel(prev => {
+                                  const cur = prev[idx] ?? msg.special!.map(x => x.key)
+                                  const next = sel ? cur.filter(k => k !== s.key) : [...cur, s.key]
+                                  return { ...prev, [idx]: next }
+                                })}
+                                className={"chip text-left text-[11px] px-2.5 py-1 transition-all" + (sel ? '' : ' opacity-40')}>
+                                {s.label}
+                              </button>
+                            )
+                          })}
+                        </div>
+                        <div className="flex items-center justify-end gap-3">
+                          <button onClick={() => {
+                            const picked = specialSel[idx] ?? msg.special!.map(x => x.key)
+                            const names = msg.special!.filter(x => picked.includes(x.key)).map(x => x.label)
+                            if (names.length) alert(`「${names.join('」「')}」生成功能待实现（下一步开发）`)
+                            setDismissedSpecial(prev => new Set(prev).add(idx))
+                          }}
+                            className="text-[10px] font-semibold text-[var(--accent)] hover:underline">生成所选</button>
+                          <button onClick={() => setDismissedSpecial(prev => new Set(prev).add(idx))}
+                            className="text-[10px] text-dim hover:text-[var(--text)]">忽略</button>
+                        </div>
+                      </div>
+                    )}
                     {/* 新建课程引导消息：右下角「手动初始化」按钮（仅初次创建、未完成手动填写时显示） */}
                     {msg.content.includes('课程创建成功') && onManualSetup && !(currentProject && (() => {
                       try { return (JSON.parse(localStorage.getItem('coagent-manual-setup-done') || '[]') as string[]).includes(currentProject.id) } catch { return false }

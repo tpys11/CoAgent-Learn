@@ -56,6 +56,8 @@ export interface Message {
   content: string
   steps?: ChatStep[]
   think?: MindchainItem[] | string[]
+  /** 特殊形式输出建议（模型判断）：{key, label} 列表，消息完成时由 done 事件注入 */
+  special?: Array<{ key: string; label: string }>
 }
 
 export interface ChatStep {

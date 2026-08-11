@@ -1303,6 +1303,11 @@ async def chat(req: ChatRequest):
                     # 用户手动停止：不落库、不执行记忆/追问等后处理（前端已保留流式显示内容；避免旧线程与新消息乱序/竞态）
                     if cancel_evt.is_set():
                         return
+                    # 特殊形式输出建议（M10 触发条件-模型判断）：normal 未取消时 flash 判断回答适合哪些形式；simple/失败返回 []
+                    if result.get("complexity") != "simple":
+                        result["special_suggestions"] = _suggest_special_forms(req.api_key, result.get("final_reply", ""), req.base_url)
+                    else:
+                        result["special_suggestions"] = []
                     # 记录本次任务的运行统计（Agent 界面·运行监控）
                     try:
                         import json as _json
@@ -1383,7 +1388,7 @@ async def chat(req: ChatRequest):
                     yield f"data: {json.dumps({'type': 'answer_token', 'chunk': msg[1]})}\n\n"
                 elif msg[0] == "done":
                     result = msg[1]
-                    yield f"data: {json.dumps({'type': 'done', 'reply': result.get('final_reply', '处理完成'), 'steps': result.get('steps', []), 'mindchain': result.get('mindchain', []), 'task_stats': result.get('task_stats', {})})}\n\n"
+                    yield f"data: {json.dumps({'type': 'done', 'reply': result.get('final_reply', '处理完成'), 'steps': result.get('steps', []), 'mindchain': result.get('mindchain', []), 'task_stats': result.get('task_stats', {}), 'special_suggestions': result.get('special_suggestions', [])})}\n\n"
                     break
                 elif msg[0] == "error":
                     yield f"data: {json.dumps({'type': 'error', 'message': msg[1]})}\n\n"
@@ -1402,3 +1407,35 @@ async def chat_stop(req: StopRequest):
     if evt:
         evt.set()
     return {"status": "ok"}
+
+
+# ---------- 特殊形式输出建议（M10 触发条件：模型判断） ----------
+
+_SPECIAL_FORM_KEYS = {"report": "报告", "flow": "流程图", "tree": "树状图", "table": "表格", "chart": "统计图", "audio": "音频", "quiz": "测试题"}
+
+_SPECIAL_SUGGEST_PROMPT = """你是内容形式分析师。分析下面的学习内容，判断它适合转换/补充为哪些特殊输出形式（可多选，最多 3 个，选最合适的）：
+- report=报告（汇总讲解内容）
+- flow=流程图（内容含步骤/流程/时序）
+- tree=树状图（内容有层级/分类结构）
+- table=表格（内容含多对象对比/数据维度）
+- chart=统计图（内容含数据/趋势）
+- audio=音频（播客/朗读，讲解类内容均可）
+- quiz=测试题（适合检验理解的知识点）
+
+按 JSON Schema 输出 {"keys": ["形式key数组"]}；没有合适的输出 {"keys": []}。"""
+
+
+def _suggest_special_forms(api_key, content, base_url=None):
+    """模型判断回答适合哪些特殊输出形式（flash 一次调用；失败返回 []）"""
+    try:
+        from core.base_llm import DeepSeekLLM
+        llm = DeepSeekLLM(api_key=api_key, model="deepseek-v4-flash", base_url=base_url, thinking=False)
+        res = llm.chat_with_json(
+            [{"role": "user", "content": _SPECIAL_SUGGEST_PROMPT + "\n\n内容：\n" + (content or "")[:2500]}],
+            {"keys": ["string"]},
+        )
+        arr = (res or {}).get("keys") or []
+        return [k for k in arr if k in _SPECIAL_FORM_KEYS][:3]
+    except Exception as e:
+        print("[special-suggest]", e)
+        return []

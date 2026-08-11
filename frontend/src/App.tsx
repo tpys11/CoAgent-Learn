@@ -516,6 +516,8 @@ function App() {
       }
       const reader = res.body!.getReader(); const decoder = new TextDecoder()
       let finalReply = ''; const steps: any[] = []; let taskStats: any = null; let flowError = ''
+      // 特殊形式输出建议（模型判断）：done 事件注入，随最终消息展示
+      let special: Array<{ key: string; label: string }> = []
       var _buf=""
       while (true) {
         const { done, value } = await reader.read(); if (done) break
@@ -593,6 +595,11 @@ function App() {
           }
           if (data.type === 'done') {
             finalReply = data.reply; steps.push(...(data.steps || [])); taskStats = data.task_stats || null
+            // 特殊形式输出建议（模型判断）：key → label 映射，随最终消息展示
+            const SPECIAL_LABELS: Record<string, string> = { report: '报告', flow: '流程图', tree: '树状图', table: '表格', chart: '统计图', audio: '音频', quiz: '测试题' }
+            special = Array.isArray(data.special_suggestions)
+              ? (data.special_suggestions as string[]).map(k => ({ key: k, label: SPECIAL_LABELS[k] || k })).filter(s => s.label)
+              : []
             setFlowStatus('')
             setFlowActiveAgent(null)
             stopReveal()
@@ -635,22 +642,22 @@ function App() {
         const typingOn = true  // 流式逐字输出固定开启
         if (typingOn && streamedRef.current) {
           // 回答已通过 answer_token 流式显示：直接替换为完整内容（markdown 渲染），不再二次打字机
-          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: finalContent, steps, think: thinkArr }) }))
+          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: finalContent, steps, think: thinkArr, special }) }))
         } else if (typingOn) {
-          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: '', steps, think: thinkArr }) }))
+          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: '', steps, think: thinkArr, special }) }))
           let i = 0
           const iv = setInterval(() => {
             i += 3
             const chunk = finalContent.slice(0, i)
             setAllMessages(prev => {
               const arr = [...(prev[did || ''] || [])]
-              if (arr.length) arr[arr.length - 1] = { role: 'assistant', content: chunk, steps, think: thinkArr }
+              if (arr.length) arr[arr.length - 1] = { role: 'assistant', content: chunk, steps, think: thinkArr, special }
               return { ...prev, [did || '']: arr }
             })
             if (i >= finalContent.length) clearInterval(iv)
           }, 16)
         } else {
-          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: finalContent, steps, think: thinkArr }) }))
+          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: finalContent, steps, think: thinkArr, special }) }))
         }
       }catch(_ex){}
     } catch (e: any) {
