@@ -1242,7 +1242,8 @@ async def chat(req: ChatRequest):
                     # 模板模式：按所选模板调整 agents（基础 = 不调整）
                     _tpl = _settings.get("template") or "基础"
                     _agents = _apply_template(req.agents, _tpl)
-                    wf = create_workflow(req.api_key, _settings, on_token, model=_model, base_url=req.base_url, agents=_agents)
+                    wf = create_workflow(req.api_key, _settings, on_token, model=_model, base_url=req.base_url, agents=_agents,
+                                         on_answer=lambda piece: token_queue.put(("answer", piece)))
                     pid = req.project_id or "default"
                     _did = req.dialogue_id or "default"
                     # 先存用户消息（invoke 时 generate_node 才能读到）

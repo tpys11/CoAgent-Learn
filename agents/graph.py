@@ -440,62 +440,28 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             # 简单问题：系统提示改为纯文本回答（直接输出回答文本，无解释/无JSON/无围栏），content 即回答本身
             _gen_sys = "你是一个友好的AI助手。请直接、简洁地回答用户的问题，只输出回答文本本身，" \
                        "不要输出任何解释、说明、JSON或代码围栏，直接开始回答。" if _is_simple else _GENERATE_PROMPT
-            # 生成节点的思考不进思维链；简单问题：回答内容逐 token 直接流式推送给前端（对话区实时显示）
+            # 生成节点的思考不进思维链；所有模式：回答内容（content）逐 token 直接流式推送给前端（对话区实时显示）
             _gen_collected = []
             def _gen_collect(chunk):
                 _gen_collected.append(chunk)
             def _gen_answer(piece):
                 if on_answer:
                     on_answer(piece)
-            # 简单问题不触发"生成"step：思维链只显示规划（规划后直接流式输出回答）
+            # 复杂问题触发"生成"step：状态"正在思考生成…"（simple 不触发：规划后直接流式输出回答）
             if on_token and not _is_simple:
                 on_token("主Agent·生成", "")  # 触发 step：状态"正在思考生成…"
             _gen_llm.chat_stream(
                 [{"role": "system", "content": _gen_sys},
                  {"role": "user", "content": _append_example(cfg, context)}],
-                _gen_collect, on_content=_gen_answer if _is_simple else None
+                (lambda _c: None),  # 思考（reasoning_content）不推送、不进思维链
+                on_content=lambda piece: (_gen_collect(piece), _gen_answer(piece))  # 仅回答 token：收集 + 直推对话区
             )
+            # markdown 直出：content 即最终回答（不再 JSON 提取组装；回答全程真流式，中断/出错时已输出内容仍可读）
             _raw = "".join(_gen_collected)
-            if _is_simple:
-                # 纯文本回答：直接作为生成内容
-                thinking = ""
-                result = {"content": _raw.strip()}
-            else:
-                # 提取 JSON（复用 think_then_json 逻辑；JSON 原文不流式，完成后统一展示）
-                _m = re.search(r'```json\s*([\s\S]*?)\s*```', _raw)
-                if _m:
-                    thinking = _raw[:_m.start()].strip()
-                    result = json.loads(_m.group(1))
-                else:
-                    _m2 = re.search(r'\{[\s\S]*\}', _raw)
-                    if _m2:
-                        thinking = _raw[:_m2.start()].strip()
-                        result = json.loads(_m2.group())
-                    else:
-                        thinking = _raw[:200]
-                        result = {"content": _raw}
-            if not isinstance(result, dict):
-                result = {"content": str(result)}
-            if isinstance(result, dict) and result.get("讲义"):
-                parts = ["## 📘 定制讲义", str(result.get("讲义", "")), "", "## 🛠 实操指南", str(result.get("实操指南", ""))]
-                tests = result.get("测试题") or []
-                if tests:
-                    parts.append("")
-                    parts.append("## 📝 分阶测试题")
-                    for t in tests:
-                        if isinstance(t, dict):
-                            parts.append("**【" + str(t.get("难度", "基础")) + "】** " + str(t.get("题目", "")))
-                            parts.append("> 答案：" + str(t.get("答案", "")))
-                src = result.get("溯源")
-                if src:
-                    parts.append("")
-                    parts.append("_溯源：" + "、".join(str(s) for s in src) + "_")
-                state["generated"] = NL.join(parts)
-            else:
-                state["generated"] = (result.get("content", "") or "").replace("\n", NL)
+            state["generated"] = _raw.strip()
         except Exception as e:
             state["generated"] = f"抱歉，生成内容时出现错误：{str(e)[:200]}"
-        _stats(state, "generate", int((time.time() - t0) * 1000), 1, len(thinking) // 2)
+        _stats(state, "generate", int((time.time() - t0) * 1000), 1, len("".join(_gen_collected)) // 2)
         # 生成节点的思考不写入思维链（回答已直接流式输出）
         state.setdefault("steps", []).append({"agent": "主Agent·生成", "status": "done", "detail": "生成完成"})
         return state
