@@ -159,9 +159,10 @@ function App() {
       const q = pendingQueueRef.current
       if (q.length === 0) return  // 队列空：停止调度（下一 token 到达时重新启动），避免空转
       revealTimerRef.current = requestAnimationFrame(tick)
-      // 思维链：到达即显示（每帧全部消费，显示速度 = 模型输出速度，reasonix 同款流畅体验；
-      // 队列仅做 ≤1 帧的渲染聚合，不人为限速——限速会导致积压滞后、观感变慢）
-      let budget = Number.MAX_SAFE_INTEGER
+      // 思维链：逐字输出且速率自适应——每帧至少 1 字（保持"一个字一个字"），
+      // 积压每多 10 字每帧多消费 1 字：稳态显示速率自动贴近模型输出速率（不人为限速积压、也不整块蹦出）
+      const _pendingTotal = q.reduce((s, h) => s + h.text.length, 0)
+      let budget = 1 + Math.floor(_pendingTotal / 10)
       const updates: Array<{ agent: string; text: string }> = []
       while (budget > 0 && q.length > 0) {
         const head = q[0]
@@ -213,7 +214,8 @@ function App() {
       const pending = answerPendingRef.current
       if (!pending) return  // 队列空：停止调度（下一 chunk 到达时重新启动）
       answerTimerRef.current = requestAnimationFrame(tick)
-      const take = pending.length > 40 ? 3 : (pending.length > 12 ? 2 : 1)
+      // 逐字（每帧至少 1 字）+ 积压自适应加速（每多 10 字多 1 字/帧）：保持"一个字一个字"同时追上模型速度
+      const take = 1 + Math.floor(pending.length / 10)
       const piece = pending.slice(0, take)
       answerPendingRef.current = pending.slice(take)
       setAllMessages(prev => {
