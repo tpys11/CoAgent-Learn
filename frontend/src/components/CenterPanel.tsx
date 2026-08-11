@@ -697,7 +697,7 @@ const TEMPLATE_OPTIONS = [
               </div>
               <button
                 onClick={isLoading ? (onStop || handleSend) : handleSend}
-                className={"w-9 h-9 ml-2 flex items-center justify-center" + (isLoading ? " bg-red-500 hover:bg-red-600 text-white" : " btn-primary")}
+                className={"w-9 h-9 ml-2 flex items-center justify-center rounded-full" + (isLoading ? " bg-red-500 hover:bg-red-600 text-white" : " btn-primary")}
                 title={isLoading ? "停止生成" : "发送"}
               >
                 {isLoading ? <Square size={14} /> : <Send size={15} />}
