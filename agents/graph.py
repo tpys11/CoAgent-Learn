@@ -113,7 +113,7 @@ def _build_out_cand(agents: list, tpl: str) -> str:
         return ""
     _cand = "；".join(f"{s.get('id')}={s.get('name')}({s.get('form', '')})" for s in _subs)
     return (
-        f"\n输出增强模板：请根据用户问题按需选择 0-3 个输出子Agent，在返回 JSON 中额外给出 \"output_subs\": [子Agent id 数组]。"
+        f"\n输出增强模板：请根据用户问题按需选择 0-1 个输出子Agent（输出增强），在返回 JSON 中额外给出 \"output_subs\": [子Agent id 数组]。"
         f"候选：{_cand}。若用户问题不需要结构化输出则返回空数组。"
     )
 
@@ -482,10 +482,12 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                     _sp = (sub.get("subPrompt") or "") + "\n只输出该形式的内容本身。"
                     _form = sub.get("form") or ""
                     _in = f"主题：{state['user_input'][:500]}\n\n参考材料：\n" + context[-2500:]
-                    _t, _r = think_then_json(llm_fast, _sp, _in, sub.get("name") or "输出子Agent", silent=True)
+                    # 输出增强：作为独立子 Agent 在思维链中展示（"输出增强"标题），流程图/表格等是其生成能力
+                    _t, _r = think_then_json(llm_fast, _sp, _in, sub.get("name") or "输出增强")
                     _c = (_r.get("content") if isinstance(_r, dict) and _r.get("content") else _t) or ""
                     if _c:
                         sub_parts.append(f"【{sub.get('name')}{'（' + _form + '）' if _form else ''}】\n" + str(_c)[:1500])
+                        new_mc.append({"agent": "输出增强", "content": f"已产出「{_form}」：" + str(_c)[:200]})
                 except Exception:
                     pass
             if sub_parts:
