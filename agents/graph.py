@@ -13,7 +13,7 @@ from typing import TypedDict, Annotated
 from langgraph.graph import StateGraph, END
 from core.base_llm import DeepSeekLLM
 from agents.prompts import (
-    MAIN_PLAN_PROMPT, MAIN_GENERATE_PROMPT,
+    MAIN_PLAN_PROMPT, MAIN_GENERATE_PROMPT, CLARIFY_GEN_PROMPT,
     STUDY_MEMORY_PROMPT, REVIEW_PROMPT,
 )
 
@@ -168,6 +168,30 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         """运行统计（返回局部 dict，不就地改 state）：节点随 partial 返回，_merge_stats reducer 合并各节点统计"""
         return {node: {"ms": ms, "llm_calls": llm_calls}, "token_estimate": tokens}
 
+    # 澄清触发信号：思考文本中明确表达"需要澄清"的关键词（JSON 漏输出 clarify 字段时的兜底判定）
+    _CLARIFY_SIGNALS = ["澄清", "需求不明确", "需要明确", "需要确认", "请明确", "请确认", "信息不足", "无法确定",
+                        "难以确定", "询问用户", "想学什么", "哪个方面", "什么方面", "先确认", "需要了解"]
+
+    def _need_clarify(text: str) -> bool:
+        t = text or ""
+        return any(k in t for k in _CLARIFY_SIGNALS)
+
+    def _gen_clarify_options(llm, user_input: str) -> dict:
+        """兜底生成澄清选项：模型思考说了需要澄清但 JSON 漏输出 clarify 时调用（保证触发）"""
+        try:
+            res = llm.chat_with_json(
+                [{"role": "user", "content": CLARIFY_GEN_PROMPT.format(input=(user_input or "")[:300])}],
+                {"question": "string", "options": ["string"]},
+            )
+            if isinstance(res, dict) and res.get("options"):
+                return {
+                    "question": str(res.get("question", "")).strip() or "请明确你的需求",
+                    "options": [str(o).strip() for o in res["options"] if str(o).strip()][:4],
+                }
+        except Exception:
+            pass
+        return {}
+
     def think_then_json(llm, system_prompt: str, user_prompt: str, agent_name: str, silent: bool = False) -> tuple[str, dict]:
         """流式思考：用chat_stream逐token推送，收集完整文本后提取JSON。
         silent=True：不推 step/thought_token（子 Agent 内部工作不展示在主思维链，产出仍返回给调用方）"""
@@ -260,6 +284,9 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             state["complexity"] = result.get("complexity", "normal")
             # 需求澄清（reasonix 式）：learn 类且需求不明确 → 中断流程，前端弹选项让用户明确需求（不继续规划）
             _clarify = result.get("clarify") if isinstance(result, dict) else None
+            # 双保险：JSON 未带 clarify 但思考文本明确表达了"需要澄清"（模型说了却没输出字段）→ 兜底生成选项，保证触发
+            if not (isinstance(_clarify, dict) and _clarify.get("options")) and _need_clarify(thinking):
+                _clarify = _gen_clarify_options(llm_fast, state["user_input"])
             if isinstance(_clarify, dict) and _clarify.get("options"):
                 state["clarify"] = {
                     "question": str(_clarify.get("question", "")).strip() or "请明确你的需求",

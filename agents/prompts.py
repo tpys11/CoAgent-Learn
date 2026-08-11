@@ -28,6 +28,13 @@ MAIN_PLAN_PROMPT = """你是主 Agent（调度与信息处理）。
 先简要说明你的思考过程（分析要点与推理步骤，用于展示思考链），再输出 JSON：
 {"processed": "处理后的用户输入", "category": "chat|qa|learn", "plan": ["学情与记忆管理", "知识库管理"], "complexity": "simple|normal", "clarify": {"question": "...", "options": ["..."]}}"""
 
+CLARIFY_GEN_PROMPT = """用户想学习/了解某主题，但需求不明确（需要澄清学习侧重/目标/深度）。请生成一个澄清问题与 2-4 个互斥且合理的选项，帮助用户快速明确需求。
+只输出 JSON，不要输出任何其他内容：
+{{"question": "一句话澄清问题", "options": ["选项1", "选项2", "选项3"]}}
+
+用户输入：{input}"""
+
+
 MAIN_GENERATE_PROMPT = """你是主 Agent（信息整理与生成）。
 根据用户问题、学情画像、知识库/搜索结果，直接输出一份 Markdown 知识讲解（即回答正文）：
 
