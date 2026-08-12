@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useRef } from 'react'
-import { Send, Bot, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Cpu, SlidersHorizontal, AlertTriangle, Search, FileText, LayoutTemplate, Image as ImageIcon, PenLine, Square, ArrowDownToLine } from 'lucide-react'
+import { Send, Bot, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Cpu, SlidersHorizontal, AlertTriangle, Search, FileText, LayoutTemplate, Image as ImageIcon, PenLine, Square, ArrowDownToLine, Timer } from 'lucide-react'
 import type { Message, Project } from '../types'
 import MarkdownIt from 'markdown-it'
 
@@ -85,7 +85,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
     const el = msgScrollRef.current
     if (el && stickToBottomRef.current) el.scrollTop = el.scrollHeight
   }, [messages, isLoading])
-  const [stats, setStats] = useState<{dialogue_count: number; tokens_estimate: number; metrics: any}>({dialogue_count: 0, tokens_estimate: 0, metrics: null})
+  const [stats, setStats] = useState<{dialogue_count: number; tokens_estimate: number; total_duration_seconds: number; metrics: any}>({dialogue_count: 0, tokens_estimate: 0, total_duration_seconds: 0, metrics: null })
   useEffect(() => {
     if (!currentProject) return
     fetch('/api/stats?project_id=' + encodeURIComponent(currentProject.id), { cache: 'no-store' })
@@ -330,6 +330,8 @@ const TEMPLATE_OPTIONS = [
           <span className="flex items-center gap-1 text-[11px]"><MessagesSquare size={12} /> {stats.dialogue_count} 对话</span>
           <span className="w-px h-3.5 bg-[#e5e5e5]" />
           <span className="flex items-center gap-1 text-[11px] tabular-nums"><Coins size={12} /> {(stats.tokens_estimate || 0).toLocaleString()} Tokens</span>
+          <span className="w-px h-3.5 bg-[#e5e5e5]" />
+          <span className="flex items-center gap-1 text-[11px] tabular-nums"><Timer size={12} /> {stats.total_duration_seconds >= 3600 ? (stats.total_duration_seconds / 3600).toFixed(1) + ' 小时' : Math.round(stats.total_duration_seconds / 60) + ' 分钟'} 专注</span>
           {stats.metrics && stats.metrics.hallucination && (
             <>
               <span className="w-px h-3.5 bg-[#e5e5e5]" />

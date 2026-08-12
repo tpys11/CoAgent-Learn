@@ -363,12 +363,15 @@ async def get_stats(project_id: str = "default"):
     m = pg_client.execute("SELECT count(*) AS c, COALESCE(SUM(LENGTH(content)),0) AS chars FROM messages", ())
     s = pg_client.execute("SELECT metrics FROM stats WHERE project_id=%s ORDER BY updated_at DESC LIMIT 1", (project_id,))
     metrics = s[0]["metrics"] if s else {}
+    ds = pg_client.execute("SELECT COALESCE(SUM(duration_seconds),0) AS s FROM stats WHERE project_id=%s", (project_id,))
     return {
         "dialogue_count": d[0]["c"] if d else 0,
         "message_count": m[0]["c"] if m else 0,
         "total_chars": m[0]["chars"] if m else 0,
         "tokens_estimate": int((m[0]["chars"] if m else 0) / 2),
         "metrics": metrics,
+        # 专注时长（秒）：stats 表累计，用户侧可视化反馈（专注时长+token用量）
+        "total_duration_seconds": int(ds[0]["s"]) if ds else 0,
     }
 
 
@@ -1301,6 +1304,8 @@ async def chat(req: ChatRequest):
                             print("[存储]", _e)
                         token_queue.put(("done", {"final_reply": _reply2, "steps": _edit["steps"], "mindchain": [], "task_stats": {}}))
                         return
+                    import time as _time
+                    _t0 = _time.time()
                     result = wf.invoke({"user_input": req.message, "project_id": pid, "dialogue_id": _did, "session_id": req.session_id or "default", "mode": req.mode or "kb", "image": req.image or "", "steps": [], "mindchain": []})
                     # 用户手动停止：不落库、不执行记忆/追问等后处理（前端已保留流式显示内容；避免旧线程与新消息乱序/竞态）
                     if cancel_evt.is_set():
@@ -1316,6 +1321,18 @@ async def chat(req: ChatRequest):
                         result["special_suggestions"] = _suggest_special_forms(req.api_key, result.get("final_reply", ""), req.base_url)
                     else:
                         result["special_suggestions"] = []
+                    # 专注时长：本次任务完成，累加进项目 stats（可视化反馈：专注时长 + token 用量）
+                    try:
+                        from core.postgres_client import pg_client as _pg4
+                        _dur = max(0, int(_time.time() - _t0))
+                        _srow = _pg4.execute("SELECT id, duration_seconds FROM stats WHERE project_id=%s ORDER BY updated_at DESC LIMIT 1", (pid,))
+                        if _srow:
+                            _pg4.execute("UPDATE stats SET duration_seconds=%s, updated_at=datetime('now') WHERE id=%s",
+                                         ((_srow[0]["duration_seconds"] or 0) + _dur, _srow[0]["id"]))
+                        else:
+                            _pg4.execute("INSERT INTO stats(project_id, duration_seconds) VALUES(%s,%s)", (pid, _dur))
+                    except Exception as _e:
+                        print("[stats-duration]", _e)
                     # 记录本次任务的运行统计（Agent 界面·运行监控）
                     try:
                         import json as _json
