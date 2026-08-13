@@ -16,6 +16,10 @@ interface Resource {
   name: string
   content?: string
   created_at?: string
+  type?: string
+  file_ext?: string
+  file_size?: number
+  file_path?: string
 }
 
 interface KbDoc {
