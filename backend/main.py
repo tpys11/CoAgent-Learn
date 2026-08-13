@@ -141,6 +141,13 @@ async def knowledge_list(project_id: str = "default"):
     return {"docs": list_docs(project_id)}
 
 
+@app.get("/api/kb/{project_id}")
+async def kb_list(project_id: str):
+    """前端项目资源区/首页/记忆/侧栏通用：直接返回知识库文档列表（数组）"""
+    from core.knowledge_service import list_docs
+    return list_docs(project_id)
+
+
 @app.delete("/api/knowledge/delete")
 async def knowledge_delete(project_id: str = "default", source: str = ""):
     from core.knowledge_service import delete_doc
