@@ -432,6 +432,27 @@ export default function ResourceView({ projectId, onUseItem }: { projectId: stri
     })
   }
 
+  // 我的上传：上传文件到资源表
+  const resFileRef = useRef<HTMLInputElement>(null)
+  const [resUploading, setResUploading] = useState(false)
+  const uploadResFile = async (files: FileList | File[]) => {
+    if (!files || files.length === 0) return
+    setResUploading(true)
+    let ok = 0
+    for (const f of Array.from(files)) {
+      const fd = new FormData()
+      fd.append('project_id', projectId || 'default')
+      fd.append('file', f, f.name)
+      try {
+        const r = await fetch('/api/resources/upload', { method: 'POST', body: fd })
+        const d = await r.json()
+        if (d.status === 'ok') ok++
+      } catch (e) { /* 忽略单个失败 */ }
+    }
+    setResUploading(false)
+    load()
+  }
+
   // 我的生成：自定义分类与内容
   const saveCustomGens = (next: typeof customGens) => {
     setCustomGens(next)
@@ -495,7 +516,12 @@ export default function ResourceView({ projectId, onUseItem }: { projectId: stri
     }))
   } else if (tab === 'uploads') {
     const kbItems: ListItem[] = kbDocs.map(d => ({ id: 'kb:' + d.source, title: d.source, sub: `知识库文档 · ${d.chunks} 块`, body: d.preview || '（无预览内容）', icon: Upload, kind: 'kb' as const, deletable: true, time: '' }))
-    const resItems: ListItem[] = resources.map(r => ({ id: r.id, title: r.name, sub: '保存的资料', body: r.content || '', icon: FileText, kind: 'resource' as const, deletable: true, time: fmtTime(r.created_at) }))
+    const resItems: ListItem[] = resources.map(r => {
+      const isFile = r.type === 'file'
+      const sizeStr = r.file_size ? ((r.file_size / 1024).toFixed(1) + ' KB') : ''
+      const sub = isFile ? ('文件 · ' + (r.file_ext ? r.file_ext.toUpperCase() : '') + (sizeStr ? ' · ' + sizeStr : '')) : '文本资料'
+      return { id: r.id, title: r.name, sub, body: r.content || '', icon: isFile ? Upload : FileText, kind: 'resource' as const, deletable: true, time: fmtTime(r.created_at) }
+    })
     if (uploadCat === 'all') list = [...kbItems, ...resItems]
     else if (uploadCat === 'kb') list = kbItems
     else if (uploadCat === 'resource') list = resItems
@@ -845,6 +871,13 @@ const exportItem = (item: ListItem) => {
                     className="flex items-center gap-1.5 px-4 py-2 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors">
                     <BookOpen size={13} /> 从本地文档导入
                   </button>
+                  <button onClick={() => resFileRef.current?.click()}
+                    className="flex items-center gap-1.5 px-4 py-2 border border-[var(--border-color)] text-xs font-semibold rounded-xl hover:bg-[var(--bg-hover)] transition-colors">
+                    <Upload size={13} /> {resUploading ? '上传中…' : '上传文件'}
+                  </button>
+                  <input ref={resFileRef} type="file" multiple className="hidden"
+                    accept=".txt,.md,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml,.pdf,.docx,.pptx"
+                    onChange={e => { if (e.target.files?.length) uploadResFile(e.target.files); e.target.value = '' }} />
                   {isCustomUploadCat ? (
                   !showNewGenItem && (
                     <button onClick={() => setShowNewGenItem(true)}
