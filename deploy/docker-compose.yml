@@ -13,6 +13,8 @@
       - ../frontend/vite.config.ts:/app/vite.config.ts
       - ../frontend/index.html:/app/index.html
       - ../frontend/public:/app/public
+      - ../frontend/package.json:/app/package.json
+      - ../frontend/package-lock.json:/app/package-lock.json
     depends_on:
       - backend
     networks:

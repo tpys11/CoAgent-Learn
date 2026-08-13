@@ -225,9 +225,24 @@ class SQLiteClient:
                 name TEXT NOT NULL,
                 content TEXT DEFAULT '',
                 project_id TEXT NOT NULL DEFAULT 'default',
+                type TEXT DEFAULT 'text',
+                file_ext TEXT DEFAULT '',
+                file_size INTEGER DEFAULT 0,
+                file_path TEXT DEFAULT '',
                 created_at TEXT DEFAULT (datetime('now'))
             )
         """)
+        # 兼容旧表：补充新增列（已存在则忽略）
+        for _col, _ddl in [
+            ("type", "TEXT DEFAULT 'text'"),
+            ("file_ext", "TEXT DEFAULT ''"),
+            ("file_size", "INTEGER DEFAULT 0"),
+            ("file_path", "TEXT DEFAULT ''"),
+        ]:
+            try:
+                self.execute("ALTER TABLE resources ADD COLUMN " + _col + " " + _ddl)
+            except Exception:
+                pass
         self.execute("""
             CREATE TABLE IF NOT EXISTS dialogues (
                 id TEXT PRIMARY KEY,

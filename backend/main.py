@@ -141,6 +141,13 @@ async def knowledge_list(project_id: str = "default"):
     return {"docs": list_docs(project_id)}
 
 
+@app.get("/api/kb/{project_id}")
+async def kb_list(project_id: str):
+    """前端项目资源区/首页/记忆/侧栏通用：直接返回知识库文档列表（数组）"""
+    from core.knowledge_service import list_docs
+    return list_docs(project_id)
+
+
 @app.delete("/api/knowledge/delete")
 async def knowledge_delete(project_id: str = "default", source: str = ""):
     from core.knowledge_service import delete_doc
@@ -222,7 +229,7 @@ class ResourceSave(BaseModel):
 @app.get("/api/resources")
 async def list_resources(project_id: str = "default"):
     from core.postgres_client import pg_client
-    rows = pg_client.execute("SELECT id, name, content, created_at FROM resources WHERE project_id=%s ORDER BY created_at", (project_id,))
+    rows = pg_client.execute("SELECT id, name, content, type, file_ext, file_size, created_at FROM resources WHERE project_id=%s ORDER BY created_at DESC", (project_id,))
     return {"resources": rows}
 
 
@@ -238,6 +245,36 @@ async def save_resource(req: ResourceSave):
         pg_client.execute("INSERT INTO resources (id, name, content, project_id) VALUES (%s,%s,%s,%s)",
                           (rid, req.name, req.content, req.project_id))
     return {"status": "ok", "id": rid}
+
+
+@app.post("/api/resources/upload")
+async def upload_resource(
+    project_id: str = Form("default"),
+    file: UploadFile = File(...),
+):
+    """我的上传：上传文件存资源表（解析文本存 content，文件本体存 data/uploads）"""
+    import time, hashlib
+    from core.postgres_client import pg_client
+    from core.file_parser import parse_file
+    data = await file.read()
+    name = file.filename or "file"
+    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    text = parse_file(name, data)
+    rid = hashlib.md5((name + project_id + str(time.time())).encode()).hexdigest()[:16]
+    up_dir = "/app/data/uploads"
+    os.makedirs(up_dir, exist_ok=True)
+    fname = rid + (("." + ext) if ext else "")
+    fpath = os.path.join(up_dir, fname)
+    try:
+        with open(fpath, "wb") as f:
+            f.write(data)
+    except Exception:
+        fpath = ""
+    pg_client.execute(
+        "INSERT INTO resources (id, name, content, project_id, type, file_ext, file_size, file_path) VALUES (%s,%s,%s,%s,'file',%s,%s,%s)",
+        (rid, name, text, project_id, ext, len(data), fpath),
+    )
+    return {"status": "ok", "id": rid, "name": name, "preview": text[:80]}
 
 
 @app.delete("/api/resources/{rid}")
