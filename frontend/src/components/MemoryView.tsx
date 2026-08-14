@@ -399,11 +399,6 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
   const [gBasic, setGBasic] = useState('') // 基本情况：一段 <500 字概述
   const [gStudy, setGStudy] = useState<{ 总体概述: string; 课程: Array<{ 课程名: string; 目标: string; 当前情况: string }> }>({ 总体概述: '', 课程: [] }) // 学习情况
   const [gPref, setGPref] = useState<Record<string, any> | null>(null) // 阅读偏好（问卷式）
-  const [showPrefDlg, setShowPrefDlg] = useState(false)
-  const [editBasic, setEditBasic] = useState(false)
-  const [editBasicVal, setEditBasicVal] = useState('')
-  const [editStudy, setEditStudy] = useState(false)
-  const [editStudyVal, setEditStudyVal] = useState('')
 
   // 课程记忆（全部课程，默认展开显示）
   const [projData, setProjData] = useState<Record<string, { fields: Record<string, string>; count: number; latest: string; days: Record<string, any[]>; progress: { items: any[]; daily: Array<{ date: string; count: number }>; pace: string }; treeDocs: Array<{ source: string; tree: any[] }> }>>({})
@@ -645,26 +640,13 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                     </div>
                   </div>
 
-                  {/* 学习情况：总体概述 + 按课程（目标 / 当前情况占位） */}
+                  {/* 学习情况：总体概述 + 课程方形按钮（只读展示，修改走右侧对话框） */}
                   <div className="border hairline rounded-2xl p-5 bg-[var(--bg-panel)] flex flex-col gap-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold">学习情况</span>
-                      {editStudy ? (
-                        <button onClick={() => { const v = editStudyVal; setGStudy(prev => ({ ...prev, 总体概述: v })); setEditStudy(false); saveGlobal(gFields, gExtra, undefined, { ...gStudy, 总体概述: v }) }}
-                          className="text-[10px] font-semibold text-[var(--accent)] hover:underline">保存</button>
-                      ) : (
-                        <button onClick={() => { setEditStudyVal(gStudy.总体概述); setEditStudy(true) }}
-                          className="flex items-center gap-1 text-[10px] text-dim hover:text-[var(--text)]"><PenLine size={11} /> 编辑</button>
-                      )}
-                    </div>
-                    {editStudy ? (
-                      <textarea value={editStudyVal} rows={3} placeholder="总体学习情况概述"
-                        onChange={e => setEditStudyVal(e.target.value)}
-                        className="w-full border hairline rounded-xl px-3 py-2 bg-[var(--bg-input)] text-[13px] leading-6 outline-none resize-y focus:border-[var(--accent)]" />
-                    ) : gStudy.总体概述 ? (
+                    <span className="text-sm font-semibold">学习情况</span>
+                    {gStudy.总体概述 ? (
                       <p className="text-xs text-[var(--text-muted)] leading-relaxed">{gStudy.总体概述}</p>
                     ) : (
-                      <p className="text-[11px] text-dim">（总体概述占位：对话后系统自动提炼）</p>
+                      <p className="text-[11px] text-dim">（总体概述占位：对话后系统自动提炼，可通过右侧"修改记忆"对话框更新）</p>
                     )}
                     {projects.length > 0 ? (
                       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
@@ -687,15 +669,11 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                     )}
                   </div>
 
-                  {/* 阅读偏好 */}
+                  {/* 阅读偏好（只读展示，修改走右侧对话框） */}
                   <div className="border hairline rounded-2xl p-5 bg-[var(--bg-panel)] flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold">阅读偏好</span>
-                      <button onClick={() => setShowPrefDlg(true)}
-                        className="text-[10px] font-semibold text-[var(--accent)] hover:underline">{gPref ? '修改偏好' : '去设置'}</button>
-                    </div>
+                    <span className="text-sm font-semibold">阅读偏好</span>
                     {gPref ? null : (
-                      <p className="text-[11px] text-dim">（占位：未设置。点"去设置"告诉系统你喜欢怎样的内容形式）</p>
+                      <p className="text-[11px] text-dim">（占位：未设置 · 通过右侧"修改记忆"对话框设置）</p>
                     )}
                     <PrefSummary pref={gPref} />
                   </div>
@@ -1039,14 +1017,6 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
             </div>
           </div>
         </div>
-      )}
-      {/* 阅读偏好问卷弹层（首次设置 / 修改） */}
-      {showPrefDlg && (
-        <PrefDialog
-          initial={gPref}
-          onCancel={() => setShowPrefDlg(false)}
-          onSave={(next) => { setGPref(next); setShowPrefDlg(false); saveGlobal(gFields, gExtra, undefined, undefined, next) }}
-        />
       )}
       {/* 里程碑节点弹层：查看内容 / 标注重要 / 删除 / 新增 */}
       {msNode && (
