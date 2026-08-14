@@ -1,5 +1,5 @@
-﻿import { useState, useEffect, useRef } from 'react'
-import { Send, Bot, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Cpu, SlidersHorizontal, AlertTriangle, Search, FileText, LayoutTemplate, Image as ImageIcon, PenLine, Square, ArrowDownToLine, Timer } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Send, Bot, Lightbulb, MessagesSquare, Coins, CheckCircle2, Check, ChevronDown, Upload, Cpu, SlidersHorizontal, AlertTriangle, Search, FileText, LayoutTemplate, Image as ImageIcon, PenLine, Square, ArrowDownToLine, Timer } from 'lucide-react'
 import type { Message, Project } from '../types'
 import MarkdownIt from 'markdown-it'
 
@@ -578,22 +578,27 @@ const TEMPLATE_OPTIONS = [
                   </div>
                 )}
               </div>
-              {/* 模板选择（使用模板滑块开启时显示） */}
+              {/* 档位选择（豆包式：胶囊显示当前档位 + 弹出选项面板） */}
               {useTemplate && (
               <div className="relative" ref={tplRef}>
                 <button
                   onClick={() => setShowTplMenu(!showTplMenu)}
-                  className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
-                  title="模板模式（均衡/质量优先/响应更快）">
-                  <LayoutTemplate size={13} /> 模板选择 <ChevronDown size={9} />
+                  className={`h-7 px-2.5 rounded-full text-[11px] flex items-center gap-1.5 border border-[var(--border-strong)] bg-[var(--bg-input)] hover:bg-[var(--bg-hover)] transition-colors ${autoMode ? 'opacity-40' : ''}`}
+                  title="选择档位（极速/思考/研究）">
+                  <LayoutTemplate size={13} /> {templateMode} <ChevronDown size={10} />
                 </button>
                 {showTplMenu && (
-                  <div className="absolute bottom-full left-0 mb-1 card-lift p-1.5 z-10" style={{ width: 125 }}>
+                  <div className="absolute bottom-full left-0 mb-1.5 card-lift p-1.5 z-10 flex flex-col gap-0.5" style={{ width: 250 }}>
+                    <p className="px-2 py-1 text-[10px] font-semibold text-dim uppercase tracking-wider">选择档位</p>
                     {TEMPLATE_OPTIONS.map(t => (
                       <button key={t.name}
                         onClick={() => { setTemplateMode(t.name); localStorage.setItem('coagent-template', t.name); setShowTplMenu(false) }}
-                        className={`text-[11px] px-2 py-1.5 rounded-lg text-left w-full ${templateMode === t.name ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
-                        <span className="font-medium">{t.name}</span>
+                        className={`text-left px-2 py-2 rounded-lg w-full flex flex-col gap-0.5 ${templateMode === t.name ? 'bg-[var(--bg-hover)]' : 'hover:bg-[var(--bg-hover)]'}`}>
+                        <span className="flex items-center gap-1.5 text-[12px] font-medium">
+                          {t.name}
+                          {templateMode === t.name && <Check size={12} className="text-[var(--accent)]" />}
+                        </span>
+                        <span className="text-[10px] text-dim leading-snug">{t.desc}</span>
                       </button>
                     ))}
                   </div>
