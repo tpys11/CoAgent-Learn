@@ -134,8 +134,11 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
   const [uploading, setUploading] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
   const [dragOver, setDragOver] = useState(false)
-  // 两步式上传：选中的文件先暂存待确认，点「确认上传」才真正上传（同步等待向量化完成并反馈）
+  // 「添加文档」流程（对齐 DeepTutor Add documents）：点「确认上传」展开流程区，
+  // 虚线框拖拽/选择文件 → 文件列表暂存 → 点流程区「确认上传」才同步向量化上传
+  const [showAddDoc, setShowAddDoc] = useState(false)
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
+  const [dropActive, setDropActive] = useState(false)
   const [doneMsg, setDoneMsg] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
   const load = useCallback(() => {
@@ -174,16 +177,22 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
     setTimeout(() => setDoneMsg(''), 5000)
     setTimeout(() => { load(); setRefreshKey(k => k + 1) }, 500)
   }
-  /** 确认上传：把拖入/暂存的文件直接上传到课程（同步向量化）；不弹系统文件选择器 */
+  /** 追加文件到待上传列表（按文件名去重，对齐 DeepTutor mergeSelectedFiles） */
+  const addFiles = (fs: FileList | File[]) => {
+    const incoming = Array.from(fs)
+    setPendingFiles(prev => {
+      const names = new Set(prev.map(f => f.name))
+      return [...prev, ...incoming.filter(f => !names.has(f.name))]
+    })
+  }
+  /** 确认上传：把暂存的文件直接上传到课程（同步向量化）；不弹系统文件选择器 */
   const confirmUpload = () => {
     if (uploading) return
-    if (!pendingFiles.length) { alert('请先把资源拖入课程，或点「选择文件」添加'); return }
+    if (!pendingFiles.length) { alert('请先拖入或选择文件'); return }
     uploadFiles(pendingFiles)
   }
-  /** 把拖入/选择的文件追加进待上传列表（暂存，不直接上传） */
-  const addPanelFiles = (fs: FileList | File[]) => {
-    setPendingFiles(prev => [...prev, ...Array.from(fs)])
-  }
+  /** 文件大小格式化 */
+  const fmtSize = (b: number) => b < 1024 ? b + 'B' : b < 1024 * 1024 ? (b / 1024).toFixed(1) + 'KB' : (b / (1024 * 1024)).toFixed(1) + 'MB'
   const addPreset = async (title: string, body: string) => {
     if (!projectId) return
     setUploading('加入 ' + title)
@@ -213,7 +222,7 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
         if (it && it.title && it.body) { addPreset(it.title, it.body); return }
       } catch { /* 忽略 */ }
     }
-    if (e.dataTransfer.files.length) addPanelFiles(e.dataTransfer.files)
+    if (e.dataTransfer.files.length) { addFiles(e.dataTransfer.files); setShowAddDoc(true) }
   }
   return (
     <div className={`p-6 flex flex-col gap-5 ${naturalHeight ? '' : 'h-full overflow-hidden'}`}>
@@ -224,42 +233,16 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
         onDrop={onDrop}>
         <div className="flex items-center justify-between">
           <p className="text-xs font-semibold text-dim uppercase tracking-wider">项目资源</p>
-          <div className="flex flex-col items-end gap-1.5">
-            <div className="flex items-center gap-2">
-              {uploading && <span className="text-[11px] text-dim">向量化中：{uploading}</span>}
-              {!uploading && doneMsg && <span className="text-[11px] text-emerald-600 font-medium">{doneMsg}</span>}
-              <button onClick={confirmUpload}
-                disabled={!!uploading}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors disabled:opacity-50">
-                <Upload size={12} /> {uploading ? '向量化中…' : pendingFiles.length ? `确认上传（${pendingFiles.length}）` : '确认上传'}
-              </button>
-              <button onClick={() => fileRef.current?.click()} disabled={!!uploading}
-                className="flex items-center gap-1 px-3 py-1.5 text-[11px] border hairline rounded-xl text-dim hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-50">
-                选择文件
-              </button>
-              <input ref={fileRef} type="file" multiple className="hidden"
-                onChange={e => {
-                  if (e.target.files?.length) setPendingFiles(prev => [...prev, ...Array.from(e.target.files as FileList)])
-                  e.target.value = ''
-                }} />
-            </div>
-            {pendingFiles.length > 0 && (
-              <div className="flex flex-wrap justify-end items-center gap-1.5 max-w-[420px]">
-                {pendingFiles.map((f, i) => (
-                  <span key={i} className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[var(--bg-hover)] text-[10px] text-dim">
-                    <FileText size={10} className="flex-shrink-0" />
-                    <span className="truncate max-w-[160px]">{f.name}</span>
-                    <button onClick={() => setPendingFiles(prev => prev.filter((_, j) => j !== i))}
-                      className="hover:text-red-500 flex-shrink-0" title="移除">
-                      <X size={10} />
-                    </button>
-                  </span>
-                ))}
-                <button onClick={() => setPendingFiles([])} className="text-[10px] text-dim hover:text-red-500 px-1" title="清空待上传文件">
-                  清空
-                </button>
-              </div>
-            )}
+          <div className="flex items-center gap-2">
+            {uploading && <span className="text-[11px] text-dim">向量化中：{uploading}</span>}
+            {!uploading && doneMsg && <span className="text-[11px] text-emerald-600 font-medium">{doneMsg}</span>}
+            <button onClick={() => setShowAddDoc(v => !v)}
+              disabled={!!uploading}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors disabled:opacity-50">
+              <Upload size={12} /> {uploading ? '向量化中…' : showAddDoc ? '收起' : '确认上传'}
+            </button>
+            <input ref={fileRef} type="file" multiple className="hidden"
+              onChange={e => { if (e.target.files?.length) addFiles(e.target.files); e.target.value = '' }} />
           </div>
         </div>
         <div className={`border rounded-2xl p-3 grid grid-cols-2 md:grid-cols-3 gap-2 max-h-[26vh] overflow-y-auto transition-colors ${dragOver ? 'border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_6%,var(--bg-panel))]' : 'border-dashed hairline'}`}>
@@ -279,6 +262,61 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
             </div>
           ))}
         </div>
+        {/* 添加文档：DeepTutor 式上传流程（拖拽/选择文件 → 列表 → 确认上传） */}
+        {showAddDoc && (
+          <div className="border border-[var(--border-color)] rounded-2xl p-4 bg-[var(--bg-panel)] shadow-soft flex flex-col gap-3">
+            <div>
+              <p className="text-[13px] font-semibold">添加文档</p>
+              <p className="mt-0.5 text-[11px] text-dim">拖拽文件到这里，或点击选择文件；确认后接入课程知识库（自动向量化）</p>
+            </div>
+            {/* 虚线框：点击选择 / 拖拽，对齐 DeepTutor FileDropZone */}
+            <button
+              type="button"
+              disabled={!!uploading}
+              onClick={() => fileRef.current?.click()}
+              onDragEnter={e => { e.preventDefault(); setDropActive(true) }}
+              onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' }}
+              onDragLeave={() => setDropActive(false)}
+              onDrop={e => { e.preventDefault(); setDropActive(false); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files) }}
+              className={`flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-7 text-center transition-colors ${dropActive ? 'border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_6%,var(--bg-panel))]' : 'border-[var(--border-color)] hover:border-[var(--text)]/30 hover:bg-[var(--bg-hover)]'} ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              <Upload size={20} className="text-dim" />
+              <span className="text-[12px] font-medium">
+                {dropActive ? '释放文件即可添加' : pendingFiles.length ? `已选择 ${pendingFiles.length} 个文件` : '点击选择文件，或拖拽文件到此处'}
+              </span>
+              <span className="text-[10px] text-dim">支持 TXT/MD/代码、PDF、Word、PPT</span>
+            </button>
+            {/* 文件列表：对齐 DeepTutor SelectionSummary */}
+            {pendingFiles.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                {pendingFiles.map((f, i) => (
+                  <div key={i} className="flex items-center gap-2.5 rounded-xl border hairline px-3 py-2 bg-[var(--bg-panel)]">
+                    <span className="w-7 h-7 rounded-lg bg-[#1a1a1a] text-white flex items-center justify-center flex-shrink-0"><FileText size={13} /></span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[11.5px] font-medium truncate">{f.name}</p>
+                      <p className="text-[10px] text-dim">{fmtSize(f.size)}</p>
+                    </div>
+                    <button onClick={() => setPendingFiles(prev => prev.filter((_, j) => j !== i))}
+                      className="p-1.5 rounded-lg text-dim hover:bg-[var(--bg-hover)] hover:text-red-500 flex-shrink-0" title="移除">
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+                <button onClick={() => setPendingFiles([])} className="self-end text-[10px] text-dim hover:text-red-500 px-1" title="清空">
+                  清空选择
+                </button>
+              </div>
+            )}
+            {/* 确认上传按钮：点击即上传（同步向量化） */}
+            <div className="flex justify-end">
+              <button onClick={confirmUpload} disabled={!pendingFiles.length || !!uploading}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-[#1a1a1a] px-4 py-1.5 text-[12px] font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">
+                <Upload size={13} />
+                {uploading ? '向量化中…' : `确认上传（${pendingFiles.length}）`}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
       {/* 下：系统内置资源（可拖入 / 加入课程），撑满剩余空间 */}
       <div className="flex-1 min-h-0 flex flex-col gap-2.5 overflow-hidden">
