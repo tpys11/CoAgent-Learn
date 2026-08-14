@@ -586,19 +586,37 @@ const TEMPLATE_OPTIONS = [
   )
 }
 
-/** 流式 markdown 渲染：
- * - 流式中（streaming=true）：直接渲染纯文本（text 实时完整），绝不跑 markdown 解析——每 token 全量 markdown
- *   渲染 + DOM 切换是"一段一段/闪烁"的元凶；纯文本渲染开销 O(n) 且无 DOM 结构变化
- * - 完成（streaming=false）：一次性 markdown 渲染，与完成态一致无跳变 */
+/** 流式 markdown 渐进渲染（reasonix 同款方案）：
+ * - 流式中：把文本按"稳定段落边界"（双换行 / 标题行前换行）切成 稳定前缀+尾段——
+ *   稳定前缀渲染 markdown（useMemo 按段缓存，非逐字重解析），正在输入的尾段纯文本。
+ *   流式中就有标题/加粗/列表格式感，且每段只解析一次，无"每 token 全量解析"的卡顿。
+ * - 完成：整体一次性 markdown 渲染（尾段此时也稳定了），与流式态视觉连续、无跳变 */
 function StreamingMd({ text, streaming }: { text: string; streaming?: boolean }) {
-  if (streaming) {
+  // 稳定边界：最后一个双换行；或最后一个"换行+标题行"边界（标题已完整时立即定型）
+  const stableEnd = useMemo(() => {
+    if (!streaming) return -1
+    let e = text.lastIndexOf('\n\n')
+    for (let i = text.length - 1; i > e && i >= 0; i--) {
+      if (text[i] === '\n' && text[i + 1] === '#') { e = i; break }
+    }
+    return e < 0 ? -1 : e + 2
+  }, [text, streaming])
+  const stable = stableEnd > 0 ? text.slice(0, stableEnd) : ''
+  const tail = stableEnd > 0 ? text.slice(stableEnd) : text
+  const html = useMemo(() => {
+    if (streaming) return stable ? renderMd(stable) : ''
+    return text ? renderMd(text) : ''
+  }, [streaming, stable, text])
+  if (!streaming) {
+    if (html) return <div className="md-answer-body" dangerouslySetInnerHTML={{ __html: html }} />
     return <div className="whitespace-pre-wrap break-words">{text}</div>
   }
-  const html = useMemo(() => (text ? renderMd(text) : ''), [text])
-  if (html) {
-    return <div className="md-answer-body" dangerouslySetInnerHTML={{ __html: html }} />
-  }
-  return <div className="whitespace-pre-wrap break-words">{text}</div>
+  return (
+    <div>
+      {html ? <div className="md-answer-body" dangerouslySetInnerHTML={{ __html: html }} /> : null}
+      {tail ? <div className="whitespace-pre-wrap break-words">{tail}</div> : null}
+    </div>
+  )
 }
 
 /** 思考过程区块（DeepSeek 式独立区块）：
