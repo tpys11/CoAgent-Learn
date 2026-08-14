@@ -51,7 +51,7 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
     <nav className={`h-full flex-shrink-0 flex flex-col transition-all duration-300 ${expanded ? 'w-64 py-4 items-stretch' : 'w-[104px] py-4 items-stretch'}`}>
       {/* 顶部品牌区（两态等高 h-[80px]+mb-2，保证按钮起始 y 锚定） */}
       {expanded ? (
-        <div className="h-[80px] px-6 pt-4 mb-2 border-b hairline flex flex-col gap-2">
+        <div className="h-[80px] px-6 pt-2 mb-2 border-b hairline flex flex-col gap-2">
           <span className="font-display text-[20px] tracking-wide select-none">CoAgent-Learn</span>
           <a href="https://github.com/tpys11/CoAgent-Learn" target="_blank" rel="noreferrer"
             className="flex items-center gap-2 text-xs text-dim hover:text-[var(--text)] transition-colors w-fit"
