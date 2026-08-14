@@ -688,7 +688,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
               <span className="text-xs font-bold">修改记忆</span>
               <span className="text-[9px] text-dim">对话后 AI 直接更新记忆</span>
             </div>
-            <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2 min-h-[220px] max-h-[430px]">
+            <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-2 min-h-[460px]">
               {mcMsgs.length === 0 ? (
                 <p className="text-[10px] text-dim text-center py-6 leading-relaxed">
                   直接输入想修改的内容，例如：
