@@ -38,12 +38,12 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
         key={key}
         onClick={() => onChange(key)}
         title={label}
-        className={`w-full h-9 mb-2 px-3 flex flex-col items-start justify-center gap-0.5 rounded-md transition-colors ${
+        className={`w-full h-9 mb-2 px-3 flex items-center gap-2 rounded-md text-[11px] transition-colors ${
           active ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'
         }`}
       >
         <Icon size={16} strokeWidth={active ? 2 : 1.6} />
-        <span className="text-[10px] leading-none truncate">{label}</span>
+        <span className="leading-none truncate">{label}</span>
       </button>
     )
   )
@@ -81,13 +81,13 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
       ) : (
         <>
           <button onClick={() => onChange('tutorial')} title="使用引导"
-            className={`w-full h-9 mb-2 px-3 flex flex-col items-start justify-center gap-0.5 rounded-md transition-colors ${view === 'tutorial' ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'}`}>
+            className={`w-full h-9 mb-2 px-3 flex items-center gap-2 rounded-md text-[11px] transition-colors ${view === 'tutorial' ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'}`}>
             <GraduationCap size={16} strokeWidth={1.6} />
-            <span className="text-[10px] leading-none">引导</span>
+            <span className="leading-none">引导</span>
           </button>
-          <button onClick={onSettings} title="设置" className="w-full h-9 px-3 flex flex-col items-start justify-center gap-0.5 rounded-md icon-btn transition-colors">
+          <button onClick={onSettings} title="设置" className="w-full h-9 px-3 flex items-center gap-2 rounded-md text-[11px] icon-btn transition-colors">
             <Settings size={16} strokeWidth={1.6} />
-            <span className="text-[10px] leading-none">设置</span>
+            <span className="leading-none">设置</span>
           </button>
         </>
       )}
