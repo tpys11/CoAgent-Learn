@@ -469,8 +469,9 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 new_mc.append({"agent": "视觉分析", "content": "已调用 glm-4v-flash 分析用户图片：" + img_desc[:150]})
             except Exception as e:
                 context += "【用户上传了图片，但视觉分析失败：" + str(e)[:100] + "】" + NL
-        # 知识库永久在线（全局设定①）：所有档位都优先基于知识库回答；一点没命中必须申明（系统义务）
-        context += "【知识库模式】请优先基于知识库内容回答；若知识库没有相关内容，回答第一句必须明确告知：⚠️ 未在知识库中检索到相关内容，以下为模型通识回答。" + NL
+        # 知识库模式（按需检索后生效）：本次检索过知识库时优先基于知识库回答；未命中必须申明
+        if state.get("knowledge"):
+            context += "【知识库模式】请优先基于知识库内容回答；若知识库没有相关内容，回答第一句必须明确告知：⚠️ 未在知识库中检索到相关内容，以下为模型通识回答。" + NL
         # 学情画像文档（后台学情与记忆管理 Agent 的产物）：直接注入，生成模型结合当前问题判断难度
         if cfg.get("memoryEnabled") is not False:
             try:
@@ -712,25 +713,20 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
 
     def route_plan(state: AgentState) -> list[str]:
         """一次规划 → 并行分发到需要的子 Agent（跳过被禁用的节点）
-        极速档：跳过规划/学情/审核，但知识库检索仍全局在线（纯工具无 LLM，不破秒回）
-        思考/研究档：强制知识库节点（检索+联网+子Agent整理），不依赖主 Agent 规划
+        极速档：最快速路径，不做知识库检索（后台资料处理，检索按需由主 Agent 规划）
+        思考/研究档：知识库管理按主 Agent 规划按需调用（用户指出库内有未检索到 / 研究档详细查阅 / 明确要求基于资料）
         需求澄清：plan 判定需求不明确 → 中断流程（返回 end，前端弹选项，选择后作为新消息重发）"""
         if state.get("clarify"):
             return ["end"]
         _cur_tpl = settings.get("template") or "思考"
         if _cur_tpl == "极速":
-            # 极速档：知识库检索全局在线（全局设定①），跳过学情/审核
-            if _agent_cfg("kb").get("enabled") is not False:
-                return ["kb", "generate"]
+            # 极速档：无规划决策（直接生成），不做知识库检索
             return ["generate"]
         plan = state.get("_plan") or []
         cfg_kb = _agent_cfg("kb")
         targets = []
-        # 思考/研究档：强制执行知识库节点（检索+联网+子Agent整理），不依赖主 Agent 规划
-        if _cur_tpl in ("思考", "研究") and (cfg_kb.get("enabled") is not False):
-            targets.append("kb")
-        # 学情与记忆管理为后台 Agent（对话后提炼画像文档），不在对话流程中调度
-        if "知识库管理" in plan and (cfg_kb.get("enabled") is not False) and "kb" not in targets:
+        # 知识库管理按需调用：仅当主 Agent 规划判定需要时（触发条件见 MAIN_PLAN_PROMPT）
+        if "知识库管理" in plan and (cfg_kb.get("enabled") is not False):
             targets.append("kb")
         return targets or ["generate"]
 
