@@ -835,50 +835,35 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
               </div>
             </div>
 
-            {/* 编排框架（文字介绍替代节点图） */}
-            <div className="flex flex-col gap-3">
-              <p className="text-xs font-semibold text-dim uppercase tracking-wider">编排框架</p>
-              <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2">
-                {PRESET_TEMPLATES.map(t => {
-                  const flow = (t.detail.find(([k]) => k === '编排流程') || [])[1] || ''
-                  const active = selectedTpl === t.name
-                  return (
-                    <div key={t.name} className={`flex items-start gap-2 text-xs leading-relaxed rounded-lg px-2 py-1.5 ${active ? 'bg-[var(--bg-hover)]' : ''}`}>
-                      <span className={`flex-shrink-0 font-semibold ${active ? 'text-[var(--text)]' : 'text-dim'}`}>{t.name}</span>
-                      <span className="text-[var(--text-muted)]">{flow}</span>
+            {/* 选中模式详情（按钮下方展示） */}
+            {selectedTpl && (() => {
+              const tpl = PRESET_TEMPLATES.find(t => t.name === selectedTpl)
+              if (!tpl) return null
+              const info = tplInfo(tpl)
+              return (
+                <div className="flex flex-col gap-4">
+                  <p className="text-xs font-semibold text-dim uppercase tracking-wider">{tpl.name} 模式详情</p>
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-1.5">
+                      <p className="text-xs font-semibold text-dim uppercase tracking-wider">适用场景</p>
+                      <FormattedText text={info.intro} />
                     </div>
-                  )
-                })}
-                <p className="text-[10px] text-dim pt-2 border-t hairline">选中模式高亮显示，点击上方模式按钮可切换。</p>
-              </div>
-            </div>
+                    <div className="flex flex-col gap-2.5">
+                      <p className="text-xs font-semibold text-dim uppercase tracking-wider">内部细节设定<span className="ml-1 text-[9px] font-normal text-dim/70">（预设，仅展示）</span></p>
+                      {info.detail.map(([k, v]) => (
+                        <div key={k} className="flex flex-col gap-0.5">
+                          <span className="text-[10px] font-semibold text-dim uppercase tracking-wider">{k}</span>
+                          <span className="text-[11px] leading-relaxed text-[var(--text-muted)]">{v}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
           </div>
         )}
       </div>
-      {/* 右侧：模板介绍（选中模板时显示：概述 + 预设内部细节只读展示） */}
-      {block === 'templates' && selectedTpl && (() => {
-        const tpl = allTemplates.find(t => t.name === selectedTpl)
-        if (!tpl) return null
-        const info = tplInfo(tpl)
-        return (
-          <div className="w-[480px] flex-shrink-0 border-l hairline bg-[var(--bg-hover)] p-6 flex flex-col gap-5 overflow-y-auto">
-            <p className="text-sm font-bold flex items-center gap-2"><LayoutTemplate size={15} /> {tpl.name} 模板</p>
-            <div className="flex flex-col gap-1.5">
-              <p className="text-xs font-semibold text-dim uppercase tracking-wider">适用场景</p>
-              <FormattedText text={info.intro} />
-            </div>
-            <div className="flex flex-col gap-2.5">
-              <p className="text-xs font-semibold text-dim uppercase tracking-wider">内部细节设定<span className="ml-1 text-[9px] font-normal text-dim/70">（预设，仅展示）</span></p>
-              {info.detail.map(([k, v]) => (
-                <div key={k} className="flex flex-col gap-0.5">
-                  <span className="text-[10px] font-semibold text-dim uppercase tracking-wider">{k}</span>
-                  <span className="text-[11px] leading-relaxed text-[var(--text-muted)]">{v}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )
-      })()}
       {/* 中间层 Agent 设定弹窗（点击图中圆心节点打开） */}
       {showMidAgent && agent && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setShowMidAgent(false)}>
