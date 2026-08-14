@@ -21,8 +21,8 @@ def _get_embedder():
     global _embedder
     if _embedder is None:
         try:
-            import os
-            os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+            # 直连 huggingface.co（实测容器内可达且稳定；hf-mirror 与
+            # huggingface_hub>=1.24 的响应头校验不兼容，会下载失败）
             from sentence_transformers import SentenceTransformer
             _embedder = SentenceTransformer("BAAI/bge-small-zh-v1.5")
         except Exception:
@@ -265,8 +265,7 @@ def _get_reranker():
     global _reranker
     if _reranker is None:
         try:
-            import os
-            os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+            # 直连 huggingface.co（同 _get_embedder 的原因）
             from sentence_transformers import CrossEncoder
             _reranker = CrossEncoder("BAAI/bge-reranker-base", max_length=512)
         except Exception:

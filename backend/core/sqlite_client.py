@@ -20,7 +20,9 @@ class SQLiteClient:
         self._connect()
 
     def _connect(self):
-        # Windows 挂载卷上 SQLite WAL 可能瞬时文件锁（unable to open database file），重试几次自动恢复
+        # Windows 挂载卷（Docker Desktop gRPC-FUSE）上 SQLite WAL 的 -shm/-wal 共享
+        # 内存文件操作不稳定（unable to open database file），故不使用 WAL，用默认
+        # rollback journal；单用户场景并发足够，换取挂载卷上的读写可靠性。
         last_err = None
         for _attempt in range(5):
             try:
@@ -28,7 +30,6 @@ class SQLiteClient:
                 conn.row_factory = sqlite3.Row
                 conn.enable_load_extension(True)
                 sqlite_vec.load(conn)
-                conn.execute("PRAGMA journal_mode=WAL")
                 conn.execute("PRAGMA busy_timeout=5000")
                 conn.execute("PRAGMA foreign_keys=ON")
                 self.conn = conn
