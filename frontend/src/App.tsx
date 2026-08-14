@@ -306,6 +306,7 @@ function App() {
     setPrefillInput(`[${label}] 请帮我分析并修改这个记忆模块，我的想法：`)
     setView('chat')
     setChatOpen(true)
+    setSidebarCollapsed(false)  // 进入对话界面自动展开课程侧栏
   }
 
   /** 项目记忆重新分析：跳转对话界面，显示持久提示「项目记忆分析」 */
@@ -314,6 +315,7 @@ function App() {
     setAnalyzeHint({ label: '项目记忆分析', project: projectName })
     setView('chat')
     setChatOpen(true)
+    setSidebarCollapsed(false)
   }
 
   const handleViewChange = (v: ViewKey) => {
@@ -866,7 +868,7 @@ function App() {
       </>) : (
         <HomeView
           projects={projects}
-          onEnter={(id) => { setCurrentProjectId(id); setChatOpen(true) }}
+          onEnter={(id) => { setCurrentProjectId(id); setChatOpen(true); setSidebarCollapsed(false) }}
           onCreate={handleCreateProject}
           onDelete={handleDeleteProject}
           onRename={handleRenameProject}
