@@ -32,13 +32,14 @@ AGENT_NODE = {'main': 'main', 'study': 'study', 'kb': 'kb', 'review': 'review'}
 
 def _resolve_plan_targets(tpl: str, plan: list) -> list[str]:
     """规划路由的目标节点判定（纯函数，可单测）：
-    - 极速档：不做知识库检索/联网搜索 → 直接生成
+    - 极速档：做知识库检索（固定降幻觉·全局设定；检索为纯工具调用不耗 LLM，
+      秒级完成），跳过联网搜索/子Agent整理 → 直接生成
     - 思考档：仅当学习助手规划含"知识库管理/搜索增强"才调 kb 节点
     - 研究档：无论规划结果如何，强制并入"搜索增强"（保证一轮联网搜索，体现档位差异；
       多轮搜索(1-5轮)与其他模型厂商独立检测留作后续增强）
     """
     if tpl == "极速":
-        return ["generate"]
+        return ["kb"]
     plan = list(plan or [])
     if tpl == "研究" and "搜索增强" not in plan and "联网搜索" not in plan:
         plan.append("搜索增强")
@@ -660,7 +661,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
 
     def route_plan(state: AgentState) -> list[str]:
         """一次规划 → 并行分发到需要的子 Agent（跳过被禁用的节点）
-        极速档：最快速路径，不做知识库检索（后台资料处理，检索按需由学习助手规划）
+        极速档：快速路径——做知识库检索（纯工具调用，秒级），跳过联网搜索/子Agent整理
         思考/研究档：知识库管理按学习助手规划按需调用（用户指出库内有未检索到 / 研究档详细查阅 / 明确要求基于资料）
         需求澄清：plan 判定需求不明确 → 中断流程（返回 end，前端弹选项，选择后作为新消息重发）"""
         if state.get("clarify"):
