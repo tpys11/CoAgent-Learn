@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Settings, Upload, Folder, Download, Layers, Wrench, ExternalLink, Plus, Trash2, LayoutTemplate, X, Workflow, Brain, Database, Scale } from 'lucide-react'
+import { Settings, Upload, Folder, Download, Layers, Wrench, ExternalLink, Plus, Trash2, LayoutTemplate, X, Workflow, Brain, Database, Scale, Code2 } from 'lucide-react'
 import type { AgentConfig } from '../types'
 import { DEFAULT_AGENTS } from '../types'
 
@@ -303,6 +303,9 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   })
   // Skill 详情弹窗（独立小窗口）
   const [skillDetail, setSkillDetail] = useState<{ name: string; description: string; folder: string; category: string } | null>(null)
+  // Skill 实现源码（点开详情→查看实现）
+  const [skillSource, setSkillSource] = useState<string | null>(null)
+  const [skillSrcLoading, setSkillSrcLoading] = useState(false)
   // 对话流程：Agent 自定义选中的 Agent
   const [templateAgentId, setTemplateAgentId] = useState(agents[0]?.id || '')
   // 对话流程：选中模板（展开详情）、自定义模板、保存名称
@@ -985,6 +988,22 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                 <span className="text-[10px] text-dim font-mono">{skillDetail.folder}</span>
               </div>
               <p className="text-sm leading-relaxed text-[var(--text-muted)]">{skillDetail.description}</p>
+              <button
+                onClick={() => {
+                  if (skillSource !== null) { setSkillSource(null); return }
+                  setSkillSrcLoading(true)
+                  fetch('/api/skills/' + encodeURIComponent(skillDetail.name) + '/source', { cache: 'no-store' })
+                    .then(r => r.json()).then(d => { setSkillSource(d.source || '（无源码）') })
+                    .catch(() => setSkillSource('（加载失败）'))
+                    .finally(() => setSkillSrcLoading(false))
+                }}
+                className="w-fit text-[10px] px-2.5 py-1.5 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors flex items-center gap-1">
+                <Code2 size={11} /> {skillSource !== null ? '收起实现' : '查看实现'}
+              </button>
+              {skillSrcLoading && <p className="text-[11px] text-dim">加载中…</p>}
+              {skillSource !== null && (
+                <pre className="text-[11px] font-mono leading-relaxed bg-[var(--bg-input)] border hairline rounded-xl p-3 overflow-x-auto whitespace-pre-wrap">{skillSource}</pre>
+              )}
             </div>
           </div>
         </div>

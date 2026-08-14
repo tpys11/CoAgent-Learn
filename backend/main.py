@@ -1010,6 +1010,23 @@ async def list_skills():
     return {"skills": registry.list_all()}
 
 
+@app.get("/api/skills/{name}/source")
+async def skill_source(name: str):
+    """Skill 实现源码（详情弹层展示具体实现）"""
+    import os as _os
+    try:
+        from skills.registry import registry
+        for s in registry.list_all():
+            if s["name"] == name:
+                p = _os.path.join("/app/skills", s["folder"], "__init__.py")
+                if _os.path.exists(p):
+                    src = open(p, encoding="utf-8").read()
+                    return {"name": name, "source": src[:6000], "path": f"skills/{s['folder']}/__init__.py"}
+    except Exception:
+        pass
+    return {"name": name, "source": "", "path": ""}
+
+
 class SkillUpload(BaseModel):
     name: str
     code: str
