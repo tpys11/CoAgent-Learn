@@ -174,10 +174,15 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
     setTimeout(() => setDoneMsg(''), 5000)
     setTimeout(() => { load(); setRefreshKey(k => k + 1) }, 500)
   }
-  /** 确认上传：把暂存的文件真正提交上传 */
+  /** 确认上传：把拖入/暂存的文件直接上传到课程（同步向量化）；不弹系统文件选择器 */
   const confirmUpload = () => {
-    if (!pendingFiles.length || uploading) return
+    if (uploading) return
+    if (!pendingFiles.length) { alert('请先把资源拖入课程，或点「选择文件」添加'); return }
     uploadFiles(pendingFiles)
+  }
+  /** 把拖入/选择的文件追加进待上传列表（暂存，不直接上传） */
+  const addPanelFiles = (fs: FileList | File[]) => {
+    setPendingFiles(prev => [...prev, ...Array.from(fs)])
   }
   const addPreset = async (title: string, body: string) => {
     if (!projectId) return
@@ -208,7 +213,7 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
         if (it && it.title && it.body) { addPreset(it.title, it.body); return }
       } catch { /* 忽略 */ }
     }
-    if (e.dataTransfer.files.length) uploadFiles(e.dataTransfer.files)
+    if (e.dataTransfer.files.length) addPanelFiles(e.dataTransfer.files)
   }
   return (
     <div className={`p-6 flex flex-col gap-5 ${naturalHeight ? '' : 'h-full overflow-hidden'}`}>
@@ -223,10 +228,14 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
             <div className="flex items-center gap-2">
               {uploading && <span className="text-[11px] text-dim">向量化中：{uploading}</span>}
               {!uploading && doneMsg && <span className="text-[11px] text-emerald-600 font-medium">{doneMsg}</span>}
-              <button onClick={pendingFiles.length ? confirmUpload : () => fileRef.current?.click()}
+              <button onClick={confirmUpload}
                 disabled={!!uploading}
                 className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors disabled:opacity-50">
                 <Upload size={12} /> {uploading ? '向量化中…' : pendingFiles.length ? `确认上传（${pendingFiles.length}）` : '确认上传'}
+              </button>
+              <button onClick={() => fileRef.current?.click()} disabled={!!uploading}
+                className="flex items-center gap-1 px-3 py-1.5 text-[11px] border hairline rounded-xl text-dim hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-50">
+                选择文件
               </button>
               <input ref={fileRef} type="file" multiple className="hidden"
                 onChange={e => {
