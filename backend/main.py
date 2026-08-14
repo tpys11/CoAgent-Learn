@@ -441,8 +441,9 @@ async def get_graph_node(project_id: str = "default", name: str = ""):
 
 @app.get("/api/knowledge/query")
 async def knowledge_query(project_id: str = "default", q: str = "", top_k: int = 3):
+    from starlette.concurrency import run_in_threadpool
     from core.knowledge_service import search
-    return {"results": search(project_id, q, top_k)}
+    return {"results": await run_in_threadpool(search, project_id, q, top_k)}
 
 
 # ---------- 资源 API ----------
@@ -460,9 +461,8 @@ class GenerateDomainReq(BaseModel):
     model: str = "deepseek-v4-flash"
 
 
-@app.post("/api/generate-domain")
-async def generate_domain(req: GenerateDomainReq):
-    """新建领域：AI 生成该领域的系统学习教程 + 百科词条"""
+def _generate_domain_sync(req) -> dict:
+    """新建领域：AI 生成该领域的系统学习教程 + 百科词条（同步实现，线程池调用，避免阻塞事件循环）"""
     import requests as _req
     from core.memory_analysis import _extract_json
     name = (req.domain or "").strip()
@@ -496,6 +496,12 @@ async def generate_domain(req: GenerateDomainReq):
         return {"status": "ok", "tutorials": data.get("tutorials") or [], "wiki": data.get("wiki") or []}
     except Exception as e:
         return {"status": "error", "msg": str(e)[:200]}
+
+
+@app.post("/api/generate-domain")
+async def generate_domain(req: GenerateDomainReq):
+    from starlette.concurrency import run_in_threadpool
+    return await run_in_threadpool(_generate_domain_sync, req)
 
 
 @app.get("/api/resources")
@@ -1540,9 +1546,13 @@ async def memory_chat(req: ChatRequest):
     h = {"Authorization": "Bearer " + (req.api_key or _cfg.DEEPSEEK_API_KEY), "Content-Type": "application/json"}
     try:
         import requests as _req
-        resp = _req.post(_cfg.DEEPSEEK_BASE_URL + "/chat/completions",
-                         json={"model": "deepseek-v4-flash", "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]},
-                         headers=h, timeout=90)
+        from starlette.concurrency import run_in_threadpool
+
+        def _llm_call():
+            return _req.post(_cfg.DEEPSEEK_BASE_URL + "/chat/completions",
+                             json={"model": "deepseek-v4-flash", "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]},
+                             headers=h, timeout=90)
+        resp = await run_in_threadpool(_llm_call)
         if resp.status_code != 200:
             return {"reply": "⚠️ 记忆更新失败：模型调用出错（检查 API Key 是否有效）。"}
         raw = resp.json()["choices"][0]["message"]["content"] or ""
