@@ -635,7 +635,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                       ))}
                     </div>
                     <p className="text-xs leading-relaxed"><span className="font-semibold text-[var(--text)]">其他：</span></p>
-                    <div className="rounded-xl border border-dashed hairline bg-[var(--bg-input)] px-4 py-3">
+                    <div className="rounded-xl border border-dashed hairline bg-[var(--bg-input)] px-4 py-3 min-h-[84px]">
                       {gBasic ? (
                         <p className="text-xs text-[var(--text-muted)] leading-relaxed"><MiniMD text={gBasic} /></p>
                       ) : null}
@@ -646,7 +646,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                   <div className="border hairline rounded-2xl p-5 bg-[var(--bg-panel)] flex flex-col gap-3">
                     <span className="text-sm font-semibold">学习情况</span>
                     <p className="text-xs leading-relaxed"><span className="font-semibold text-[var(--text)]">概述：</span></p>
-                    <div className="rounded-xl border border-dashed hairline bg-[var(--bg-input)] px-4 py-3">
+                    <div className="rounded-xl border border-dashed hairline bg-[var(--bg-input)] px-4 py-3 min-h-[84px]">
                       {gStudy.总体概述 ? (
                         <p className="text-xs text-[var(--text-muted)] leading-relaxed">{gStudy.总体概述}</p>
                       ) : null}
@@ -678,7 +678,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                     </div>
                     <div className="border hairline rounded-2xl p-5 bg-[var(--bg-panel)] flex flex-col gap-2">
                       <span className="text-sm font-semibold">特殊需求</span>
-                      <SpecialPref pref={gPref} />
+                      <div className="rounded-xl border border-dashed hairline bg-[var(--bg-input)] px-4 py-3 min-h-[84px]" />
                     </div>
                   </div>
                 </div>
