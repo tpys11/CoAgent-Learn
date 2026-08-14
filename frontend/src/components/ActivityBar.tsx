@@ -13,7 +13,6 @@ const ITEMS: Array<{ key: ViewKey; icon: any; label: string }> = [
   { key: 'chat', icon: MessageSquare, label: '主页' },
   { key: 'resources', icon: Library, label: '资源' },
   { key: 'memory', icon: Brain, label: '记忆' },
-  { key: 'agents', icon: Bot, label: 'Agent' },
   { key: 'obsidian', icon: FolderOpen, label: '本地文档' },
 ]
 
