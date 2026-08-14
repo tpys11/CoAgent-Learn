@@ -286,7 +286,7 @@ def list_docs(project_id: str) -> list:
         g["chunks"] += 1
         content = r["content"] or ""
         if not g["preview"]:
-            g["preview"] = content[:60]
+            g["preview"] = content[:150]
         g["blocks"].append({"chunk": r["chunk"], "content": content})
         g["tree"] = _db.get_kb_tree(project_id, src)
     return list(grouped.values())

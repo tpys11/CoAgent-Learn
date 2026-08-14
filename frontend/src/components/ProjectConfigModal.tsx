@@ -127,7 +127,7 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
   )
 }
 
-/** 课程资源：栏目一为课程资源（可上传文件、拖入文件或系统资源），栏目二为系统内置资源（可拖入/加入） */
+/** 项目资源：栏目一为项目资源（可上传文件、拖入文件或系统资源），栏目二为系统内置资源（可拖入/加入） */
 function ProjectResources({ projectId, naturalHeight }: { projectId: string | null; naturalHeight?: boolean }) {
   const [docs, setDocs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -171,7 +171,7 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
     setTimeout(() => { load(); setRefreshKey(k => k + 1) }, 2000)
   }
   const removeDoc = (source: string) => {
-    if (!window.confirm(`从课程资源移除「${source}」？`)) return
+    if (!window.confirm(`从项目资源移除「${source}」？`)) return
     fetch('/api/knowledge/delete?project_id=' + encodeURIComponent(projectId || 'default') + '&source=' + encodeURIComponent(source), { method: 'DELETE' })
       .then(() => {
         setDocs(prev => prev.filter(d => d.source !== source))
@@ -192,13 +192,13 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
   }
   return (
     <div className={`p-6 flex flex-col gap-5 ${naturalHeight ? '' : 'h-full overflow-hidden'}`}>
-      {/* 上：课程资源（可上传 / 拖入） */}
+      {/* 上：项目资源（可上传 / 拖入） */}
       <div className="flex-shrink-0 flex flex-col gap-2.5"
         onDragOver={e => { e.preventDefault(); setDragOver(true) }}
         onDragLeave={() => setDragOver(false)}
         onDrop={onDrop}>
         <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold text-dim uppercase tracking-wider">课程资源</p>
+          <p className="text-xs font-semibold text-dim uppercase tracking-wider">项目资源</p>
           <div className="flex items-center gap-2">
             {uploading && <span className="text-[11px] text-dim">处理中：{uploading}</span>}
             <button onClick={() => fileRef.current?.click()}
@@ -222,7 +222,7 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
               <span className="w-8 h-8 rounded-lg bg-[#1a1a1a] text-white flex items-center justify-center flex-shrink-0"><FileText size={14} /></span>
               <div className="flex flex-col gap-0.5 min-w-0 flex-1">
                 <span className="text-xs font-semibold truncate">{d.source}</span>
-                <span className="text-[10px] text-dim">{d.chunks} 块 · {d.preview || ''}</span>
+                <span className="text-[10px] text-dim truncate">{d.preview || ''}</span>
               </div>
               <button onClick={() => removeDoc(d.source)} title="移除"
                 className="p-1.5 rounded-lg text-dim hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"><Trash2 size={13} /></button>
