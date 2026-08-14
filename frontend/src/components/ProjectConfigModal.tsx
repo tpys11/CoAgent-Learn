@@ -220,11 +220,15 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
   const addPreset = (title: string, body: string) => {
     addTextItem(title, body)
   }
-  const removeDoc = (source: string) => {
-    if (!window.confirm(`从项目资源移除「${source}」？`)) return
-    fetch('/api/knowledge/delete?project_id=' + encodeURIComponent(projectId || 'default') + '&source=' + encodeURIComponent(source), { method: 'DELETE' })
+  const [removeTarget, setRemoveTarget] = useState<string | null>(null)
+  /** 删除已上传资源：弹内部确认框，确认后删除 */
+  const doRemove = () => {
+    const src = removeTarget
+    setRemoveTarget(null)
+    if (!src || !projectId) return
+    fetch('/api/knowledge/delete?project_id=' + encodeURIComponent(projectId) + '&source=' + encodeURIComponent(src), { method: 'DELETE' })
       .then(() => {
-        setDocs(prev => prev.filter(d => d.source !== source))
+        setDocs(prev => prev.filter(d => d.source !== src))
         setRefreshKey(k => k + 1)  // 刷新嵌套 ResourceView（原文已转存资源表）
       })
   }
@@ -279,7 +283,7 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
                 <div key={d.source} className="group flex items-center gap-2 border hairline rounded-xl px-3 py-2 bg-[var(--bg-panel)]">
                   <span className="w-7 h-7 rounded-lg bg-[#1a1a1a] text-white flex items-center justify-center flex-shrink-0"><FileText size={13} /></span>
                   <span className="text-xs font-semibold truncate flex-1 min-w-0" title={d.source}>{d.source}</span>
-                  <button onClick={() => removeDoc(d.source)} title="移除"
+                  <button onClick={() => setRemoveTarget(d.source)} title="移除"
                     className="opacity-0 group-hover:opacity-100 p-1 rounded text-dim hover:text-red-500 transition-colors flex-shrink-0"><Trash2 size={12} /></button>
                 </div>
               ))}
@@ -314,6 +318,24 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
           <ResourceView refreshSignal={refreshKey} projectId={projectId} onUseItem={addPreset} />
         </div>
       </div>
+      {/* 内部确认弹窗：删除已上传资源（不用浏览器原生 confirm） */}
+      {removeTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-6" onClick={() => setRemoveTarget(null)}>
+          <div className="card-lift rounded-2xl p-5 w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <p className="text-sm font-bold">移除资源</p>
+            <p className="mt-2 text-[11px] leading-relaxed text-dim">
+              从项目资源移除「{removeTarget}」？<br />
+              移除后该内容不再用于课程知识库检索。
+            </p>
+            <div className="mt-4 flex gap-2">
+              <button onClick={() => setRemoveTarget(null)}
+                className="flex-1 py-2 rounded-xl text-[11px] font-medium border hairline row-hover transition-colors">取消</button>
+              <button onClick={doRemove}
+                className="flex-1 py-2 rounded-xl text-[11px] font-medium text-white bg-red-500 hover:opacity-90 transition-colors">删除</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
