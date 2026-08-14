@@ -38,17 +38,17 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
         key={key}
         onClick={() => onChange(key)}
         title={label}
-        className={`w-full h-9 mb-2 px-3 flex flex-col items-start justify-center rounded-2xl transition-all ${
+        className={`w-full h-9 mb-2 px-3 flex items-center gap-2 rounded-md text-[11px] transition-colors ${
           active ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'
         }`}
       >
         <Icon size={16} strokeWidth={active ? 2 : 1.6} />
-        <span className="text-[9px] leading-none">{label}</span>
+        <span className="leading-none truncate">{label}</span>
       </button>
     )
   )
   return (
-    <nav className={`h-full flex-shrink-0 flex flex-col transition-all duration-300 ${expanded ? 'w-64 py-4 items-stretch' : 'w-[64px] py-4 items-stretch'}`}>
+    <nav className={`h-full flex-shrink-0 flex flex-col transition-all duration-300 ${expanded ? 'w-64 py-4 items-stretch' : 'w-[104px] py-4 items-stretch'}`}>
       {/* 顶部品牌区（两态等高 h-[80px]+mb-2，保证按钮起始 y 锚定） */}
       {expanded ? (
         <div className="h-[80px] px-6 pt-4 mb-2 border-b hairline flex flex-col gap-2">
@@ -83,13 +83,13 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
       ) : (
         <>
           <button onClick={() => onChange('tutorial')} title="使用引导"
-            className={`w-full h-9 px-3 flex flex-col items-start justify-center rounded-2xl transition-all ${view === 'tutorial' ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'}`}>
+            className={`w-full h-9 mb-2 px-3 flex items-center gap-2 rounded-md text-[11px] transition-colors ${view === 'tutorial' ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'}`}>
             <GraduationCap size={16} strokeWidth={1.6} />
-            <span className="text-[8px] leading-none">引导</span>
+            <span className="leading-none">引导</span>
           </button>
-          <button onClick={onSettings} title="设置" className="w-full h-9 px-3 flex flex-col items-start justify-center rounded-2xl icon-btn transition-all">
+          <button onClick={onSettings} title="设置" className="w-full h-9 px-3 flex items-center gap-2 rounded-md text-[11px] icon-btn transition-colors">
             <Settings size={16} strokeWidth={1.6} />
-            <span className="text-[8px] leading-none">设置</span>
+            <span className="leading-none">设置</span>
           </button>
         </>
       )}
