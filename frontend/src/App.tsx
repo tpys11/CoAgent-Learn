@@ -487,14 +487,15 @@ function App() {
       const timeoutMs = (Math.min(120, Math.max(1, parseInt(localStorage.getItem('coagent-timeout') || '30', 10) || 30))) * 1000
       // 请求 + 瞬时断连自动重试一次（浏览器网络层偶发中断，重试可自愈；连续失败才报"网络中断"）
       let res: Response | null = null
+      let firstByte = true
+      const resetTimer = () => {
+        clearTimeout(timeoutTimer)
+        timeoutTimer = setTimeout(() => abortCtrlRef.current?.abort(), firstByte ? timeoutMs : 60000)
+      }
       for (let _try = 0; _try < 2; _try++) {
         const ctrl = new AbortController()
         abortCtrlRef.current = ctrl
-        let firstByte = true
-        const resetTimer = () => {
-          clearTimeout(timeoutTimer)
-          timeoutTimer = setTimeout(() => ctrl.abort(), firstByte ? timeoutMs : 60000)
-        }
+        firstByte = true
         resetTimer()
         try {
           const r = await fetch('/api/chat', {
