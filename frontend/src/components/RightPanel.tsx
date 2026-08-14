@@ -1,4 +1,4 @@
-﻿import { Map, Send, MessagesSquare, X, PanelRightClose, SlidersHorizontal, FileText } from 'lucide-react'
+﻿import { Map, Send, MessagesSquare, X, PanelRightClose, SlidersHorizontal, FileText, Activity } from 'lucide-react'
 import { useEffect, useRef, useState, Fragment } from 'react'
 import { KnowledgeTree } from './KbTree'
 import SpecialOutputPane from './SpecialOutputPane'
@@ -16,15 +16,16 @@ interface Props {
   onCollapse: () => void
 }
 
-type WinKey = 'flow' | 'graph' | 'chat' | 'special'
+type WinKey = 'flow' | 'graph' | 'chat' | 'special' | 'monitor'
 
 const WINDOWS: Array<{ key: WinKey; title: string; icon: any }> = [
   { key: 'graph', title: '知识图谱', icon: Map },
   { key: 'chat', title: '第二对话', icon: MessagesSquare },
   { key: 'special', title: '特殊形式输出', icon: FileText },
+  { key: 'monitor', title: '运行监控', icon: Activity },
 ]
 
-const DEFAULT_HEIGHTS: Record<WinKey, number> = { flow: 200, graph: 190, chat: 240, special: 200 }
+const DEFAULT_HEIGHTS: Record<WinKey, number> = { flow: 200, graph: 190, chat: 240, special: 200, monitor: 180 }
 const MIN_H = 56
 const MAX_H = 800
 const WINDOWS_KEY = 'coagent-rp-windows'
@@ -75,8 +76,8 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
   const [visible, setVisible] = useState<Record<WinKey, boolean>>(() => {
     try {
       const s = JSON.parse(localStorage.getItem(WINDOWS_KEY) || '')
-      return { flow: true, graph: true, chat: true, special: false, ...s }
-    } catch { return { flow: true, graph: true, chat: true, special: false } }
+      return { flow: true, graph: true, chat: true, special: false, monitor: true, ...s }
+    } catch { return { flow: true, graph: true, chat: true, special: false, monitor: true } }
   })
   const [showWinSettings, setShowWinSettings] = useState(false)
   const dragRef = useRef<{ a: WinKey; b: WinKey; isLast: boolean; startY: number; startHa: number; startHb: number } | null>(null)
@@ -300,6 +301,11 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
               </div>
             )}
             {w.key === 'special' && <SpecialOutputPane />}
+            {w.key === 'monitor' && (
+              <div className="w-full h-full overflow-y-auto px-3 py-2">
+                <p className="text-[11px] text-dim">运行监控（待接入：节点耗时 / LLM 调用次数 / token 估算）</p>
+              </div>
+            )}
           </Pane>
         </Fragment>
       ))}
