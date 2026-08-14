@@ -31,7 +31,7 @@ const PRESET_TEMPLATES: Array<{ name: string; desc: string; intro: string; detai
     name: '思考', desc: '完整流程 + 轻量单审',
     intro: '档位概述：面向需要认真一点的回答——知识库无对应内容但对精确度要求不高。\n**效果**\n- 内容增强：并行搜索 agent 按固定规则（优质信息源：优质社区、官方信息）返回优质内容，通常搜索 10-20 条，一轮搜索\n- 内容总量：大部分 800-1200 字，最多不超过 1500 字\n- 检测机制：flash 轻量单审\n**全局设定（每种模式都有）**\n- 知识库向量检索：固定逻辑保证幻觉率降低，一点都没命中会申明\n- 学情画像：按用户水平调难度（会话缓存，几乎零成本）',
     detail: [
-      ['编排流程', '规划 → 学情与记忆 ∥ 知识库与搜索 → 生成 → flash 单审 → 输出'],
+      ['编排流程', '规划 → 知识库与搜索 → 生成 → flash 单审 → 输出（学情画像：后台文档注入）'],
       ['内容增强', '联网搜索一轮 + 知识库/搜索子 Agent 整理（来源→核心观点→关键数据）'],
       ['生成模型', '强模型（质量优先）'],
       ['检测机制', 'flash 轻量单审（三维度：符实性/难度适配/规范性）'],
@@ -42,7 +42,7 @@ const PRESET_TEMPLATES: Array<{ name: string; desc: string; intro: string; detai
     name: '研究', desc: '完整流程 + 严格检测',
     intro: '档位概述：面向对内容精确度要求极高的任务——知识库无对应内容且需要严谨。\n**效果**\n- 内容增强：并行搜索 agent 一轮 10-20 条（优质信息源规则），每轮结束总结，信息不够继续搜索，可进行 1-5 轮（多轮搜索待实现，当前一轮）\n- 内容总量：不做限制\n- 独立检测机制：用其他模型厂商的模型作为独立检测阶段（待实现，当前为 flash 单审）\n**全局设定（每种模式都有）**\n- 知识库向量检索：固定逻辑保证幻觉率降低，一点都没命中会申明\n- 学情画像：按用户水平调难度（会话缓存，几乎零成本）',
     detail: [
-      ['编排流程', '与思考档一致：规划 → 学情与记忆 ∥ 知识库与搜索 → 生成 → 单审 → 输出'],
+      ['编排流程', '与思考档一致：规划 → 知识库与搜索 → 生成 → 单审 → 输出（学情画像：后台文档注入）'],
       ['内容增强', '联网搜索一轮（多轮搜索待实现：1-5 轮，每轮总结、不足续搜）'],
       ['生成模型', '强模型（质量优先）'],
       ['检测机制', 'flash 单审（其他模型厂商独立检测待实现）'],
@@ -217,15 +217,18 @@ const FlowGraph = ({ agents, templateName, templateAgentId, onSelect }: { agents
   }
   return (
     <div className="flex flex-col items-center gap-1 py-6">
+      {/* 学情与记忆管理：后台 Agent（不占对话流程，虚线展示） */}
+      <div className="flex items-center gap-2 border border-dashed border-[var(--border-color)] rounded-lg px-2.5 py-1.5">
+        <Brain size={12} className="text-dim" />
+        <span className="text-[10px] text-dim">学情与记忆管理（后台）</span>
+        <span className="text-[9px] text-dim/70">对话后提炼画像文档 → 注入生成</span>
+      </div>
+      <DownArrow />
       {/* 规划节点：不展示子 Agent（规划职责不调用输出子 Agent） */}
       <FlowNode icon={Workflow} name="规划" level={lv('plan')} active={act('main')} onClick={pick('main')} />
       <DownArrow />
-      {/* 学情与记忆 ∥ 知识库与搜索（子 Agent 左右横向连接） */}
-      <div className="flex items-center gap-3">
-        <FlowNode icon={Brain} name="学情与记忆" level={lv('study_memory')} active={act('study')} onClick={pick('study')} />
-        <span className="text-[9px] text-dim">∥ 并行</span>
-        <AgentRow node={<FlowNode icon={Database} name={nameOf('kb', '知识库管理')} level={lv('kb')} active={act('kb')} onClick={pick('kb')} />} subs={kbSubs} />
-      </div>
+      {/* 知识库管理（后台入库 + 对话中检索∥搜索并行） */}
+      <AgentRow node={<FlowNode icon={Database} name={nameOf('kb', '知识库管理')} level={lv('kb')} active={act('kb')} onClick={pick('kb')} />} subs={kbSubs} />
       <DownArrow />
       {/* 生成（输出增强 子 Agent 右侧连接） */}
       <AgentRow node={<FlowNode icon={Workflow} name="生成" level={lv('generate')} active={act('main')} onClick={pick('main')} />} subs={mainSubs} />

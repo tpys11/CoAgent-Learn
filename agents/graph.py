@@ -476,8 +476,30 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 context += "【用户上传了图片，但视觉分析失败：" + str(e)[:100] + "】" + NL
         # 知识库永久在线（全局设定①）：所有档位都优先基于知识库回答；一点没命中必须申明（系统义务）
         context += "【知识库模式】请优先基于知识库内容回答；若知识库没有相关内容，回答第一句必须明确告知：⚠️ 未在知识库中检索到相关内容，以下为模型通识回答。" + NL
-        if state.get("profile") and (cfg.get("memoryEnabled") is not False):
-            context += f"学情: {json.dumps(state['profile'], ensure_ascii=False)}" + NL
+        # 学情画像文档（后台学情与记忆管理 Agent 的产物）：直接注入，生成模型结合当前问题判断难度
+        if cfg.get("memoryEnabled") is not False:
+            try:
+                from core.postgres_client import pg_client as _pgp
+                from core.memory_analysis import _as_dict as _md_as_dict
+                _prows = _pgp.execute("SELECT data FROM global_profile ORDER BY updated_at DESC LIMIT 1")
+                _parts = []
+                if _prows and _prows[0].get("data"):
+                    _g = _md_as_dict(_prows[0]["data"])
+                    if _g.get("基本情况"):
+                        _parts.append("基本情况：" + str(_g["基本情况"])[:500])
+                    _lc = _g.get("学习情况")
+                    if isinstance(_lc, dict):
+                        if _lc.get("总体概述"):
+                            _parts.append("学习情况概述：" + str(_lc["总体概述"])[:300])
+                        for _c in (_lc.get("课程") or [])[:3]:
+                            if isinstance(_c, dict):
+                                _parts.append(f"课程[{_c.get('课程名', '')}] 目标:{_c.get('目标', '')} 当前情况:{_c.get('当前情况', '')}")
+                    if _g.get("阅读偏好"):
+                        _parts.append("阅读偏好：" + json.dumps(_g.get("阅读偏好"), ensure_ascii=False)[:300])
+                if _parts:
+                    context += "【用户画像】" + NL + NL.join(_parts) + NL + "请结合画像与当前问题判断用户水平并调整内容深度。" + NL
+            except Exception:
+                pass
         # 阅读偏好：用户对输出形式的偏好（初始化问卷/手动设置），注入生成约束（不阻塞主流程）
         try:
             from core.postgres_client import pg_client as _pg_gp
@@ -729,14 +751,12 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 return ["kb", "generate"]
             return ["generate"]
         plan = state.get("_plan") or []
-        cfg_study = _agent_cfg("study")
         cfg_kb = _agent_cfg("kb")
         targets = []
         # 思考/研究档：强制执行知识库节点（检索+联网+子Agent整理），不依赖主 Agent 规划
         if _cur_tpl in ("思考", "研究") and (cfg_kb.get("enabled") is not False):
             targets.append("kb")
-        if "学情与记忆管理" in plan and (cfg_study.get("enabled") is not False):
-            targets.append("study_memory")
+        # 学情与记忆管理为后台 Agent（对话后提炼画像文档），不在对话流程中调度
         if "知识库管理" in plan and (cfg_kb.get("enabled") is not False) and "kb" not in targets:
             targets.append("kb")
         return targets or ["generate"]
