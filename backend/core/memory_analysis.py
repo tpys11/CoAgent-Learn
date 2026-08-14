@@ -123,7 +123,8 @@ def update_memories(api_key, project_id, dialogue_id, db, session_id="default"):
                 all_convo += ("用户: " if m["role"] == "user" else "AI: ") + c + NL
         p2 = "根据以下对话内容，提炼用户全局个人画像（JSON格式）：" + NL + "对话内容：" + NL + all_convo[:6000]
         p2 += NL + NL + "JSON格式：" + NL
-        p2 += "{\"用户背景\":\"身份专业\",\"偏好提问方式\":[\"方式\"],\"偏好学习方式\":[\"方式\"],\"偏好_输出\":[\"格式\"],\"学习时长\":\"\",\"学习内容\":[\"学科\"],\"项目摘要\":{\"项目名\":{\"抽象项目情况\":\"\",\"当前水平\":\"\",\"目标\":\"\",\"薄弱点\":[\"\"],\"偏好\":[\"\"]}}}"
+        p2 += "{\"基本情况\":\"一段不超过500字的身份与背景概述\",\"学习情况\":{\"总体概述\":\"一小段学习总况概述\",\"课程\":[{\"课程名\":\"\",\"目标\":\"学习目标\",\"当前情况\":\"当前水平概况\"}]}}"
+        p2 += NL + "注意：不要输出阅读偏好（阅读偏好由用户手动设置，你只提炼基本情况与学习情况）；每门课程概述不超过500字。"
         r2 = _call_llm(p2)
         gd = _extract_json(r2)
         if not isinstance(gd, dict):
@@ -133,15 +134,43 @@ def update_memories(api_key, project_id, dialogue_id, db, session_id="default"):
         else:
             old_rows = db.execute("SELECT data FROM global_profile WHERE session_id=%s", (session_id,))
             old = _as_dict(old_rows[0]["data"]) if old_rows and old_rows[0]["data"] else {}
-            for k in ["用户背景","偏好提问方式","偏好学习方式","偏好_输出","学习时长","学习内容"]:
-                if k in gd and gd[k]: old[k] = gd[k]
-            if gd.get("项目摘要"):
-                pm = db.execute("SELECT data FROM project_memories WHERE session_id=%s AND project_id=%s", (session_id, project_id))
-                proj = pm[0]["data"] if pm and pm[0]["data"] else {}
-                label = project_id if project_id != "default" else "默认项目"
-                ps = old.get("项目摘要", {})
-                ps[label] = {"领域": proj.get("领域",""), "水平": proj.get("水平",""), "薄弱点": proj.get("薄弱点",[]), "兴趣": proj.get("兴趣",[]), "偏好": proj.get("偏好",[])}
-                old["项目摘要"] = ps
+            # 三栏结构合并：基本情况 / 学习情况（阅读偏好不在此提炼，只由用户问卷/手动设置）
+            if gd.get("基本情况"):
+                old["基本情况"] = gd["基本情况"]
+            if gd.get("学习情况") and isinstance(gd["学习情况"], dict):
+                lc = gd["学习情况"]
+                old_lc = old.get("学习情况") if isinstance(old.get("学习情况"), dict) else {}
+                if lc.get("总体概述"):
+                    old_lc["总体概述"] = lc["总体概述"]
+                if lc.get("课程"):
+                    old_courses = old_lc.get("课程") if isinstance(old_lc.get("课程"), list) else []
+                    by_name = {c.get("课程名"): c for c in old_courses if isinstance(c, dict)}
+                    for c in lc["课程"]:
+                        if not isinstance(c, dict) or not c.get("课程名"):
+                            continue
+                        nm = c["课程名"]
+                        if nm in by_name:
+                            for f in ["目标", "当前情况"]:
+                                if c.get(f):
+                                    by_name[nm][f] = c[f]
+                        else:
+                            old_courses.append(c)
+                    old_lc["课程"] = old_courses
+                old["学习情况"] = old_lc
+            # 旧字段 → 三栏兼容迁移：用户背景并入基本情况、项目摘要并入学习情况课程（一次性，之后以新结构为准）
+            if not old.get("基本情况") and old.get("用户背景"):
+                old["基本情况"] = str(old["用户背景"])
+                old.pop("用户背景", None)
+            if not old.get("学习情况") and old.get("项目摘要"):
+                try:
+                    _courses = []
+                    for _pname, _pv in (old["项目摘要"] or {}).items():
+                        if isinstance(_pv, dict):
+                            _courses.append({"课程名": str(_pname), "目标": str(_pv.get("目标", "")), "当前情况": str(_pv.get("当前水平", ""))})
+                    if _courses:
+                        old["学习情况"] = {"总体概述": "", "课程": _courses}
+                except Exception:
+                    pass
             has = db.execute("SELECT session_id FROM global_profile WHERE session_id=%s", (session_id,))
             if has:
                 db.execute("UPDATE global_profile SET data=%s,updated_at=CURRENT_TIMESTAMP WHERE session_id=%s", (json.dumps(old, ensure_ascii=False), session_id))

@@ -401,6 +401,20 @@ async def get_stats(project_id: str = "default"):
     s = pg_client.execute("SELECT metrics FROM stats WHERE project_id=%s ORDER BY updated_at DESC LIMIT 1", (project_id,))
     metrics = s[0]["metrics"] if s else {}
     ds = pg_client.execute("SELECT COALESCE(SUM(duration_seconds),0) AS s FROM stats WHERE project_id=%s", (project_id,))
+    # 专注时长·最近30天（按天聚合 focus_log；project_id=all 聚合全部项目，主页趋势图用）
+    daily_focus = []
+    try:
+        if project_id in ("all", ""):
+            rows = pg_client.execute(
+                "SELECT substr(created_at,1,10) AS d, SUM(duration_seconds) AS s FROM focus_log WHERE created_at >= datetime('now','-30 days') GROUP BY d ORDER BY d",
+                ())
+        else:
+            rows = pg_client.execute(
+                "SELECT substr(created_at,1,10) AS d, SUM(duration_seconds) AS s FROM focus_log WHERE project_id=%s AND created_at >= datetime('now','-30 days') GROUP BY d ORDER BY d",
+                (project_id,))
+        daily_focus = [{"date": r["d"], "seconds": int(r["s"] or 0)} for r in (rows or [])]
+    except Exception:
+        pass
     return {
         "dialogue_count": d[0]["c"] if d else 0,
         "message_count": m[0]["c"] if m else 0,
@@ -409,6 +423,8 @@ async def get_stats(project_id: str = "default"):
         "metrics": metrics,
         # 专注时长（秒）：stats 表累计，用户侧可视化反馈（专注时长+token用量）
         "total_duration_seconds": int(ds[0]["s"]) if ds else 0,
+        # 最近30天每日专注时长（秒）：主页趋势图
+        "daily_focus": daily_focus,
     }
 
 
@@ -1368,6 +1384,9 @@ async def chat(req: ChatRequest):
                                          ((_srow[0]["duration_seconds"] or 0) + _dur, _srow[0]["id"]))
                         else:
                             _pg4.execute("INSERT INTO stats(project_id, duration_seconds) VALUES(%s,%s)", (pid, _dur))
+                        # 按天落库：主页趋势图（专注时长·最近30天）数据源
+                        if _dur > 0:
+                            _pg4.execute("INSERT INTO focus_log(project_id, dialogue_id, duration_seconds) VALUES(%s,%s,%s)", (pid, _did, _dur))
                     except Exception as _e:
                         print("[stats-duration]", _e)
                     # 记录本次任务的运行统计（Agent 界面·运行监控）

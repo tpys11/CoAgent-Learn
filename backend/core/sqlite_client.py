@@ -220,6 +220,15 @@ class SQLiteClient:
             )
         """)
         self.execute("""
+            CREATE TABLE IF NOT EXISTS focus_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id TEXT NOT NULL DEFAULT 'default',
+                dialogue_id TEXT DEFAULT '',
+                duration_seconds INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        self.execute("""
             CREATE TABLE IF NOT EXISTS resources (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,

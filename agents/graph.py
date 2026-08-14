@@ -446,6 +446,18 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             context += "【输出模式】默认模式：可自由发挥回答，不限制。" + NL
         if state.get("profile") and (cfg.get("memoryEnabled") is not False):
             context += f"学情: {json.dumps(state['profile'], ensure_ascii=False)}" + NL
+        # 阅读偏好：用户对输出形式的偏好（初始化问卷/手动设置），注入生成约束（不阻塞主流程）
+        try:
+            from core.postgres_client import pg_client as _pg_gp
+            from core.memory_analysis import _as_dict as _gp_as_dict
+            _gp_rows = _pg_gp.execute("SELECT data FROM global_profile ORDER BY updated_at DESC LIMIT 1")
+            if _gp_rows and _gp_rows[0].get("data"):
+                _gp = _gp_as_dict(_gp_rows[0]["data"])
+                _rp = _gp.get("阅读偏好") if isinstance(_gp, dict) else None
+                if _rp and isinstance(_rp, dict):
+                    context += "【用户阅读偏好】" + json.dumps(_rp, ensure_ascii=False) + " 请按此偏好组织输出形式（列表/表格/latex/md 等）。" + NL
+        except Exception:
+            pass
         if state.get("knowledge"): context += f"知识库: {json.dumps(state['knowledge'], ensure_ascii=False)}" + NL
         if state.get("search_results"): context += f"联网搜索: {json.dumps(state['search_results'], ensure_ascii=False)}" + NL
         # 快速模板：不调用学情与记忆管理/知识库管理，改为合并已保存的信息为「综合概述性记忆」直接发送
