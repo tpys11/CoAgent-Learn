@@ -1617,6 +1617,7 @@ async def chat(req: ChatRequest):
                     _model = req.model
                     _tpl0 = _settings.get("template") or "思考"
                     if _settings.get("modelAuto") or _settings.get("auto"):
+                        # run_workflow 在独立线程执行：同步 LLM 调用不阻塞事件循环，无需 run_in_threadpool
                         _auto = _auto_settings(req.api_key, req.message, _tpl0, infer_model=bool(_settings.get("modelAuto")))
                         if _auto:
                             _settings.update(_auto)
