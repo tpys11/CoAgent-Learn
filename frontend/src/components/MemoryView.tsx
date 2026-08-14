@@ -113,21 +113,31 @@ function MiniMD({ text }: { text: string }) {
   return <div className="flex flex-col gap-1.5">{nodes}</div>
 }
 
-/** 阅读偏好摘要：问卷结果的人类可读展示 */
-function PrefSummary({ pref }: { pref: Record<string, any> }) {
+/** 阅读偏好：结构化展示（大标题：结构化程度/特殊格式，小标题：列表/表格），未设置项显示占位 */
+function PrefSummary({ pref }: { pref: Record<string, any> | null }) {
   const jc = pref?.结构化程度 || {}
   const list = jc?.列表
   const table = jc?.表格
   const sp = pref?.特殊格式 || {}
-  const parts: string[] = []
-  if (list) parts.push(list.喜欢 ? `列表（${list.有序 ? '有序' : '无序'}）` : '不用列表')
-  if (table) parts.push(table.喜欢 ? '表格' : '不用表格')
-  if (sp) {
-    if (sp.latex) parts.push('latex')
-    if (sp['md文档']) parts.push('md 文档')
-    if (sp['喜欢复制到笔记']) parts.push('复制到笔记')
-  }
-  return <p className="text-xs text-[var(--text-muted)] leading-relaxed">{parts.length ? parts.join(' · ') : '（未记录具体偏好）'}</p>
+  return (
+    <div className="flex flex-col gap-3 text-xs leading-relaxed">
+      <div className="flex flex-col gap-1.5">
+        <p className="text-[11px] font-bold uppercase tracking-widest text-[var(--accent)]">结构化程度</p>
+        <div className="flex flex-col gap-1 text-[var(--text-muted)]">
+          <p><span className="font-semibold text-[var(--text)]">列表</span>　{list ? (list.喜欢 ? `喜欢 · ${list.有序 ? '有序' : '无序'}` : '不喜欢') : '（未设置）'}</p>
+          <p><span className="font-semibold text-[var(--text)]">表格</span>　{table ? (table.喜欢 ? '喜欢' : '不喜欢') : '（未设置）'}</p>
+        </div>
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <p className="text-[11px] font-bold uppercase tracking-widest text-[var(--accent)]">特殊格式</p>
+        <div className="flex flex-col gap-1 text-[var(--text-muted)]">
+          <p>latex 格式：{sp?.latex !== undefined ? (sp.latex ? '需要' : '不需要') : '（未设置）'}</p>
+          <p>md 文档格式：{sp?.['md文档'] !== undefined ? (sp['md文档'] ? '喜欢' : '不喜欢') : '（未设置）'}</p>
+          <p>复制内容到笔记：{sp?.['喜欢复制到笔记'] !== undefined ? (sp['喜欢复制到笔记'] ? '是' : '否') : '（未设置）'}</p>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 /** 阅读偏好问卷：首次设置 / 修改（用户手动选择，系统不自动猜测） */
@@ -657,7 +667,9 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                     ) : gBasic ? (
                       <div className="text-xs text-[var(--text-muted)] leading-relaxed"><MiniMD text={gBasic} /></div>
                     ) : (
-                      <p className="text-[11px] text-dim">暂无概述（对话后系统会自动提炼，或点编辑手动填写）</p>
+                      <div className="rounded-xl border border-dashed hairline bg-[var(--bg-input)] px-4 py-3">
+                        <p className="text-[11px] text-dim leading-relaxed">概述占位：这里将显示你的身份与背景概述（对话后系统自动提炼，或点编辑手动填写，不超过 500 字）</p>
+                      </div>
                     )}
                   </div>
 
@@ -680,19 +692,27 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                     ) : gStudy.总体概述 ? (
                       <p className="text-xs text-[var(--text-muted)] leading-relaxed">{gStudy.总体概述}</p>
                     ) : (
-                      <p className="text-[11px] text-dim">暂无总体概述（对话后系统会自动提炼）</p>
+                      <p className="text-[11px] text-dim">（总体概述占位：对话后系统自动提炼）</p>
                     )}
-                    {gStudy.课程.length > 0 && (
+                    {gStudy.课程.length > 0 ? (
                       <div className="flex flex-col gap-2">
                         {gStudy.课程.map((c, i) => (
                           <div key={i} className="rounded-xl border hairline bg-[var(--bg-input)] px-4 py-3">
                             <p className="text-xs font-semibold">{c.课程名 || '未命名课程'}</p>
                             <ul className="mt-1 flex flex-col gap-0.5 text-[11px] text-[var(--text-muted)] list-disc list-inside">
-                              <li>目标：{c.目标 || '未记录'}</li>
-                              <li>当前情况：{c.当前情况 || '未记录'}</li>
+                              <li>目标：{c.目标 || '（占位）'}</li>
+                              <li>当前情况：{c.当前情况 || '（占位）'}</li>
                             </ul>
                           </div>
                         ))}
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-dashed hairline bg-[var(--bg-input)] px-4 py-3">
+                        <p className="text-xs font-semibold text-dim">课程占位（对话学习后自动按课程分类生成）</p>
+                        <ul className="mt-1 flex flex-col gap-0.5 text-[11px] text-dim list-disc list-inside">
+                          <li>目标：——</li>
+                          <li>当前情况：——</li>
+                        </ul>
                       </div>
                     )}
                   </div>
@@ -704,9 +724,10 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                       <button onClick={() => setShowPrefDlg(true)}
                         className="text-[10px] font-semibold text-[var(--accent)] hover:underline">{gPref ? '修改偏好' : '去设置'}</button>
                     </div>
-                    {gPref ? <PrefSummary pref={gPref} /> : (
-                      <p className="text-[11px] text-dim">未设置。设置后回答会按你喜欢的列表/表格/格式组织内容</p>
+                    {gPref ? null : (
+                      <p className="text-[11px] text-dim">（占位：未设置。点"去设置"告诉系统你喜欢怎样的内容形式）</p>
                     )}
+                    <PrefSummary pref={gPref} />
                   </div>
                 </div>
 
