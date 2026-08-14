@@ -623,19 +623,19 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
               <>
                 {/* 简历框：基本信息 / 阅读偏好 / 学习情况 */}
                 <div className="border hairline rounded-2xl p-6 bg-[var(--bg-panel)] flex flex-col gap-6">
-                  {/* 基本信息：身份 / 年龄 */}
+                  {/* 基本信息：身份 / 年龄（行式：设定项：值） */}
                   <div className="flex flex-col gap-2">
                     <h3 className="text-sm font-semibold">基本信息</h3>
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="flex flex-col gap-1.5">
                       {[['身份', '身份'], ['年龄', '年龄']].map(([label, k]) => (
-                        <div key={k} className="rounded-xl border hairline bg-[var(--bg-input)] px-4 py-3">
-                          <span className="text-[10px] font-semibold uppercase tracking-wider text-dim">{label}</span>
+                        <p key={k} className="text-xs leading-relaxed">
+                          <span className="font-semibold text-[var(--text)]">{label}：</span>
                           {gFields[k] ? (
-                            <p className="mt-1 text-xs text-[var(--text)]">{gFields[k]}</p>
+                            <span className="text-[var(--text-muted)]">{gFields[k]}</span>
                           ) : (
-                            <p className="mt-1 text-[11px] text-dim">（未填写 · 可在对话中告知或通过"修改记忆"更新）</p>
+                            <span className="text-dim">（未填写 · 可在对话中告知或通过"修改记忆"更新）</span>
                           )}
-                        </div>
+                        </p>
                       ))}
                     </div>
                   </div>
