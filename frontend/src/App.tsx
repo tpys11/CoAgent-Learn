@@ -485,21 +485,35 @@ function App() {
       try { localStorage.setItem('coagent-last-settings', JSON.stringify(mergedSettings)) } catch {}
       // 超时：首字节超时（无任何数据到达 timeoutMs 则中止）+ 流中空闲超时（每收到数据重置，60s 无数据才断）
       const timeoutMs = (Math.min(120, Math.max(1, parseInt(localStorage.getItem('coagent-timeout') || '30', 10) || 30))) * 1000
-      const ctrl = new AbortController()
-      abortCtrlRef.current = ctrl
-      let firstByte = true
-      const resetTimer = () => {
-        clearTimeout(timeoutTimer)
-        timeoutTimer = setTimeout(() => ctrl.abort(), firstByte ? timeoutMs : 60000)
+      // 请求 + 瞬时断连自动重试一次（浏览器网络层偶发中断，重试可自愈；连续失败才报"网络中断"）
+      let res: Response | null = null
+      for (let _try = 0; _try < 2; _try++) {
+        const ctrl = new AbortController()
+        abortCtrlRef.current = ctrl
+        let firstByte = true
+        const resetTimer = () => {
+          clearTimeout(timeoutTimer)
+          timeoutTimer = setTimeout(() => ctrl.abort(), firstByte ? timeoutMs : 60000)
+        }
+        resetTimer()
+        try {
+          const r = await fetch('/api/chat', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: text.trim(), session_id: sessionId.current, dialogue_id: did, project_id: currentProjectId, api_key: apiKey, model: model, base_url: providerBaseUrls[provider], settings: mergedSettings, image: (mergedSettings && mergedSettings.image) || undefined, agents: agents, extra_followup_did: secondDialogueIdRef.current, extra_followup_focus: 'expand', clarified: continuing }),
+            signal: ctrl.signal,
+          })
+          if (r.ok && r.body) { res = r; break }
+          if (r.status >= 500 && _try === 0) { console.error('[chat] HTTP', r.status, '重试一次'); clearTimeout(timeoutTimer); continue }
+          res = r; break
+        } catch (e) {
+          console.error('[chat] fetch 失败，重试一次：', e)
+          clearTimeout(timeoutTimer)
+          if (_try === 0) continue
+          throw e
+        }
       }
-      resetTimer()
-      const res = await fetch('/api/chat', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text.trim(), session_id: sessionId.current, dialogue_id: did, project_id: currentProjectId, api_key: apiKey, model: model, base_url: providerBaseUrls[provider], settings: mergedSettings, image: (mergedSettings && mergedSettings.image) || undefined, agents: agents, extra_followup_did: secondDialogueIdRef.current, extra_followup_focus: 'expand', clarified: continuing }),
-        signal: ctrl.signal,
-      })
-      if (!res.ok || !res.body) {
-        setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'assistant', content: '⚠️ 请求失败（HTTP ' + res.status + '），请检查后端服务与 API Key。' }] }))
+      if (!res || !res.ok || !res.body) {
+        setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'assistant', content: '⚠️ 请求失败（HTTP ' + (res ? res.status : '网络错误') + '），请检查后端服务与 API Key。' }] }))
         return
       }
       const reader = res.body!.getReader(); const decoder = new TextDecoder()
@@ -678,6 +692,7 @@ function App() {
         }
       }catch(_ex){}
     } catch (e: any) {
+      console.error('[chat] 网络中断：', e)  // 诊断：浏览器端具体错误（超时/网络/abort）
       if (userStoppedRef.current) {
         // 用户手动停止：保留已流式显示的内容为最终消息 + 标记（后端已取消且不落库，仅前端展示；输入框立即可继续提问）
         setAllMessages(prev => {
