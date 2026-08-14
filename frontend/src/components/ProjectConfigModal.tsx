@@ -155,6 +155,7 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
   const uploadItems = async () => {
     if (!projectId) return
     let total = 0
+    let okCount = 0
     const count = pendingItems.length
     for (const it of pendingItems) {
       setUploading(it.kind === 'file' ? it.file.name : it.title)
@@ -168,16 +169,17 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
           fd.append('file', it.file, it.file.name)
           const r = await fetch('/api/knowledge/upload-file', { method: 'POST', body: fd })
           const d = await r.json().catch(() => ({}))
-          if (d.status === 'ok') total += (d.chunks || 0)
+          if (d.status === 'ok') { total += (d.chunks || 0); okCount++ }
           else alert(`「${it.file.name}」接入失败：${d.msg || '处理失败'}`)
         } else {
-          const r = await fetch('/api/knowledge/upload', {
+          // wait 是后端 query 参数（非 body），必须放在 URL 上，否则走异步分支返回 processing
+          const r = await fetch('/api/knowledge/upload?wait=true', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ project_id: projectId, text: it.body, source: it.title, session_id: 'project-res', api_key: localStorage.getItem('coagent-apikey') || '', wait: true }),
+            body: JSON.stringify({ project_id: projectId, text: it.body, source: it.title, session_id: 'project-res', api_key: localStorage.getItem('coagent-apikey') || '' }),
           })
           const d = await r.json().catch(() => ({}))
-          if (d.status === 'ok') total += (d.chunks || 0)
+          if (d.status === 'ok') { total += (d.chunks || 0); okCount++ }
           else alert(`「${it.title}」接入失败：${d.msg || '处理失败'}`)
         }
       } catch (e) {
@@ -186,8 +188,11 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
     }
     setUploading('')
     setPendingItems([])
-    // 明确反馈（对齐 DeepTutor「资源已上传」）：持久显示，直到下次上传
-    setDoneMsg(`资源已上传：${count} 个资源已接入课程知识库（${total} 个内容块）`)
+    // 明确反馈（对齐 DeepTutor「资源已上传」）：持久显示，直到下次上传；失败不再误报成功
+    const failed = count - okCount
+    setDoneMsg(failed === 0
+      ? `资源已上传：${count} 个资源已接入课程知识库（${total} 个内容块）`
+      : `上传完成：${okCount} 个成功（${total} 个内容块），${failed} 个失败`)
     setTimeout(() => { load(); setRefreshKey(k => k + 1) }, 500)
   }
   /** 加入文件占位（按文件名去重） */
