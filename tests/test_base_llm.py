@@ -2,7 +2,7 @@
 import sys
 sys.path.insert(0, ".")
 
-from backend.core.config import config
+from core.config import config
 
 print(f"API Key 已配置: {'是' if config.DEEPSEEK_API_KEY and 'sk-your-key' not in config.DEEPSEEK_API_KEY else '否（请在 .env 中填入真实 Key）'}")
 print(f"Base URL: {config.DEEPSEEK_BASE_URL}")
@@ -12,7 +12,7 @@ if "sk-your-key" in config.DEEPSEEK_API_KEY or not config.DEEPSEEK_API_KEY:
     print("跳过 API 调用测试（Key 未填入）。填入后再次运行本脚本。")
     sys.exit(0)
 
-from backend.core.base_llm import DeepSeekLLM
+from core.base_llm import DeepSeekLLM
 
 llm = DeepSeekLLM()
 

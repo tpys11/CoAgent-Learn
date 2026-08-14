@@ -3,7 +3,7 @@
 覆盖 agents/graph.py 的确定性纯逻辑（不依赖 LLM/网络）：
 - _is_rule_simple 程序规则极速路径判定（意图分流的确定性分支）
 - _merge_stats 并行节点统计 reducer（LangGraph 并行合并正确性）
-- _build_out_cand 输出增强模板候选构造
+- _resolve_plan_targets 档位路由目标判定（极速/思考/研究档差异 + 研究档强制搜索）
 
 对应官方提交要求："单元测试用例（针对多智能体协同调度逻辑等核心模块）"。
 运行（后端容器内）：python -m pytest tests/test_graph_logic.py -v
@@ -13,7 +13,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from agents.graph import _is_rule_simple, _merge_stats, _build_out_cand
+from agents.graph import _is_rule_simple, _merge_stats, _resolve_plan_targets
 
 
 # ---------- _is_rule_simple：程序规则简单问题判定 ----------
@@ -75,27 +75,36 @@ class TestMergeStats:
         assert cur["token_estimate"] == 10, "reducer 不得就地修改共享 state"
 
 
-# ---------- _build_out_cand：输出增强模板候选构造 ----------
+# ---------- _resolve_plan_targets：档位路由目标判定 ----------
 
-class TestBuildOutCand:
-    def test_non_output_enhance_template(self):
-        assert _build_out_cand([], "基础") == ""
-        assert _build_out_cand([{"id": "main", "subAgents": [{"id": "t", "name": "树状结构", "form": "树状"}]}], "检索增强") == ""
+class TestResolvePlanTargets:
+    def test_speed_mode_always_generate(self):
+        """极速档：无论 plan 如何，都不做知识库检索/联网搜索，直接生成"""
+        assert _resolve_plan_targets("极速", []) == ["generate"]
+        assert _resolve_plan_targets("极速", ["知识库管理"]) == ["generate"]
+        assert _resolve_plan_targets("极速", ["搜索增强"]) == ["generate"]
 
-    def test_output_enhance_without_subs(self):
-        assert _build_out_cand([], "输出增强") == ""
-        assert _build_out_cand([{"id": "main", "subAgents": []}], "输出增强") == ""
+    def test_think_mode_no_plan_generates(self):
+        """思考档：plan 为空 → 直接生成（知识库/搜索按需，非必选）"""
+        assert _resolve_plan_targets("思考", []) == ["generate"]
 
-    def test_output_enhance_with_subs(self):
-        agents = [{"id": "main", "subAgents": [
-            {"id": "tree", "name": "树状结构", "form": "树状"},
-            {"id": "card", "name": "要点卡片", "form": "卡片"},
-        ]}]
-        out = _build_out_cand(agents, "输出增强")
-        assert "tree=树状结构(树状)" in out
-        assert "card=要点卡片(卡片)" in out
-        assert "output_subs" in out
-        assert "0-1 个" in out
+    def test_think_mode_kb_when_planned(self):
+        """思考档：plan 含知识库管理 → 调 kb 节点"""
+        assert _resolve_plan_targets("思考", ["知识库管理"]) == ["kb"]
+        assert _resolve_plan_targets("思考", ["搜索增强"]) == ["kb"]
+        assert _resolve_plan_targets("思考", ["知识库管理", "搜索增强"]) == ["kb"]
+
+    def test_research_mode_forces_search(self):
+        """研究档：即使规划不含搜索，也强制并入搜索增强（保证一轮联网搜索）"""
+        assert _resolve_plan_targets("研究", []) == ["kb"]
+        assert _resolve_plan_targets("研究", ["知识库管理"]) == ["kb"]
+        assert _resolve_plan_targets("研究", ["搜索增强"]) == ["kb"]
+
+    def test_plan_not_mutated(self):
+        """不得就地修改传入的 plan（并行状态共享安全）"""
+        p = ["知识库管理"]
+        _resolve_plan_targets("研究", p)
+        assert p == ["知识库管理"], "研究档强制搜索不得写入原 plan"
 
 
 if __name__ == "__main__":
