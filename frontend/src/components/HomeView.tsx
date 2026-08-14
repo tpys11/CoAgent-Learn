@@ -30,13 +30,11 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
   const [kbCount, setKbCount] = useState<Record<string, number>>({})
   // 每课程最新对话名（"上次学到哪"）
   const [lastTopics, setLastTopics] = useState<Record<string, string>>({})
-  // 横栏：内容量趋势 + 日历（全局学习记录，与记忆界面一致）
-  const [trendDays, setTrendDays] = useState<Record<string, any[]>>({})
+  // 主页趋势：专注时长·最近30天（/api/stats?project_id=all 聚合全部项目）
+  const [trendDays, setTrendDays] = useState<Array<{ date: string; seconds: number }>>([])
   useEffect(() => {
-    fetch('/api/learning-log', { cache: 'no-store' }).then(r => r.json()).then(d => {
-      const days: Record<string, any[]> = {}
-      for (const dd of (d.days || [])) days[dd.date] = dd.items || []
-      setTrendDays(days)
+    fetch('/api/stats?project_id=all', { cache: 'no-store' }).then(r => r.json()).then(d => {
+      setTrendDays(Array.isArray(d.daily_focus) ? d.daily_focus : [])
     }).catch(() => {})
   }, [])
   useEffect(() => {
@@ -73,7 +71,7 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
   // ---------- 快速引导：系统提示建议（课程 / 资源） ----------
   const totalCount = Object.values(stats).reduce((s, n) => s + n, 0)
   const totalDocs = Object.values(kbCount).reduce((s, n) => s + n, 0)
-  const latestDate = Object.keys(trendDays).sort().pop() || ''
+  const latestDate = trendDays.filter(d => (d.seconds || 0) > 0).map(d => d.date).sort().pop() || ''
   const buildTips = () => {
     const tips: Array<{ title: string; text: string }> = []
     if (projects.length === 0) {
@@ -142,11 +140,11 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
           <div className="flex flex-col gap-6">
             <h2 className="text-xl font-bold">课程</h2>
           {projects.length === 0 ? (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
               <NewCourseCard onClick={newProject} />
             </div>
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
               {projects.map(p => {
                 const img = (p.domain && DOMAIN_IMAGES[p.domain]) || DEFAULT_COURSE_IMG
                 const count = stats[p.id] ?? 0
@@ -227,9 +225,11 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
           )}
           </div>
           </div>
-          {/* 右：内容量趋势 + 日历（竖向平行展开） */}
+          {/* 右：专注时长趋势（最近30天） */}
           <div className="w-[380px] flex-shrink-0">
-            <TrendCalendar days={trendDays} />
+            <div className="border hairline rounded-2xl p-4 bg-[var(--bg-panel)] flex flex-col">
+              <TrendCalendar days={trendDays} />
+            </div>
           </div>
           {/* 删除课程确认弹窗 */}
           {deleteId && (() => {
