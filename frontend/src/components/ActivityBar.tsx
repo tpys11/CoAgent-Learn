@@ -67,10 +67,10 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
       {/* 底部：使用引导（原教程界面，仅改名）挨着 设置（竖向并列） */}
       {expanded ? (
         <div className="flex flex-col gap-1.5">
-          <button onClick={() => onChange('tutorial')} title="使用引导"
+          <button onClick={() => onChange('tutorial')} title="项目介绍"
             className={`w-full h-9 flex items-center gap-3 px-3 rounded-md text-sm font-medium transition-colors ${view === 'tutorial' ? 'bg-[#1a1a1a] text-white' : 'text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)]'}`}>
             <GraduationCap size={16} strokeWidth={1.6} />
-            <span className="leading-none">使用引导</span>
+            <span className="leading-none">项目介绍</span>
           </button>
           <button onClick={onSettings} title="设置"
             className="w-full h-9 flex items-center gap-3 px-3 rounded-md text-sm font-medium text-dim transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)]">
@@ -80,10 +80,10 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
         </div>
       ) : (
         <>
-          <button onClick={() => onChange('tutorial')} title="使用引导"
+          <button onClick={() => onChange('tutorial')} title="项目介绍"
             className={`w-full h-9 mb-2 px-3 flex items-center gap-2 rounded-md text-[11px] transition-colors ${view === 'tutorial' ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'}`}>
             <GraduationCap size={16} strokeWidth={1.6} />
-            <span className="leading-none">引导</span>
+            <span className="leading-none">介绍</span>
           </button>
           <button onClick={onSettings} title="设置" className="w-full h-9 px-3 flex items-center gap-2 rounded-md text-[11px] icon-btn transition-colors">
             <Settings size={16} strokeWidth={1.6} />
