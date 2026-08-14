@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { FileText, BookOpen, Upload, Trash2, Save, X } from 'lucide-react'
+import { FileText, BookOpen, Upload, Trash2, Save, X, Loader2, CheckCircle2 } from 'lucide-react'
 import MemoryView from './MemoryView'
 import ResourceView from './ResourceView'
 
@@ -154,6 +154,7 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
   const uploadFiles = async (files: FileList | File[]) => {
     if (!projectId) return
     let total = 0
+    const fileCount = Array.from(files).length
     for (const f of Array.from(files)) {
       setUploading(f.name)
       const fd = new FormData()
@@ -173,8 +174,8 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
     }
     setUploading('')
     setPendingFiles([])
-    setDoneMsg(`已接入课程知识库 ${total} 个内容块`)
-    setTimeout(() => setDoneMsg(''), 5000)
+    // 明确反馈（对齐 DeepTutor「资源已上传」）：持久显示，直到下次上传
+    setDoneMsg(`资源已上传：${fileCount} 个文件已接入课程知识库（${total} 个内容块）`)
     setTimeout(() => { load(); setRefreshKey(k => k + 1) }, 500)
   }
   /** 追加文件到待上传列表（按文件名去重，对齐 DeepTutor mergeSelectedFiles） */
@@ -235,11 +236,16 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
           <p className="text-xs font-semibold text-dim uppercase tracking-wider">项目资源</p>
           <div className="flex items-center gap-2">
             {uploading && <span className="text-[11px] text-dim">向量化中：{uploading}</span>}
-            {!uploading && doneMsg && <span className="text-[11px] text-emerald-600 font-medium">{doneMsg}</span>}
+            {!uploading && doneMsg && (
+              <span className="flex items-center gap-1 text-[11px] text-emerald-600 font-medium">
+                <CheckCircle2 size={12} /> {doneMsg}
+              </span>
+            )}
             <button onClick={() => setShowAddDoc(v => !v)}
               disabled={!!uploading}
               className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors disabled:opacity-50">
-              <Upload size={12} /> {uploading ? '向量化中…' : showAddDoc ? '收起' : '确认上传'}
+              {uploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+              {uploading ? '上传中…' : showAddDoc ? '收起' : '确认上传'}
             </button>
             <input ref={fileRef} type="file" multiple className="hidden"
               onChange={e => { if (e.target.files?.length) addFiles(e.target.files); e.target.value = '' }} />
@@ -311,8 +317,8 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
             <div className="flex justify-end">
               <button onClick={confirmUpload} disabled={!pendingFiles.length || !!uploading}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-[#1a1a1a] px-4 py-1.5 text-[12px] font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">
-                <Upload size={13} />
-                {uploading ? '向量化中…' : `确认上传（${pendingFiles.length}）`}
+                {uploading ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                {uploading ? '上传中…' : `确认上传（${pendingFiles.length}）`}
               </button>
             </div>
           </div>
