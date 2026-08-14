@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { Settings, Upload, Folder, Download, Layers, Wrench, ExternalLink, Plus, Trash2, LayoutTemplate, X, Workflow, Brain, Database, Scale } from 'lucide-react'
 import type { AgentConfig } from '../types'
 import { DEFAULT_AGENTS } from '../types'
@@ -14,54 +14,37 @@ interface Props {
 
 type Block = 'agents' | 'skills' | 'templates'
 
-/** 预设模板库（基础 / 检索增强 / 快速 / 输出增强），intro=适用场景概述，detail=预设内部细节（只读展示） */
+/** 预设档位库（极速 / 思考 / 研究），intro=档位概述，detail=预设内部细节（只读展示） */
 const PRESET_TEMPLATES: Array<{ name: string; desc: string; intro: string; detail: Array<[string, string]>; agents: AgentConfig[] }> = [
   {
-    name: '基础', desc: '默认编排',
-    intro: '基础职责概述：默认编排流程，覆盖大多数学习场景。一次规划 → 学情与记忆 ∥ 知识库与搜索（并行）→ 主 Agent 生成 → 审核与输出。\n**基础能力**\n- 规划调度：解析输入，一次规划并行调度所需 Agent\n- 学情与记忆：读取三层记忆，输出学情画像\n- 知识库与搜索：按需检索知识库与联网\n- 生成与审核：强模型生成 + 三维度质量把关\n**拓展能力**\n- 输出增强：触发条件——需要结构化产出（笔记/表格/清单等）时；执行方式——选择「输出增强」模板，由主 Agent 按需调用子 Agent 产出专项内容',
+    name: '极速', desc: '最短响应（1 秒内首字）',
+    intro: '档位概述：面向一般对话环节——概念确认、即兴提问、碎片化学习，用户希望时间尽可能短。\n**效果**\n- 时间：绝大多数时候 1 秒内输出首字，最长不超过 3 秒\n- 内容总量：字数偏少，大多数 500-800 字，最多不超过 1000 字\n**全局设定（每种模式都有）**\n- 知识库向量检索：固定逻辑保证幻觉率降低，一点都没命中会申明\n- 学情画像：按用户水平调难度（会话缓存，几乎零成本）',
     detail: [
-      ['编排流程', '规划 → 学情与记忆 ∥ 知识库与搜索 → 生成 → 审核 → 输出'],
-      ['生成模型', '强模型（质量优先）'],
-      ['知识库与搜索', '视问题需要自动调用'],
-      ['子 Agent 调用', '无'],
-      ['审核', '标准三维度审核（符实性 / 难度适配 / 规范性）'],
-    ],
-    agents: DEFAULT_AGENTS,
-  },
-  {
-    name: '检索增强', desc: '知识库管理调用子 Agent 整理资料',
-    intro: '基础职责概述：在基础流程上强化资料整理，面向「基于资料回答」的问题——复习备考、查证概念、引用知识库作答，可溯源、少幻觉。\n**基础能力**\n- 知识库检索：从向量库检索相关片段（含来源）\n- 联网搜索：必要时聚合多源权威信息\n- 子 Agent 整理：知识库管理/搜索子 Agent 将材料整理为「来源→核心观点→关键数据」条目\n**拓展能力**\n- 检索增强整理：触发条件——选择「检索增强」模板；执行方式——强制调用知识库与搜索的子 Agent（知识库管理只整理知识库片段、搜索只整理联网结果），主 Agent 基于整理结果生成',
-    detail: [
-      ['编排流程', '规划 → 学情与记忆 ∥ 知识库与搜索（强制调用子 Agent）→ 生成 → 审核 → 输出'],
-      ['知识库子 Agent', '知识库管理（整理检索片段）、搜索（整理联网结果）'],
-      ['生成模型', '强模型（质量优先）'],
-      ['子 Agent 调用', '强制调用知识库与搜索的子 Agent'],
-      ['审核', '标准三维度审核（符实性 / 难度适配 / 规范性）'],
-    ],
-    agents: DEFAULT_AGENTS,
-  },
-  {
-    name: '快速', desc: '主 Agent 生成使用快模型',
-    intro: '基础职责概述：面向简单快速的问答——概念确认、即兴提问、碎片化学习。流程只保留主 Agent 与审核与输出，速度最快、消耗最低；复杂推导类问题不建议用。\n**基础能力**\n- 综合概述性记忆：将对话记忆、个人记忆概述、项目记忆概述、知识库概述合并后直接发送主 Agent，不额外调用各 Agent（前提：首次使用时各 Agent 调用后已保存信息）\n- 快速生成：主 Agent 用快模型直接生成\n**拓展能力**\n- 无（简化流程下不调用子 Agent 与额外节点）',
-    detail: [
-      ['编排流程', '主 Agent（接收综合概述性记忆）→ 审核与输出'],
-      ['综合概述性记忆', '将对话记忆、知识库与个人记忆概述、项目记忆概述合并后直接发送给主 Agent，不再额外调用各 Agent；前提：首次使用时各 Agent 调用后已保存信息'],
+      ['编排流程', '主 Agent（接收综合概述性记忆）→ 输出'],
       ['生成模型', '快模型（速度优先）'],
-      ['知识库与搜索', '不调用（直接使用已保存的知识库概述）'],
-      ['子 Agent 调用', '无'],
-      ['审核', '简化审核'],
+      ['检测机制', '无（保秒回，知识库检索全局兜底）'],
     ],
     agents: DEFAULT_AGENTS.map(a => a.id === 'main' ? { ...a, model: 'fast' } : { ...a }),
   },
   {
-    name: '输出增强', desc: '主 Agent 调用子 Agent 产出结构化内容',
-    intro: '基础职责概述：面向需要「结构化产出」的问题——学习笔记、要点总结、对比表格、思维导图、时间线、FAQ 清单等，产出清晰易读的结构化内容。\n**基础能力**\n- 规划选择：主 Agent 规划时按问题选择输出子 Agent（树状结构、要点卡片、思维导图、表格对比、流程图时序图、时间线、FAQ 问答对、清单检查单，按问题选 0-3 个）\n- 子 Agent 产出：被选中的子 Agent 先产出专项结构化内容\n- 组织生成：主 Agent 基于子 Agent 产出组织完整回答\n**拓展能力**\n- 结构化适配：触发条件——用户要求特定形式产出时；执行方式——规划阶段按需选择对应子 Agent 执行',
+    name: '思考', desc: '完整流程 + 轻量单审',
+    intro: '档位概述：面向需要认真一点的回答——知识库无对应内容但对精确度要求不高。\n**效果**\n- 内容增强：并行搜索 agent 按固定规则（优质信息源：优质社区、官方信息）返回优质内容，通常搜索 10-20 条，一轮搜索\n- 内容总量：大部分 800-1200 字，最多不超过 1500 字\n- 检测机制：flash 轻量单审\n**全局设定（每种模式都有）**\n- 知识库向量检索：固定逻辑保证幻觉率降低，一点都没命中会申明\n- 学情画像：按用户水平调难度（会话缓存，几乎零成本）',
     detail: [
-      ['编排流程', '规划（按需选择输出子 Agent）→ 学情与记忆 ∥ 知识库与搜索 → 生成（基于子 Agent 产出）→ 审核 → 输出'],
-      ['输出子 Agent', '树状结构、要点卡片、思维导图、表格对比、流程图时序图、时间线、FAQ 问答对、清单检查单（按问题选 0-3 个）'],
+      ['编排流程', '规划 → 学情与记忆 ∥ 知识库与搜索 → 生成 → flash 单审 → 输出'],
+      ['内容增强', '并行搜索 agent 一轮 10-20 条（优质信息源规则）'],
       ['生成模型', '强模型（质量优先）'],
-      ['子 Agent 调用', '按需调用输出子 Agent'],
-      ['审核', '标准三维度审核（符实性 / 难度适配 / 规范性）'],
+      ['检测机制', 'flash 轻量单审'],
+    ],
+    agents: DEFAULT_AGENTS,
+  },
+  {
+    name: '研究', desc: '完整流程 + 独立检测',
+    intro: '档位概述：面向对内容精确度要求极高的任务——知识库无对应内容且需要严谨。\n**效果**\n- 内容增强：并行搜索 agent 一轮 10-20 条（优质信息源规则），每轮结束总结，信息不够继续搜索，可进行 1-5 轮\n- 内容总量：不做限制\n- 独立检测机制：用其他模型厂商的模型作为独立检测阶段\n**全局设定（每种模式都有）**\n- 知识库向量检索：固定逻辑保证幻觉率降低，一点都没命中会申明\n- 学情画像：按用户水平调难度（会话缓存，几乎零成本）',
+    detail: [
+      ['编排流程', '规划 → 学情与记忆 ∥ 知识库与搜索（多轮）→ 生成 → 独立检测 → 输出'],
+      ['内容增强', '并行搜索 agent 1-5 轮（每轮总结，不足续搜）'],
+      ['生成模型', '强模型（质量优先）'],
+      ['检测机制', '其他模型厂商模型独立检测'],
     ],
     agents: DEFAULT_AGENTS,
   },
@@ -72,10 +55,9 @@ const CUSTOM_TEMPLATES_KEY = 'coagent-custom-templates'
 
 /** 各模板的节点颜色深浅分布：按模板编排的基础逻辑标注各节点职责负载（0-5，越深负载越高） */
 const TEMPLATE_LEVELS: Record<string, Record<string, number>> = {
-  '基础': { plan: 1, study_memory: 2, kb: 2, generate: 4, review: 3 },
-  '检索增强': { plan: 1, study_memory: 2, kb: 4, generate: 4, review: 3 },
-  '快速': { plan: 1, study_memory: 1, kb: 1, generate: 2, review: 2 },
-  '输出增强': { plan: 1, study_memory: 2, kb: 2, generate: 5, review: 3 },
+  '极速': { plan: 1, study_memory: 1, kb: 1, generate: 2, review: 1 },
+  '思考': { plan: 1, study_memory: 2, kb: 3, generate: 4, review: 3 },
+  '研究': { plan: 1, study_memory: 2, kb: 4, generate: 5, review: 5 },
 }
 
 /** 模型选择中文标签 */
@@ -156,7 +138,7 @@ const SKILL_CAT_MAP: Record<string, string> = {
 const BLOCKS: Array<{ key: Block; icon: any; label: string }> = [
   { key: 'agents', icon: Settings, label: 'Agent 管理' },
   { key: 'skills', icon: Layers, label: 'Skill 管理' },
-  { key: 'templates', icon: LayoutTemplate, label: '模板与编排' },
+  { key: 'templates', icon: LayoutTemplate, label: '对话流程' },
 ]
 
 /** 格式化文本：**标题** → 主题色加粗标题；「- 名称：内容」→ 加粗名称 + 正文；普通行 → 正文段落（与 Agent 提示词展示一致） */
@@ -212,16 +194,16 @@ const FlowGraph = ({ agents, templateName, templateAgentId, onSelect }: { agents
   const act = (id: string) => templateAgentId === id
   const pick = (id: string) => onSelect ? () => onSelect(id) : undefined
   // 当前模板对应的节点职责负载分布（未选中模板时按基础模板）
-  const levels = TEMPLATE_LEVELS[templateName || '基础'] || TEMPLATE_LEVELS['基础']
+  const levels = TEMPLATE_LEVELS[templateName || '思考'] || TEMPLATE_LEVELS['思考']
   const lv = (n: string) => levels[n] || 0
   // 子 Agent：按模板差异化展示——检索增强只显示知识库与搜索的子 Agent，输出增强只显示主 Agent 的子 Agent，其余模板不显示子 Agent
   const subOf = (id: string) => ((agents || []).find(a => a.id === id)?.subAgents || []).map(s => s.name)
   const nameOf = (id: string, fallback: string) => (agents || []).find(a => a.id === id)?.name || fallback
-  const kbSubs = templateName === '检索增强' ? subOf('kb') : []
+  const kbSubs = templateName === '思考' ? subOf('kb') : []
   // 输出增强模板：生成节点只连接一个「输出增强」节点（规划节点不展示子 Agent）
-  const mainSubs = templateName === '输出增强' ? ['输出增强'] : []
-  // 快速模板：流程只剩 主 Agent（左侧虚线框：综合概述性记忆，箭头指向主 Agent）→ 审核与输出，排布宽松
-  if (templateName === '快速') {
+  const mainSubs: string[] = []
+  // 极速档：流程只剩 主 Agent（左侧虚线框：综合概述性记忆，箭头指向主 Agent）→ 审核与输出，排布宽松
+  if (templateName === '极速') {
     return (
       <div className="flex flex-col items-center gap-8 py-10">
         {/* 主 Agent：虚线框绝对定位在左侧（不参与布局，主干保持居中），矩形比节点略大，箭头指向主 Agent */}
@@ -324,9 +306,9 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   })
   // Skill 详情弹窗（独立小窗口）
   const [skillDetail, setSkillDetail] = useState<{ name: string; description: string; folder: string; category: string } | null>(null)
-  // 模板与编排：Agent 自定义选中的 Agent
+  // 对话流程：Agent 自定义选中的 Agent
   const [templateAgentId, setTemplateAgentId] = useState(agents[0]?.id || '')
-  // 模板与编排：选中模板（展开详情）、自定义模板、保存名称
+  // 对话流程：选中模板（展开详情）、自定义模板、保存名称
   const [selectedTpl, setSelectedTpl] = useState<string | null>(null)
   const [customTemplates, setCustomTemplates] = useState<Array<{ name: string; desc: string; agents: AgentConfig[] }>>(() => {
     try { return JSON.parse(localStorage.getItem(CUSTOM_TEMPLATES_KEY) || '[]') } catch { return [] }
@@ -413,7 +395,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   }
 
   const fieldLabel = 'text-xs font-semibold text-dim uppercase tracking-wider mb-2 block'
-  // 模板与编排：模板集合（预设 + 自定义）、保存自定义
+  // 对话流程：模板集合（预设 + 自定义）、保存自定义
   const allTemplates = [...PRESET_TEMPLATES, ...customTemplates]
   // 模板介绍：自定义模板无内置文案时，从 Agent 团队配置推导细节
   const tplInfo = (t: { name: string; intro?: string; detail?: Array<[string, string]>; agents: AgentConfig[] }) => {
@@ -811,10 +793,10 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
           </div>
         )}
 
-        {/* ========== 模板与编排 ========== */}
+        {/* ========== 对话流程 ========== */}
         {block === 'templates' && (
           <div className="max-w-3xl flex flex-col gap-6">
-            <h2 className="text-xl font-bold flex items-center gap-2"><LayoutTemplate size={18} /> 模板与编排</h2>
+            <h2 className="text-xl font-bold flex items-center gap-2"><LayoutTemplate size={18} /> 对话流程</h2>
 
             {/* 预设模板：点击展开详情 */}
             <div className="flex flex-col gap-3">
@@ -854,7 +836,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
             <div className="flex flex-col gap-4">
               <p className="text-xs font-semibold text-dim uppercase tracking-wider">编排框架设定</p>
               <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex items-center justify-center">
-                <FlowGraph agents={agents} templateName={selectedTpl || '均衡模式'} templateAgentId={templateAgentId} onSelect={(id) => setTemplateAgentId(id)} />
+                <FlowGraph agents={agents} templateName={selectedTpl || '思考'} templateAgentId={templateAgentId} onSelect={(id) => setTemplateAgentId(id)} />
               </div>
               <p className="text-[10px] text-dim -mt-2">节点颜色越深表示该节点在模板编排中的职责负载越高</p>
             </div>

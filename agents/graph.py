@@ -125,7 +125,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
     # cancel_event：用户手动停止时置位（threading.Event），所有 LLM 流式调用内检查，尽早中断生成
     settings = settings or {}
     agents = agents or []
-    tpl = settings.get("template") or "基础"  # 基础 / 检索增强 / 快速 / 输出增强
+    tpl = settings.get("template") or "思考"  # 基础 / 检索增强 / 快速 / 输出增强
     # 主模型：生成节点使用（用户所选模型）
     llm_main = DeepSeekLLM(api_key=api_key, model=model, base_url=base_url)
     # 快模型：决策类节点（规划/学情/审核）使用
@@ -136,7 +136,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 fast_model = fm
                 break
     llm_fast = DeepSeekLLM(api_key=api_key, model=fast_model, base_url=base_url, thinking=False) if (fast_model and fast_model != model) else llm_main
-    # 非思考模式主模型：快速模板用（直接生成，不推理）
+    # 非思考模式主模型：极速档用（直接生成，不推理）
     llm_main_no_think = DeepSeekLLM(api_key=api_key, model=model, base_url=base_url, thinking=False)
     # 简单问题主模型：保留思考模式（思维链展示）但 effort=low（极短思考，秒级完成）
     llm_main_low = DeepSeekLLM(api_key=api_key, model=model, base_url=base_url, thinking=True, effort='low')
@@ -262,16 +262,16 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 "steps": new_steps,
                 "task_stats": _stats("plan", int((time.time() - _t0) * 1000), 0, 0),
             }
-        # 快速模板：主 Agent 直接从综合概述性记忆生成，规划不再调用 LLM（流程只剩主 Agent 与审核与输出）
-        if tpl == "快速":
-            thinking = "快速模板：跳过规划，直接基于综合概述性记忆生成"
+        # 极速档：主 Agent 直接从综合概述性记忆生成，规划不再调用 LLM（流程只剩主 Agent 与审核与输出）
+        if tpl == "极速":
+            thinking = "极速档：跳过规划，直接基于综合概述性记忆生成"
             new_mc.append({"agent": "主Agent·规划", "content": thinking})
-            new_steps.append({"agent": "主Agent·规划", "status": "done", "detail": "快速模板：跳过规划"})
+            new_steps.append({"agent": "主Agent·规划", "status": "done", "detail": "极速档：跳过规划"})
             return {
                 "processed_input": state["user_input"],
                 "_plan": [],
                 "_output_subs": [],
-                "complexity": "simple",  # 快速模板：跳过规划直接生成，视为简单问题
+                "complexity": "simple",  # 极速档：跳过规划直接生成，视为简单问题
                 "mindchain": new_mc,
                 "steps": new_steps,
                 "task_stats": _stats("plan", int((time.time() - t0) * 1000), 0, 0),
@@ -384,7 +384,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         # 检索增强模板：强制调用知识库与搜索 Agent 的子 Agent（内置默认：知识库管理/搜索；用户自定义则用自定义）
         kb_cfg = _agent_cfg("kb")
         kb_subs = kb_cfg.get("subAgents") or _DEFAULT_KB_SUBS
-        if tpl == "检索增强" and kb_subs:
+        if tpl == "思考" and kb_subs:
             sub_parts = []
             for sub in kb_subs:
                 try:
@@ -460,9 +460,9 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             pass
         if state.get("knowledge"): context += f"知识库: {json.dumps(state['knowledge'], ensure_ascii=False)}" + NL
         if state.get("search_results"): context += f"联网搜索: {json.dumps(state['search_results'], ensure_ascii=False)}" + NL
-        # 快速模板：不调用学情与记忆管理/知识库管理，改为合并已保存的信息为「综合概述性记忆」直接发送
+        # 极速档：不调用学情与记忆管理/知识库管理，改为合并已保存的信息为「综合概述性记忆」直接发送
         # 前提：首次使用时各 Agent 调用后已保存（个人全局记忆 / 项目记忆 / 知识库概述）
-        if tpl == "快速":
+        if tpl == "极速":
             _summary = []
             try:
                 from core.postgres_client import pg_client
@@ -485,9 +485,9 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 pass
             if _summary:
                 context += NL + "【综合概述性记忆】" + NL + NL.join(_summary) + NL
-                new_mc.append({"agent": "综合概述性记忆", "content": "快速模板：合并个人/项目记忆与知识库概述，不额外调用各 Agent"})
+                new_mc.append({"agent": "综合概述性记忆", "content": "极速档：合并个人/项目记忆与知识库概述，不额外调用各 Agent"})
             else:
-                context += NL + "【综合概述性记忆】暂无已保存的记忆与知识库数据（首次使用时请先走完整流程，让各 Agent 保存信息后再用快速模板）。" + NL
+                context += NL + "【综合概述性记忆】暂无已保存的记忆与知识库数据（首次使用时请先走完整流程，让各 Agent 保存信息后再用极速档）。" + NL
         if state.get("sub_outputs") and state["sub_outputs"].get("kb"):
             context += NL + "【知识库子Agent整理】" + NL + state["sub_outputs"]["kb"] + NL
         if state.get("review_feedback"): context += NL + "【审核修正要求】上一版未通过审核，请针对以下意见修改后再生成：" + NL + state["review_feedback"] + NL
@@ -533,9 +533,9 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 state["sub_outputs"] = {**(state.get("sub_outputs") or {}), "gen": "\n\n".join(sub_parts)}
                 context += "\n\n【子Agent 专项产出（请基于这些产出组织最终回答）】\n" + state["sub_outputs"]["gen"]
         try:
-            # 简单问题/快速模板：非思考模式直接生成回答（无说明文字，规划后马上流式输出，不再显示生成阶段）；
+            # 简单问题/极速档：非思考模式直接生成回答（无说明文字，规划后马上流式输出，不再显示生成阶段）；
             # 复杂问题：思考模式深入生成
-            _is_simple = (state.get("complexity") == "simple" or tpl == "快速")
+            _is_simple = (state.get("complexity") == "simple" or tpl == "极速")
             _gen_llm = _pick_llm(cfg, llm_main_no_think if _is_simple else llm_main)
             # 简单问题：系统提示改为纯文本回答（直接输出回答文本，无解释/无JSON/无围栏），content 即回答本身
             _gen_sys = "你是一个友好的AI助手。请直接、简洁地回答用户的问题，只输出回答文本本身，" \
@@ -664,18 +664,18 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
 
     def route_plan(state: AgentState) -> list[str]:
         """一次规划 → 并行分发到需要的子 Agent（跳过被禁用的节点）
-        快速模板：不调用任何 Agent，直接进入主 Agent 生成（综合概述性记忆由生成节点合并已保存信息）
+        极速档：不调用任何 Agent，直接进入主 Agent 生成（综合概述性记忆由生成节点合并已保存信息）
         需求澄清：plan 判定需求不明确 → 中断流程（返回 end，前端弹选项，选择后作为新消息重发）"""
         if state.get("clarify"):
             return ["end"]
-        if (settings.get("template") or "基础") == "快速":
+        if (settings.get("template") or "思考") == "极速":
             return ["generate"]
         plan = state.get("_plan") or []
         cfg_study = _agent_cfg("study")
         cfg_kb = _agent_cfg("kb")
         targets = []
         # 检索增强模板：强制执行知识库节点（检索+联网+子Agent整理），不依赖主 Agent 规划
-        if (settings.get("template") or "基础") == "检索增强" and (cfg_kb.get("enabled") is not False):
+        if (settings.get("template") or "思考") == "思考" and (cfg_kb.get("enabled") is not False):
             targets.append("kb")
         if "学情与记忆管理" in plan and (cfg_study.get("enabled") is not False):
             targets.append("study_memory")

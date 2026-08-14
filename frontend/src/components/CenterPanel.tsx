@@ -160,12 +160,11 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   const [depth, setDepth] = useState(1)
   const [showSearch, setShowSearch] = useState(false)
   const [showModelModal, setShowModelModal] = useState(false)
-  // 模板模式：与「模板与编排」预设模板一致
+  // 档位模式：极速/思考/研究（用户时间-质量期望的表达），与「对话流程」区块一致
 const TEMPLATE_OPTIONS = [
-  { name: '基础', desc: '默认编排' },
-  { name: '检索增强', desc: '知识库管理调用子 Agent 整理资料' },
-  { name: '快速', desc: '生成用快模型' },
-  { name: '输出增强', desc: '主 Agent 调用子 Agent 产出结构化内容' },
+  { name: '极速', desc: '最短响应（1 秒内首字，500-800 字）' },
+  { name: '思考', desc: '完整流程 + 轻量单审（800-1200 字）' },
+  { name: '研究', desc: '完整流程 + 严格检测（多轮搜索）' },
 ]
 
 /** 模型厂家配置（仅保留最常用：DeepSeek / 智谱GLM） */
@@ -185,7 +184,13 @@ const TEMPLATE_OPTIONS = [
     return alias[m] || m
   })
   // 模板模式（与模板与编排预设一致）
-  const [templateMode, setTemplateMode] = useState(() => { const t = localStorage.getItem('coagent-template') || '基础'; return ['基础', '检索增强', '快速', '输出增强'].includes(t) ? t : '基础' })
+  const [templateMode, setTemplateMode] = useState(() => {
+    const t = localStorage.getItem('coagent-template') || '思考'
+    // 旧模板名映射新档位（兼容历史 localStorage）
+    const MAP: Record<string, string> = { '基础': '思考', '检索增强': '思考', '快速': '极速', '输出增强': '思考' }
+    const n = MAP[t] || t
+    return ['极速', '思考', '研究'].includes(n) ? n : '思考'
+  })
   // Auto：AI 根据输入自动选择模板/模式（开启后手动设置按钮禁用）
   const [autoMode, setAutoMode] = useState(() => localStorage.getItem('coagent-auto') === '1')
   // 模型 Auto：AI 根据输入自动选择模型（模型选择上拉栏内开关）

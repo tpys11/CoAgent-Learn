@@ -1079,7 +1079,7 @@ def _extract_json_obj(text: str) -> dict:
     return {}
 
 
-def _auto_settings(api_key: str, message: str, template: str = "基础", infer_model: bool = False) -> dict:
+def _auto_settings(api_key: str, message: str, template: str = "思考", infer_model: bool = False) -> dict:
     """Auto 模式：让 AI 读取用户输入，基于用户所选模板自动推断其余设置；infer_model=True 时同时推断模型；失败时返回空 dict（保持默认）"""
     from core.config import config as _cfg
     _model_field = "\"model\": \"deepseek-v4-pro|deepseek-v4-flash|glm-4-plus|glm-4-flash\", " if infer_model else ""
@@ -1089,7 +1089,7 @@ def _auto_settings(api_key: str, message: str, template: str = "基础", infer_m
         "\"webSearchMode\": \"默认|增强\", \"outputFormat\": \"低结构化|高结构化\", "
         "\"outputStyle\": \"MD文档|对话形式\", \"thinking\": \"开|关\", "
         "\"outputVolume\": \"精简|适中|拓展\", \"depth\": \"浅|中|深\"}\n"
-        f"已选模板：{template}（基础=默认编排、检索增强=子Agent整理资料、快速=快模型、输出增强=子Agent产出结构化内容，推断时可参考）\n"
+        f"已选档位：{template}（极速=快模型最短响应、思考=完整流程+轻量单审、研究=完整流程+严格检测，推断时可参考）\n"
         "推断规则：涉及学习/讲解/推导用较深深度与适中输出；复杂主题适当加重输出量；简单问答用精简；无需搜索则 webSearchMode=默认。\n"
         "模型推断规则（仅在要求推断模型时）：复杂/长篇任务用 deepseek-v4-pro 或 glm-4-plus；简单问答用 deepseek-v4-flash 或 glm-4-flash。\n"
         f"用户输入：{message[:1500]}"
@@ -1130,12 +1130,12 @@ def _auto_settings(api_key: str, message: str, template: str = "基础", infer_m
 
 
 def _apply_template(agents, tpl: str):
-    """按模板调整 agents 配置：
-    基础=默认编排；检索增强=工作流内知识库管理调用子Agent；快速=主Agent生成用快模型；输出增强=工作流内主Agent调用子Agent产出专项内容。"""
+    """按档位调整 agents 配置：
+    极速=主Agent生成用快模型；思考/研究=默认编排（研究档的多轮搜索与独立检测为后续增强）。"""
     if not agents:
         return agents
     out = list(agents)
-    if tpl == "快速":
+    if tpl == "极速":
         out = [dict(a, model="fast") if (isinstance(a, dict) and a.get("id") == "main") else a for a in out]
     return out
 
@@ -1319,7 +1319,7 @@ async def chat(req: ChatRequest):
                     if req.clarified:
                         _settings["clarified"] = True
                     _model = req.model
-                    _tpl0 = _settings.get("template") or "基础"
+                    _tpl0 = _settings.get("template") or "思考"
                     if _settings.get("modelAuto") or _settings.get("auto"):
                         _auto = _auto_settings(req.api_key, req.message, _tpl0, infer_model=bool(_settings.get("modelAuto")))
                         if _auto:
@@ -1327,7 +1327,7 @@ async def chat(req: ChatRequest):
                             if _auto.get("model"):
                                 _model = _auto["model"]
                     # 模板模式：按所选模板调整 agents（基础 = 不调整）
-                    _tpl = _settings.get("template") or "基础"
+                    _tpl = _settings.get("template") or "思考"
                     _agents = _apply_template(req.agents, _tpl)
                     wf = create_workflow(req.api_key, _settings, on_token, model=_model, base_url=req.base_url, agents=_agents,
                                          on_answer=lambda piece: [token_queue.put(("answer", _c)) for _c in piece], cancel_event=cancel_evt)
