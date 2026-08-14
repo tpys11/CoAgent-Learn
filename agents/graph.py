@@ -127,7 +127,9 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
     # cancel_event：用户手动停止时置位（threading.Event），所有 LLM 流式调用内检查，尽早中断生成
     settings = settings or {}
     agents = agents or []
-    tpl = settings.get("template") or "思考"  # 基础 / 检索增强 / 快速 / 输出增强
+    tpl = settings.get("template") or "思考"  # 思考 / 研究 / 极速
+    # TODO(研究档): 需实现多轮搜索（1-5 轮，每轮总结、信息不足续搜）与其他模型厂商独立检测；
+    # 当前研究档≈思考档完整流程（规划→学情∥知识库与搜索→生成→单审），搜索仅一轮、检测为 flash 单审。
     # 主模型：生成节点使用（用户所选模型）
     llm_main = DeepSeekLLM(api_key=api_key, model=model, base_url=base_url)
     # 快模型：决策类节点（规划/学情/审核）使用
@@ -511,12 +513,19 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         # 可用 Skill：让主 Agent 知道自己可调用的技能（来自 Agent 配置的 skill 字段）
         if cfg.get("skill"):
             context += NL + "【可用 Skill】" + NL + str(cfg["skill"]) + NL
-        # 读最近对话历史（历史条数可配置）
+        # 读最近对话历史（历史条数可配置）+ 会话摘要（压缩产物）+ 历史向量召回
         try:
             from core.sqlite_client import get_db
             _dbx = get_db()
             _limit = int(settings.get('historyLimit') or 10)
-            _rows = _dbx.execute("SELECT role,content FROM messages WHERE dialogue_id=%s ORDER BY created_at DESC LIMIT %s", (state.get("dialogue_id", "default"), _limit))
+            _did = state.get("dialogue_id", "default")
+            # 会话摘要（自动压缩产物；游标之后的原文不重复注入）
+            _drow = _dbx.execute("SELECT summary, compressed_upto FROM dialogues WHERE id=%s", (_did,))
+            _summary = (_drow[0].get("summary") or "") if _drow else ""
+            _upto = int((_drow[0].get("compressed_upto") or 0) if _drow else 0)
+            if _summary:
+                context += NL + "【会话摘要】" + NL + str(_summary)[:1500] + NL
+            _rows = _dbx.execute("SELECT role,content FROM messages WHERE dialogue_id=%s AND id > %s ORDER BY created_at DESC LIMIT %s", (_did, _upto, _limit))
             _rows.reverse()
             if _rows:
                 context += NL + "【历史对话】" + NL
@@ -524,6 +533,20 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                     _c = str(_r.get("content")) if _r.get("content") else ""
                     if _c and _c != "（系统未生成内容）":
                         context += ("user: " if _r.get("role") == "user" else "assistant: ") + _c[:150] + NL
+            # 历史向量召回：问题与已压缩历史相关时，捞回原文细节（压缩不丢信息）
+            if _upto > 0:
+                try:
+                    from core.knowledge_service import _embed
+                    _qv = _embed([str(state.get("user_input", ""))[:500]])[0]
+                    _hits = _dbx.search_message_vectors(_did, _qv, k=2)
+                    if _hits:
+                        _useful = [h for h in _hits if h.get("distance", 1.0) < 0.6]
+                        if _useful:
+                            context += NL + "【历史相关内容（压缩前原文召回）】" + NL
+                            for _h in _useful:
+                                context += str(_h.get("content"))[:300] + NL
+                except Exception:
+                    pass
         except Exception:
             pass
         # 输出增强模板：调用主 Agent 的子 Agent（如 树状结构/要点卡片）产出专项内容，主 Agent 基于其生成

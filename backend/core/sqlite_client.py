@@ -82,6 +82,11 @@ class SQLiteClient:
             "CREATE VIRTUAL TABLE IF NOT EXISTS memory_vectors USING vec0("
             "scope TEXT, content TEXT, embedding float[512])"
         )
+        # 会话消息向量表（上下文压缩后的历史召回：压缩不物理删除，细节可检索找回）
+        self.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS message_vectors USING vec0("
+            "dialogue_id TEXT, role TEXT, content TEXT, embedding float[512])"
+        )
         # 知识库文档标题树（上传时提取 markdown 标题层级，供项目记忆知识图谱使用）
         self.execute(
             "CREATE TABLE IF NOT EXISTS kb_tree("
@@ -109,6 +114,25 @@ class SQLiteClient:
             "ON CONFLICT(project_id, source) DO UPDATE SET tree=excluded.tree, updated_at=datetime('now')",
             (project_id, source, _json.dumps(tree, ensure_ascii=False)),
         )
+
+    def insert_message_vector(self, dialogue_id: str, role: str, content: str, embedding: list):
+        """会话消息向量（上下文压缩的历史召回）"""
+        import sqlite_vec as _sv
+        self.conn.execute(
+            "INSERT INTO message_vectors(rowid, dialogue_id, role, content, embedding) VALUES (?,?,?,?,?)",
+            (None, dialogue_id, role, content, _sv.serialize_float32(embedding)),
+        )
+        self.conn.commit()
+
+    def search_message_vectors(self, dialogue_id: str, vec: list, k: int = 3) -> list:
+        """按对话检索历史消息向量（余弦距离排序）"""
+        import sqlite_vec as _sv
+        rows = self.conn.execute(
+            "SELECT role, content, vec_distance_cosine(embedding, ?) AS d FROM message_vectors "
+            "WHERE dialogue_id=? ORDER BY d LIMIT ?",
+            (_sv.serialize_float32(vec), dialogue_id, k),
+        ).fetchall()
+        return [{"role": r[0], "content": r[1], "distance": r[2]} for r in rows]
 
     def get_kb_tree(self, project_id: str, source: str) -> list:
         """读取文档标题树（无则空列表）"""
@@ -259,9 +283,17 @@ class SQLiteClient:
                 session_id TEXT NOT NULL DEFAULT 'default',
                 name TEXT NOT NULL DEFAULT '新对话',
                 created_at TEXT DEFAULT (datetime('now')),
-                archived INTEGER DEFAULT 0
+                archived INTEGER DEFAULT 0,
+                summary TEXT DEFAULT '',
+                compressed_upto INTEGER DEFAULT 0
             )
         """)
+        # 兼容旧库：会话压缩字段
+        for _col, _ddl in [("summary", "TEXT DEFAULT ''"), ("compressed_upto", "INTEGER DEFAULT 0")]:
+            try:
+                self.execute("ALTER TABLE dialogues ADD COLUMN " + _col + " " + _ddl)
+            except Exception:
+                pass
         self.execute("CREATE INDEX IF NOT EXISTS idx_dialogues_project ON dialogues (project_id, created_at)")
         self.execute("""
             CREATE TABLE IF NOT EXISTS messages (

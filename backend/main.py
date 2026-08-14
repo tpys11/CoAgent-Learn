@@ -1429,9 +1429,12 @@ async def chat(req: ChatRequest):
                         reply = result.get("final_reply", "")
                         if reply:
                             from core.memory_analysis import update_memories
+                            from core.compress import compress_dialogue
                             from core.postgres_client import pg_client
                             import threading
                             threading.Thread(target=update_memories, args=(req.api_key, pid, _did, pg_client, req.session_id or "default"), daemon=True).start()
+                            # 上下文自动压缩：每满 30 条压缩最早 30%（后台，用户无感知；未满 30 条直接返回）
+                            threading.Thread(target=compress_dialogue, args=(req.api_key, _did, pg_client), daemon=True).start()
                             if not (req.settings and req.settings.get('autoFollowups') is False):
                                 from core.followups import generate_followups
                                 threading.Thread(target=generate_followups, args=(req.api_key, pid, _did, pg_client, req.followup_focus or "purpose"), daemon=True).start()
