@@ -217,7 +217,6 @@ const WIKI_ENTRIES: WikiEntry[] = [
 ]
 
 const TUTORIALS_KEY = 'coagent-tutorials'
-const CUSTOM_GENS_KEY = 'coagent-custom-gens'
 const DOMAINS_KEY = 'coagent-domains'
 const WIKI_KEY = 'coagent-custom-wiki'
 
@@ -231,61 +230,11 @@ const GEN_CATS = [
 const GEN_MATCH: Record<string, string[]> = { '讲义': ['讲义'], '实操指南': ['实操指南'], '测试题': ['测试题'] }
 
 /** 资源界面：hyper.ai 风格——顶部 Hero + 领域/分类选择 + 分区卡片流（配色跟随主题变量） */
-// ---------- Obsidian 文件夹导入（复用 Obsidian 界面的 IndexedDB 连接句柄） ----------
-interface DirNode { name: string; path: string; children: DirNode[] }
-function obsIdbOpen(): Promise<IDBDatabase> {
-  return new Promise((res, rej) => {
-    const rq = indexedDB.open('coagent-fs', 1)
-    rq.onupgradeneeded = () => rq.result.createObjectStore('handles')
-    rq.onsuccess = () => res(rq.result)
-    rq.onerror = () => rej(rq.error)
-  })
-}
-async function obsLoadRoot(): Promise<FileSystemDirectoryHandle | null> {
-  try {
-    const db = await obsIdbOpen()
-    return await new Promise((res) => {
-      const tx = db.transaction('handles', 'readonly')
-      const rq = tx.objectStore('handles').get('root')
-      rq.onsuccess = () => res(rq.result || null)
-      rq.onerror = () => res(null)
-    })
-  } catch { return null }
-}
-async function buildDirs(h: FileSystemDirectoryHandle, prefix: string, depth: number): Promise<DirNode[]> {
-  if (depth > 8) return []
-  const out: DirNode[] = []
-  for await (const [name, hh] of (h as any).entries()) {
-    if (hh.kind === 'directory') {
-      const kids = await buildDirs(hh, prefix + '/' + name, depth + 1)
-      out.push({ name, path: prefix + '/' + name, children: kids })
-    }
-  }
-  out.sort((a, b) => a.name.localeCompare(b.name))
-  return out
-}
-const OBS_EXT = new Set(['md', 'txt', 'pdf', 'docx', 'doc', 'pptx', 'xlsx', 'csv', 'json'])
-async function collectObsFiles(h: FileSystemDirectoryHandle, depth: number, out: Array<{ name: string; file: File }>) {
-  if (depth > 8) return
-  for await (const [name, hh] of (h as any).entries()) {
-    if (hh.kind === 'directory') await collectObsFiles(hh, depth + 1, out)
-    else {
-      const ext = name.split('.').pop()?.toLowerCase() || ''
-      if (OBS_EXT.has(ext)) {
-        const f = await hh.getFile()
-        out.push({ name, file: f })
-      }
-    }
-  }
-}
-
 export default function ResourceView({ projectId, onUseItem, refreshSignal }: { projectId: string | null; onUseItem?: (title: string, body: string) => void; refreshSignal?: number }) {
   const [tab, setTab] = useState<Tab>('tutorials')
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
   const [genProjects, setGenProjects] = useState<Array<{ id: string; name: string }>>([])
   const [selGenProject, setSelGenProject] = useState<string>('')
-  const [resources, setResources] = useState<Resource[]>([])
-  const [kbDocs, setKbDocs] = useState<KbDoc[]>([])
   const [tutorials, setTutorials] = useState<Tutorial[]>(() => {
     try { return JSON.parse(localStorage.getItem(TUTORIALS_KEY) || '[]') } catch { return [] }
   })
@@ -309,21 +258,8 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
   const [wikiTheme, setWikiTheme] = useState('all')
   const [loading, setLoading] = useState(false)
   const [detail, setDetail] = useState<ListItem | null>(null)
-  // 我的生成：分类（预设 + 自定义）
+  // 我的生成：分类
   const [genCat, setGenCat] = useState('all')
-  const [uploadCat, setUploadCat] = useState('all')
-  const [customGens, setCustomGens] = useState<Array<{ id: string; name: string; items: Array<{ id: string; title: string; content: string; kind?: string }> }>>(() => {
-    try { return JSON.parse(localStorage.getItem(CUSTOM_GENS_KEY) || '[]') } catch { return [] }
-  })
-  const [showNewGenCat, setShowNewGenCat] = useState(false)
-  const [newGenCatName, setNewGenCatName] = useState('')
-  const [showNewGenItem, setShowNewGenItem] = useState(false)
-  const [gTitle, setGTitle] = useState('')
-  const [gContent, setGContent] = useState('')
-  // 我的上传：添加资料表单
-  const [showAddResource, setShowAddResource] = useState(false)
-  const [rName, setRName] = useState('')
-  const [rContent, setRContent] = useState('')
   // 其他：三种上传方式（文本 / 文件 / 链接，仿 DeepTutor add resource）
   const [upMode, setUpMode] = useState<'text' | 'file' | 'link'>('text')
   const [upTitle, setUpTitle] = useState('')
@@ -335,86 +271,6 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
   const [upDropActive, setUpDropActive] = useState(false)
   const upFileRef = useRef<HTMLInputElement>(null)
 
-  // ---------- Obsidian 文件夹导入 ----------
-  const [obsOpen, setObsOpen] = useState(false)
-  const [obsDirs, setObsDirs] = useState<DirNode[]>([])
-  const [obsExpanded, setObsExpanded] = useState<Set<string>>(new Set())
-  const [obsSel, setObsSel] = useState('')
-  const [obsErr, setObsErr] = useState('')
-  const [obsProgress, setObsProgress] = useState('')
-  const [obsImporting, setObsImporting] = useState(false)
-  const obsRootRef = useRef<FileSystemDirectoryHandle | null>(null)
-
-  const openObsPicker = async () => {
-    setObsErr(''); setObsProgress(''); setObsSel('')
-    try {
-      const h = await obsLoadRoot()
-      if (!h) {
-        setObsErr('尚未连接本地文档库：请先在最左侧栏的「本地文档」界面点「连接本地文档文件夹」')
-        setObsOpen(true)
-        return
-      }
-      obsRootRef.current = h
-      setObsDirs(await buildDirs(h, '', 0))
-      setObsOpen(true)
-    } catch (e) {
-      setObsErr('读取失败：' + String(e))
-      setObsOpen(true)
-    }
-  }
-  const toggleObsDir = (p: string) => {
-    setObsExpanded(prev => { const n = new Set(prev); n.has(p) ? n.delete(p) : n.add(p); return n })
-  }
-  const renderObsDirs = (dirs: DirNode[], depth: number): React.ReactNode => dirs.map(d => (
-    <div key={d.path}>
-      <div onClick={() => setObsSel(d.path)}
-        className={`flex items-center gap-1.5 pr-2 py-1.5 rounded-lg text-xs cursor-pointer transition-colors ${obsSel === d.path ? 'bg-[#1a1a1a] text-white' : 'hover:bg-[var(--bg-hover)]'}`}
-        style={{ paddingLeft: depth * 18 + 6 }}>
-        <button onClick={(e) => { e.stopPropagation(); toggleObsDir(d.path) }}
-          className="w-4 flex items-center justify-center flex-shrink-0">
-          <ChevronRight size={12} className={`transition-transform ${obsExpanded.has(d.path) ? 'rotate-90' : ''}`} />
-        </button>
-        <FolderTree size={13} className="text-dim flex-shrink-0" />
-        <span className="truncate">{d.name}</span>
-      </div>
-      {obsExpanded.has(d.path) && d.children.length > 0 && renderObsDirs(d.children, depth + 1)}
-    </div>
-  ))
-  const importObsFolder = async () => {
-    if (!obsSel || !obsRootRef.current) return
-    setObsImporting(true)
-    setObsProgress('扫描文件…')
-    try {
-      const parts = obsSel.split('/').filter(Boolean)
-      let cur: any = obsRootRef.current
-      for (const p of parts) cur = await cur.getDirectoryHandle(p)
-      const files: Array<{ name: string; file: File }> = []
-      await collectObsFiles(cur, 0, files)
-      if (files.length === 0) {
-        setObsProgress('该文件夹下没有可导入的文件（md/txt/pdf/docx 等）')
-        setObsImporting(false)
-        return
-      }
-      let done = 0
-      for (const { name, file } of files) {
-        const fd = new FormData()
-        fd.append('project_id', projectId || 'default')
-        fd.append('session_id', 'resource')
-        fd.append('api_key', localStorage.getItem('coagent-apikey') || '')
-        fd.append('file', file, name)
-        await fetch('/api/knowledge/upload-file', { method: 'POST', body: fd })
-        done++
-        setObsProgress(`导入中 ${done} / ${files.length}：${name}`)
-      }
-      setObsProgress(`完成，导入 ${done} 个文件（正在后台处理）`)
-      setObsImporting(false)
-      setTimeout(() => load(), 3000)
-    } catch (e) {
-      setObsProgress('导入失败：' + String(e))
-      setObsImporting(false)
-    }
-  }
-
   const load = useCallback(() => {
     setLoading(true)
     // 我的生成：按选中项目加载
@@ -423,11 +279,6 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
       fetch('/api/artifacts?project_id=' + encodeURIComponent(gpid), { cache: 'no-store' })
         .then(r => r.json()).then(d => setArtifacts(d.artifacts || [])).catch(() => {})
     }
-    // 我的上传：全局聚合（所有项目）
-    fetch('/api/resources/all', { cache: 'no-store' })
-      .then(r => r.json()).then(d => setResources(d.resources || [])).catch(() => {})
-    fetch('/api/knowledge/list-all', { cache: 'no-store' })
-      .then(r => r.json()).then(d => setKbDocs(d.docs || [])).catch(() => {})
     setTimeout(() => setLoading(false), 200)
   }, [projectId, selGenProject])
 
@@ -543,97 +394,6 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
     }
   }
 
-  // ---------- 我的上传 ----------
-  const deleteResource = (id: string) => {
-    if (!window.confirm('确定删除该资料？')) return
-    fetch('/api/resources/' + id, { method: 'DELETE' }).then(() => {
-      setResources(prev => prev.filter(r => r.id !== id))
-      setDetail(null)
-    })
-  }
-  const deleteKbDoc = (source: string, pid?: string) => {
-    if (!window.confirm(`确定删除知识库文档「${source}」？`)) return
-    fetch('/api/knowledge/delete?project_id=' + encodeURIComponent(pid || projectId || 'default') + '&source=' + encodeURIComponent(source), { method: 'DELETE' })
-      .then(() => {
-        setKbDocs(prev => prev.filter(d => d.source !== source))
-        setDetail(null)
-        load()  // 重新加载（原文已转存资源表，出现在"保存的资料"）
-      })
-  }
-  // 我的上传：手动添加资料
-  const saveResource = () => {
-    if (!rName.trim()) return
-    fetch('/api/resources', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: rName.trim(), content: rContent, project_id: projectId || 'default' }),
-    }).then(() => {
-      setRName(''); setRContent(''); setShowAddResource(false); load()
-    })
-  }
-
-  // 我的上传：上传文件到资源表
-  const resFileRef = useRef<HTMLInputElement>(null)
-  const [resUploading, setResUploading] = useState(false)
-  const uploadResFile = async (files: FileList | File[]) => {
-    if (!files || files.length === 0) return
-    setResUploading(true)
-    let ok = 0
-    for (const f of Array.from(files)) {
-      const fd = new FormData()
-      fd.append('project_id', projectId || 'default')
-      fd.append('file', f, f.name)
-      try {
-        const r = await fetch('/api/resources/upload', { method: 'POST', body: fd })
-        const d = await r.json()
-        if (d.status === 'ok') {
-          ok++
-          // 当前在「我的分类」下上传：既显示在全部，也复制到该分类
-          if (isCustomUploadCat) {
-            const newItem = { id: 'fi-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), title: f.name, content: d.preview || '', kind: 'file' }
-            setCustomGens(prev => {
-              const next = prev.map(cg => cg.id === uploadCat ? { ...cg, items: [...cg.items, newItem] } : cg)
-              localStorage.setItem(CUSTOM_GENS_KEY, JSON.stringify(next))
-              return next
-            })
-          }
-        }
-      } catch (e) { /* 忽略单个失败 */ }
-    }
-    setResUploading(false)
-    load()
-  }
-
-  // 我的生成：自定义分类与内容
-  const saveCustomGens = (next: typeof customGens) => {
-    setCustomGens(next)
-    localStorage.setItem(CUSTOM_GENS_KEY, JSON.stringify(next))
-  }
-  const addGenCat = () => {
-    const name = newGenCatName.trim()
-    if (!name || customGens.some(c => c.name === name)) return
-    const id = 'cg-' + Date.now()
-    saveCustomGens([...customGens, { id, name, items: [] }])
-    if (tab === 'generated') setGenCat(id); else setUploadCat(id)
-    setNewGenCatName(''); setShowNewGenCat(false)
-  }
-  const addGenItem = () => {
-    if (!gTitle.trim()) return
-    const curCat = tab === 'generated' ? genCat : uploadCat
-    saveCustomGens(customGens.map(c => c.id === curCat ? { ...c, items: [...c.items, { id: 'gi-' + Date.now(), title: gTitle.trim(), content: gContent }] } : c))
-    setGTitle(''); setGContent(''); setShowNewGenItem(false)
-  }
-  const removeGenCat = (id: string) => {
-    if (!window.confirm('确定删除该分类及其内容？')) return
-    saveCustomGens(customGens.filter(c => c.id !== id))
-    if (genCat === id) setGenCat('all')
-    if (uploadCat === id) setUploadCat('all')
-  }
-  const removeGenItem = (id: string) => {
-    setDetail(null)
-    const curCat = tab === 'generated' ? genCat : uploadCat
-    saveCustomGens(customGens.map(c => c.id === curCat ? { ...c, items: c.items.filter(i => i.id !== id) } : c))
-  }
-
   // ---------- 列表组装 ----------
   // 当前领域 + 当前分类下的教程
   const domainTutorials = allTutorials.filter(t => (t.domain || DEFAULT_DOMAINS[0]) === selectedDomain)
@@ -664,26 +424,10 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
       body: a.content, icon: TYPE_ICONS[a.type] || FileText,
       kind: 'artifact' as const, deletable: false, time: fmtTime(a.created_at),
     }))
-  } else if (tab === 'uploads') {
-    const kbItems: ListItem[] = kbDocs.map(d => ({ id: 'kb:' + d.source, title: d.source, sub: `${d.project_name || ''} · ${d.chunks} 块`, body: d.preview || '（无预览内容）', icon: Upload, kind: 'kb' as const, deletable: true, time: '', pid: d.project_id }))
-    const resItems: ListItem[] = resources.map(r => {
-      const isFile = r.type === 'file'
-      const sizeStr = r.file_size ? ((r.file_size / 1024).toFixed(1) + ' KB') : ''
-      const projName = r.project_name ? r.project_name + ' · ' : ''
-      const sub = projName + (isFile ? ('文件 · ' + (r.file_ext ? r.file_ext.toUpperCase() : '') + (sizeStr ? ' · ' + sizeStr : '')) : '文本资料')
-      return { id: r.id, title: r.name, sub, body: r.content || '', icon: isFile ? Upload : FileText, kind: 'resource' as const, deletable: true, time: fmtTime(r.created_at), pid: r.project_id }
-    })
-    if (uploadCat === 'all') list = [...kbItems, ...resItems]
-    else if (uploadCat === 'kb') list = kbItems
-    else if (uploadCat === 'resource') list = resItems
-    else list = []
   }
 
   const removeItem = (item: ListItem) => {
     if (item.kind === 'tutorial') removeTutorial(item.id)
-    else if (item.kind === 'resource') deleteResource(item.id)
-    else if (item.kind === 'kb') deleteKbDoc(item.title, item.pid)
-    else if (item.kind === 'gen') removeGenItem(item.id)
   }
 
   /** 导出卡片内容为 Markdown 文件（wiki 详情 / 生成物 / 资料正文） */
@@ -827,52 +571,6 @@ const exportItem = (item: ListItem) => {
     </>
   )
 
-  // 我的生成：当前是否为自定义分类 + 其内容列表
-  const isCustomCat = customGens.some(c => c.id === genCat)
-  const isCustomUploadCat = customGens.some(c => c.id === uploadCat)
-  const customItems: ListItem[] = (customGens.find(c => c.id === uploadCat)?.items || []).map(i => {
-    const isFile = i.kind === 'file'
-    return {
-      id: i.id, title: i.title, sub: isFile ? '上传的文件' : '自定义内容', body: i.content, icon: isFile ? Upload : Sparkles,
-      kind: 'gen' as const, deletable: true, time: '',
-    }
-  })
-
-  /** 左侧栏「我的分类」公共区块（我的生成 / 我的上传 共用） */
-  const renderMyCats = (active: string, onSelect: (id: string) => void) => (
-    <>
-      <div className="w-px h-3 bg-[var(--border-color)] my-1.5 self-center" />
-      <p className="text-[10px] font-bold text-dim uppercase tracking-wider px-2.5 mb-0.5">我的分类</p>
-      {customGens.map(c => (
-        <div key={c.id} className="group flex items-center rounded-xl">
-          <button onClick={() => { onSelect(c.id); setDetail(null) }}
-            className={`flex-1 flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-left transition-colors ${
-              active === c.id ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
-            }`}>
-            <Sparkles size={13} /> {c.name}
-          </button>
-          <button onClick={(e) => { e.stopPropagation(); removeGenCat(c.id) }}
-            className="opacity-0 group-hover:opacity-100 p-1 mr-1 rounded text-gray-300 hover:text-red-500 flex-shrink-0" title="删除分类">
-            <Trash2 size={11} />
-          </button>
-        </div>
-      ))}
-      {showNewGenCat ? (
-        <div className="flex gap-1 px-1 pt-1">
-          <input autoFocus value={newGenCatName} onChange={e => setNewGenCatName(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter') addGenCat() }}
-            placeholder="分类名" className="flex-1 px-2 py-1.5 text-[11px] input-surface rounded-lg outline-none" />
-          <button onClick={addGenCat} className="px-2 py-1 text-[11px] bg-[#1a1a1a] text-white rounded-lg font-semibold">加</button>
-        </div>
-      ) : (
-        <button onClick={() => setShowNewGenCat(true)}
-          className="flex items-center gap-1.5 px-3 py-2 mt-1 text-[11px] text-dim hover:text-[#1a1a1a] rounded-xl hover:bg-[var(--bg-hover)] transition-colors">
-          <Plus size={12} /> 新建分类
-        </button>
-      )}
-    </>
-  )
-
   return (
     <div className="flex-1 h-full min-w-0 flex flex-col panel rounded-3xl overflow-hidden">
       {/* 顶部 Hero：主题化配色（跟随 light/dark/warm） */}
@@ -944,20 +642,6 @@ const exportItem = (item: ListItem) => {
                 <span className="font-semibold truncate">{p.name}</span>
               </button>
             ))}
-          </div>
-        )}
-        {tab === 'uploads' && (
-          <div className="w-40 flex-shrink-0 border-r hairline bg-[var(--bg-sidebar)] p-2.5 flex flex-col gap-1 overflow-y-auto">
-            <p className="text-[10px] font-bold text-dim uppercase tracking-wider px-2.5 mt-1 mb-0.5">预设分类</p>
-            {[{ key: 'all', label: '全部' }, { key: 'kb', label: '已上传到知识库' }, { key: 'resource', label: '保存的资料' }].map(c => (
-              <button key={c.key} onClick={() => { setUploadCat(c.key); setDetail(null) }}
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-left transition-colors ${
-                  uploadCat === c.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
-                }`}>
-                <Upload size={13} /> {c.label}
-              </button>
-            ))}
-            {renderMyCats(uploadCat, setUploadCat)}
           </div>
         )}
         <div className="flex-1 overflow-y-auto px-10 py-8">
@@ -1093,81 +777,6 @@ const exportItem = (item: ListItem) => {
                   </div>
                 )}
               </div>
-              <div className="flex items-end justify-between mb-5">
-                <h2 className="text-lg font-bold flex items-center gap-2"><Upload size={18} /> 我的上传</h2>
-                <div className="flex items-center gap-2">
-                  <button onClick={openObsPicker}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors">
-                    <BookOpen size={13} /> 从本地文档导入
-                  </button>
-                  <button onClick={() => resFileRef.current?.click()}
-                    className="flex items-center gap-1.5 px-4 py-2 border border-[var(--border-color)] text-xs font-semibold rounded-xl hover:bg-[var(--bg-hover)] transition-colors">
-                    <Upload size={13} /> {resUploading ? '上传中…' : '上传文件'}
-                  </button>
-                  <input ref={resFileRef} type="file" multiple className="hidden"
-                    accept=".txt,.md,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml,.pdf,.docx,.pptx"
-                    onChange={e => { if (e.target.files?.length) uploadResFile(e.target.files); e.target.value = '' }} />
-                  {isCustomUploadCat ? (
-                  !showNewGenItem && (
-                    <button onClick={() => setShowNewGenItem(true)}
-                      className="flex items-center gap-1.5 px-4 py-2 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors">
-                      <Plus size={13} /> 新建内容
-                    </button>
-                  )
-                ) : (
-                  !showAddResource && (
-                    <button onClick={() => setShowAddResource(true)}
-                      className="flex items-center gap-1.5 px-4 py-2 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors">
-                      <Plus size={13} /> 添加资料
-                    </button>
-                  )
-                )}
-                </div>
-              </div>
-
-              {/* 添加资料表单（预设分类下） */}
-              {!isCustomUploadCat && showAddResource && (
-                <div className="border border-[var(--border-color)] rounded-2xl p-3 mb-5 flex flex-col gap-2 bg-[var(--bg-panel)] shadow-soft">
-                  <input autoFocus value={rName} onChange={e => setRName(e.target.value)} placeholder="资料名称"
-                    className="px-3 py-2 text-xs input-surface rounded-xl outline-none" />
-                  <textarea value={rContent} onChange={e => setRContent(e.target.value)} placeholder="资料内容（可选，支持多行）"
-                    rows={3}
-                    className="px-3 py-2 text-xs input-surface rounded-xl outline-none resize-none" />
-                  <div className="flex gap-2 justify-end">
-                    <button onClick={() => setShowAddResource(false)} className="px-3 py-1.5 text-[11px] text-dim rounded-xl row-hover">取消</button>
-                    <button onClick={saveResource} className="px-3 py-1.5 text-[11px] bg-[#1a1a1a] text-white font-semibold rounded-xl">保存</button>
-                  </div>
-                </div>
-              )}
-
-              {/* 新建内容表单（自定义分类下） */}
-              {isCustomUploadCat && showNewGenItem && (
-                <div className="border border-[var(--border-color)] rounded-2xl p-3 mb-5 flex flex-col gap-2 bg-[var(--bg-panel)] shadow-soft">
-                  <input autoFocus value={gTitle} onChange={e => setGTitle(e.target.value)} placeholder="内容名称"
-                    className="px-3 py-2 text-xs input-surface rounded-xl outline-none" />
-                  <textarea value={gContent} onChange={e => setGContent(e.target.value)} placeholder="内容（支持多行）"
-                    rows={4}
-                    className="px-3 py-2 text-xs input-surface rounded-xl outline-none resize-none" />
-                  <div className="flex gap-2 justify-end">
-                    <button onClick={() => setShowNewGenItem(false)} className="px-3 py-1.5 text-[11px] text-dim rounded-xl row-hover">取消</button>
-                    <button onClick={addGenItem} className="px-3 py-1.5 text-[11px] bg-[#1a1a1a] text-white font-semibold rounded-xl">保存</button>
-                  </div>
-                </div>
-              )}
-
-              {isCustomUploadCat ? (
-                <>
-                  {loading && <p className="text-xs text-dim text-center py-16">加载中…</p>}
-                  {!loading && customItems.length === 0 && emptyState('该分类暂无内容', '点击右上角「新建内容」添加')}
-                  {!loading && customItems.length > 0 && cardGrid(customItems)}
-                </>
-              ) : (
-                <>
-                  {loading && <p className="text-xs text-dim text-center py-16">加载中…</p>}
-                  {!loading && list.length === 0 && emptyState('暂无上传内容', '点击右上角「添加资料」或上传知识库文档后展示在这里')}
-                  {!loading && list.length > 0 && cardGrid(list)}
-                </>
-              )}
             </>
           )}
           </div>
@@ -1214,39 +823,6 @@ const exportItem = (item: ListItem) => {
                   </button>
                 )}
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Obsidian 文件夹导入弹窗 */}
-      {obsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
-          <div className="w-[540px] max-h-[72vh] flex flex-col rounded-2xl panel shadow-xl overflow-hidden">
-            <div className="px-5 py-4 border-b hairline flex items-center justify-between flex-shrink-0">
-              <h3 className="text-sm font-bold flex items-center gap-2"><BookOpen size={16} /> 从本地文档导入</h3>
-              <button onClick={() => setObsOpen(false)} className="w-7 h-7 flex items-center justify-center rounded-lg text-dim hover:bg-[var(--bg-hover)]">
-                <X size={14} />
-              </button>
-            </div>
-            <div className="px-5 py-2.5 border-b hairline flex items-center justify-between flex-shrink-0">
-              <span className="text-[11px] text-dim truncate">{obsSel ? `已选择：${obsSel.replace(/^\//, '')}` : '请选择一个文件夹'}</span>
-              <span className="text-[10px] text-dim flex-shrink-0 ml-3">md / txt / pdf / docx 等</span>
-            </div>
-            <div className="flex-1 overflow-y-auto p-3">
-              {obsErr ? (
-                <p className="text-xs text-red-600 p-4 leading-relaxed">{obsErr}</p>
-              ) : obsDirs.length === 0 ? (
-                <p className="text-xs text-dim text-center py-8">库中没有子文件夹</p>
-              ) : renderObsDirs(obsDirs, 0)}
-            </div>
-            <div className="px-5 py-3 border-t hairline flex items-center justify-between flex-shrink-0">
-              <span className="text-[11px] text-dim truncate">{obsProgress}</span>
-              <button onClick={importObsFolder} disabled={!obsSel || obsImporting}
-                className={`px-4 py-2 rounded-xl text-xs font-semibold text-white shadow-soft transition-transform ${(!obsSel || obsImporting) ? 'opacity-40 cursor-not-allowed' : 'hover:scale-105'}`}
-                style={{ background: 'var(--accent)' }}>
-                {obsImporting ? '导入中…' : '导入此文件夹'}
-              </button>
             </div>
           </div>
         </div>
