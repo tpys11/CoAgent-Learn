@@ -175,18 +175,23 @@ def _gen_context(chunk: str, full_text: str, api_key: str = "") -> str:
     return ""
 
 
-def add_document(project_id: str, text: str, source: str = "", session_id: str = "", api_key: str = "") -> int:
-    """上传文本：切块 → 每块生成上下文前缀(P1) → 向量化 → 入库，返回入库块数"""
+def add_document(project_id: str, text: str, source: str = "", session_id: str = "", api_key: str = "", skip_context: bool = False) -> int:
+    """上传文本：切块 → 向量化 → 入库，返回入库块数。
+    skip_context=True 时跳过「每块 LLM 生成上下文前缀」（链接上传/大批量内容用，
+    几百块逐块调 LLM 会慢到分钟级；检索质量由 bge+BM25+rerank 保证）"""
     chunks = _chunk_text(text)
     if not chunks:
         return 0
-    # 用 LLM 为每块生成上下文前缀（并发加速）
-    from concurrent.futures import ThreadPoolExecutor
-    try:
-        with ThreadPoolExecutor(max_workers=4) as ex:
-            prefixes = list(ex.map(lambda ck: _gen_context(ck, text, api_key), chunks))
-    except Exception:
+    # 用 LLM 为每块生成上下文前缀（并发加速；skip_context 时跳过）
+    if skip_context:
         prefixes = [""] * len(chunks)
+    else:
+        from concurrent.futures import ThreadPoolExecutor
+        try:
+            with ThreadPoolExecutor(max_workers=4) as ex:
+                prefixes = list(ex.map(lambda ck: _gen_context(ck, text, api_key), chunks))
+        except Exception:
+            prefixes = [""] * len(chunks)
     # 组装文档文本
     docs = []
     for i, c in enumerate(chunks):
@@ -197,15 +202,13 @@ def add_document(project_id: str, text: str, source: str = "", session_id: str =
     batch = 32
     for i in range(0, len(docs), batch):
         embeddings.extend(_embed(docs[i:i + batch]))
-    # 入库
+    # 入库（批量单事务：大批量从逐条 commit 降到一次 commit，避免分钟级锁窗口）
+    bulk = []
     for i, c in enumerate(chunks):
         uid = hashlib.md5((source + str(i) + c[:80]).encode("utf-8")).hexdigest()[:24]
         pfx = prefixes[i] if i < len(prefixes) else ""
-        _db.upsert_kb_vector(
-            doc_id=uid, project_id=project_id, source=source, chunk=i,
-            session_id=session_id, has_context=bool(pfx),
-            content=docs[i], embedding=embeddings[i],
-        )
+        bulk.append((uid, project_id, source, i, session_id, bool(pfx), docs[i], embeddings[i]))
+    _db.upsert_kb_vectors_bulk(bulk)
     # 标题树：复用文档自身的形式分类逻辑（markdown 标题层级），供项目记忆知识图谱
     try:
         if source:

@@ -124,9 +124,10 @@ import threading as _threading
 _active_cancels: dict = {}
 
 
-def _process_upload(project_id, text, source, session_id, api_key) -> int:
+def _process_upload(project_id, text, source, session_id, api_key, skip_context: bool = False, skip_graph: bool = False) -> int:
     """处理上传：存原文到资源表 + 切块向量化入库 + 抽取图谱，返回入库块数。
-    后台线程调用时忽略返回值；同步模式（wait=1）用它拿到块数反馈给前端。"""
+    后台线程调用时忽略返回值；同步模式（wait=1）用它拿到块数反馈给前端。
+    skip_context：跳过每块 LLM 上下文前缀（大批量内容）；skip_graph：跳过图谱抽取。"""
     n = 0
     try:
         # 存原文到资源表（"我的上传/保存的资料"保留一份原文，与知识库独立）
@@ -142,15 +143,16 @@ def _process_upload(project_id, text, source, session_id, api_key) -> int:
         pass
     try:
         from core.knowledge_service import add_document
-        n = add_document(project_id, text, source, session_id, api_key) or 0
+        n = add_document(project_id, text, source, session_id, api_key, skip_context=skip_context) or 0
     except Exception as e:
         print("[kb] 入库失败:", e)
-    try:
-        from core.graph_service import extract_relations, store_relations
-        rels = extract_relations(text, api_key)
-        store_relations(project_id, rels, source)
-    except Exception:
-        pass
+    if not skip_graph:
+        try:
+            from core.graph_service import extract_relations, store_relations
+            rels = extract_relations(text, api_key)
+            store_relations(project_id, rels, source)
+        except Exception:
+            pass
     return n
 
 
@@ -183,35 +185,108 @@ class KnowledgeUrlUpload(BaseModel):
     api_key: str = ""
 
 
+# 链接上传：trafilatura 抓取上限（防无限抓取）
+_MAX_LINK_PAGES = 12
+_MAX_LINK_CHARS = 200000
+
+
+def _is_disallowed_host(host: str) -> bool:
+    """拒绝私网/回环/链路本地主机（SSRF 防护，参考 DeepTutor web_fetch）"""
+    import ipaddress
+    import socket
+    candidate = (host or "").strip().strip("[]")
+    try:
+        ip = ipaddress.ip_address(candidate)
+        return (ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_multicast or ip.is_reserved or ip.is_unspecified)
+    except ValueError:
+        pass
+    lower = candidate.lower()
+    if lower in {"localhost", "ip6-localhost", "ip6-loopback"} or lower.endswith(".local"):
+        return True
+    try:
+        infos = socket.getaddrinfo(candidate, None)
+    except OSError:
+        return True
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def _fetch_site_text(base_url: str) -> str:
+    """链接上传抓取：sitemap 定位全部页面 → requests 并发抓取（带重试）→ trafilatura 提取正文。
+    requests 负责网络（对 GitHub Pages 等站点 TLS 兼容性好），trafilatura 只负责正文提取（业界标准）。
+    仅 http/https、拒绝私网主机、同域名、限页数/总字符。"""
+    import re as _re
+    import time as _time
+    from urllib.parse import urlparse
+    from concurrent.futures import ThreadPoolExecutor
+    import requests as _req
+    base_host = urlparse(base_url).netloc
+    headers = {"User-Agent": "Mozilla/5.0 (coagent-learn)"}
+
+    def _page_text(u: str) -> str:
+        import trafilatura
+        try:  # GitHub Pages 等偶发 TLS 断开，失败直接跳过该页（并发下不拖慢整批）
+            resp = _req.get(u, timeout=15, headers=headers)
+            resp.raise_for_status()
+            return (trafilatura.extract(resp.text, url=u, include_comments=False, include_tables=True) or "").strip()
+        except Exception:
+            return ""
+
+    # 1. sitemap 定位全部页面（文档站普遍有；同域名过滤，排除多语言版本路径）
+    page_urls: list[str] = []
+    try:
+        r = _req.get(base_url.rstrip("/") + "/sitemap.xml", timeout=15, headers=headers)
+        if r.status_code == 200:
+            page_urls = [u for u in _re.findall(r"<loc>([^<]+)</loc>", r.text)
+                         if urlparse(u).netloc == base_host and "/index." not in u]
+    except Exception:
+        pass
+    # 2. 主页面（sitemap 未命中时兜底）
+    if base_url not in page_urls:
+        page_urls.insert(0, base_url)
+
+    # 3. 并发抓取（限制页数/总字符）
+    pages = page_urls[:_MAX_LINK_PAGES]
+    results: list[tuple[str, str]] = []
+    with ThreadPoolExecutor(max_workers=6) as _ex:
+        for u, t in zip(pages, _ex.map(_page_text, pages)):
+            if len(t) >= 20:
+                results.append((u, t))
+            if sum(len(x[1]) for x in results) >= _MAX_LINK_CHARS:
+                break
+    return _re.sub(r"\n{3,}", "\n\n", "\n".join("=== 页面: " + u + " ===\n\n" + t for u, t in results))[:_MAX_LINK_CHARS]
+
+
 @app.post("/api/knowledge/upload-url")
 async def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
-    """链接上传：抓取网页正文 → 切块向量化入库（仿 DeepTutor add resource 的链接方式）"""
+    """链接上传：trafilatura 抓取网页（主页面 + sitemap 全站正文）→ 切块向量化入库"""
     url = (req.url or "").strip()
     if not url.startswith(("http://", "https://")):
         return {"status": "error", "msg": "链接格式不正确（需以 http:// 或 https:// 开头）"}
+    from urllib.parse import urlparse
+    host = (urlparse(url).hostname or "").strip()
+    if not host or _is_disallowed_host(host):
+        return {"status": "error", "msg": "链接主机不可访问（私网/回环地址）"}
     source = (req.source or "").strip() or url
     text = ""
     try:
-        import requests as _req
-        import re as _re
-        resp = _req.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0 (coagent-learn)"})
-        resp.raise_for_status()
-        html = resp.text
-        # 简单 HTML → 文本：去 script/style、标签、多余空白
-        html = _re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", " ", html)
-        text = _re.sub(r"(?is)<[^>]+>", " ", html)
-        text = _re.sub(r"\s+", " ", text).strip()
-        if len(text) > 60000:
-            text = text[:60000]
+        text = _fetch_site_text(url)
     except Exception as e:
         return {"status": "error", "msg": f"抓取链接失败：{e}"}
-    if len(text) < 20:
+    if len(text.strip()) < 20:
         return {"status": "error", "msg": "链接内容过短或无法解析为文本"}
     if wait:
         from starlette.concurrency import run_in_threadpool
-        chunks = await run_in_threadpool(_process_upload, req.project_id, text, source, req.session_id, req.api_key)
+        chunks = await run_in_threadpool(_process_upload, req.project_id, text, source, req.session_id, req.api_key, True, True)
         return {"status": "ok", "chunks": chunks, "source": source}
-    _threading.Thread(target=_process_upload, args=(req.project_id, text, source, req.session_id, req.api_key), daemon=True).start()
+    _threading.Thread(target=_process_upload, args=(req.project_id, text, source, req.session_id, req.api_key), kwargs={"skip_context": True, "skip_graph": True}, daemon=True).start()
     return {"status": "processing", "msg": "正在处理，稍后刷新查看"}
 
 
