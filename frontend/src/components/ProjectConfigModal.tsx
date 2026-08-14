@@ -209,23 +209,20 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
               onChange={e => { if (e.target.files?.length) uploadFiles(e.target.files); e.target.value = '' }} />
           </div>
         </div>
-        <div className={`border rounded-2xl p-3 flex flex-col gap-2 max-h-[26vh] overflow-y-auto transition-colors ${dragOver ? 'border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_6%,var(--bg-panel))]' : 'border-dashed hairline'}`}>
+        <div className={`border rounded-2xl p-3 grid grid-cols-2 md:grid-cols-3 gap-2 max-h-[26vh] overflow-y-auto transition-colors ${dragOver ? 'border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_6%,var(--bg-panel))]' : 'border-dashed hairline'}`}>
           {loading ? (
-            <div className="p-6 flex items-center justify-center text-xs text-dim">加载中…</div>
+            <div className="col-span-full p-6 flex items-center justify-center text-xs text-dim">加载中…</div>
           ) : docs.length === 0 ? (
-            <div className="p-6 flex flex-col items-center justify-center gap-1.5 text-xs text-dim">
+            <div className="col-span-full p-6 flex flex-col items-center justify-center gap-1.5 text-xs text-dim">
               <Upload size={18} className="opacity-50" />
               <span>暂无资源 — 上传文件，或从下方系统资源拖入</span>
             </div>
           ) : docs.map(d => (
-            <div key={d.source} className="flex items-center gap-3 border hairline rounded-xl px-3.5 py-2.5 bg-[var(--bg-panel)]">
-              <span className="w-8 h-8 rounded-lg bg-[#1a1a1a] text-white flex items-center justify-center flex-shrink-0"><FileText size={14} /></span>
-              <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-                <span className="text-xs font-semibold truncate">{d.source}</span>
-                <span className="text-[10px] text-dim truncate">{d.preview || ''}</span>
-              </div>
+            <div key={d.source} className="group flex items-center gap-2 border hairline rounded-xl px-3 py-2 bg-[var(--bg-panel)]">
+              <span className="w-7 h-7 rounded-lg bg-[#1a1a1a] text-white flex items-center justify-center flex-shrink-0"><FileText size={13} /></span>
+              <span className="text-xs font-semibold truncate flex-1 min-w-0" title={d.source}>{d.source}</span>
               <button onClick={() => removeDoc(d.source)} title="移除"
-                className="p-1.5 rounded-lg text-dim hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"><Trash2 size={13} /></button>
+                className="opacity-0 group-hover:opacity-100 p-1 rounded text-dim hover:text-red-500 transition-colors flex-shrink-0"><Trash2 size={12} /></button>
             </div>
           ))}
         </div>

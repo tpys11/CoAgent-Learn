@@ -815,8 +815,8 @@ const exportItem = (item: ListItem) => {
               <button
                 key={key}
                 onClick={() => { setTab(key); setDetail(null) }}
-                className={`card-surface rounded-2xl p-5 flex flex-col gap-2 text-left transition-all hover:shadow-soft ${
-                  tab === key ? 'bg-[#1a1a1a] text-white border-transparent shadow-soft' : ''
+                className={`card-surface rounded-2xl p-5 flex flex-col gap-2 text-left transition-all hover:shadow-soft border ${
+                  tab === key ? 'border-[#1a1a1a] bg-[var(--bg-hover)] shadow-soft' : 'border-transparent'
                 }`}
               >
                 <span className="flex items-center gap-2">
@@ -825,7 +825,7 @@ const exportItem = (item: ListItem) => {
                   </span>
                   <span className="text-sm font-semibold">{label}</span>
                 </span>
-                <span className={`text-[11px] leading-relaxed ${tab === key ? 'text-white/70' : 'text-dim'}`}>{desc}</span>
+                <span className="text-[11px] text-dim leading-relaxed">{desc}</span>
               </button>
             ))}
           </div>
