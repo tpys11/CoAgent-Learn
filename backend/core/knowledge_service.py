@@ -362,7 +362,9 @@ def list_docs(project_id: str) -> list:
         content = r["content"] or ""
         if not g["preview"]:
             g["preview"] = content[:150]
-        g["tree"] = _db.get_kb_tree(project_id, src)
+    # 标题树每个 source 只查一次（之前误放循环内，块多时每行都查库 → 接口 3.5s 卡顿）
+    for src in grouped:
+        grouped[src]["tree"] = _db.get_kb_tree(project_id, src)
     return list(grouped.values())
 
 
