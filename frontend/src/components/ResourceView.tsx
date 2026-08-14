@@ -117,7 +117,7 @@ const normalizeCat = (c?: string) => (c && LEGACY_CAT_MAP[c]) || c || CATEGORIES
 /** 预置第三方教程（领域 + 分类归位） */
 const PRESET_TUTORIALS: Tutorial[] = [
   { id: 'preset-hello-agent', title: 'Hello Agent 入门教程', url: '', desc: 'GitHub 上的 Hello Agent 经典入门课程：从零理解并搭建一个 Agent 的最小实现（链接待补充）', category: '系统学习', domain: 'Agent 应用与开发', preset: true },
-  { id: 'preset-libo-jie', title: '李博杰的教程', url: '', desc: '系统性 AI / 智能体学习教程，覆盖从基础到实践的学习路线（链接待补充）', category: '系统学习', domain: 'Agent 应用与开发', preset: true },
+  { id: 'preset-libo-jie', title: '李博杰的教程', url: 'https://bojieli.github.io/ai-agent-book/#_3', desc: '系统性 AI / 智能体学习教程（李博杰 · AI Agent 实战课），覆盖从基础到实践的学习路线', category: '系统学习', domain: 'Agent 应用与开发', preset: true },
   { id: 'preset-langgraph', title: 'LangGraph 官方文档', url: 'https://langchain-ai.github.io/langgraph/', desc: '多智能体工作流编排框架官方文档：StateGraph、节点、条件边', category: '技术工具', domain: 'Agent 应用与开发', preset: true },
   { id: 'preset-mcp', title: 'MCP 官方文档', url: 'https://modelcontextprotocol.io/', desc: 'Model Context Protocol：Agent 与外部工具连接的标准协议', category: '技术工具', domain: 'Agent 应用与开发', preset: true },
   { id: 'preset-deepseek', title: 'DeepSeek API 文档', url: 'https://api-docs.deepseek.com/', desc: 'DeepSeek 大模型 API 调用指南（对话补全、流式输出）', category: '技术工具', domain: 'Agent 应用与开发', preset: true },
@@ -1043,6 +1043,13 @@ const exportItem = (item: ListItem) => {
             </div>
             <div className="flex-1 overflow-y-auto p-5">
               <p className="text-[11px] text-dim mb-3">{detail.sub}</p>
+              {detail.url && (
+                <a href={detail.url} target="_blank" rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 mb-4 text-sm font-medium text-white rounded-xl shadow-soft hover:scale-105 transition-transform"
+                  style={{ background: 'var(--accent)' }}>
+                  <ExternalLink size={14} /> 打开链接
+                </a>
+              )}
               <div className="text-sm leading-relaxed whitespace-pre-wrap text-[var(--text-muted)]">{detail.body}</div>
             </div>
             <div className="flex gap-2 justify-between items-center px-5 py-3 border-t border-[var(--border-color)] flex-shrink-0">
