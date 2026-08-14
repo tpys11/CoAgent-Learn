@@ -18,7 +18,7 @@ type Block = 'agents' | 'skills' | 'templates'
 const PRESET_TEMPLATES: Array<{ name: string; desc: string; intro: string; detail: Array<[string, string]>; agents: AgentConfig[] }> = [
   {
     name: '极速', desc: '最短响应（1 秒内首字）',
-    intro: '档位概述：面向一般对话环节——概念确认、即兴提问、碎片化学习，用户希望时间尽可能短。\n**效果**\n- 时间：绝大多数时候 1 秒内输出首字，最长不超过 3 秒\n- 内容总量：字数偏少，大多数 500-800 字，最多不超过 1000 字\n**全局设定（每种模式都有）**\n- 知识库管理：后台入库；对话中按主 Agent 判定按需检索，未命中必申明\n- 学情画像：后台提炼画像文档，生成时直接注入\n- 上下文压缩：每满 30 条后台压缩摘要（历史可向量召回）\n- 特殊形式输出：完成后模型判断适合的形式并建议',
+    intro: '档位概述：面向一般对话环节——概念确认、即兴提问、碎片化学习，用户希望时间尽可能短。\n**效果**\n- 时间：绝大多数时候 1 秒内输出首字，最长不超过 3 秒\n- 内容总量：字数偏少，大多数 500-800 字，最多不超过 1000 字',
     detail: [
       ['编排流程', '主 Agent（快模型）→ 输出（跳过审核；不做知识库检索）'],
       ['知识库检索', '按需：用户要求基于资料回答时由主 Agent 规划调用'],
@@ -29,7 +29,7 @@ const PRESET_TEMPLATES: Array<{ name: string; desc: string; intro: string; detai
   },
   {
     name: '思考', desc: '完整流程 + 轻量单审',
-    intro: '档位概述：面向需要认真一点的回答——知识库无对应内容但对精确度要求不高。\n**效果**\n- 内容增强：并行搜索 agent 按固定规则（优质信息源：优质社区、官方信息）返回优质内容，通常搜索 10-20 条，一轮搜索\n- 内容总量：大部分 800-1200 字，最多不超过 1500 字\n- 检测机制：flash 轻量单审\n**全局设定（每种模式都有）**\n- 知识库管理：后台入库；对话中按主 Agent 判定按需检索，未命中必申明\n- 学情画像：后台提炼画像文档，生成时直接注入\n- 上下文压缩：每满 30 条后台压缩摘要（历史可向量召回）\n- 特殊形式输出：完成后模型判断适合的形式并建议',
+    intro: '档位概述：面向需要认真一点的回答——知识库无对应内容但对精确度要求不高。\n**效果**\n- 内容增强：并行搜索 agent 按固定规则（优质信息源：优质社区、官方信息）返回优质内容，通常搜索 10-20 条，一轮搜索\n- 内容总量：大部分 800-1200 字，最多不超过 1500 字\n- 检测机制：flash 轻量单审',
     detail: [
       ['编排流程', '规划（按需调用知识库管理）→ 生成 → flash 单审 → 输出（学情画像：后台文档注入）'],
       ['内容增强', '按需联网搜索（主 Agent 判定并派发搜索子 Agent）+ 子 Agent 整理（来源→核心观点→关键数据）'],
@@ -40,7 +40,7 @@ const PRESET_TEMPLATES: Array<{ name: string; desc: string; intro: string; detai
   },
   {
     name: '研究', desc: '完整流程 + 严格检测',
-    intro: '档位概述：面向对内容精确度要求极高的任务——知识库无对应内容且需要严谨。\n**效果**\n- 内容增强：并行搜索 agent 一轮 10-20 条（优质信息源规则），每轮结束总结，信息不够继续搜索，可进行 1-5 轮（多轮搜索待实现，当前一轮）\n- 内容总量：不做限制\n- 独立检测机制：用其他模型厂商的模型作为独立检测阶段（待实现，当前为 flash 单审）\n**全局设定（每种模式都有）**\n- 知识库管理：后台入库；对话中按主 Agent 判定按需检索，未命中必申明\n- 学情画像：后台提炼画像文档，生成时直接注入\n- 上下文压缩：每满 30 条后台压缩摘要（历史可向量召回）\n- 特殊形式输出：完成后模型判断适合的形式并建议',
+    intro: '档位概述：面向对内容精确度要求极高的任务——知识库无对应内容且需要严谨。\n**效果**\n- 内容增强：并行搜索 agent 一轮 10-20 条（优质信息源规则），每轮结束总结，信息不够继续搜索，可进行 1-5 轮（多轮搜索待实现，当前一轮）\n- 内容总量：不做限制\n- 独立检测机制：用其他模型厂商的模型作为独立检测阶段（待实现，当前为 flash 单审）',
     detail: [
       ['编排流程', '与思考档一致：规划（研究档需详细查阅时必调知识库管理）→ 生成 → 单审 → 输出（学情画像：后台文档注入）'],
       ['内容增强', '联网搜索一轮（多轮搜索待实现：1-5 轮，每轮总结、不足续搜）'],
@@ -832,16 +832,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
               </div>
             </div>
 
-            {/* 编排框架设定（节点图内点击 Agent，右侧独立栏展开设定） */}
-            <div className="flex flex-col gap-4">
-              <p className="text-xs font-semibold text-dim uppercase tracking-wider">编排框架设定</p>
-              <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex items-center justify-center">
-                <FlowGraph agents={agents} templateName={selectedTpl || '思考'} templateAgentId={templateAgentId} onSelect={(id) => setTemplateAgentId(id)} />
-              </div>
-              <p className="text-[10px] text-dim -mt-2">节点颜色越深表示该节点在模板编排中的职责负载越高</p>
-            </div>
-
-            {/* 全局设定（所有档位共有，与后端实际逻辑一致） */}
+            {/* 全局设定（单独小界面：所有档位共有，与后端实际逻辑一致；三档详情不再重复） */}
             <div className="flex flex-col gap-3">
               <p className="text-xs font-semibold text-dim uppercase tracking-wider">全局设定（所有档位共有）</p>
               <div className="grid grid-cols-2 gap-3">
@@ -857,6 +848,15 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                   </div>
                 ))}
               </div>
+            </div>
+
+            {/* 编排框架设定（节点图内点击 Agent，右侧独立栏展开设定） */}
+            <div className="flex flex-col gap-4">
+              <p className="text-xs font-semibold text-dim uppercase tracking-wider">编排框架设定</p>
+              <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex items-center justify-center">
+                <FlowGraph agents={agents} templateName={selectedTpl || '思考'} templateAgentId={templateAgentId} onSelect={(id) => setTemplateAgentId(id)} />
+              </div>
+              <p className="text-[10px] text-dim -mt-2">节点颜色越深表示该节点在模板编排中的职责负载越高</p>
             </div>
           </div>
         )}
