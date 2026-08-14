@@ -136,7 +136,6 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
   const [dragOver, setDragOver] = useState(false)
   // 拖入/选择仅占位进待上传列表，点「确认上传」才真正上传（文件与卡片文本统一）
   const [doneMsg, setDoneMsg] = useState('')
-  const fileRef = useRef<HTMLInputElement>(null)
   type PendingItem =
     | { kind: 'file'; id: string; file: File }
     | { kind: 'text'; id: string; title: string; body: string }
@@ -265,12 +264,6 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
               {uploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
               {uploading ? '上传中…' : pendingCount ? `确认上传（${pendingCount}）` : '确认上传'}
             </button>
-            <button onClick={() => fileRef.current?.click()} disabled={!!uploading}
-              className="flex items-center gap-1 px-3 py-1.5 text-[11px] border hairline rounded-xl text-dim hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-50">
-              选择文件
-            </button>
-            <input ref={fileRef} type="file" multiple className="hidden"
-              onChange={e => { if (e.target.files?.length) addFileItem(e.target.files); e.target.value = '' }} />
           </div>
         </div>
         <div className={`border rounded-2xl p-3 grid grid-cols-2 md:grid-cols-3 gap-2 max-h-[26vh] overflow-y-auto transition-colors ${dragOver ? 'border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_6%,var(--bg-panel))]' : 'border-dashed hairline'}`}>
