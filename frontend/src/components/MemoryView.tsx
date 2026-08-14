@@ -634,26 +634,22 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                         </p>
                       ))}
                     </div>
+                    <p className="text-xs leading-relaxed"><span className="font-semibold text-[var(--text)]">其他：</span></p>
                     <div className="rounded-xl border border-dashed hairline bg-[var(--bg-input)] px-4 py-3">
-                      <p className="text-xs leading-relaxed">
-                        <span className="font-semibold text-[var(--text)]">其他：</span>
-                        {gBasic ? (
-                          <span className="text-[var(--text-muted)]"><MiniMD text={gBasic} /></span>
-                        ) : null}
-                      </p>
+                      {gBasic ? (
+                        <p className="text-xs text-[var(--text-muted)] leading-relaxed"><MiniMD text={gBasic} /></p>
+                      ) : null}
                     </div>
                   </div>
 
                   {/* 学习情况：总体概述 + 课程方形按钮（只读展示，修改走右侧对话框） */}
                   <div className="border hairline rounded-2xl p-5 bg-[var(--bg-panel)] flex flex-col gap-3">
                     <span className="text-sm font-semibold">学习情况</span>
+                    <p className="text-xs leading-relaxed"><span className="font-semibold text-[var(--text)]">概述：</span></p>
                     <div className="rounded-xl border border-dashed hairline bg-[var(--bg-input)] px-4 py-3">
-                      <p className="text-xs leading-relaxed">
-                        <span className="font-semibold text-[var(--text)]">概述：</span>
-                        {gStudy.总体概述 ? (
-                          <span className="text-[var(--text-muted)]">{gStudy.总体概述}</span>
-                        ) : null}
-                      </p>
+                      {gStudy.总体概述 ? (
+                        <p className="text-xs text-[var(--text-muted)] leading-relaxed">{gStudy.总体概述}</p>
+                      ) : null}
                     </div>
                     {projects.length > 0 ? (
                       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
