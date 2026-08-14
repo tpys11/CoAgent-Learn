@@ -116,24 +116,27 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
   return (
     <div className="flex-1 h-full min-w-0 flex panel rounded-3xl overflow-hidden">
       <div className="flex-1 overflow-y-auto">
-        <div className="px-14 py-8 flex gap-14">
-          {/* 左：主内容 */}
-          <div className="flex-1 min-w-0 flex flex-col gap-10">
+        <div className="px-28 py-8 flex flex-col gap-10">
           {/* 顶部：时间问候（大字号）+ 最近学习时间与连续天数（小字） */}
           <div className="flex flex-col gap-1.5">
             <p className="text-3xl font-bold leading-snug">{greeting}！</p>
             <p className="text-xs text-dim">{statusTxt}</p>
           </div>
-          {/* 留白后：快速引导（标题与内容均小一号） */}
-          <div className="flex flex-col gap-2.5">
-            <h2 className="text-sm font-bold">快速引导</h2>
-            <div className="border hairline rounded-2xl p-4 bg-[var(--bg-panel)] flex flex-col gap-3.5">
-              {tips.map(t => (
-                <div key={t.title} className="flex flex-col gap-1">
-                  <span className="text-xs font-bold">{t.title}</span>
-                  <p className="text-[10px] leading-relaxed text-[var(--text-muted)]">{t.text}</p>
-                </div>
-              ))}
+          {/* 快速引导 | 专注时长趋势（横排，趋势图挪出右栏空区） */}
+          <div className="flex gap-6 items-stretch">
+            <div className="flex-1 min-w-0 flex flex-col gap-2.5">
+              <h2 className="text-sm font-bold">快速引导</h2>
+              <div className="border hairline rounded-2xl p-4 bg-[var(--bg-panel)] flex flex-col gap-3.5">
+                {tips.map(t => (
+                  <div key={t.title} className="flex flex-col gap-1">
+                    <span className="text-xs font-bold">{t.title}</span>
+                    <p className="text-[10px] leading-relaxed text-[var(--text-muted)]">{t.text}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="w-[380px] flex-shrink-0 border hairline rounded-2xl p-4 bg-[var(--bg-panel)] flex flex-col">
+              <TrendCalendar days={trendDays} />
             </div>
           </div>
           {/* 课程区块 */}
@@ -223,13 +226,6 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
               <NewCourseCard onClick={newProject} />
             </div>
           )}
-          </div>
-          </div>
-          {/* 右：专注时长趋势（最近30天） */}
-          <div className="w-[380px] flex-shrink-0">
-            <div className="border hairline rounded-2xl p-4 bg-[var(--bg-panel)] flex flex-col">
-              <TrendCalendar days={trendDays} />
-            </div>
           </div>
           {/* 删除课程确认弹窗 */}
           {deleteId && (() => {
