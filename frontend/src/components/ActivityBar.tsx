@@ -17,10 +17,6 @@ const ITEMS: Array<{ key: ViewKey; icon: any; label: string }> = [
   { key: 'obsidian', icon: FolderOpen, label: '本地文档' },
 ]
 
-// 分组（参考 deeptutor 侧栏：分组小字大写标签 + 图标导航项，无分隔线）
-const GROUP_LEARN: ViewKey[] = ['chat', 'resources', 'memory']
-const GROUP_TOOLS: ViewKey[] = ['agents', 'obsidian']
-
 /** 左侧导航栏（参考 deeptutor dashboard 侧栏：w-64=256px、分组小字标签、图标+文字导航项）。
  * 主页时展开加宽（deeptutor 式横排），离开主页变窄（图标在上、文字在下）。 */
 export default function ActivityBar({ view, onChange, expanded, onSettings }: Props) {
@@ -42,7 +38,7 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
         key={key}
         onClick={() => onChange(key)}
         title={label}
-        className={`w-14 mb-2 flex flex-col items-center justify-center gap-1 py-2 rounded-2xl transition-all ${
+        className={`w-full px-3 mb-2 flex flex-col items-start justify-center gap-1 py-2 rounded-2xl transition-all ${
           active ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'
         }`}
       >
@@ -52,7 +48,7 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
     )
   )
   return (
-    <nav className={`h-full flex-shrink-0 flex flex-col transition-all duration-300 ${expanded ? 'w-64 py-4 items-stretch' : 'w-[64px] py-3 items-center'}`}>
+    <nav className={`h-full flex-shrink-0 flex flex-col transition-all duration-300 ${expanded ? 'w-64 py-4 items-stretch' : 'w-[64px] py-3 items-stretch'}`}>
       {/* 顶部品牌区（deeptutor 式：p-6 边距、名称+GitHub 链接，border-b 分隔） */}
       {expanded ? (
         <div className="px-6 pt-6 pb-4 mb-2 border-b hairline flex flex-col gap-2">
@@ -64,20 +60,11 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
           </a>
         </div>
       ) : (
-        <div className="w-14 mb-3 flex justify-center">
+        <div className="w-full px-3 mb-3 flex justify-start">
           <span className="font-display text-sm tracking-wide text-dim select-none">CA</span>
         </div>
       )}
-      {expanded ? (
-        <>
-          <p className="px-3 mb-2 text-xs font-medium uppercase tracking-wider text-dim">学习</p>
-          {ITEMS.filter(i => GROUP_LEARN.includes(i.key)).map(({ key, icon, label }) => renderBtn(key, icon, label, view === key))}
-          <p className="px-3 mb-2 mt-4 text-xs font-medium uppercase tracking-wider text-dim">工具</p>
-          {ITEMS.filter(i => GROUP_TOOLS.includes(i.key)).map(({ key, icon, label }) => renderBtn(key, icon, label, view === key))}
-        </>
-      ) : (
-        ITEMS.map(({ key, icon, label }) => renderBtn(key, icon, label, view === key))
-      )}
+      {ITEMS.map(({ key, icon, label }) => renderBtn(key, icon, label, view === key))}
       <div className="flex-1" />
       {/* 底部：使用引导（原教程界面，仅改名）挨着 设置（竖向并列） */}
       {expanded ? (
@@ -96,11 +83,11 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
       ) : (
         <>
           <button onClick={() => onChange('tutorial')} title="使用引导"
-            className={`w-14 mb-1.5 flex flex-col items-center justify-center gap-1 py-2 rounded-2xl transition-all ${view === 'tutorial' ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'}`}>
+            className={`w-full px-3 mb-1.5 flex flex-col items-start justify-center gap-1 py-2 rounded-2xl transition-all ${view === 'tutorial' ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'}`}>
             <GraduationCap size={18} strokeWidth={1.6} />
             <span className="text-[8px] leading-none">引导</span>
           </button>
-          <button onClick={onSettings} title="设置" className="w-14 flex flex-col items-center justify-center gap-1 py-2 rounded-2xl icon-btn transition-all">
+          <button onClick={onSettings} title="设置" className="w-full px-3 flex flex-col items-start justify-center gap-1 py-2 rounded-2xl icon-btn transition-all">
             <Settings size={18} strokeWidth={1.6} />
             <span className="text-[8px] leading-none">设置</span>
           </button>
