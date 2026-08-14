@@ -7,6 +7,23 @@ import MarkdownIt from 'markdown-it'
 const mdThink = new MarkdownIt({ html: false, linkify: true, breaks: true })
 const renderMd = (text: string) => mdThink.render(text || '')
 
+// markdown 渲染结果缓存：历史消息 content 不变，命中即跳过 markdown-it 全量解析（流式 flush 每帧触发全列表重渲染时的性能关键）
+const _mdCache = new Map<string, string>()
+const renderMdCached = (text: string) => {
+  const key = text || ''
+  let h = _mdCache.get(key)
+  if (h === undefined) {
+    h = renderMd(key)
+    if (_mdCache.size > 300) {
+      // 简单上限：超出删最老（Map 迭代顺序 = 插入顺序）
+      const first = _mdCache.keys().next().value
+      if (first !== undefined) _mdCache.delete(first)
+    }
+    _mdCache.set(key, h)
+  }
+  return h
+}
+
 /** 思维链标题净化：只显示 agent 名称，去掉内部阶段后缀与伪标题。
  * 内部阶段名（学习助手·规划/生成）、历史旧名（主Agent·规划/生成）、极速档伪标题（综合概述性记忆）
  * 统一显示为"学习助手"；内部名仍用于"正在干什么"状态匹配。 */
@@ -365,7 +382,7 @@ const TEMPLATE_OPTIONS = [
                       {/* 回答正文：流式逐字纯文本（绝不 markdown）/ 完成一次性 markdown 渲染 */}
                       {streaming
                         ? (msg.content ? <StreamingMd text={msg.content} streaming /> : null)
-                        : (msg.content ? <div className="md-answer-body" dangerouslySetInnerHTML={{ __html: renderMd(msg.content) }} /> : null)}
+                        : (msg.content ? <div className="md-answer-body" dangerouslySetInnerHTML={{ __html: renderMdCached(msg.content) }} /> : null)}
                       {/* 流式等待指示器（回答尚未开始流式时显示） */}
                       {streaming && !msg.content && (
                         <div className="flex items-center gap-2 text-dim">
@@ -604,8 +621,8 @@ function StreamingMd({ text, streaming }: { text: string; streaming?: boolean })
   const stable = stableEnd > 0 ? text.slice(0, stableEnd) : ''
   const tail = stableEnd > 0 ? text.slice(stableEnd) : text
   const html = useMemo(() => {
-    if (streaming) return stable ? renderMd(stable) : ''
-    return text ? renderMd(text) : ''
+    if (streaming) return stable ? renderMdCached(stable) : ''
+    return text ? renderMdCached(text) : ''
   }, [streaming, stable, text])
   if (!streaming) {
     if (html) return <div className="md-answer-body" dangerouslySetInnerHTML={{ __html: html }} />
@@ -688,7 +705,7 @@ function ReasoningBlock({ items, streaming, activeAgent, activeStatus, onClarify
                 ) : streaming ? (
                   <div className="whitespace-pre-wrap break-words">{it.content}</div>
                 ) : (
-                  <div className="md-think-body" dangerouslySetInnerHTML={{ __html: renderMd(it.content) }} />
+                  <div className="md-think-body" dangerouslySetInnerHTML={{ __html: renderMdCached(it.content) }} />
                 )}
               </div>
             </div>
