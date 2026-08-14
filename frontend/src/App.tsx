@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { PanelLeftOpen, PanelRightOpen, Github } from 'lucide-react'
+import { PanelLeftOpen, PanelRightOpen } from 'lucide-react'
 
 // 模块级 session：页面刷新(JS重载)时重新生成一次；组件重挂载不改变
 const SESSION_ID = (() => {
@@ -730,16 +730,7 @@ function App() {
 
   return (
     <div ref={appRef} className="flex flex-col h-screen w-screen bg-[#ffffff] text-[#1a1a1a] overflow-hidden">
-      {/* 顶栏：wordmark + GitHub + 设置 */}
-      <header className="h-12 flex-shrink-0 flex items-center gap-3 px-4">
-        <span className="font-display text-[17px] tracking-wide select-none">CoAgent-Learn</span>
-        <a href="https://github.com/tpys11/CoAgent-Learn" target="_blank" rel="noreferrer"
-          className="p-1.5 rounded-lg icon-btn" title="GitHub: tpys11/CoAgent-Learn">
-          <Github size={15} />
-        </a>
-        <span className="flex-1" />
-</header>
-      <div className="flex-1 flex min-h-0 pb-3 pr-3">
+      <div className="flex-1 flex min-h-0 pt-3 pb-3 pr-3">
       {/* 最左侧细轨：三界面切换 */}
       <ActivityBar view={view} onChange={handleViewChange} expanded={view === 'chat' && !chatOpen}
         onSettings={() => setShowSettings(true)} />
