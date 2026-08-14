@@ -540,195 +540,27 @@ const TEMPLATE_OPTIONS = [
                 className="w-8 h-8 flex items-center justify-center rounded-xl icon-btn border border-[var(--border-strong)] bg-[var(--bg-input)]">
                 <Upload size={15} />
               </button>
-              {/* 模板选择（挨着上传按钮右边，顶部带「使用模板」开关） */}
-              {/* 对话模式：上拉框控制 Auto / 模板选择 / 细节设定 三个开关 */}
-              <div className="relative ml-2" ref={dlgRef}>
-                <button
-                  onClick={() => setShowDlgMenu(!showDlgMenu)}
-                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)]"
-                  title="对话模式">
-                  <SlidersHorizontal size={13} /> 对话模式 <ChevronDown size={9} />
-                </button>
-                {showDlgMenu && (
-                  <div className="absolute bottom-full left-0 mb-1 card-lift p-1.5 z-10" style={{ width: 125 }}>
-                    <div className="flex items-center justify-between gap-1 px-1 py-1.5 border-b border-[#e5e5e5]">
-                      <span className="text-[11px] font-medium">Auto</span>
-                      <button onClick={() => { const next = !autoMode; setAutoMode(next); localStorage.setItem('coagent-auto', next ? '1' : '0'); if (next) { setUseTemplate(false); localStorage.setItem('coagent-use-template', '0'); setUseDetail(false); localStorage.setItem('coagent-use-detail', '0') } }}
-                        className={`w-8 h-4.5 rounded-full relative transition-colors flex-shrink-0 ${autoMode ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`} style={{ height: 18 }}
-                        title="Auto（AI 自动推断模板/细节）">
-                        <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-all ${autoMode ? 'left-4' : 'left-0.5'}`} />
-                      </button>
-                    </div>
-                    <div className="flex items-center justify-between gap-1 px-1 py-1.5 border-b border-[#e5e5e5]">
-                      <span className="text-[11px] font-medium">模板选择</span>
-                      <button onClick={() => { const next = !useTemplate; setUseTemplate(next); localStorage.setItem('coagent-use-template', next ? '1' : '0'); if (next) { setAutoMode(false); localStorage.setItem('coagent-auto', '0'); setUseDetail(false); localStorage.setItem('coagent-use-detail', '0') } }}
-                        className={`w-8 h-4.5 rounded-full relative transition-colors flex-shrink-0 ${useTemplate ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`} style={{ height: 18 }}
-                        title="开启后对话框显示模板选择按钮">
-                        <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-all ${useTemplate ? 'left-4' : 'left-0.5'}`} />
-                      </button>
-                    </div>
-                    <div className="flex items-center justify-between gap-1 px-1 py-1.5">
-                      <span className="text-[11px] font-medium">细节设定</span>
-                      <button onClick={() => { const next = !useDetail; setUseDetail(next); localStorage.setItem('coagent-use-detail', next ? '1' : '0'); if (next) { setAutoMode(false); localStorage.setItem('coagent-auto', '0'); setUseTemplate(false); localStorage.setItem('coagent-use-template', '0') } }}
-                        className={`w-8 h-4.5 rounded-full relative transition-colors flex-shrink-0 ${useDetail ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`} style={{ height: 18 }}
-                        title="开启后对话框显示细节按钮（输入询问/检索模式/输出形式/输出内容）">
-                        <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-all ${useDetail ? 'left-4' : 'left-0.5'}`} />
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
               {/* 档位选择（豆包式：胶囊显示当前档位 + 弹出选项面板） */}
-              {useTemplate && (
               <div className="relative" ref={tplRef}>
                 <button
                   onClick={() => setShowTplMenu(!showTplMenu)}
-                  className={`h-7 px-2.5 rounded-full text-[11px] flex items-center gap-1.5 border border-[var(--border-strong)] bg-[var(--bg-input)] hover:bg-[var(--bg-hover)] transition-colors ${autoMode ? 'opacity-40' : ''}`}
+                  className="h-7 px-2.5 rounded-full text-[11px] flex items-center gap-1.5 border border-[var(--border-strong)] bg-[var(--bg-input)] hover:bg-[var(--bg-hover)] transition-colors"
                   title="选择档位（极速/思考/研究）">
                   <LayoutTemplate size={13} /> {templateMode} <ChevronDown size={10} />
                 </button>
                 {showTplMenu && (
-                  <div className="absolute bottom-full left-0 mb-1.5 card-lift p-1.5 z-10 flex flex-col gap-0.5" style={{ width: 250 }}>
-                    <p className="px-2 py-1 text-[10px] font-semibold text-dim uppercase tracking-wider">选择档位</p>
+                  <div className="absolute bottom-full left-0 mb-1.5 card-lift p-1.5 z-10 flex flex-col gap-0.5" style={{ width: 120 }}>
                     {TEMPLATE_OPTIONS.map(t => (
                       <button key={t.name}
                         onClick={() => { setTemplateMode(t.name); localStorage.setItem('coagent-template', t.name); setShowTplMenu(false) }}
-                        className={`text-left px-2 py-2 rounded-lg w-full flex flex-col gap-0.5 ${templateMode === t.name ? 'bg-[var(--bg-hover)]' : 'hover:bg-[var(--bg-hover)]'}`}>
-                        <span className="flex items-center gap-1.5 text-[12px] font-medium">
-                          {t.name}
-                          {templateMode === t.name && <Check size={12} className="text-[var(--accent)]" />}
-                        </span>
-                        <span className="text-[10px] text-dim leading-snug">{t.desc}</span>
+                        className={`text-left px-2.5 py-1.5 rounded-lg w-full flex items-center gap-1.5 text-[12px] font-medium ${templateMode === t.name ? 'bg-[var(--bg-hover)]' : 'hover:bg-[var(--bg-hover)]'}`}>
+                        {t.name}
+                        {templateMode === t.name && <Check size={12} className="text-[var(--accent)] ml-auto" />}
                       </button>
                     ))}
                   </div>
                 )}
               </div>
-              )}
-              {/* 细节设定（滑块开启时显示） */}
-              {useDetail && (<>
-              <div className="relative" ref={inputOptRef}>
-                <button
-                  onClick={() => { setShowInputOpt(!showInputOpt); setShowSearch(false); setShowFormat(false); setShowContent(false) }}
-                  disabled={autoMode}
-                  className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
-                >
-                  <SlidersHorizontal size={13} /> 输入优化 <ChevronDown size={9} />
-                </button>
-                {showInputOpt && (
-                  <div className="absolute bottom-full left-0 mb-1 card-lift p-1.5 z-10" style={{ width: 100 }}>
-                    {inputOptLabels.map((label, i) => (
-                      <button key={label} onClick={() => { setInputOptMode(i) }}
-                        className={`text-[11px] px-2 py-1 rounded-lg text-left w-full ${i === inputOptMode ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
-                        <span className="font-medium">{label}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {/* 检索与搜索 */}
-              <div className="relative" ref={searchRef}>
-                <button
-                  onClick={() => { setShowSearch(!showSearch); setShowFormat(false); setShowContent(false) }}
-                  disabled={autoMode}
-                  className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
-                >
-                  <Search size={13} /> 检索模式 <ChevronDown size={9} />
-                </button>
-                {showSearch && (
-                  <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 165 }}>
-                    <div className="text-[10px] text-dim mb-1">知识库检索：</div>
-                    {searchLabels.map((label, i) => (
-                      <button key={label} onClick={() => { setSearchMode(i); setChatMode(i === 1 ? 'kb' : 'free') }}
-                        className={`text-[11px] px-2 py-1 rounded-lg text-left ${i === searchMode ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
-                        <span className="font-medium">{label}</span>
-              
-                      </button>
-                    ))}
-                    <div className="text-[10px] text-dim mb-1 mt-2">联网搜索：</div>
-                    {[
-                      ['自由', 'AI自己决定是否搜索'],
-                      ['增强', '寻找优质信息源'],
-                    ].map(([label, desc], i) => (
-                      <button key={label} onClick={() => setWebSearchMode(i)}
-                        className={`text-[11px] px-2 py-1 rounded-lg text-left ${i === webSearchMode ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
-                        <span className="font-medium">{label}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {/* 输出形式 */}
-              <div className="relative" ref={formatRef}>
-                <button
-                  onClick={() => { setShowFormat(!showFormat); setShowContent(false) }}
-                  disabled={autoMode}
-                  className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
-                >
-                  输出形式 <ChevronDown size={9} />
-                </button>
-                {showFormat && (
-                  <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 165 }}>
-                    <div className="text-[10px] text-dim mb-1">结构化程度：</div>
-                    {([
-                      ['低结构化', '减少列表和表格，以段落为主'],
-                      ['高结构化', '增加有序/无序列表和表格'],
-                    ] as const).map(([s, desc], i) => (
-                      <button key={s} onClick={() => setOutputFormat(i)}
-                        className={`text-[11px] px-2 py-1 rounded-lg text-left ${i === outputFormat ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
-                        <span className="font-medium">{s}</span>
-                      </button>
-                    ))}
-                    <div className="text-[10px] text-dim mb-1 mt-2">输出格式：</div>
-                    {([
-                      ['MD文档', '包裹为完整Markdown文档输出'],
-                      ['对话形式', '以对话消息形式直接输出'],
-                    ] as const).map(([s, desc], i) => (
-                      <button key={s} onClick={() => setOutputStyle(i)}
-                        className={`text-[11px] px-2 py-1 rounded-lg text-left ${i === outputStyle ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
-                        <span className="font-medium">{s}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {/* 输出内容（思考链固定开启，仅输出量/学习深度可选） */}
-              <div className="relative" ref={contentRef}>
-                <button
-                  onClick={() => { setShowContent(!showContent); setShowFormat(false) }}
-                  disabled={autoMode}
-                  className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
-                >
-                  输出内容 <ChevronDown size={9} />
-                </button>
-                {showContent && (
-                  <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 175 }}>
-                    <div className="text-[10px] text-dim mb-1">输出量：</div>
-                    {([
-                      ['精简', '只输出核心观点'],
-                      ['适中', '观点加论证过程'],
-                      ['拓展', '补充拓展性相关内容'],
-                    ] as const).map(([s, desc], i) => (
-                      <button key={s} onClick={() => setOutputVolume(i)}
-                        className={`text-[11px] px-2 py-1 rounded-lg text-left ${i === outputVolume ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
-                        <span className="font-medium">{s}</span>
-                      </button>
-                    ))}
-                    <div className="text-[10px] text-dim mb-1 mt-2">学习深度：</div>
-                    {([
-                      ['浅', '基础概念层面'],
-                      ['中', '概念+原理层面'],
-                      ['深', '原理+推导+前沿'],
-                    ] as const).map(([s, desc], i) => (
-                      <button key={s} onClick={() => setDepth(i)}
-                        className={`text-[11px] px-2 py-1 rounded-lg text-left ${i === depth ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
-                        <span className="font-medium">{s}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              </>)}
               <span className="w-px h-4 bg-[#e5e5e5] mx-1" />
               <span className="flex-1" />
               <div className="relative" ref={modelRef}>
