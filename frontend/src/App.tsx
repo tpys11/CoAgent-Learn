@@ -157,7 +157,7 @@ function App() {
   // 流式渲染节奏（rAF 帧循环）：token 到达只累积，每帧 flush 一次——渲染固定在帧边界，
   // 消除"网络批量到达 + React 自动批处理"导致的回答一段一段出现
   const pendingAnswerRef = useRef('')
-  const pendingMindRef = useRef<{ agent: string; char: string } | null>(null)
+  const pendingMindRef = useRef<{ agent: string; text: string } | null>(null)
   const rafScheduledRef = useRef(false)
   // 手动停止：abort 控制器 + 用户停止标记 + 生成请求 id（POST /api/chat/stop 通知后端取消生成）
   const abortCtrlRef = useRef<AbortController | null>(null)
@@ -351,11 +351,17 @@ function App() {
     const pm = pendingMindRef.current
     if (pm) {
       pendingMindRef.current = null
+      const { agent, text } = pm
       setFlowMindchain(prev => {
-        const last = prev[prev.length - 1]
-        const next = (last && last.agent === pm.agent)
-          ? [...prev.slice(0, -1), { agent: pm.agent, content: last.content + pm.char }]
-          : [...prev, { agent: pm.agent, content: pm.char }]
+        // 追加到最近的同 agent 条目（agent 切换时 lastIndexOf 定位，鲁棒）；无则新建
+        const idx = prev.map(x => x.agent).lastIndexOf(agent)
+        let next: Array<{ agent: string; content: string }>
+        if (idx >= 0) {
+          next = prev.slice()
+          next[idx] = { agent, content: next[idx].content + text }
+        } else {
+          next = [...prev, { agent, content: text }]
+        }
         mindchainRef.current = next
         return next
       })
@@ -559,8 +565,13 @@ function App() {
             fenceBufRef.current = ''
             if (fenceInRef.current) continue  // 围栏内内容丢弃
             if (!c) continue  // 空串跳过，绝不能中断 SSE 解析循环
-            // 累积到 rAF 帧循环：每帧 flush 一次，渲染节奏固定（消除网络批量到达导致的"一段一段"）
-            pendingMindRef.current = { agent: data.agent, char: c }
+            // 累积到 rAF 帧循环（累积式，非覆盖式——同帧多个 token 不丢失）；每帧 flush 一次
+            const cur = pendingMindRef.current
+            if (cur && cur.agent === data.agent) {
+              cur.text += c
+            } else {
+              pendingMindRef.current = { agent: data.agent, text: c }
+            }
             scheduleStreamFlush()
           }
           if (data.type === 'answer_token') {
