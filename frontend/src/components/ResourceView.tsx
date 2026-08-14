@@ -273,6 +273,8 @@ async function collectObsFiles(h: FileSystemDirectoryHandle, depth: number, out:
 export default function ResourceView({ projectId, onUseItem }: { projectId: string | null; onUseItem?: (title: string, body: string) => void }) {
   const [tab, setTab] = useState<Tab>('tutorials')
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
+  const [genProjects, setGenProjects] = useState<Array<{ id: string; name: string }>>([])
+  const [selGenProject, setSelGenProject] = useState<string>('')
   const [resources, setResources] = useState<Resource[]>([])
   const [kbDocs, setKbDocs] = useState<KbDoc[]>([])
   const [tutorials, setTutorials] = useState<Tutorial[]>(() => {
@@ -395,18 +397,31 @@ export default function ResourceView({ projectId, onUseItem }: { projectId: stri
   }
 
   const load = useCallback(() => {
-    if (!projectId) return
     setLoading(true)
-    fetch('/api/artifacts?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' })
-      .then(r => r.json()).then(d => setArtifacts(d.artifacts || [])).catch(() => {})
-    fetch('/api/resources?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' })
-      .then(r => r.json()).then(d => setResources(d.resources || [])).catch(() => {})
-    fetch('/api/knowledge/list?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' })
-      .then(r => r.json()).then(d => setKbDocs(d.docs || [])).catch(() => {})
-      .finally(() => setLoading(false))
-  }, [projectId])
+    // 我的生成：按选中项目加载
+    const gpid = selGenProject || projectId || ''
+    if (gpid) {
+      fetch('/api/artifacts?project_id=' + encodeURIComponent(gpid), { cache: 'no-store' })
+        .then(r => r.json()).then(d => setArtifacts(d.artifacts || [])).catch(() => {})
+    }
+    // 我的上传：按当前项目加载
+    if (projectId) {
+      fetch('/api/resources?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' })
+        .then(r => r.json()).then(d => setResources(d.resources || [])).catch(() => {})
+      fetch('/api/knowledge/list?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' })
+        .then(r => r.json()).then(d => setKbDocs(d.docs || [])).catch(() => {})
+    }
+    setTimeout(() => setLoading(false), 200)
+  }, [projectId, selGenProject])
 
   useEffect(() => { setDetail(null); load() }, [load])
+  useEffect(() => {
+    fetch('/api/projects', { cache: 'no-store' }).then(r => r.json()).then(d => {
+      const ps = (d.projects || []).map((p: any) => ({ id: p.id, name: p.name }))
+      setGenProjects(ps)
+      if (!selGenProject && ps.length) setSelGenProject(projectId || ps[0].id)
+    }).catch(() => {})
+  }, [])
 
   // 教程资源
   const allTutorials = [...PRESET_TUTORIALS, ...tutorials]
@@ -829,16 +844,18 @@ const exportItem = (item: ListItem) => {
         )}
         {tab === 'generated' && (
           <div className="w-40 flex-shrink-0 border-r hairline bg-[var(--bg-sidebar)] p-2.5 flex flex-col gap-1 overflow-y-auto">
-            <p className="text-[10px] font-bold text-dim uppercase tracking-wider px-2.5 mt-1 mb-0.5">预设分类</p>
-            {GEN_CATS.map(c => (
-              <button key={c.key} onClick={() => { setGenCat(c.key); setDetail(null) }}
+            <p className="text-[10px] font-bold text-dim uppercase tracking-wider px-2.5 mt-1 mb-0.5">项目</p>
+            {genProjects.length === 0 && (
+              <p className="text-[11px] text-dim px-2.5 py-1">暂无项目</p>
+            )}
+            {genProjects.map(p => (
+              <button key={p.id} onClick={() => { setSelGenProject(p.id); setGenCat('all'); setDetail(null) }}
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-left transition-colors ${
-                  genCat === c.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
+                  (selGenProject || projectId) === p.id ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
                 }`}>
-                <Sparkles size={13} /> {c.label}
+                <span className="font-semibold truncate">{p.name}</span>
               </button>
             ))}
-            {renderMyCats(genCat, setGenCat)}
           </div>
         )}
         {tab === 'uploads' && (
@@ -891,43 +908,20 @@ const exportItem = (item: ListItem) => {
             <>
               <div className="flex items-end justify-between mb-5">
                 <h2 className="text-lg font-bold flex items-center gap-2"><Sparkles size={18} /> 我的生成</h2>
-                {isCustomCat && !showNewGenItem && (
-                  <button
-                    onClick={() => setShowNewGenItem(true)}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors"
-                  >
-                    <Plus size={13} /> 新建内容
-                  </button>
-                )}
               </div>
-
-              {isCustomCat && showNewGenItem && (
-                <div className="border border-[var(--border-color)] rounded-2xl p-3 mb-5 flex flex-col gap-2 bg-[var(--bg-panel)] shadow-soft">
-                  <input autoFocus value={gTitle} onChange={e => setGTitle(e.target.value)} placeholder="内容名称"
-                    className="px-3 py-2 text-xs input-surface rounded-xl outline-none" />
-                  <textarea value={gContent} onChange={e => setGContent(e.target.value)} placeholder="内容（支持多行）"
-                    rows={4}
-                    className="px-3 py-2 text-xs input-surface rounded-xl outline-none resize-none" />
-                  <div className="flex gap-2 justify-end">
-                    <button onClick={() => setShowNewGenItem(false)} className="px-3 py-1.5 text-[11px] text-dim rounded-xl row-hover">取消</button>
-                    <button onClick={addGenItem} className="px-3 py-1.5 text-[11px] bg-[#1a1a1a] text-white font-semibold rounded-xl">保存</button>
-                  </div>
-                </div>
-              )}
-
-              {isCustomCat ? (
-                <>
-                  {loading && <p className="text-xs text-dim text-center py-16">加载中…</p>}
-                  {!loading && customItems.length === 0 && emptyState('该分类暂无内容', '点击右上角「新建内容」添加')}
-                  {!loading && customItems.length > 0 && cardGrid(customItems)}
-                </>
-              ) : (
-                <>
-                  {loading && <p className="text-xs text-dim text-center py-16">加载中…</p>}
-                  {!loading && list.length === 0 && emptyState('暂无生成物', '对话生成讲义 / 指南 / 测试题后自动收录到这里')}
-                  {!loading && list.length > 0 && cardGrid(list)}
-                </>
-              )}
+              <div className="flex gap-2 flex-wrap mb-6">
+                {GEN_CATS.map(c => (
+                  <button key={c.key} onClick={() => { setGenCat(c.key); setDetail(null) }}
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                      genCat === c.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'
+                    }`}>
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+              {loading && <p className="text-xs text-dim text-center py-16">加载中…</p>}
+              {!loading && list.length === 0 && emptyState('暂无生成物', '对话生成讲义 / 指南 / 测试题后自动收录到这里')}
+              {!loading && list.length > 0 && cardGrid(list)}
             </>
           )}
           {tab === 'uploads' && (
