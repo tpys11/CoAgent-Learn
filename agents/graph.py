@@ -17,9 +17,11 @@ from agents.prompts import (
     STUDY_MEMORY_PROMPT, REVIEW_PROMPT,
 )
 
+# 会话级学情画像缓存：同一会话内画像几乎不变，首次 flash 生成后直接复用（省每次 1 次 LLM 调用）
+_PROFILE_CACHE: dict = {}
+
 # 决策类节点（规划/学情/审核）使用的快模型：按 base_url 域名自动映射，映射不到则与主模型一致
-FAST_MODEL_BY_BASE = {
-    'api.deepseek.com': 'deepseek-v4-flash',
+FAST_MODEL_BY_BASE = {    'api.deepseek.com': 'deepseek-v4-flash',
     'api.openai.com': 'gpt-4o-mini',
     'dashscope.aliyuncs.com': 'qwen-turbo',
     'open.bigmodel.cn': 'glm-4-flash',
@@ -331,6 +333,18 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         new_steps = [{"agent": "学情与记忆管理", "status": "running"}]
         t0 = time.time()
         cfg = _agent_cfg("study")
+        # 会话级缓存：同一会话内画像几乎不变，命中直接复用（全局设定③学情画像，几乎零成本）
+        session_id = state.get("session_id") or "default"
+        _cached = _PROFILE_CACHE.get(session_id)
+        if _cached is not None:
+            new_steps.append({"agent": "学情与记忆管理", "status": "done", "detail": "复用会话缓存画像"})
+            return {
+                "profile": _cached,
+                "memory": state.get("memory", {}),
+                "mindchain": [{"agent": "学情与记忆管理", "content": "复用会话内已生成的学情画像（会话缓存，无需重新调用）"}],
+                "steps": new_steps,
+                "task_stats": _stats("study_memory", 0, 0, 0),
+            }
         from skills.registry import registry
         memory_txt = ""
         try:
@@ -350,6 +364,12 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         except Exception:
             thinking = "学情分析异常"
             state["profile"] = {"level": "unknown"}
+        # 写入会话缓存（同会话后续对话直接复用）
+        try:
+            if state.get("profile") and state["profile"].get("level") != "unknown":
+                _PROFILE_CACHE[session_id] = state["profile"]
+        except Exception:
+            pass
         new_steps.append({"agent": "学情与记忆管理", "status": "done"})
         # 只返回变更字段（partial）：不就地修改共享 state 的可变字段，避免并行分支互相污染/重复合并
         return {
@@ -439,11 +459,8 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 new_mc.append({"agent": "视觉分析", "content": "已调用 glm-4v-flash 分析用户图片：" + img_desc[:150]})
             except Exception as e:
                 context += "【用户上传了图片，但视觉分析失败：" + str(e)[:100] + "】" + NL
-        mode = state.get("mode", "kb")
-        if mode == "kb":
-            context += "【输出模式】知识库模式：请优先基于知识库内容回答；若知识库没有相关内容，回答第一句必须明确告知：⚠️ 未在知识库中检索到相关内容，以下为模型通识回答。" + NL
-        else:
-            context += "【输出模式】默认模式：可自由发挥回答，不限制。" + NL
+        # 知识库永久在线（全局设定①）：所有档位都优先基于知识库回答；一点没命中必须申明（系统义务）
+        context += "【知识库模式】请优先基于知识库内容回答；若知识库没有相关内容，回答第一句必须明确告知：⚠️ 未在知识库中检索到相关内容，以下为模型通识回答。" + NL
         if state.get("profile") and (cfg.get("memoryEnabled") is not False):
             context += f"学情: {json.dumps(state['profile'], ensure_ascii=False)}" + NL
         # 阅读偏好：用户对输出形式的偏好（初始化问卷/手动设置），注入生成约束（不阻塞主流程）
