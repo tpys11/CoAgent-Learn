@@ -135,7 +135,6 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
   const [sideMessages, setSideMessages] = useState<Array<{role: string; content: string}>>([])
   const [sideInput, setSideInput] = useState('')
   const [sideLoading, setSideLoading] = useState(false)
-  const [sideMode, setSideMode] = useState<'kb'|'free'>('free')
   // 第二对话追问建议：横向拓展/轻松闲聊风格（后端 followup_focus=expand 生成）
   const [sideFollowups, setSideFollowups] = useState<string[]>([])
   const loadSideFollowups = () => {
@@ -175,7 +174,7 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
       const resp = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, dialogue_id: sideDialogueIdRef.current, project_id: projectId || 'default', api_key: localStorage.getItem('coagent-apikey') || undefined, mode: sideMode, followup_focus: 'expand' })
+        body: JSON.stringify({ message: text, dialogue_id: sideDialogueIdRef.current, project_id: projectId || 'default', api_key: localStorage.getItem('coagent-apikey') || undefined, followup_focus: 'expand' })
       })
       const reader = resp.body ? resp.body.getReader() : null
       let buf = ''

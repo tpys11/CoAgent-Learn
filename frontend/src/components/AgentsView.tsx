@@ -20,8 +20,8 @@ const PRESET_TEMPLATES: Array<{ name: string; desc: string; intro: string; detai
     name: '极速', desc: '最短响应（1 秒内首字）',
     intro: '档位概述：面向一般对话环节——概念确认、即兴提问、碎片化学习，用户希望时间尽可能短。\n**效果**\n- 时间：绝大多数时候 1 秒内输出首字，最长不超过 3 秒\n- 内容总量：字数偏少，大多数 500-800 字，最多不超过 1000 字',
     detail: [
-      ['编排流程', '主 Agent（快模型）→ 输出（跳过审核；不做知识库检索）'],
-      ['知识库检索', '按需：用户要求基于资料回答时由主 Agent 规划调用'],
+      ['编排流程', '学习助手（快模型）→ 输出（跳过审核；不做知识库检索）'],
+      ['知识库检索', '按需：用户要求基于资料回答时由学习助手规划调用'],
       ['生成模型', '快模型（flash，保 1 秒内首字）'],
       ['检测机制', '无（跳过审核保秒回）'],
     ],
@@ -32,7 +32,7 @@ const PRESET_TEMPLATES: Array<{ name: string; desc: string; intro: string; detai
     intro: '档位概述：面向需要认真一点的回答——知识库无对应内容但对精确度要求不高。\n**效果**\n- 内容增强：联网搜索一轮（搜索机制见全局设定）\n- 内容总量：大部分 800-1200 字，最多不超过 1500 字\n- 检测机制：flash 轻量单审',
     detail: [
       ['编排流程', '规划（按需调用知识库管理）→ 生成 → flash 单审 → 输出（学情画像：后台文档注入）'],
-      ['内容增强', '按需联网搜索（主 Agent 判定并派发搜索子 Agent）+ 子 Agent 整理（来源→核心观点→关键数据）'],
+      ['内容增强', '按需联网搜索（学习助手判定并派发搜索子 Agent）+ 子 Agent 整理（来源→核心观点→关键数据）'],
       ['生成模型', '强模型（质量优先）'],
       ['检测机制', 'flash 轻量单审（三维度：符实性/难度适配/规范性）'],
     ],
@@ -197,19 +197,19 @@ const FlowGraph = ({ agents, templateName, templateAgentId, onSelect }: { agents
   // 当前模板对应的节点职责负载分布（未选中模板时按基础模板）
   const levels = TEMPLATE_LEVELS[templateName || '思考'] || TEMPLATE_LEVELS['思考']
   const lv = (n: string) => levels[n] || 0
-  // 子 Agent：按模板差异化展示——检索增强只显示知识库与搜索的子 Agent，输出增强只显示主 Agent 的子 Agent，其余模板不显示子 Agent
+  // 子 Agent：按模板差异化展示——检索增强只显示知识库与搜索的子 Agent，输出增强只显示学习助手的子 Agent，其余模板不显示子 Agent
   const subOf = (id: string) => ((agents || []).find(a => a.id === id)?.subAgents || []).map(s => s.name)
   const nameOf = (id: string, fallback: string) => (agents || []).find(a => a.id === id)?.name || fallback
   const kbSubs = templateName === '思考' ? subOf('kb') : []
   // 输出增强模板：生成节点只连接一个「输出增强」节点（规划节点不展示子 Agent）
   const mainSubs: string[] = []
-  // 极速档实际流程：知识库检索（全局在线）→ 主 Agent（快模型）→ 输出（跳过审核）
+  // 极速档实际流程：知识库检索（全局在线）→ 学习助手（快模型）→ 输出（跳过审核）
   if (templateName === '极速') {
     return (
       <div className="flex flex-col items-center gap-1 py-6">
         <FlowNode icon={Database} name="知识库检索" level={lv('kb')} active={act('kb')} onClick={pick('kb')} />
         <DownArrow />
-        <FlowNode icon={Workflow} name="主 Agent" level={lv('generate')} active={act('main')} onClick={pick('main')} />
+        <FlowNode icon={Workflow} name="学习助手" level={lv('generate')} active={act('main')} onClick={pick('main')} />
         <DownArrow />
         <FlowNode icon={Scale} name="输出" level={lv('review')} />
       </div>
@@ -411,7 +411,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
         ['编排流程', '规划 → 学情与记忆 ∥ 知识库与搜索 → 生成 → 审核 → 输出'],
         ['生成模型', main?.model === 'fast' ? '快模型（速度优先）' : '强模型（质量优先）'],
         ['知识库子 Agent', kbSubs.length ? kbSubs.join('、') : '无'],
-        ['主 Agent 子 Agent', mainSubs.length ? `${mainSubs.length} 个（${mainSubs.join('、')}）` : '无'],
+        ['学习助手子Agent', mainSubs.length ? `${mainSubs.length} 个（${mainSubs.join('、')}）` : '无'],
         ['审核重试上限', String(review?.retryMax ?? 2)],
       ],
     }
@@ -561,7 +561,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                   className="text-[10px] px-2 py-1 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">＋ 添加能力</button>
               </div>
               {agent.id === 'main' ? (
-                /* 主 Agent：保持单个「输出增强」卡片样式 */
+                /* 学习助手：保持单个「输出增强」卡片样式 */
                 <div className="border hairline rounded-xl bg-[var(--bg-panel)] overflow-hidden">
                   <button onClick={() => setSubIntroOpen(true)}
                     className="w-full flex flex-col items-stretch gap-2.5 px-3.5 py-9 hover:bg-[var(--bg-hover)] transition-colors">
@@ -804,7 +804,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
               <div className="grid grid-cols-2 gap-3">
                 {[
                   ['搜索机制', '固定搜索规则：优质信息源（优质社区、官方信息），并行搜索 agent 返回 10-20 条优质内容（思考/研究档共享）'],
-                  ['知识库管理', '后台入库（切片/向量化）；对话中按主 Agent 判定按需检索；联网搜索由主 Agent 派发搜索子 Agent 执行'],
+                  ['知识库管理', '后台入库（切片/向量化）；对话中按学习助手判定按需检索；联网搜索由学习助手派发搜索子 Agent 执行'],
                   ['学情画像', '后台提炼画像文档（基本情况/学习情况/阅读偏好），生成时直接注入（0 对话时间）'],
                   ['上下文自动压缩', '每满 30 条后台压缩最早 30% 为会话摘要；历史细节可向量召回'],
                   ['特殊形式输出', '回答完成后模型判断适合的形式并建议（与档位无关）'],

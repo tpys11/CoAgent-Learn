@@ -7,6 +7,20 @@ import MarkdownIt from 'markdown-it'
 const mdThink = new MarkdownIt({ html: false, linkify: true, breaks: true })
 const renderMd = (text: string) => mdThink.render(text || '')
 
+/** 思维链标题净化：只显示 agent 名称，去掉内部阶段后缀与伪标题。
+ * 内部阶段名（学习助手·规划/生成）、历史旧名（主Agent·规划/生成）、极速档伪标题（综合概述性记忆）
+ * 统一显示为"学习助手"；内部名仍用于"正在干什么"状态匹配。 */
+const displayAgent = (name: string) => {
+  if (typeof name !== 'string') return name
+  let base = name
+  // 去掉 ·规划 / ·生成 阶段后缀
+  const m = base.match(/^(.*?)·(规划|生成)$/)
+  if (m) base = m[1]
+  // 历史旧名 / 极速档伪标题 → 学习助手
+  if (base === '主 Agent' || base === '主Agent' || base === '综合概述性记忆') return '学习助手'
+  return base
+}
+
 
 interface CenterPanelProps {
   messages: Message[]
@@ -34,7 +48,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   const [input, setInput] = useState('')
   // 记忆修改预填：draft 变化时写入输入框（从记忆界面跳转）
   useEffect(() => { if (draft) setInput(draft) }, [draft])
-  const [chatMode, setChatMode] = useState<'kb'|'free'>('kb')
   // 上次会话保存的三条追问（进入对话时展示，抢占注意力）
   const [followups, setFollowups] = useState<string[]>([])
   const loadFollowups = () => {
@@ -149,16 +162,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
     setAttachments(prev => prev.filter(a => a.name !== name))
   }
   const [time, setTime] = useState(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }))
-  const [searchMode, setSearchMode] = useState(1)
-  const [showFormat, setShowFormat] = useState(false)
-  const [showContent, setShowContent] = useState(false)
-  const formatRef = useRef<HTMLDivElement>(null)
-  const contentRef = useRef<HTMLDivElement>(null)
-  const [outputFormat, setOutputFormat] = useState(0)
-  const [outputStyle, setOutputStyle] = useState(0)
-  const [outputVolume, setOutputVolume] = useState(1)
-  const [depth, setDepth] = useState(1)
-  const [showSearch, setShowSearch] = useState(false)
   const [showModelModal, setShowModelModal] = useState(false)
   // 档位模式：极速/思考/研究（用户时间-质量期望的表达），与「对话流程」区块一致
 const TEMPLATE_OPTIONS = [
@@ -195,13 +198,7 @@ const TEMPLATE_OPTIONS = [
   const [autoMode, setAutoMode] = useState(() => localStorage.getItem('coagent-auto') === '1')
   // 模型 Auto：AI 根据输入自动选择模型（模型选择上拉栏内开关）
   const [modelAuto, setModelAuto] = useState(() => localStorage.getItem('coagent-model-auto') === '1')
-  // 使用模板：开启后工具栏显示「模板选择」按钮
-  const [useTemplate, setUseTemplate] = useState(() => localStorage.getItem('coagent-use-template') !== '0')
-  // 细节设定：开启后工具栏显示细节按钮（输入询问/检索模式/输出形式）
-  const [useDetail, setUseDetail] = useState(() => localStorage.getItem('coagent-use-detail') !== '0')
-  // 对话模式上拉框
-  const [showDlgMenu, setShowDlgMenu] = useState(false)
-  const dlgRef = useRef<HTMLDivElement>(null)
+  // 档位上拉框
   const [showTplMenu, setShowTplMenu] = useState(false)
   const tplRef = useRef<HTMLDivElement>(null)
   // 模型选择上拉小窗
@@ -210,23 +207,14 @@ const TEMPLATE_OPTIONS = [
     const close = (e: MouseEvent) => {
       if (tplRef.current && !tplRef.current.contains(e.target as Node)) setShowTplMenu(false)
       if (modelRef.current && !modelRef.current.contains(e.target as Node)) setShowModelModal(false)
-      if (dlgRef.current && !dlgRef.current.contains(e.target as Node)) setShowDlgMenu(false)
     }
     document.addEventListener('mousedown', close)
     return () => document.removeEventListener('mousedown', close)
   }, [])
-  const searchRef = useRef<HTMLDivElement>(null)
-  const [showInputOpt, setShowInputOpt] = useState(false)
-  const inputOptRef = useRef<HTMLDivElement>(null)
-  const [inputOptMode, setInputOptMode] = useState(0) // 0=开启优化,1=关闭优化
-  const inputOptLabels = ['开启', '关闭']
-  const [webSearchMode, setWebSearchMode] = useState(0) // 0=默认,1=增强
   const [timeRange, setTimeRange] = useState('今天')
   const [showTimeRange, setShowTimeRange] = useState(false)
   const timeRangeRef = useRef<HTMLDivElement>(null)
   const timeLabels = ['本次', '今天', '本周', '本月', '今年', '总']
-
-  const searchLabels = ['自由', '知识库']
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -236,11 +224,7 @@ const TEMPLATE_OPTIONS = [
   }, [])
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (formatRef.current && !formatRef.current.contains(e.target as Node)) setShowFormat(false)
-      if (contentRef.current && !contentRef.current.contains(e.target as Node)) setShowContent(false)
-      if (searchRef.current && !searchRef.current.contains(e.target as Node)) setShowSearch(false)
       if (timeRangeRef.current && !timeRangeRef.current.contains(e.target as Node)) setShowTimeRange(false)
-      if (inputOptRef.current && !inputOptRef.current.contains(e.target as Node)) setShowInputOpt(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -273,18 +257,9 @@ const TEMPLATE_OPTIONS = [
     }
     onSendMessage(full, {
       image: image,
-      chatMode: chatMode,
       template: templateMode,
       auto: autoMode,
       modelAuto: modelAuto,
-      searchMode: searchLabels[searchMode],
-      outputFormat: outputFormat === 0 ? '低结构化' : '高结构化',
-      outputStyle: outputStyle === 0 ? 'MD文档' : '对话形式',
-      thinking: '开',
-      outputVolume: ['精简', '适中', '拓展'][outputVolume],
-      depth: ['浅', '中', '深'][depth],
-      inputOptMode: inputOptMode === 0 ? '默认模式' : '不询问模式',
-      webSearchMode: webSearchMode === 0 ? '默认' : '增强',
     })
     setInput('')
     setAttachments([])
@@ -292,18 +267,9 @@ const TEMPLATE_OPTIONS = [
 
   const sendFollowup = (q: string) => {
     onSendMessage(q, {
-      chatMode: chatMode,
       template: templateMode,
       auto: autoMode,
       modelAuto: modelAuto,
-      searchMode: searchLabels[searchMode],
-      outputFormat: outputFormat === 0 ? '低结构化' : '高结构化',
-      outputStyle: outputStyle === 0 ? 'MD文档' : '对话形式',
-      thinking: '开',
-      outputVolume: ['精简', '适中', '拓展'][outputVolume],
-      depth: ['浅', '中', '深'][depth],
-      inputOptMode: inputOptMode === 0 ? '默认模式' : '不询问模式',
-      webSearchMode: webSearchMode === 0 ? '默认' : '增强',
     })
   }
 
@@ -391,7 +357,7 @@ const TEMPLATE_OPTIONS = [
                     {msg.think && msg.think.length > 0 && (
                       <div className="mb-2"><ThinkBlock items={msg.think} plain activeAgent={flowActiveAgent} activeStatus={flowStatus} onClarifyPick={onClarifyPick} /></div>
                     )}
-                    {/* 主Agent生成内容：直接流式输出在对话区（逐字 reveal，节流 markdown 渲染） */}
+                    {/* 学习助手生成内容：直接流式输出在对话区（逐字 reveal，节流 markdown 渲染） */}
                     {msg.content ? (
                       <StreamingMd text={msg.content} />
                     ) : null}
@@ -636,16 +602,28 @@ function StreamingMd({ text }: { text: string }) {
 function ThinkBlock({ items, plain, activeAgent, activeStatus, onClarifyPick }: { items: Array<{ agent: string; content: string; clarify?: { question: string; options: string[] } }> | string[]; plain?: boolean; activeAgent?: string | null; activeStatus?: string; onClarifyPick?: (option: string | null) => void }) {
   const list = (items || []).map(it => typeof it === 'string' ? { agent: '', content: it } : it)
   if (list.length === 0) return null
+  // 合并连续同名 agent 的条目（规划→生成都显示"学习助手"，不紧跟着重复标题）：content 拼接、保留 clarify
+  const merged = list.reduce<Array<{ agent: string; content: string; clarify?: { question: string; options: string[] } }>>((acc, it) => {
+    const dn = displayAgent(it.agent)
+    const last = acc[acc.length - 1]
+    if (last && dn && displayAgent(last.agent) === dn) {
+      if (it.clarify) last.clarify = it.clarify
+      if (it.content) last.content = (last.content ? last.content + '\n' : '') + it.content
+      return acc
+    }
+    acc.push({ agent: it.agent, content: it.content, ...(it.clarify ? { clarify: it.clarify } : {}) })
+    return acc
+  }, [])
   // 每个条目的展开状态（按 index，新条目默认展开）
   const [openMap, setOpenMap] = useState<Record<number, boolean>>({})
   // 记录每个 Agent 最新条目的 index（用于活跃切换时自动折叠）
   const lastIdxRef = useRef<Record<string, number>>({})
-  list.forEach((it, i) => { if (it.agent) lastIdxRef.current[it.agent] = i })
+  merged.forEach((it, i) => { if (it.agent) lastIdxRef.current[displayAgent(it.agent)] = i })
   const prevActive = useRef<string | null | undefined>(activeAgent)
   useEffect(() => {
     // Agent 执行完（活跃 agent 切换）：前一个自动折叠
     if (prevActive.current && prevActive.current !== activeAgent) {
-      const idx = lastIdxRef.current[prevActive.current]
+      const idx = lastIdxRef.current[displayAgent(prevActive.current)]
       if (idx !== undefined) setOpenMap(prev => ({ ...prev, [idx]: false }))
     }
     prevActive.current = activeAgent
@@ -653,13 +631,13 @@ function ThinkBlock({ items, plain, activeAgent, activeStatus, onClarifyPick }: 
   const toggle = (i: number) => setOpenMap(prev => ({ ...prev, [i]: !(prev[i] ?? true) }))
   return (
     <div className="flex flex-col gap-2">
-      {list.map((it, i) => (
+      {merged.map((it, i) => (
         <div key={i} className="animate-[fadeIn_0.15s_ease]">
           {it.agent && (
             <button onClick={() => toggle(i)} className="flex items-center gap-1 text-[11px] font-semibold mb-0.5 hover:opacity-80 transition-opacity text-left">
               {/* 折叠箭头：▾ 展开 / ▸ 折叠 */}
               <span className="text-dim text-[9px] flex-shrink-0">{openMap[i] === false ? '▸' : '▾'}</span>
-              <span>{it.agent}</span>
+              <span>{displayAgent(it.agent)}</span>
               {/* 正在干什么：显示在 Agent 标题后面（仅当前活跃的 Agent） */}
               {it.agent === activeAgent && activeStatus && (
                 <span className="ml-1 font-normal text-[10px] text-dim">{activeStatus}</span>
@@ -714,7 +692,7 @@ function AgentThinkList({ think, onClarifyPick }: { think?: Array<{ agent: strin
         <div key={it.i} className="flex flex-col">
           <button onClick={() => toggle(it.i)}
             className="flex items-center gap-1.5 py-0.5 text-[11px] font-semibold hover:opacity-80 transition-opacity text-left">
-            <span className="flex-shrink-0">{it.agent || '思考'}</span>
+            <span className="flex-shrink-0">{displayAgent(it.agent) || '思考'}</span>
             {/* 右侧小箭头：点击展开该 Agent 的思考内容 */}
             <span className={`text-dim text-[9px] transition-transform ${openSet.has(it.i) ? 'rotate-90' : ''}`}>▸</span>
           </button>

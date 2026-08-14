@@ -135,16 +135,12 @@ function App() {
   const [flowActiveAgent, setFlowActiveAgent] = useState<string | null>(null)
   // 当前对话状态文案（等待模型响应/正在规划/正在阅读/正在思考/正在审核…）
   const [flowStatus, setFlowStatus] = useState('')
-  // 需求澄清（reasonix 式）：澄清条目直接写进思维链（"主Agent·规划"下弹选项），选择后同一轮流程内继续
+  // 需求澄清（reasonix 式）：澄清条目直接写进思维链（"学习助手·规划"下弹选项），选择后同一轮流程内继续
   const clarifyContinueRef = useRef(false)
   // 最近一次发送的用户消息（澄清选项点击后拼回原问题继续）
   const lastUserMsgRef = useRef('')
   const [flowMindchain, setFlowMindchain] = useState<Array<{agent: string; content: string}>>([])
   const mindchainRef = useRef<Array<{agent: string; content: string}>>([])
-  // 思维链逐字 reveal：收到 token 进队列，interval 按 16ms/字 逐字追加（打字机效果）
-  const pendingQueueRef = useRef<Array<{ agent: string; text: string }>>([])
-  const revealTimerRef = useRef<number | null>(null)
-  const revealTickRef = useRef(0)
   const activeDidRef = useRef<string | null>(null)
   // 本次回答是否已通过 answer_token 流式显示（是则 done 后直接替换，不二次打字机）
   const streamedRef = useRef(false)
@@ -152,105 +148,9 @@ function App() {
   const abortCtrlRef = useRef<AbortController | null>(null)
   const userStoppedRef = useRef(false)
   const requestIdRef = useRef<string | null>(null)
-  const stopReveal = () => {
-    if (revealTimerRef.current != null) { cancelAnimationFrame(revealTimerRef.current); revealTimerRef.current = null }
-    pendingQueueRef.current = []
-  }
-  const startReveal = () => {
-    if (revealTimerRef.current != null) return
-    const tick = () => {
-      revealTimerRef.current = null
-      const q = pendingQueueRef.current
-      if (q.length === 0) return  // 队列空：停止调度（下一 token 到达时重新启动），避免空转
-      revealTimerRef.current = requestAnimationFrame(tick)
-      // 逐字摊派 + 自适应加速：字是成批到达的（模型一个 chunk 几十字），逐字显示必须把每批跨帧摊开
-      // （每帧至少 1 字）；积压每多 10 字每帧多消费 1 字 → 消费速率自动贴住模型速率，既不一段段也不滞后
-      const _pendingTotal = q.reduce((s, h) => s + h.text.length, 0)
-      let budget = 1 + Math.floor(_pendingTotal / 10)
-      const updates: Array<{ agent: string; text: string }> = []
-      while (budget > 0 && q.length > 0) {
-        const head = q[0]
-        if (head.text === '') { q.shift(); continue }
-        const take = Math.min(budget, head.text.length)
-        const piece = head.text.slice(0, take)
-        head.text = head.text.slice(take)
-        if (head.text === '') q.shift()
-        const lastU = updates[updates.length - 1]
-        if (lastU && lastU.agent === head.agent) lastU.text += piece
-        else updates.push({ agent: head.agent, text: piece })
-        budget -= take
-      }
-      if (updates.length === 0) return
-      setFlowMindchain(prev => {
-        let cur = prev
-        for (const u of updates) {
-          const last = cur[cur.length - 1]
-          cur = (last && last.agent === u.agent)
-            ? [...cur.slice(0, -1), { agent: u.agent, content: last.content + u.text }]
-            : [...cur, { agent: u.agent, content: u.text }]
-        }
-        mindchainRef.current = cur
-        return cur
-      })
-      // 同步到对话流占位消息的 think：每 2 帧一次（~32ms，纯文本渲染低成本）
-      revealTickRef.current += 1
-      if (revealTickRef.current % 2 === 1) {
-        setAllMessages(prev => {
-          const arr = prev[activeDidRef.current || ''] || []
-          const lastMsg = arr[arr.length - 1]
-          if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content === '') {
-            return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, think: mindchainRef.current }] }
-          }
-          return prev
-        })
-      }
-    }
-    revealTimerRef.current = requestAnimationFrame(tick)
-  }
-  // ---------- 回答区逐字 reveal：answer_token 到达先入 pending，rAF 每帧逐字追加到占位消息 content ----------
-  // 正常每帧 1 字（≈60字/秒，接近模型极限速度且"一个字一个字蹦出来"）；积压超阈值自动加速（2-3字/帧）跟上不落后
-  const answerPendingRef = useRef('')
-  const answerTimerRef = useRef<number | null>(null)
   // 围栏状态机（后端拆字推送后，``` 围栏逐字到达）：围栏内内容丢弃
   const fenceBufRef = useRef('')
   const fenceInRef = useRef(false)
-  const startAnswerReveal = () => {
-    if (answerTimerRef.current != null) return
-    const tick = () => {
-      answerTimerRef.current = null
-      const pending = answerPendingRef.current
-      if (!pending) return  // 队列空：停止调度（下一 chunk 到达时重新启动）
-      answerTimerRef.current = requestAnimationFrame(tick)
-      // 逐字摊派 + 自适应加速（同思维链）：每帧至少 1 字，积压每多 10 字多 1 字/帧
-      const take = 1 + Math.floor(pending.length / 10)
-      const piece = pending.slice(0, take)
-      answerPendingRef.current = pending.slice(take)
-      setAllMessages(prev => {
-        const arr = prev[activeDidRef.current || ''] || []
-        const lastMsg = arr[arr.length - 1]
-        if (lastMsg && lastMsg.role === 'assistant') {
-          return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, content: (lastMsg.content || '') + piece }] }
-        }
-        return prev
-      })
-    }
-    answerTimerRef.current = requestAnimationFrame(tick)
-  }
-  const flushAnswerReveal = () => {
-    // done/停止前调用：把队列剩余一次性追加（避免内容丢失或结尾跳变）
-    if (answerTimerRef.current != null) { cancelAnimationFrame(answerTimerRef.current); answerTimerRef.current = null }
-    const rest = answerPendingRef.current
-    answerPendingRef.current = ''
-    if (!rest) return
-    setAllMessages(prev => {
-      const arr = prev[activeDidRef.current || ''] || []
-      const lastMsg = arr[arr.length - 1]
-      if (lastMsg && lastMsg.role === 'assistant') {
-        return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, content: (lastMsg.content || '') + rest }] }
-      }
-      return prev
-    })
-  }
   const sessionId = useRef(SESSION_ID)
   // 第二对话 id：App 持有（主对话完成后为它生成横向拓展追问），传给 RightPanel 使用
   const secondDialogueIdRef = useRef('sd-' + Math.random().toString(36).slice(2) + Date.now().toString(36))
@@ -404,11 +304,12 @@ function App() {
     if (v === 'chat') setChatOpen(false) // 点「主页」回到主页
   }
 
-  /** 替换/追加最后一条 assistant 消息：发送时插入的空占位（content=''）被结果替换，避免重复气泡 */
+  /** 替换最后一条 assistant 消息：发送时插入的空占位（content=''）被结果替换，避免重复气泡。
+   * 极速档的 answer_token 会先流式把占位 content 填满，done 时仍是同一条 → 必须原地替换而非 push */
   const upsertLastAssistant = (prev: Message[], msg: Message) => {
     const arr = [...prev]
     const last = arr[arr.length - 1]
-    if (last && last.role === 'assistant' && last.content === '') {
+    if (last && last.role === 'assistant') {
       arr[arr.length - 1] = msg
     } else {
       arr.push(msg)
@@ -457,12 +358,9 @@ function App() {
     streamedRef.current = false
     userStoppedRef.current = false
     requestIdRef.current = null
-    answerPendingRef.current = ''
-    if (answerTimerRef.current != null) { cancelAnimationFrame(answerTimerRef.current); answerTimerRef.current = null }
     fenceBufRef.current = ''
     fenceInRef.current = false
     activeDidRef.current = did || null
-    stopReveal()
     // 自动命名：对话名为「对话 N」时，按首条消息内容改名
     const curDlg = dialogues.find(d => d.id === did)
     if (curDlg && /^对话 \d+$/.test(curDlg.name)) {
@@ -517,7 +415,7 @@ function App() {
       resetTimer()
       const res = await fetch('/api/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text.trim(), session_id: sessionId.current, dialogue_id: did, project_id: currentProjectId, api_key: apiKey, model: model, base_url: providerBaseUrls[provider], settings: mergedSettings, mode: (mergedSettings && mergedSettings.chatMode) || 'kb', image: (mergedSettings && mergedSettings.image) || undefined, agents: agents, extra_followup_did: secondDialogueIdRef.current, extra_followup_focus: 'expand', clarified: continuing }),
+        body: JSON.stringify({ message: text.trim(), session_id: sessionId.current, dialogue_id: did, project_id: currentProjectId, api_key: apiKey, model: model, base_url: providerBaseUrls[provider], settings: mergedSettings, image: (mergedSettings && mergedSettings.image) || undefined, agents: agents, extra_followup_did: secondDialogueIdRef.current, extra_followup_focus: 'expand', clarified: continuing }),
         signal: ctrl.signal,
       })
       if (!res.ok || !res.body) {
@@ -541,9 +439,9 @@ function App() {
           const data = JSON.parse(line.slice(6))
           if (data.type === 'start') { requestIdRef.current = data.request_id || null; continue }
           if (data.type === 'clarify') {
-            // 需求澄清（reasonix 式）：把澄清问题+选项写进思维链"主Agent·规划"条目（不结束流程、不删占位消息）；
+            // 需求澄清（reasonix 式）：把澄清问题+选项写进思维链"学习助手·规划"条目（不结束流程、不删占位消息）；
             // 用户点选项后同一轮流程内继续（复用占位消息与思维链）
-            const item: any = { agent: '主Agent·规划', content: '', clarify: { question: data.question || '请明确你的需求', options: Array.isArray(data.options) ? data.options : [] } }
+            const item: any = { agent: '学习助手·规划', content: '', clarify: { question: data.question || '请明确你的需求', options: Array.isArray(data.options) ? data.options : [] } }
             setFlowMindchain(prev => { const next = [...prev, item]; mindchainRef.current = next; return next })
             setAllMessages(prev => {
               const arr = [...(prev[did || ''] || [])]
@@ -563,9 +461,9 @@ function App() {
             setFlowAgents(prev => prev.includes(data.agent) ? prev : [...prev, data.agent])
             setFlowActiveAgent(data.agent)
             // 状态文案（纯动作，显示在思维链中该 Agent 标题后面）
-            if (data.agent === '主Agent·规划') {
+            if (data.agent === '学习助手·规划') {
               setFlowStatus('正在规划…')
-            } else if (data.agent === '主Agent·生成') {
+            } else if (data.agent === '学习助手·生成') {
               setFlowStatus('正在思考生成…')
             } else if (data.agent === '学情与记忆管理') {
               setFlowStatus('正在阅读记忆…')
@@ -598,14 +496,24 @@ function App() {
             fenceBufRef.current = ''
             if (fenceInRef.current) continue  // 围栏内内容丢弃
             if (!c) continue  // 空串跳过，绝不能中断 SSE 解析循环
-            const q = pendingQueueRef.current
-            const lastQ = q[q.length - 1]
-            if (lastQ && lastQ.agent === data.agent) {
-              lastQ.text += c
-            } else {
-              q.push({ agent: data.agent, text: c })
-            }
-            startReveal()
+            // 到达即 append 到当前 agent 的思维链条目（不 rAF 缓冲 → 无积压、不憋段）
+            setFlowMindchain(prev => {
+              const last = prev[prev.length - 1]
+              const next = (last && last.agent === data.agent)
+                ? [...prev.slice(0, -1), { agent: data.agent, content: last.content + c }]
+                : [...prev, { agent: data.agent, content: c }]
+              mindchainRef.current = next
+              return next
+            })
+            // 同步到占位消息 think（纯文本，低成本）
+            setAllMessages(prev => {
+              const arr = prev[activeDidRef.current || ''] || []
+              const lastMsg = arr[arr.length - 1]
+              if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content === '') {
+                return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, think: mindchainRef.current }] }
+              }
+              return prev
+            })
           }
           if (data.type === 'answer_token') {
             const ch = data.chunk || ''
@@ -613,9 +521,15 @@ function App() {
               streamedRef.current = true
               // simple 流程无 step 事件：回答开始流式即更新状态（避免一直显示"等待模型响应"）
               setFlowStatus('正在输出回答…')
-              // 先入逐字 reveal 队列：一个字一个字蹦出来（不整块追加，避免"一串字一串字"）
-              answerPendingRef.current += ch
-              startAnswerReveal()
+              // 后端已逐字推送（on_answer 拆字），到达即 append → 无积压、不憋段、最流畅
+              setAllMessages(prev => {
+                const arr = prev[activeDidRef.current || ''] || []
+                const lastMsg = arr[arr.length - 1]
+                if (lastMsg && lastMsg.role === 'assistant') {
+                  return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, content: (lastMsg.content || '') + ch }] }
+                }
+                return prev
+              })
             }
           }
           if (data.type === 'done') {
@@ -627,9 +541,6 @@ function App() {
               : []
             setFlowStatus('')
             setFlowActiveAgent(null)
-            stopReveal()
-            // 回答 reveal 队列剩余一次性追加（content 补全后再走 streamedRef 替换，无跳变）
-            flushAnswerReveal()
             // 最终同步一次占位消息 think（降频期间可能滞后）
             setAllMessages(prev => {
               const arr = prev[activeDidRef.current || ''] || []
@@ -688,7 +599,6 @@ function App() {
     } catch (e: any) {
       if (userStoppedRef.current) {
         // 用户手动停止：保留已流式显示的内容为最终消息 + 标记（后端已取消且不落库，仅前端展示；输入框立即可继续提问）
-        flushAnswerReveal()  // 队列剩余补全，保留尽可能多的内容
         setAllMessages(prev => {
           const arr = [...(prev[did || ''] || [])]
           if (arr.length) {
@@ -700,9 +610,29 @@ function App() {
           return { ...prev, [did || '']: arr }
         })
       } else {
-        setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: (e && e.name === 'AbortError') ? '⚠️ 请求超时：生成时间过长已中断，请重试或减少内容复杂度。' : ('抱歉，请求失败。' + (e && e.message ? '（' + e.message + '）' : '')) }) }))
+        // 非用户意愿断线（超时/网络中断）：后端线程继续跑完并落库，前端重连轮询取回结果（文档：客户端重连可取结果）
+        setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: '⚠️ 网络中断，正在后台继续生成并自动取回结果…' }) }))
+        let polled = false
+        const poll = async () => {
+          if (polled) return
+          try {
+            const r = await fetch('/api/dialogues/' + encodeURIComponent(did || '') + '/messages', { cache: 'no-store' })
+            const d = await r.json()
+            const msgs = (d.messages || []).map((m: any) => ({ role: m.role, content: m.content || '', steps: m.steps, think: m.think }))
+            const last = msgs[msgs.length - 1]
+            // 后端已把最终 assistant 消息落库（非占位、非"（系统未生成内容）"）→ 取回替换
+            if (last && last.role === 'assistant' && last.content && last.content !== '（系统未生成内容）') {
+              polled = true
+              setAllMessages(prev => ({ ...prev, [did || '']: msgs }))
+              return
+            }
+          } catch (e) {}
+          // 未就绪：继续轮询（共约 90s，覆盖复杂生成）
+          if (!polled) setTimeout(poll, 3000)
+        }
+        setTimeout(poll, 4000)  // 后端落库需要时间，先等 4s 再开始轮询
       }
-    } finally { clearTimeout(timeoutTimer); stopReveal(); setIsLoading(false); abortCtrlRef.current = null }
+    } finally { clearTimeout(timeoutTimer); setIsLoading(false); abortCtrlRef.current = null }
   }, [currentDialogueId, agents, dialogues, currentProjectId])
   // 手动停止生成：前端中断 SSE 流 + 通知后端取消（后端置位 cancel_event 后中断 LLM、不落库不后处理；已流式内容保留展示）
   const handleStopGeneration = useCallback(() => {
