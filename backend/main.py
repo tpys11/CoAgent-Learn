@@ -220,16 +220,19 @@ def _is_disallowed_host(host: str) -> bool:
 
 def _safe_get(page_url: str, timeout: int = 15) -> str:
     """安全 GET：不跟随重定向，手动逐跳（最多 3 跳）校验 host（防 SSRF 经 302 绕过私网/云 metadata）。
-    返回响应文本；拒绝私网/回环/链路本地主机，重定向目标同样校验。"""
+    返回响应文本；拒绝私网/回环/链路本地主机，重定向目标同样校验。
+    配置 PROXY_URL 时走代理（容器访问国外站点用宿主梯子）。"""
     from urllib.parse import urlparse
     import requests as _req
+    from core.config import config as _cfg
     headers = {"User-Agent": "Mozilla/5.0 (coagent-learn)"}
+    proxies = {"http": _cfg.PROXY_URL, "https": _cfg.PROXY_URL} if _cfg.PROXY_URL else None
     cur = page_url
     for _ in range(4):
         host = (urlparse(cur).hostname or "").strip()
         if not host or _is_disallowed_host(host):
             raise ValueError("拒绝访问私网/回环地址")
-        resp = _req.get(cur, timeout=timeout, headers=headers, allow_redirects=False)
+        resp = _req.get(cur, timeout=timeout, headers=headers, allow_redirects=False, proxies=proxies)
         if resp.status_code in (301, 302, 303, 307, 308) and resp.headers.get("Location"):
             cur = _req.compat.urljoin(cur, resp.headers["Location"])
             continue
@@ -279,8 +282,9 @@ def _fetch_site_text(base_url: str) -> str:
 
 
 @app.post("/api/knowledge/upload-url")
-async def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
-    """链接上传：trafilatura 抓取网页（主页面 + sitemap 全站正文）→ 切块向量化入库"""
+def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
+    """链接上传：trafilatura 抓取网页（主页面 + sitemap 全站正文）→ 切块向量化入库。
+    同步 def（FastAPI 自动放线程池）：缓存读写与入库同一线程，避免共享 sqlite 连接跨线程交错。"""
     url = (req.url or "").strip()
     if not url.startswith(("http://", "https://")):
         return {"status": "error", "msg": "链接格式不正确（需以 http:// 或 https:// 开头）"}
@@ -290,17 +294,31 @@ async def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
         return {"status": "error", "msg": "链接主机不可访问（私网/回环地址）"}
     source = (req.source or "").strip() or url
     text = ""
+    # 缓存优先：同一链接/系统内置资源已抓取过 → 直接从系统内部获取（不联网）
     try:
-        text = _fetch_site_text(url)
-    except Exception as e:
-        import logging
-        logging.getLogger("kb").warning(f"链接抓取失败 {url}: {e}")  # 细节只进日志，不回显客户端
-        return {"status": "error", "msg": "抓取链接失败（链接不可访问或内容无法解析）"}
+        from core.sqlite_client import get_db as _getdb
+        _cached = _getdb().get_preset_doc(url)
+        if _cached and (_cached.get("content") or "").strip():
+            text = _cached["content"]
+    except Exception:
+        pass
+    if not text:
+        try:
+            text = _fetch_site_text(url)
+            # 系统先保存下来：抓取结果缓存，之后上传直接从内部获取
+            if len(text.strip()) >= 20:
+                try:
+                    _getdb().save_preset_doc(url, source, text[:_MAX_LINK_CHARS])
+                except Exception:
+                    pass
+        except Exception as e:
+            import logging
+            logging.getLogger("kb").warning(f"链接抓取失败 {url}: {e}")  # 细节只进日志，不回显客户端
+            return {"status": "error", "msg": "抓取链接失败（链接不可访问或内容无法解析）"}
     if len(text.strip()) < 20:
         return {"status": "error", "msg": "链接内容过短或无法解析为文本"}
     if wait:
-        from starlette.concurrency import run_in_threadpool
-        chunks = await run_in_threadpool(_process_upload, req.project_id, text, source, req.session_id, req.api_key, True, True)
+        chunks = _process_upload(req.project_id, text, source, req.session_id, req.api_key, True, True)
         return {"status": "ok", "chunks": chunks, "source": source}
     _threading.Thread(target=_process_upload, args=(req.project_id, text, source, req.session_id, req.api_key), kwargs={"skip_context": True, "skip_graph": True}, daemon=True).start()
     return {"status": "processing", "msg": "正在处理，稍后刷新查看"}

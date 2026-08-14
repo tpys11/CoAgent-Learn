@@ -30,5 +30,9 @@ class Config:
     RERANK_API_KEY: str = os.getenv("RERANK_API_KEY", "")
     RERANK_MODEL: str = os.getenv("RERANK_MODEL", "BAAI/bge-reranker-v2-m3")
 
+    # ── 联网代理（可选）：容器访问国外站点（GitHub 等）失败时，配宿主梯子代理 ──
+    # 例：PROXY_URL=http://host.docker.internal:7993（宿主梯子监听端口）
+    PROXY_URL: str = os.getenv("PROXY_URL", "")
+
 
 config = Config()

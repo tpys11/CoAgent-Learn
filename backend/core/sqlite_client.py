@@ -94,6 +94,24 @@ class SQLiteClient:
             "project_id TEXT, source TEXT, tree TEXT, updated_at TEXT DEFAULT (datetime('now')), "
             "PRIMARY KEY (project_id, source))"
         )
+        # 链接/内置资源内容缓存：首次上传联网抓取后存库，之后同一资源直接从内部获取（不联网）
+        self.execute(
+            "CREATE TABLE IF NOT EXISTS preset_docs("
+            "url TEXT PRIMARY KEY, title TEXT, content TEXT, updated_at TEXT DEFAULT (datetime('now')))"
+        )
+
+    def get_preset_doc(self, url: str) -> dict | None:
+        """按 url 取已缓存的内容（内部获取，不联网）"""
+        rows = self.execute("SELECT url, title, content FROM preset_docs WHERE url = ?", (url,))
+        return rows[0] if rows else None
+
+    def save_preset_doc(self, url: str, title: str, content: str):
+        """保存 url 抓取内容到缓存（供后续内部获取）"""
+        self.execute(
+            "INSERT INTO preset_docs(url, title, content, updated_at) VALUES (?,?,?,datetime('now')) "
+            "ON CONFLICT(url) DO UPDATE SET title=excluded.title, content=excluded.content, updated_at=datetime('now')",
+            (url, title, content),
+        )
 
     def upsert_kb_vector(self, doc_id: str, project_id: str, source: str, chunk: int,
                          session_id: str, has_context: bool, content: str, embedding: list):
