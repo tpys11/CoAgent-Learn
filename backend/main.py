@@ -89,7 +89,19 @@ _active_cancels: dict = {}
 
 
 def _process_upload(project_id, text, source, session_id, api_key):
-    """后台处理上传：切块+前缀+入库+抽取图谱"""
+    """后台处理上传：存原文到资源表 + 切块入库 + 抽取图谱"""
+    try:
+        # 存原文到资源表（"我的上传/保存的资料"保留一份原文，与知识库独立）
+        from core.postgres_client import pg_client as _pg0
+        import hashlib as _hl0
+        _rid = _hl0.md5((source + project_id).encode()).hexdigest()[:16]
+        _has = _pg0.execute("SELECT id FROM resources WHERE id=%s", (_rid,))
+        if _has:
+            _pg0.execute("UPDATE resources SET content=%s WHERE id=%s", (text[:6000], _rid))
+        else:
+            _pg0.execute("INSERT INTO resources (id, name, content, project_id, type) VALUES (%s,%s,%s,%s,'text')", (_rid, source, text[:6000], project_id))
+    except Exception:
+        pass
     try:
         from core.knowledge_service import add_document
         add_document(project_id, text, source, session_id, api_key)
@@ -166,22 +178,6 @@ async def kb_list(project_id: str):
 @app.delete("/api/knowledge/delete")
 async def knowledge_delete(project_id: str = "default", source: str = ""):
     from core.knowledge_service import delete_doc
-    from core.postgres_client import pg_client
-    import hashlib
-    # 删除前：把原文转存到资源表（"全部/保存的资料"里保留一份原文）
-    try:
-        rows = pg_client.execute("SELECT content FROM kb_vectors WHERE project_id=%s AND source=%s ORDER BY chunk", (project_id, source))
-        if rows:
-            content = chr(10).join((r["content"] or "") for r in rows)
-            if content.strip():
-                rid = hashlib.md5((source + project_id).encode()).hexdigest()[:16]
-                has = pg_client.execute("SELECT id FROM resources WHERE id=%s", (rid,))
-                if has:
-                    pg_client.execute("UPDATE resources SET content=%s WHERE id=%s", (content, rid))
-                else:
-                    pg_client.execute("INSERT INTO resources (id, name, content, project_id, type) VALUES (%s,%s,%s,%s,'text')", (rid, source, content, project_id))
-    except Exception:
-        pass
     n = delete_doc(project_id, source)
     graph_n = 0
     try:
