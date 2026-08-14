@@ -25,7 +25,7 @@ export default function TrendCalendar({ days }: { days: Array<{ date: string; se
         <span className="font-semibold uppercase tracking-wider">专注时长趋势</span>
         <span>最近 30 天 · 累计 {fmt(totalSec)}</span>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 100 }} preserveAspectRatio="none">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 160 }} preserveAspectRatio="none">
         <line x1="0" y1={H - 6} x2={W} y2={H - 6} stroke="#d4d4d4" strokeWidth="0.4" />
         {vals.map((v, i) => (
           <rect key={i} x={i * bw + 0.6} y={H - 6 - Math.max(bh(v), v > 0 ? 1 : 0)}

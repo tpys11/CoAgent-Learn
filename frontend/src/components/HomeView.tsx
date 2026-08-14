@@ -135,7 +135,7 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
                 ))}
               </div>
             </div>
-            <div className="w-[380px] flex-shrink-0 border hairline rounded-2xl p-4 bg-[var(--bg-panel)] flex flex-col">
+            <div className="w-[420px] flex-shrink-0 border hairline rounded-2xl p-4 bg-[var(--bg-panel)] flex flex-col">
               <TrendCalendar days={trendDays} />
             </div>
           </div>
