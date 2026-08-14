@@ -52,11 +52,11 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
     )
   )
   return (
-    <nav className={`h-full flex-shrink-0 flex flex-col transition-all duration-300 ${expanded ? 'w-64 px-2.5 py-4 items-stretch' : 'w-[64px] py-3 items-center'}`}>
-      {/* 顶部品牌区（deeptutor 式：名称+GitHub 链接，位于侧栏顶部，border-b 分隔） */}
+    <nav className={`h-full flex-shrink-0 flex flex-col transition-all duration-300 ${expanded ? 'w-64 py-4 items-stretch' : 'w-[64px] py-3 items-center'}`}>
+      {/* 顶部品牌区（deeptutor 式：p-6 边距、名称+GitHub 链接，border-b 分隔） */}
       {expanded ? (
-        <div className="px-3 pb-4 mb-2 border-b hairline flex flex-col gap-2">
-          <span className="font-display text-[17px] tracking-wide select-none">CoAgent-Learn</span>
+        <div className="px-6 pt-6 pb-4 mb-2 border-b hairline flex flex-col gap-2">
+          <span className="font-display text-[20px] tracking-wide select-none">CoAgent-Learn</span>
           <a href="https://github.com/tpys11/CoAgent-Learn" target="_blank" rel="noreferrer"
             className="flex items-center gap-2 text-xs text-dim hover:text-[var(--text)] transition-colors w-fit"
             title="GitHub: tpys11/CoAgent-Learn">
