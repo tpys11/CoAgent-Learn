@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { Send, Bot, Lightbulb, MessagesSquare, Coins, CheckCircle2, Check, ChevronDown, Upload, Cpu, SlidersHorizontal, AlertTriangle, Search, FileText, LayoutTemplate, Image as ImageIcon, PenLine, Square, ArrowDownToLine, Timer } from 'lucide-react'
 import type { Message, Project } from '../types'
 import MarkdownIt from 'markdown-it'
@@ -351,100 +351,106 @@ const TEMPLATE_OPTIONS = [
               </div>
             ) : (
               <div key={idx} className="w-full text-sm leading-7 animate-[fadeIn_0.25s_ease]">
-                {(msg.content === '' || (isLoading && idx === messages.length - 1)) ? (
-                  <div>
-                    {/* 实时思维链：以对话形式推送（Agent 小标题+内容，随消息流滚动，不限定框；plain 纯文本渲染保帧率） */}
-                    {msg.think && msg.think.length > 0 && (
-                      <div className="mb-2"><ThinkBlock items={msg.think} plain activeAgent={flowActiveAgent} activeStatus={flowStatus} onClarifyPick={onClarifyPick} /></div>
-                    )}
-                    {/* 学习助手生成内容：直接流式输出在对话区（逐字 reveal，节流 markdown 渲染） */}
-                    {msg.content ? (
-                      <StreamingMd text={msg.content} />
-                    ) : null}
-                    <div className="flex items-center gap-2 text-dim">
-                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" />
-                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }} />
-                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }} />
-                      <span className="text-xs ml-1">{flowActiveAgent ? '处理中…' : (flowStatus || '思考中…')}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    {/* 思考过程（按 Agent 逐个折叠）在输出内容上方 */}
-                    {msg.think && msg.think.length > 0 && (
-                      <AgentThinkList think={msg.think} onClarifyPick={onClarifyPick} />
-                    )}
-                    <div className="md-answer-body" dangerouslySetInnerHTML={{ __html: renderMd(msg.content) }} />
-                    {/* 运行统计：回答下面、追问上面，直接展开显示 */}
-                    {(() => {
-                      const stat = (msg.think || []).find(t => typeof t !== 'string' && (t as any).agent === '运行统计')
-                      if (!stat) return null
-                      return (
-                        <div className="mt-2.5 text-[10px] leading-relaxed text-dim border hairline rounded-lg px-3 py-2 bg-[var(--bg-panel)]">
-                          {(stat as any).content}
+                {(() => {
+                  const isLast = idx === messages.length - 1
+                  const streaming = isLoading && isLast
+                  return (
+                    <>
+                      {/* 思考过程区块（DeepSeek 式：流式展开逐字 / 完成自动折叠为一行，统一组件消除跳变） */}
+                      {msg.think && msg.think.length > 0 && (
+                        <div className="mb-3">
+                          <ReasoningBlock items={msg.think} streaming={streaming} activeAgent={flowActiveAgent} activeStatus={flowStatus} onClarifyPick={onClarifyPick} />
                         </div>
-                      )
-                    })()}
-                    {/* 特殊形式输出建议（模型判断）：弹出选项——是否生成 / 生成哪些 */}
-                    {msg.special && msg.special.length > 0 && !dismissedSpecial.has(idx) && (
-                      <div className="mt-2.5 border hairline rounded-xl px-3 py-2.5 bg-[var(--bg-panel)]">
-                        <p className="text-[10px] font-semibold text-dim mb-1.5">模型建议：内容可生成以下形式</p>
-                        <div className="flex flex-wrap gap-1.5 mb-2">
-                          {msg.special.map(s => {
-                            const sel = (specialSel[idx] ?? msg.special!.map(x => x.key)).includes(s.key)
+                      )}
+                      {/* 回答正文：流式逐帧 StreamingMd / 完成 markdown 渲染 */}
+                      {streaming
+                        ? (msg.content ? <StreamingMd text={msg.content} /> : null)
+                        : (msg.content ? <div className="md-answer-body" dangerouslySetInnerHTML={{ __html: renderMd(msg.content) }} /> : null)}
+                      {/* 流式等待指示器（回答尚未开始流式时显示） */}
+                      {streaming && !msg.content && (
+                        <div className="flex items-center gap-2 text-dim">
+                          <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" />
+                          <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }} />
+                          <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }} />
+                          <span className="text-xs ml-1">{flowActiveAgent ? '处理中…' : (flowStatus || '思考中…')}</span>
+                        </div>
+                      )}
+                      {/* 完成态附加内容 */}
+                      {!streaming && (
+                        <>
+                          {/* 运行统计：回答下面、追问上面，直接展开显示 */}
+                          {(() => {
+                            const stat = (msg.think || []).find(t => typeof t !== 'string' && (t as any).agent === '运行统计')
+                            if (!stat) return null
                             return (
-                              <button key={s.key}
-                                onClick={() => setSpecialSel(prev => {
-                                  const cur = prev[idx] ?? msg.special!.map(x => x.key)
-                                  const next = sel ? cur.filter(k => k !== s.key) : [...cur, s.key]
-                                  return { ...prev, [idx]: next }
-                                })}
-                                className={"chip text-left text-[11px] px-2.5 py-1 transition-all" + (sel ? '' : ' opacity-40')}>
-                                {s.label}
-                              </button>
+                              <div className="mt-2.5 text-[10px] leading-relaxed text-dim border hairline rounded-lg px-3 py-2 bg-[var(--bg-panel)]">
+                                {(stat as any).content}
+                              </div>
                             )
-                          })}
-                        </div>
-                        <div className="flex items-center justify-end gap-3">
-                          <button onClick={() => {
-                            const picked = specialSel[idx] ?? msg.special!.map(x => x.key)
-                            const names = msg.special!.filter(x => picked.includes(x.key)).map(x => x.label)
-                            if (names.length) alert(`「${names.join('」「')}」生成功能待实现（下一步开发）`)
-                            setDismissedSpecial(prev => new Set(prev).add(idx))
-                          }}
-                            className="text-[10px] font-semibold text-[var(--accent)] hover:underline">生成所选</button>
-                          <button onClick={() => setDismissedSpecial(prev => new Set(prev).add(idx))}
-                            className="text-[10px] text-dim hover:text-[var(--text)]">忽略</button>
-                        </div>
-                      </div>
-                    )}
-                    {/* 新建课程引导消息：右下角「手动初始化」按钮（仅初次创建、未完成手动填写时显示） */}
-                    {msg.content.includes('课程创建成功') && onManualSetup && !(currentProject && (() => {
-                      try { return (JSON.parse(localStorage.getItem('coagent-manual-setup-done') || '[]') as string[]).includes(currentProject.id) } catch { return false }
-                    })()) && (
-                      <div className="mt-3 flex justify-end">
-                        <button onClick={onManualSetup}
-                          className="text-[11px] px-3 py-1.5 rounded-lg border hairline text-dim hover:text-[var(--text)] hover:bg-[var(--bg-hover)] transition-colors flex items-center gap-1">
-                          <PenLine size={11} /> 手动初始化
-                        </button>
-                      </div>
-                    )}
-                    {/* 继续追问：附着于该条 AI 输出下方（豆包样式，仅最后一条输出） */}
-                    {idx === messages.length - 1 && followups.length > 0 && !isLoading && (
-                      <div className="mt-3 flex flex-col gap-1.5 animate-[fadeIn_0.3s_ease]">
-                        <p className="text-[11px] text-dim font-medium flex items-center gap-1"><Lightbulb size={12} /> 继续追问 · 推进学习目标</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {followups.map((q, k) => (
-                            <button key={k} onClick={() => sendFollowup(q)}
-                              className="chip text-left text-[12px] px-3 py-1.5 transition-all">
-                              {q}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
+                          })()}
+                          {/* 特殊形式输出建议（模型判断）：弹出选项——是否生成 / 生成哪些 */}
+                          {msg.special && msg.special.length > 0 && !dismissedSpecial.has(idx) && (
+                            <div className="mt-2.5 border hairline rounded-xl px-3 py-2.5 bg-[var(--bg-panel)]">
+                              <p className="text-[10px] font-semibold text-dim mb-1.5">模型建议：内容可生成以下形式</p>
+                              <div className="flex flex-wrap gap-1.5 mb-2">
+                                {msg.special.map(s => {
+                                  const sel = (specialSel[idx] ?? msg.special!.map(x => x.key)).includes(s.key)
+                                  return (
+                                    <button key={s.key}
+                                      onClick={() => setSpecialSel(prev => {
+                                        const cur = prev[idx] ?? msg.special!.map(x => x.key)
+                                        const next = sel ? cur.filter(k => k !== s.key) : [...cur, s.key]
+                                        return { ...prev, [idx]: next }
+                                      })}
+                                      className={"chip text-left text-[11px] px-2.5 py-1 transition-all" + (sel ? '' : ' opacity-40')}>
+                                      {s.label}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                              <div className="flex items-center justify-end gap-3">
+                                <button onClick={() => {
+                                  const picked = specialSel[idx] ?? msg.special!.map(x => x.key)
+                                  const names = msg.special!.filter(x => picked.includes(x.key)).map(x => x.label)
+                                  if (names.length) alert(`「${names.join('」「')}」生成功能待实现（下一步开发）`)
+                                  setDismissedSpecial(prev => new Set(prev).add(idx))
+                                }}
+                                  className="text-[10px] font-semibold text-[var(--accent)] hover:underline">生成所选</button>
+                                <button onClick={() => setDismissedSpecial(prev => new Set(prev).add(idx))}
+                                  className="text-[10px] text-dim hover:text-[var(--text)]">忽略</button>
+                              </div>
+                            </div>
+                          )}
+                          {/* 新建课程引导消息：右下角「手动初始化」按钮（仅初次创建、未完成手动填写时显示） */}
+                          {msg.content.includes('课程创建成功') && onManualSetup && !(currentProject && (() => {
+                            try { return (JSON.parse(localStorage.getItem('coagent-manual-setup-done') || '[]') as string[]).includes(currentProject.id) } catch { return false }
+                          })()) && (
+                            <div className="mt-3 flex justify-end">
+                              <button onClick={onManualSetup}
+                                className="text-[11px] px-3 py-1.5 rounded-lg border hairline text-dim hover:text-[var(--text)] hover:bg-[var(--bg-hover)] transition-colors flex items-center gap-1">
+                                <PenLine size={11} /> 手动初始化
+                              </button>
+                            </div>
+                          )}
+                          {/* 继续追问：附着于该条 AI 输出下方（豆包样式，仅最后一条输出） */}
+                          {isLast && followups.length > 0 && !isLoading && (
+                            <div className="mt-3 flex flex-col gap-1.5 animate-[fadeIn_0.3s_ease]">
+                              <p className="text-[11px] text-dim font-medium flex items-center gap-1"><Lightbulb size={12} /> 继续追问 · 推进学习目标</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {followups.map((q, k) => (
+                                  <button key={k} onClick={() => sendFollowup(q)}
+                                    className="chip text-left text-[12px] px-3 py-1.5 transition-all">
+                                    {q}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </>
+                  )
+                })()}
               </div>
             )
           ))}
@@ -580,129 +586,97 @@ const TEMPLATE_OPTIONS = [
   )
 }
 
-/** 流式 markdown 渲染：reveal 逐字期间节流渲染（100ms 防抖），渲染未就绪时纯文本兜底；
- * 完成后（shown===text）显示最终渲染结果，与完成态 renderMd 一致无跳变。 */
+/** 流式 markdown 渲染：requestAnimationFrame 对齐刷新率（~16ms）逐帧更新，比 100ms 防抖更顺滑；
+ * 渲染未就绪时纯文本兜底；完成后（shown===text）显示最终渲染结果，与完成态 renderMd 一致无跳变。 */
 function StreamingMd({ text }: { text: string }) {
-  const [html, setHtml] = useState('')
   const [shown, setShown] = useState('')
   useEffect(() => {
     if (text === shown) return
-    const t = setTimeout(() => { setShown(text); setHtml(renderMd(text)) }, 100)
-    return () => clearTimeout(t)
+    const raf = requestAnimationFrame(() => setShown(text))
+    return () => cancelAnimationFrame(raf)
   }, [text, shown])
-  if (html && shown === text) {
+  const html = useMemo(() => (shown ? renderMd(shown) : ''), [shown])
+  if (shown === text && html) {
     return <div className="md-answer-body" dangerouslySetInnerHTML={{ __html: html }} />
   }
   return <div className="whitespace-pre-wrap break-words">{text}</div>
 }
 
-/** 思维链内容块：Agent 小标题 + 内容（以对话形式推送，不限定高度框）。
- * 折叠交互：新 Agent 默认展开；点击标题手动折叠/展开；Agent 执行完（活跃切换到下一个）自动折叠。
- * plain=true 时用纯文本渲染（实时逐字阶段）；完成态用 markdown 渲染。 */
-function ThinkBlock({ items, plain, activeAgent, activeStatus, onClarifyPick }: { items: Array<{ agent: string; content: string; clarify?: { question: string; options: string[] } }> | string[]; plain?: boolean; activeAgent?: string | null; activeStatus?: string; onClarifyPick?: (option: string | null) => void }) {
-  const list = (items || []).map(it => typeof it === 'string' ? { agent: '', content: it } : it)
-  if (list.length === 0) return null
-  // 合并连续同名 agent 的条目（规划→生成都显示"学习助手"，不紧跟着重复标题）：content 拼接、保留 clarify
-  const merged = list.reduce<Array<{ agent: string; content: string; clarify?: { question: string; options: string[] } }>>((acc, it) => {
-    const dn = displayAgent(it.agent)
-    const last = acc[acc.length - 1]
-    if (last && dn && displayAgent(last.agent) === dn) {
-      if (it.clarify) last.clarify = it.clarify
-      if (it.content) last.content = (last.content ? last.content + '\n' : '') + it.content
+/** 思考过程区块（DeepSeek 式独立区块）：
+ * - 流式中（streaming=true）：展开，plain 纯文本逐字（保帧率），活跃状态挂标题
+ * - 完成/历史（streaming=false）：自动折叠为一行「▸ 思考过程 · 已完成」，点击展开看 markdown
+ * - 流式→完成不卸载组件，仅 open state 从展开切到折叠，消除「一次性出现又消失」跳变
+ * - 同名 Agent（规划→生成）合并为一个「学习助手」分段；多段时才显示分段小标题 */
+function ReasoningBlock({ items, streaming, activeAgent, activeStatus, onClarifyPick }: { items: Array<{ agent: string; content: string; clarify?: { question: string; options: string[] } }> | string[]; streaming?: boolean; activeAgent?: string | null; activeStatus?: string; onClarifyPick?: (option: string | null) => void }) {
+  // 合并连续同名 agent（规划→生成→学习助手）+ 过滤运行统计（独立显示在回答下方）
+  const merged = useMemo(() => {
+    const list = (items || []).map(it => typeof it === 'string' ? { agent: '', content: it } : it)
+      .filter(it => it.agent !== '运行统计')
+    return list.reduce<Array<{ agent: string; content: string; clarify?: { question: string; options: string[] } }>>((acc, it) => {
+      const dn = displayAgent(it.agent)
+      const last = acc[acc.length - 1]
+      if (last && dn && displayAgent(last.agent) === dn) {
+        if (it.clarify) last.clarify = it.clarify
+        if (it.content) last.content = (last.content ? last.content + '\n' : '') + it.content
+        return acc
+      }
+      acc.push({ agent: it.agent, content: it.content, ...(it.clarify ? { clarify: it.clarify } : {}) })
       return acc
-    }
-    acc.push({ agent: it.agent, content: it.content, ...(it.clarify ? { clarify: it.clarify } : {}) })
-    return acc
-  }, [])
-  // 每个条目的展开状态（按 index，新条目默认展开）
-  const [openMap, setOpenMap] = useState<Record<number, boolean>>({})
-  // 记录每个 Agent 最新条目的 index（用于活跃切换时自动折叠）
-  const lastIdxRef = useRef<Record<string, number>>({})
-  merged.forEach((it, i) => { if (it.agent) lastIdxRef.current[displayAgent(it.agent)] = i })
-  const prevActive = useRef<string | null | undefined>(activeAgent)
+    }, [])
+  }, [items])
+  // 展开/折叠：流式中强制展开；完成（streaming true→false）自动折叠为一行；用户可手动切换
+  const [open, setOpen] = useState(true)
+  const prevStreaming = useRef(streaming)
   useEffect(() => {
-    // Agent 执行完（活跃 agent 切换）：前一个自动折叠
-    if (prevActive.current && prevActive.current !== activeAgent) {
-      const idx = lastIdxRef.current[displayAgent(prevActive.current)]
-      if (idx !== undefined) setOpenMap(prev => ({ ...prev, [idx]: false }))
-    }
-    prevActive.current = activeAgent
-  }, [activeAgent])
-  const toggle = (i: number) => setOpenMap(prev => ({ ...prev, [i]: !(prev[i] ?? true) }))
+    if (prevStreaming.current && !streaming) setOpen(false)  // 完成：折叠
+    if (streaming) setOpen(true)  // 流式中：展开逐字
+    prevStreaming.current = streaming
+  }, [streaming])
+  if (merged.length === 0) return null
+  const toggle = () => { if (!streaming) setOpen(o => !o) }  // 流式中不响应折叠（保持展开逐字）
   return (
-    <div className="flex flex-col gap-2">
-      {merged.map((it, i) => (
-        <div key={i} className="animate-[fadeIn_0.15s_ease]">
-          {it.agent && (
-            <button onClick={() => toggle(i)} className="flex items-center gap-1 text-[11px] font-semibold mb-0.5 hover:opacity-80 transition-opacity text-left">
-              {/* 折叠箭头：▾ 展开 / ▸ 折叠 */}
-              <span className="text-dim text-[9px] flex-shrink-0">{openMap[i] === false ? '▸' : '▾'}</span>
-              <span>{displayAgent(it.agent)}</span>
-              {/* 正在干什么：显示在 Agent 标题后面（仅当前活跃的 Agent） */}
-              {it.agent === activeAgent && activeStatus && (
-                <span className="ml-1 font-normal text-[10px] text-dim">{activeStatus}</span>
+    <div className="reasoning-block">
+      <button onClick={toggle} className="flex items-center gap-1 reasoning-title hover:opacity-80 transition-opacity text-left w-full">
+        <span className="text-[9px] flex-shrink-0">{open ? '▾' : '▸'}</span>
+        <span>思考过程</span>
+        {streaming
+          ? <span className="ml-1 font-normal text-[10px]">{activeStatus || '思考中…'}</span>
+          : <span className="ml-1 font-normal text-[10px] text-dim">已完成</span>}
+      </button>
+      {open && (
+        <div className="mt-1.5 flex flex-col gap-2">
+          {merged.map((it, i) => (
+            <div key={i} className="animate-[fadeIn_0.15s_ease]">
+              {it.agent && merged.length > 1 && (
+                <div className="text-[11px] font-semibold mb-0.5 text-[var(--text)]">{displayAgent(it.agent)}</div>
               )}
-            </button>
-          )}
-          {openMap[i] !== false && (
-            <div className="text-[11px] leading-relaxed text-dim pl-2 border-l-2 hairline">
-              {/* 需求澄清（reasonix 式）：思维链内直接提问，选项点击后同一轮流程内继续 */}
-              {(it as any).clarify ? (
-                <div className="flex flex-col gap-1.5 py-1">
-                  <p className="text-[11px] font-medium text-[var(--text)]">🤔 {(it as any).clarify.question}</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {((it as any).clarify.options as string[]).map(o => (
-                      <button key={o} onClick={() => onClarifyPick && onClarifyPick(o)}
-                        className="chip text-left text-[11px] px-2.5 py-1 transition-all hover:opacity-80">
-                        {o}
-                      </button>
-                    ))}
+              <div className="text-[11px] leading-relaxed text-dim">
+                {/* 需求澄清（reasonix 式）：思维链内直接提问，选项点击后同一轮流程内继续 */}
+                {(it as any).clarify ? (
+                  <div className="flex flex-col gap-1.5 py-1">
+                    <p className="text-[11px] font-medium text-[var(--text)]">🤔 {(it as any).clarify.question}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {((it as any).clarify.options as string[]).map(o => (
+                        <button key={o} onClick={() => onClarifyPick && onClarifyPick(o)}
+                          className="chip text-left text-[11px] px-2.5 py-1 transition-all hover:opacity-80">
+                          {o}
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={() => onClarifyPick && onClarifyPick(null)}
+                      className="text-[10px] text-dim hover:text-[var(--text)] w-fit">直接生成（跳过澄清）</button>
                   </div>
-                  <button onClick={() => onClarifyPick && onClarifyPick(null)}
-                    className="text-[10px] text-dim hover:text-[var(--text)] w-fit">直接生成（跳过澄清）</button>
-                </div>
-              ) : plain ? (
-                <div className="whitespace-pre-wrap break-words">{it.content}</div>
-              ) : (
-                <div className="md-think-body" dangerouslySetInnerHTML={{ __html: renderMd(it.content) }} />
-              )}
+                ) : streaming ? (
+                  <div className="whitespace-pre-wrap break-words">{it.content}</div>
+                ) : (
+                  <div className="md-think-body" dangerouslySetInnerHTML={{ __html: renderMd(it.content) }} />
+                )}
+              </div>
             </div>
-          )}
+          ))}
         </div>
-      ))}
+      )}
     </div>
   )
 }
 
-/** 思考过程（按 Agent 逐个折叠）：每个 Agent 一行折叠头，点击展开该 Agent 的思考内容；
- * 未展开时显示内容预览；展开后 markdown 渲染。 */
-function AgentThinkList({ think, onClarifyPick }: { think?: Array<{ agent: string; content: string; clarify?: { question: string; options: string[] } }> | string[]; onClarifyPick?: (option: string | null) => void }) {
-  const [openSet, setOpenSet] = useState<Set<number>>(new Set())
-  const items = (think || []).map((it, i) => (typeof it === 'string' ? { agent: '', content: it, i } : { ...it, i }))
-    .filter(it => it.agent !== '运行统计')  // 运行统计独立显示在回答下方
-  if (items.length === 0) return null
-  const toggle = (i: number) => setOpenSet(prev => {
-    const n = new Set(prev)
-    if (n.has(i)) n.delete(i); else n.add(i)
-    return n
-  })
-  return (
-    <div className="mb-3 flex flex-col gap-0.5">
-      {items.map(it => (
-        <div key={it.i} className="flex flex-col">
-          <button onClick={() => toggle(it.i)}
-            className="flex items-center gap-1.5 py-0.5 text-[11px] font-semibold hover:opacity-80 transition-opacity text-left">
-            <span className="flex-shrink-0">{displayAgent(it.agent) || '思考'}</span>
-            {/* 右侧小箭头：点击展开该 Agent 的思考内容 */}
-            <span className={`text-dim text-[9px] transition-transform ${openSet.has(it.i) ? 'rotate-90' : ''}`}>▸</span>
-          </button>
-          {openSet.has(it.i) && (
-            <div className="pl-1">
-              <ThinkBlock items={[{ agent: '', content: it.content, clarify: (it as any).clarify }]} onClarifyPick={onClarifyPick} />
-            </div>
-          )}
-        </div>
-      ))}
-    </div>
-  )
-}
