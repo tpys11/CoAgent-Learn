@@ -64,6 +64,42 @@ def _as_dict(data):
     return {}
 
 
+def _mindchain_display_name(name):
+    """思维链显示名：去掉 ·规划/·生成 阶段后缀；历史旧名/极速档伪标题统一为学习助手（与前端 displayAgent 一致）"""
+    import re as _re
+    if not name or not isinstance(name, str):
+        return name
+    m = _re.match(r"^(.*?)·(规划|生成)$", name)
+    base = m.group(1) if m else name
+    if base in ("主 Agent", "主Agent", "综合概述性记忆"):
+        return "学习助手"
+    return base
+
+
+def _merge_mindchain(mc):
+    """合并同名 agent 的连续思维链条目（同一 agent 规划→生成只显示一个标题），并过滤空内容条目"""
+    if not mc:
+        return []
+    out = []
+    for it in mc:
+        if not isinstance(it, dict):
+            continue
+        name = it.get("agent", "")
+        content = it.get("content", "") or ""
+        if not content.strip() and not it.get("clarify"):
+            continue  # 空内容（无实际产出）条目不展示
+        dn = _mindchain_display_name(name)
+        if out and _mindchain_display_name(out[-1].get("agent", "")) == dn and dn:
+            # 连续同名：内容拼接进上一条（保留 clarify 优先）
+            if it.get("clarify"):
+                out[-1]["clarify"] = it["clarify"]
+            if content:
+                out[-1]["content"] = (out[-1].get("content", "") + "\n" + content).strip()
+        else:
+            out.append({"agent": name, "content": content, **({"clarify": it["clarify"]} if it.get("clarify") else {})})
+    return out
+
+
 @app.get("/api/global-profile")
 async def get_global_profile(session_id: str = "default"):
     from core.postgres_client import pg_client
@@ -1102,12 +1138,11 @@ def _auto_settings(api_key: str, message: str, template: str = "思考", infer_m
     _model_field = "\"model\": \"deepseek-v4-pro|deepseek-v4-flash|glm-4-plus|glm-4-flash\", " if infer_model else ""
     prompt = (
         "你是对话设置分析器。模板已由用户选定，请根据用户的输入内容，推断其余最适合的对话设置，只输出 JSON：\n"
-        "{" + _model_field + "\"inputOptMode\": \"默认模式|详尽模式|不询问模式\", \"searchMode\": \"自由|知识库\", "
-        "\"webSearchMode\": \"默认|增强\", \"outputFormat\": \"低结构化|高结构化\", "
+        "{" + _model_field + "\"outputFormat\": \"低结构化|高结构化\", "
         "\"outputStyle\": \"MD文档|对话形式\", \"thinking\": \"开|关\", "
         "\"outputVolume\": \"精简|适中|拓展\", \"depth\": \"浅|中|深\"}\n"
         f"已选档位：{template}（极速=快模型最短响应、思考=完整流程+轻量单审、研究=完整流程+严格检测，推断时可参考）\n"
-        "推断规则：涉及学习/讲解/推导用较深深度与适中输出；复杂主题适当加重输出量；简单问答用精简；无需搜索则 webSearchMode=默认。\n"
+        "推断规则：涉及学习/讲解/推导用较深深度与适中输出；复杂主题适当加重输出量；简单问答用精简。\n"
         "模型推断规则（仅在要求推断模型时）：复杂/长篇任务用 deepseek-v4-pro 或 glm-4-plus；简单问答用 deepseek-v4-flash 或 glm-4-flash。\n"
         f"用户输入：{message[:1500]}"
     )
@@ -1125,9 +1160,6 @@ def _auto_settings(api_key: str, message: str, template: str = "思考", infer_m
             return {}
         # 只接受合法取值，非法字段丢弃（template 由用户选择，不参与推断）
         ok = {
-            "inputOptMode": ["默认模式", "详尽模式", "不询问模式"],
-            "searchMode": ["自由", "知识库"],
-            "webSearchMode": ["默认", "增强"],
             "outputFormat": ["低结构化", "高结构化"],
             "outputStyle": ["MD文档", "对话形式"],
             "thinking": ["开", "关"],
@@ -1148,7 +1180,7 @@ def _auto_settings(api_key: str, message: str, template: str = "思考", infer_m
 
 def _apply_template(agents, tpl: str):
     """按档位调整 agents 配置：
-    极速=主Agent生成用快模型；思考/研究=默认编排（研究档的多轮搜索与独立检测为后续增强）。"""
+    极速=学习助手生成用快模型；思考/研究=默认编排（研究档的多轮搜索与独立检测为后续增强）。"""
     if not agents:
         return agents
     out = list(agents)
@@ -1378,7 +1410,9 @@ async def chat(req: ChatRequest):
                     _t0 = _time.time()
                     result = wf.invoke({"user_input": req.message, "project_id": pid, "dialogue_id": _did, "session_id": req.session_id or "default", "mode": req.mode or "kb", "image": req.image or "", "steps": [], "mindchain": []})
                     # 用户手动停止：不落库、不执行记忆/追问等后处理（前端已保留流式显示内容；避免旧线程与新消息乱序/竞态）
+                    # 必须发一个带空 reply 的 done 让 SSE 主循环 break，否则主循环无限心跳、前端永久卡"正在输出回答…"
                     if cancel_evt.is_set():
+                        token_queue.put(("done", {"final_reply": "", "steps": [], "mindchain": [], "task_stats": {}}))
                         return
                     # 需求澄清（reasonix 式）：plan 判定用户需求不明确 → 发 clarify 事件中断流程，前端弹选项；
                     # 不落库、不后处理（用户选择后作为新消息重发，走完整流程）
@@ -1391,56 +1425,65 @@ async def chat(req: ChatRequest):
                         result["special_suggestions"] = _suggest_special_forms(req.api_key, result.get("final_reply", ""), req.base_url)
                     else:
                         result["special_suggestions"] = []
-                    # 专注时长：本次任务完成，累加进项目 stats（可视化反馈：专注时长 + token 用量）
-                    try:
-                        from core.postgres_client import pg_client as _pg4
-                        _dur = max(0, int(_time.time() - _t0))
-                        _srow = _pg4.execute("SELECT id, duration_seconds FROM stats WHERE project_id=%s ORDER BY updated_at DESC LIMIT 1", (pid,))
-                        if _srow:
-                            _pg4.execute("UPDATE stats SET duration_seconds=%s, updated_at=datetime('now') WHERE id=%s",
-                                         ((_srow[0]["duration_seconds"] or 0) + _dur, _srow[0]["id"]))
-                        else:
-                            _pg4.execute("INSERT INTO stats(project_id, duration_seconds) VALUES(%s,%s)", (pid, _dur))
-                        # 按天落库：主页趋势图（专注时长·最近30天）数据源
-                        if _dur > 0:
-                            _pg4.execute("INSERT INTO focus_log(project_id, dialogue_id, duration_seconds) VALUES(%s,%s,%s)", (pid, _did, _dur))
-                    except Exception as _e:
-                        print("[stats-duration]", _e)
-                    # 记录本次任务的运行统计（Agent 界面·运行监控）
-                    try:
-                        import json as _json
-                        from core.postgres_client import pg_client as _pg2
-                        _ts = result.get("task_stats") or {}
-                        if _ts:
-                            _pg2.execute("INSERT INTO task_stats(project_id,dialogue_id,data) VALUES(%s,%s,%s)",
-                                         (pid, _did, _json.dumps(_ts, ensure_ascii=False)))
-                    except Exception as _e:
-                        print("[task_stats]", _e)
-                    # invoke 后存 AI 回复（含思维链 mindchain 落库，刷新后保留）
-                    try:
-                        from core.postgres_client import pg_client as _pg
-                        _reply=result.get("final_reply","")
-                        if _reply:
-                            _think = _json.dumps(result.get("mindchain") or [], ensure_ascii=False)
-                            _pg.execute("INSERT INTO messages(dialogue_id,role,content,think) VALUES(%s,%s,%s,%s)",(_did,"assistant",_reply,_think))
-                    except Exception as _e:
-                        print("[存储]",_e)
-                    # 自动保存生成物到"我的上传"（设置开关 autoSaveResource）
-                    if req.settings and req.settings.get('autoSaveResource') and result.get("final_reply"):
-                        try:
-                            import hashlib as _hl
-                            from core.postgres_client import pg_client as _pg3
-                            _fr = result.get("final_reply","")
-                            _nm = "对话生成·" + _fr.strip()[:14]
-                            _rid = _hl.md5((_nm + pid).encode()).hexdigest()[:16]
-                            _has = _pg3.execute("SELECT id FROM resources WHERE id=%s", (_rid,))
-                            if _has:
-                                _pg3.execute("UPDATE resources SET content=%s WHERE id=%s", (_fr[:6000], _rid))
-                            else:
-                                _pg3.execute("INSERT INTO resources (id, name, content, project_id) VALUES (%s,%s,%s,%s)", (_rid, _nm, _fr[:6000], pid))
-                        except Exception as _e:
-                            print("[auto-save]", _e)
+                    # 思维链处理：合并同名 agent 的连续条目（同一 agent 规划→生成只显示一个标题）；
+                    # 简单问题在 plan_node 已不产出思维链（mindchain 为空），此处合并后仍为空，前端不展示
+                    result["mindchain"] = _merge_mindchain(result.get("mindchain") or [])
+                    # 立即发 done（回复已完整）：stats/focus_log/task_stats/落库等写入移到后台线程，
+                    # 避免 Windows 挂载卷上 SQLite 瞬时锁阻塞 done → 前端状态卡"正在输出回答"、发送键不复位
                     token_queue.put(("done", result))
+                    def _persist():
+                        import time as _time2
+                        # 专注时长：本次任务完成，累加进项目 stats（可视化反馈：专注时长 + token 用量）
+                        try:
+                            from core.postgres_client import pg_client as _pg4
+                            _dur = max(0, int(_time2.time() - _t0))
+                            _srow = _pg4.execute("SELECT id, duration_seconds FROM stats WHERE project_id=%s ORDER BY updated_at DESC LIMIT 1", (pid,))
+                            if _srow:
+                                _pg4.execute("UPDATE stats SET duration_seconds=%s, updated_at=datetime('now') WHERE id=%s",
+                                             ((_srow[0]["duration_seconds"] or 0) + _dur, _srow[0]["id"]))
+                            else:
+                                _pg4.execute("INSERT INTO stats(project_id, duration_seconds) VALUES(%s,%s)", (pid, _dur))
+                            # 按天落库：主页趋势图（专注时长·最近30天）数据源
+                            if _dur > 0:
+                                _pg4.execute("INSERT INTO focus_log(project_id, dialogue_id, duration_seconds) VALUES(%s,%s,%s)", (pid, _did, _dur))
+                        except Exception as _e:
+                            print("[stats-duration]", _e)
+                        # 记录本次任务的运行统计（Agent 界面·运行监控）
+                        try:
+                            import json as _json2
+                            from core.postgres_client import pg_client as _pg2
+                            _ts = result.get("task_stats") or {}
+                            if _ts:
+                                _pg2.execute("INSERT INTO task_stats(project_id,dialogue_id,data) VALUES(%s,%s,%s)",
+                                             (pid, _did, _json2.dumps(_ts, ensure_ascii=False)))
+                        except Exception as _e:
+                            print("[task_stats]", _e)
+                        # invoke 后存 AI 回复（含思维链 mindchain 落库，刷新后保留）
+                        try:
+                            import json as _json3
+                            from core.postgres_client import pg_client as _pg
+                            _reply=result.get("final_reply","")
+                            if _reply:
+                                _think = _json3.dumps(result.get("mindchain") or [], ensure_ascii=False)
+                                _pg.execute("INSERT INTO messages(dialogue_id,role,content,think) VALUES(%s,%s,%s,%s)",(_did,"assistant",_reply,_think))
+                        except Exception as _e:
+                            print("[存储]",_e)
+                        # 自动保存生成物到"我的上传"（设置开关 autoSaveResource）
+                        if req.settings and req.settings.get('autoSaveResource') and result.get("final_reply"):
+                            try:
+                                import hashlib as _hl
+                                from core.postgres_client import pg_client as _pg3
+                                _fr = result.get("final_reply","")
+                                _nm = "对话生成·" + _fr.strip()[:14]
+                                _rid = _hl.md5((_nm + pid).encode()).hexdigest()[:16]
+                                _has = _pg3.execute("SELECT id FROM resources WHERE id=%s", (_rid,))
+                                if _has:
+                                    _pg3.execute("UPDATE resources SET content=%s WHERE id=%s", (_fr[:6000], _rid))
+                                else:
+                                    _pg3.execute("INSERT INTO resources (id, name, content, project_id) VALUES (%s,%s,%s,%s)", (_rid, _nm, _fr[:6000], pid))
+                            except Exception as _e:
+                                print("[auto-save]", _e)
+                    threading.Thread(target=_persist, daemon=True).start()
                     # 后台异步分析记忆 + 生成追问（开关可配）
                     try:
                         reply = result.get("final_reply", "")
