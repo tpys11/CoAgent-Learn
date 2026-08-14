@@ -226,6 +226,51 @@ class ResourceSave(BaseModel):
     project_id: str = "default"
 
 
+class GenerateDomainReq(BaseModel):
+    domain: str
+    api_key: str = ""
+    base_url: str = "https://api.deepseek.com/v1"
+    model: str = "deepseek-v4-flash"
+
+
+@app.post("/api/generate-domain")
+async def generate_domain(req: GenerateDomainReq):
+    """新建领域：AI 生成该领域的系统学习教程 + 百科词条"""
+    import requests as _req
+    from core.memory_analysis import _extract_json
+    name = (req.domain or "").strip()
+    if not name:
+        return {"status": "error", "msg": "领域名称不能为空"}
+    prompt = (
+        "请为领域「" + name + "」生成学习资源内容，严格输出 JSON（不要 markdown 代码块，不要额外文字）：\n"
+        "{\n"
+        "  \"tutorials\": [\n"
+        "    {\"title\": \"教程名称\", \"category\": \"系统学习 或 技术工具\", \"desc\": \"一句话简介\", \"url\": \"\"}\n"
+        "  ],\n"
+        "  \"wiki\": [\n"
+        "    {\"name\": \"词条名称\", \"theme\": \"主题分组\", \"intro\": \"一句话简介\", \"detail\": \"详细介绍（100字左右）\"}\n"
+        "  ]\n"
+        "}\n"
+        "要求：tutorials 生成 3-4 篇（覆盖系统学习和技术工具两类）；wiki 生成 5-8 个该领域核心词条。"
+    )
+    try:
+        h = {"Authorization": "Bearer " + (req.api_key or ""), "Content-Type": "application/json"}
+        resp = _req.post(
+            req.base_url.rstrip("/") + "/chat/completions",
+            json={"model": req.model, "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]},
+            headers=h, timeout=90,
+        )
+        if resp.status_code != 200:
+            return {"status": "error", "msg": "模型调用失败（HTTP " + str(resp.status_code) + "），请检查 API Key"}
+        content = resp.json()["choices"][0]["message"]["content"] or ""
+        data = _extract_json(content)
+        if not data:
+            return {"status": "error", "msg": "AI 返回内容无法解析"}
+        return {"status": "ok", "tutorials": data.get("tutorials") or [], "wiki": data.get("wiki") or []}
+    except Exception as e:
+        return {"status": "error", "msg": str(e)[:200]}
+
+
 @app.get("/api/resources")
 async def list_resources(project_id: str = "default"):
     from core.postgres_client import pg_client

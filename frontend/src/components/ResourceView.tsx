@@ -209,6 +209,8 @@ const WIKI_ENTRIES: WikiEntry[] = [
 
 const TUTORIALS_KEY = 'coagent-tutorials'
 const CUSTOM_GENS_KEY = 'coagent-custom-gens'
+const DOMAINS_KEY = 'coagent-domains'
+const WIKI_KEY = 'coagent-custom-wiki'
 
 /** 我的生成：预设分类（按生成物类型匹配） */
 const GEN_CATS = [
@@ -276,8 +278,20 @@ export default function ResourceView({ projectId, onUseItem }: { projectId: stri
   const [tutorials, setTutorials] = useState<Tutorial[]>(() => {
     try { return JSON.parse(localStorage.getItem(TUTORIALS_KEY) || '[]') } catch { return [] }
   })
-  // 领域（系统预设）
+  // 领域：系统预设 + 自定义（localStorage 持久化）
+  const [customDomains, setCustomDomains] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem(DOMAINS_KEY) || '[]') } catch { return [] }
+  })
+  const domains = [...DEFAULT_DOMAINS, ...customDomains]
   const [selectedDomain, setSelectedDomain] = useState(DEFAULT_DOMAINS[0])
+  // 自定义百科词条（新建领域 AI 生成后存 localStorage）
+  const [customWiki, setCustomWiki] = useState<WikiEntry[]>(() => {
+    try { return JSON.parse(localStorage.getItem(WIKI_KEY) || '[]') } catch { return [] }
+  })
+  // 新建领域
+  const [showNewDomain, setShowNewDomain] = useState(false)
+  const [newDomainName, setNewDomainName] = useState('')
+  const [newDomainLoading, setNewDomainLoading] = useState(false)
   // 分类（固定三类）
   const [selectedCat, setSelectedCat] = useState(CATEGORIES[0].key)
   // 百科：主题筛选（顶部按钮）
@@ -405,6 +419,43 @@ export default function ResourceView({ projectId, onUseItem }: { projectId: stri
     saveTutorials(tutorials.filter(t => t.id !== id))
   }
 
+  // 新建领域：调后端 AI 生成该领域的教程 + 百科词条，存 localStorage
+  const createDomain = async () => {
+    const name = newDomainName.trim()
+    if (!name) return
+    if (domains.includes(name)) { alert('该领域已存在'); return }
+    setNewDomainLoading(true)
+    try {
+      const r = await fetch('/api/generate-domain', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain: name, api_key: localStorage.getItem('coagent-apikey') || '' }),
+      })
+      const d = await r.json()
+      if (d.status === 'ok') {
+        const nt = (d.tutorials || []).map((t: any) => ({ ...t, id: 'dom-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), domain: name, preset: false }))
+        const nw = (d.wiki || []).map((w: any) => ({ ...w, domain: name }))
+        const nextT = [...tutorials, ...nt]
+        const nextW = [...customWiki, ...nw]
+        saveTutorials(nextT)
+        setCustomWiki(nextW)
+        localStorage.setItem(WIKI_KEY, JSON.stringify(nextW))
+        const nextDomains = [...customDomains, name]
+        setCustomDomains(nextDomains)
+        localStorage.setItem(DOMAINS_KEY, JSON.stringify(nextDomains))
+        setSelectedDomain(name)
+        setSelectedCat(CATEGORIES[0].key)
+        setNewDomainName('')
+        setShowNewDomain(false)
+      } else {
+        alert('生成失败：' + (d.msg || '请检查 API Key'))
+      }
+    } catch (e) {
+      alert('生成失败：' + e)
+    } finally {
+      setNewDomainLoading(false)
+    }
+  }
+
   // ---------- 我的上传 ----------
   const deleteResource = (id: string) => {
     if (!window.confirm('确定删除该资料？')) return
@@ -498,7 +549,7 @@ export default function ResourceView({ projectId, onUseItem }: { projectId: stri
   }))
 
   // 百科词条（当前领域）
-  const wikiEntries = WIKI_ENTRIES.filter(w => w.domain === selectedDomain)
+  const wikiEntries = [...WIKI_ENTRIES, ...customWiki].filter(w => w.domain === selectedDomain)
   const wikiThemes = Array.from(new Set(wikiEntries.map(w => w.theme)))
   const filteredWiki = wikiTheme === 'all' ? wikiEntries : wikiEntries.filter(w => w.theme === wikiTheme)
 
@@ -723,23 +774,6 @@ const exportItem = (item: ListItem) => {
     <div className="flex-1 h-full min-w-0 flex flex-col panel rounded-3xl overflow-hidden">
       {/* 顶部 Hero：主题化配色（跟随 light/dark/warm） */}
       <div className="flex-shrink-0 px-8 pt-6 pb-6 bg-[var(--bg-panel)] border-b border-[var(--border-color)]">
-          {/* 领域选择（逻辑上最先选领域：置于最顶、靠左展开） */}
-          <div className="flex items-center gap-3 mb-4 flex-wrap">
-            {DEFAULT_DOMAINS.map(d => { const c = domainColor(d); return (
-              <button
-                key={d}
-                onClick={() => { setSelectedDomain(d); setSelectedCat(CATEGORIES[0].key); setDetail(null) }}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-all ${
-                  selectedDomain === d
-                    ? `${c.active} text-white border-transparent shadow-soft`
-                    : `${c.bg} ${c.text} ${c.border} ${c.hover}`
-                }`}
-              >
-                {d}
-              </button>
-            ) })}
-          </div>
-
           {/* 三个区域选择（教程资源 / 我的生成 / 我的上传） */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
             {([
@@ -770,22 +804,27 @@ const exportItem = (item: ListItem) => {
       <div className="flex-1 flex min-h-0">
         {tab === 'tutorials' && (
           <div className="w-40 flex-shrink-0 border-r hairline bg-[var(--bg-sidebar)] p-2.5 flex flex-col gap-1 overflow-y-auto">
-            {CATEGORIES.map(c => {
-              const Icon = CAT_ICONS[c.key]
-              const active = selectedCat === c.key
+            <p className="text-[10px] font-bold text-dim uppercase tracking-wider px-2.5 mt-1 mb-0.5">领域</p>
+            {domains.map(d => {
+              const c = domainColor(d)
+              const active = selectedDomain === d
               return (
                 <button
-                  key={c.key}
-                  onClick={() => { setSelectedCat(c.key); setDetail(null) }}
+                  key={d}
+                  onClick={() => { setSelectedDomain(d); setSelectedCat(CATEGORIES[0].key); setDetail(null) }}
                   className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-colors ${
                     active ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
                   }`}
                 >
-                  {Icon && <Icon size={14} className={active ? 'text-white' : 'text-dim'} />}
-                  <span className="font-semibold">{c.key}</span>
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${c.active}`} />
+                  <span className="font-semibold truncate">{d}</span>
                 </button>
               )
             })}
+            <button onClick={() => setShowNewDomain(true)}
+              className="flex items-center gap-2 px-3 py-2 mt-1 rounded-xl text-xs text-dim hover:bg-[var(--bg-hover)] transition-colors">
+              <Plus size={13} /> 新建领域
+            </button>
           </div>
         )}
         {tab === 'generated' && (
@@ -818,7 +857,36 @@ const exportItem = (item: ListItem) => {
         )}
         <div className="flex-1 overflow-y-auto px-10 py-8">
           <div className="max-w-6xl mx-auto">
-          {tab === 'tutorials' && (selectedCat === WIKI_CAT ? wikiSection : tutorialSection)}
+          {tab === 'tutorials' && (
+            <>
+              {showNewDomain && (
+                <div className="border border-[var(--border-color)] rounded-2xl p-4 mb-5 flex flex-col gap-2 bg-[var(--bg-panel)] shadow-soft">
+                  <p className="text-sm font-semibold">新建领域</p>
+                  <input autoFocus value={newDomainName} onChange={e => setNewDomainName(e.target.value)} placeholder="领域名称（如：机器学习 / 前端开发）"
+                    className="px-3 py-2 text-xs input-surface rounded-xl outline-none" />
+                  <p className="text-[11px] text-dim">将由 AI 自动生成该领域的系统学习教程与百科词条</p>
+                  <div className="flex gap-2 justify-end">
+                    <button onClick={() => { setShowNewDomain(false); setNewDomainName('') }} className="px-3 py-1.5 text-[11px] text-dim rounded-xl row-hover">取消</button>
+                    <button onClick={createDomain} disabled={newDomainLoading}
+                      className="px-3 py-1.5 text-[11px] bg-[#1a1a1a] text-white font-semibold rounded-xl disabled:opacity-50">
+                      {newDomainLoading ? '生成中…' : '生成领域内容'}
+                    </button>
+                  </div>
+                </div>
+              )}
+              <div className="flex gap-2 flex-wrap mb-6">
+                {CATEGORIES.map(c => (
+                  <button key={c.key} onClick={() => { setSelectedCat(c.key); setDetail(null) }}
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                      selectedCat === c.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'
+                    }`}>
+                    {c.key}
+                  </button>
+                ))}
+              </div>
+              {selectedCat === WIKI_CAT ? wikiSection : tutorialSection}
+            </>
+          )}
           {tab === 'generated' && (
             <>
               <div className="flex items-end justify-between mb-5">
