@@ -348,19 +348,20 @@ def _get_reranker():
 
 
 def list_docs(project_id: str) -> list:
-    """列出项目知识库的文档（按 source 聚合）"""
+    """列出项目知识库的文档（按 source 聚合）。
+    只返回 source/chunks/preview/tree——不返回每块完整正文（块多时响应可达几百 KB，
+    前端并不使用 blocks 内容，拉取/解析会拖慢界面加载）。"""
     rows = _db.get_kb_docs(project_id)
     if not rows:
         return []
     grouped = {}
     for r in rows:
         src = r["source"] or "未命名"
-        g = grouped.setdefault(src, {"source": src, "chunks": 0, "preview": "", "blocks": []})
+        g = grouped.setdefault(src, {"source": src, "chunks": 0, "preview": ""})
         g["chunks"] += 1
         content = r["content"] or ""
         if not g["preview"]:
             g["preview"] = content[:150]
-        g["blocks"].append({"chunk": r["chunk"], "content": content})
         g["tree"] = _db.get_kb_tree(project_id, src)
     return list(grouped.values())
 
