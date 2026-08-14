@@ -305,13 +305,8 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             # 覆盖程序规则（_is_rule_simple）暂无覆盖的闲聊/寒暄场景（替代部分关键词规则）
             if result.get("category") == "chat" and not state["_plan"]:
                 state["complexity"] = "simple"
-            # 输出增强模板：解析主 Agent 按需选择的输出子 Agent
-            if tpl == "输出增强":
-                _all_subs = cfg.get("subAgents") or []
-                _sel = result.get("output_subs") or []
-                state["_output_subs"] = [s for s in _all_subs if s.get("id") in _sel][:3]
-            else:
-                state["_output_subs"] = []
+            # 输出增强能力已融入主 Agent 生成 prompt（用户要求特定形式时直接组织），不再按模板调度输出子 Agent
+            state["_output_subs"] = []
         except Exception:
             thinking = "规划失败，使用原始输入"
             state["processed_input"] = state["user_input"]
@@ -584,29 +579,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                     pass
         except Exception:
             pass
-        # 输出增强模板：调用主 Agent 的子 Agent（如 树状结构/要点卡片）产出专项内容，主 Agent 基于其生成
-        main_subs = cfg.get("subAgents") or []
-        # 输出增强模板：按主 Agent 规划时选择的子 Agent 调用（按需）
-        if tpl == "输出增强" and main_subs:
-            sel_ids = [s.get("id") for s in (state.get("_output_subs") or [])]
-            subs = [s for s in main_subs if s.get("id") in sel_ids] if sel_ids else []
-            sub_parts = []
-            for sub in subs:
-                try:
-                    _sp = (sub.get("subPrompt") or "") + "\n只输出该形式的内容本身。"
-                    _form = sub.get("form") or ""
-                    _in = f"主题：{state['user_input'][:500]}\n\n参考材料：\n" + context[-2500:]
-                    # 输出增强：作为独立子 Agent 在思维链中展示（"输出增强"标题），流程图/表格等是其生成能力
-                    _t, _r = think_then_json(llm_fast, _sp, _in, sub.get("name") or "输出增强")
-                    _c = (_r.get("content") if isinstance(_r, dict) and _r.get("content") else _t) or ""
-                    if _c:
-                        sub_parts.append(f"【{sub.get('name')}{'（' + _form + '）' if _form else ''}】\n" + str(_c)[:1500])
-                        new_mc.append({"agent": "输出增强", "content": f"已产出「{_form}」：" + str(_c)[:200]})
-                except Exception:
-                    pass
-            if sub_parts:
-                state["sub_outputs"] = {**(state.get("sub_outputs") or {}), "gen": "\n\n".join(sub_parts)}
-                context += "\n\n【子Agent 专项产出（请基于这些产出组织最终回答）】\n" + state["sub_outputs"]["gen"]
+        # 输出增强能力已融入主 Agent（见 MAIN_GENERATE_PROMPT 输出形式指令），不再按模板调用输出子 Agent
         try:
             # 简单问题/极速档：非思考模式直接生成回答（无说明文字，规划后马上流式输出，不再显示生成阶段）；
             # 复杂问题：思考模式深入生成
