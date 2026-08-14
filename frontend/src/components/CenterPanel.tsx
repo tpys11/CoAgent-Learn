@@ -509,6 +509,7 @@ const TEMPLATE_OPTIONS = [
           {/* 浮动输入坞 */}
           <div className="card-lift p-3 flex flex-col gap-2">
             <textarea
+              name="chat-input"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}

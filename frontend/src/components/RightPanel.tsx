@@ -234,6 +234,7 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
               {WINDOWS.map(w => (
                 <label key={w.key} className="flex items-center gap-2 px-2 py-1.5 rounded-lg row-hover cursor-pointer">
                   <input
+                    name={'win-' + w.key}
                     type="checkbox" checked={visible[w.key]} onChange={() => toggleWin(w.key)}
                     className="w-3.5 h-3.5 accent-[var(--accent)]"
                   />
@@ -287,7 +288,7 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
                 </div>
                 <div className="p-2.5 flex-shrink-0">
                   <div className="chip flex items-center gap-1.5 px-2 py-1">
-                    <textarea placeholder="在此提问..." rows={1} value={sideInput}
+                    <textarea name="side-chat-input" placeholder="在此提问..." rows={1} value={sideInput}
                       onChange={e => setSideInput(e.target.value)}
                       className="flex-1 px-1.5 py-1 bg-transparent text-xs outline-none resize-none"
                       style={{ background: 'transparent' }}
