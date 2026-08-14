@@ -218,34 +218,48 @@ def _is_disallowed_host(host: str) -> bool:
     return False
 
 
+def _safe_get(page_url: str, timeout: int = 15) -> str:
+    """安全 GET：不跟随重定向，手动逐跳（最多 3 跳）校验 host（防 SSRF 经 302 绕过私网/云 metadata）。
+    返回响应文本；拒绝私网/回环/链路本地主机，重定向目标同样校验。"""
+    from urllib.parse import urlparse
+    import requests as _req
+    headers = {"User-Agent": "Mozilla/5.0 (coagent-learn)"}
+    cur = page_url
+    for _ in range(4):
+        host = (urlparse(cur).hostname or "").strip()
+        if not host or _is_disallowed_host(host):
+            raise ValueError("拒绝访问私网/回环地址")
+        resp = _req.get(cur, timeout=timeout, headers=headers, allow_redirects=False)
+        if resp.status_code in (301, 302, 303, 307, 308) and resp.headers.get("Location"):
+            cur = _req.compat.urljoin(cur, resp.headers["Location"])
+            continue
+        resp.raise_for_status()
+        return resp.text
+    raise ValueError("重定向次数过多")
+
+
 def _fetch_site_text(base_url: str) -> str:
     """链接上传抓取：sitemap 定位全部页面 → requests 并发抓取（带重试）→ trafilatura 提取正文。
     requests 负责网络（对 GitHub Pages 等站点 TLS 兼容性好），trafilatura 只负责正文提取（业界标准）。
-    仅 http/https、拒绝私网主机、同域名、限页数/总字符。"""
+    仅 http/https、拒绝私网主机（含重定向逐跳校验）、同域名、限页数/总字符。"""
     import re as _re
-    import time as _time
     from urllib.parse import urlparse
     from concurrent.futures import ThreadPoolExecutor
-    import requests as _req
     base_host = urlparse(base_url).netloc
-    headers = {"User-Agent": "Mozilla/5.0 (coagent-learn)"}
 
     def _page_text(u: str) -> str:
         import trafilatura
         try:  # GitHub Pages 等偶发 TLS 断开，失败直接跳过该页（并发下不拖慢整批）
-            resp = _req.get(u, timeout=15, headers=headers)
-            resp.raise_for_status()
-            return (trafilatura.extract(resp.text, url=u, include_comments=False, include_tables=True) or "").strip()
+            return (trafilatura.extract(_safe_get(u, timeout=15), url=u, include_comments=False, include_tables=True) or "").strip()
         except Exception:
             return ""
 
     # 1. sitemap 定位全部页面（文档站普遍有；同域名过滤，排除多语言版本路径）
     page_urls: list[str] = []
     try:
-        r = _req.get(base_url.rstrip("/") + "/sitemap.xml", timeout=15, headers=headers)
-        if r.status_code == 200:
-            page_urls = [u for u in _re.findall(r"<loc>([^<]+)</loc>", r.text)
-                         if urlparse(u).netloc == base_host and "/index." not in u]
+        r = _safe_get(base_url.rstrip("/") + "/sitemap.xml", timeout=15)
+        page_urls = [u for u in _re.findall(r"<loc>([^<]+)</loc>", r)
+                     if urlparse(u).netloc == base_host and "/index." not in u]
     except Exception:
         pass
     # 2. 主页面（sitemap 未命中时兜底）
@@ -279,7 +293,9 @@ async def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
     try:
         text = _fetch_site_text(url)
     except Exception as e:
-        return {"status": "error", "msg": f"抓取链接失败：{e}"}
+        import logging
+        logging.getLogger("kb").warning(f"链接抓取失败 {url}: {e}")  # 细节只进日志，不回显客户端
+        return {"status": "error", "msg": "抓取链接失败（链接不可访问或内容无法解析）"}
     if len(text.strip()) < 20:
         return {"status": "error", "msg": "链接内容过短或无法解析为文本"}
     if wait:

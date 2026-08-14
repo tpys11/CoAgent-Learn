@@ -108,22 +108,25 @@ class SQLiteClient:
         self.conn.commit()
 
     def upsert_kb_vectors_bulk(self, items: list):
-        """批量 upsert（单事务）：vec0 表不支持 UPDATE，先批量 DELETE 已存在 doc_id，
-        再批量 INSERT。大批量入库（如链接上传整书）从逐条 commit 降到一次 commit，
-        锁窗口从分钟级降到毫秒级（参考 DeepTutor 的批量索引插入）。
+        """批量 upsert：vec0 表不支持 UPDATE，先批量 DELETE 已存在 doc_id，再批量 INSERT。
+        分批（每批 500）提交：控制单事务时长（大批量从分钟级锁窗口降到秒级），
+        同时规避旧版 SQLite 的 SQLITE_MAX_VARIABLE_NUMBER（999）上限。
         items: [(doc_id, project_id, source, chunk, session_id, has_context, content, embedding)]"""
         if not items:
             return
         import sqlite_vec as _sv
-        ids = [it[0] for it in items]
-        ph = ",".join("?" * len(ids))
-        self.conn.execute(f"DELETE FROM kb_vectors WHERE doc_id IN ({ph})", ids)
-        self.conn.executemany(
-            "INSERT INTO kb_vectors(rowid, doc_id, project_id, source, chunk, session_id, has_context, content, embedding) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [(None, it[0], it[1], it[2], it[3], it[4], int(it[5]), it[6], _sv.serialize_float32(it[7])) for it in items],
-        )
-        self.conn.commit()
+        _BATCH = 500
+        for start in range(0, len(items), _BATCH):
+            batch = items[start:start + _BATCH]
+            ids = [it[0] for it in batch]
+            ph = ",".join("?" * len(ids))
+            self.conn.execute(f"DELETE FROM kb_vectors WHERE doc_id IN ({ph})", ids)
+            self.conn.executemany(
+                "INSERT INTO kb_vectors(rowid, doc_id, project_id, source, chunk, session_id, has_context, content, embedding) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [(None, it[0], it[1], it[2], it[3], it[4], int(it[5]), it[6], _sv.serialize_float32(it[7])) for it in batch],
+            )
+            self.conn.commit()
 
     def upsert_kb_tree(self, project_id: str, source: str, tree: list):
         """保存文档标题树（json）"""
