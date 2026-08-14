@@ -1,6 +1,6 @@
 """LangGraph 多智能体协同工作流（4-Agent 结构）
 
-主Agent(规划调度) → [学情与记忆管理 ∥ 知识库管理] 并行 → 主Agent(生成) → 审核 → 输出/重试
+学习助手(规划调度) → [学情与记忆管理 ∥ 知识库管理] 并行 → 学习助手(生成) → 审核 → 输出/重试
 
 支持按 Agent 配置覆盖：模型选择(跟随全局/强模型/快模型)、重试上限、记忆注入开关、
 启用/禁用、few-shot 示例；并收集 task_stats（各节点耗时/LLM调用次数/token估算）。
@@ -14,13 +14,10 @@ from langgraph.graph import StateGraph, END
 from core.base_llm import DeepSeekLLM
 from agents.prompts import (
     MAIN_PLAN_PROMPT, MAIN_GENERATE_PROMPT, CLARIFY_GEN_PROMPT,
-    STUDY_MEMORY_PROMPT, REVIEW_PROMPT,
+    REVIEW_PROMPT, GENERATE_RULES,
 )
 
-# 会话级学情画像缓存：同一会话内画像几乎不变，首次 flash 生成后直接复用（省每次 1 次 LLM 调用）
-_PROFILE_CACHE: dict = {}
-
-# 决策类节点（规划/学情/审核）使用的快模型：按 base_url 域名自动映射，映射不到则与主模型一致
+# 决策类节点（规划/审核）使用的快模型：按 base_url 域名自动映射，映射不到则与主模型一致
 FAST_MODEL_BY_BASE = {    'api.deepseek.com': 'deepseek-v4-flash',
     'api.openai.com': 'gpt-4o-mini',
     'dashscope.aliyuncs.com': 'qwen-turbo',
@@ -31,6 +28,23 @@ FAST_MODEL_BY_BASE = {    'api.deepseek.com': 'deepseek-v4-flash',
 
 # Agent 配置 id → 节点名
 AGENT_NODE = {'main': 'main', 'study': 'study', 'kb': 'kb', 'review': 'review'}
+
+
+def _resolve_plan_targets(tpl: str, plan: list) -> list[str]:
+    """规划路由的目标节点判定（纯函数，可单测）：
+    - 极速档：不做知识库检索/联网搜索 → 直接生成
+    - 思考档：仅当学习助手规划含"知识库管理/搜索增强"才调 kb 节点
+    - 研究档：无论规划结果如何，强制并入"搜索增强"（保证一轮联网搜索，体现档位差异；
+      多轮搜索(1-5轮)与其他模型厂商独立检测留作后续增强）
+    """
+    if tpl == "极速":
+        return ["generate"]
+    plan = list(plan or [])
+    if tpl == "研究" and "搜索增强" not in plan and "联网搜索" not in plan:
+        plan.append("搜索增强")
+    if "知识库管理" in plan or "搜索增强" in plan or "联网搜索" in plan:
+        return ["kb"]
+    return ["generate"]
 
 
 def _is_rule_simple(text: str) -> bool:
@@ -93,8 +107,7 @@ class AgentState(TypedDict):
     _plan: list
     mindchain: Annotated[list, operator.add]  # 并行节点各自追加思维链条目，按序合并
     task_stats: Annotated[dict, _merge_stats]  # 并行节点各写各的统计
-    sub_outputs: dict  # 子Agent产出：{kb: str, gen: str}
-    _output_subs: list  # 输出增强模板：主Agent规划时按需选择的输出子Agent列表
+    sub_outputs: dict  # 子Agent产出：{kb: str}
     clarify: dict  # 需求澄清（reasonix 式）：{question, options}，非空时中断流程，前端弹选项让用户明确需求
 
 
@@ -105,25 +118,10 @@ _DEFAULT_KB_SUBS = [
 ]
 
 
-def _build_out_cand(agents: list, tpl: str) -> str:
-    """输出增强模板：构造主 Agent 可选的输出子 Agent 候选提示；非输出增强或无子 Agent 时返回空串"""
-    if tpl != "输出增强":
-        return ""
-    _cfg = next((a for a in agents if isinstance(a, dict) and a.get("id") == "main"), {})
-    _subs = _cfg.get("subAgents") or []
-    if not _subs:
-        return ""
-    _cand = "；".join(f"{s.get('id')}={s.get('name')}({s.get('form', '')})" for s in _subs)
-    return (
-        f"\n输出增强模板：请根据用户问题按需选择 0-1 个输出子Agent（输出增强），在返回 JSON 中额外给出 \"output_subs\": [子Agent id 数组]。"
-        f"候选：{_cand}。若用户问题不需要结构化输出则返回空数组。"
-    )
-
-
 def create_workflow(api_key: str | None = None, settings: dict | None = None, on_token=None,
                     model: str | None = None, base_url: str | None = None, agents: list | None = None,
                     on_answer=None, cancel_event=None):
-    # on_answer：主Agent生成节点的最终回答逐 token 直接流式推送（不进思维链，对话区实时显示）
+    # on_answer：学习助手生成节点的最终回答逐 token 直接流式推送（不进思维链，对话区实时显示）
     # cancel_event：用户手动停止时置位（threading.Event），所有 LLM 流式调用内检查，尽早中断生成
     settings = settings or {}
     agents = agents or []
@@ -227,54 +225,40 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         except Exception as e:
             return f"执行异常: {e}", {}
 
-    # 根据设置构建 Agent 专属约束
-    output_format = settings.get('outputFormat', '高结构化')
-    output_style = settings.get('outputStyle', 'MD文档')
-    thinking_on = settings.get('thinking', '开') == '开'
-    volume = settings.get('outputVolume', '适中')
-    depth = settings.get('depth', '中')
-    input_mode = settings.get('inputOptMode', '默认模式')
-
-    _GENERATE_PROMPT = MAIN_GENERATE_PROMPT + (
-        f"\n输出要求: 结构化程度={output_format}，格式={output_style}，"
-        f"思考链={'展示' if thinking_on else '不展示'}，输出量={volume}，学习深度={depth}。"
-    )
-    _PLAN_PROMPT = MAIN_PLAN_PROMPT + (
-        f"\n用户设定了'输入优化-{input_mode}'模式，请据此决定询问策略。"
-        + (_OUT_CAND_PROMPT if (_OUT_CAND_PROMPT := _build_out_cand(agents, tpl)) else "")
-    )
+    # 生成 prompt：固定规则（会话摘要/搜索机制/输出要求）与前端「对话→全局性基础设定」文案对齐
+    _GENERATE_PROMPT = MAIN_GENERATE_PROMPT + GENERATE_RULES
+    # 规划 prompt：档位约束在 main.py 依据 template 设置，此处不再拼接前端已移除的设置项
+    _PLAN_PROMPT = MAIN_PLAN_PROMPT
 
     # ---------------- 节点 ----------------
 
     def plan_node(state: AgentState) -> AgentState:
-        """主 Agent·规划调度：输入处理 + 一次规划出子 Agent 调用清单（可并行）"""
-        new_steps = [{"agent": "主Agent·规划", "status": "running", "detail": "规划调度"}]
+        """学习助手·规划调度：输入处理 + 一次规划出子 Agent 调用清单（可并行）"""
+        new_steps = [{"agent": "学习助手·规划", "status": "running", "detail": "规划调度"}]
         new_mc: list = []
         t0 = time.time()
         cfg = _agent_cfg("main")
-        # 程序规则优先：问候/闲聊/极短问答 → 直接判 simple 并跳过规划 LLM（马上生成，最快路径）
+        # 程序规则优先：问候/闲聊/极短问答 → 直接判 simple 并跳过规划 LLM（马上生成，最快路径）。
+        # 简单问题不产出思维链（不 append mindchain，前端不展示任何 agent 标题，直接输出回答）
         if _is_rule_simple(state["user_input"]):
             _t0 = time.time()
-            new_mc.append({"agent": "主Agent·规划", "content": "简单问题（规则判定）：直接简洁回答"})
-            new_steps.append({"agent": "主Agent·规划", "status": "done", "detail": "规则判定简单，跳过规划"})
+            new_steps.append({"agent": "学习助手·规划", "status": "done", "detail": "规则判定简单，跳过规划"})
             return {
                 "processed_input": state["user_input"],
                 "_plan": [],
-                "_output_subs": [],
                 "complexity": "simple",
-                "mindchain": new_mc,
+                "mindchain": [],  # 简单问题：不展示思维链
                 "steps": new_steps,
                 "task_stats": _stats("plan", int((time.time() - _t0) * 1000), 0, 0),
             }
-        # 极速档：主 Agent 直接从综合概述性记忆生成，规划不再调用 LLM（流程只剩主 Agent 与审核与输出）
+        # 极速档：学习助手直接从综合概述性记忆生成，规划不再调用 LLM（流程只剩学习助手与审核与输出）
         if tpl == "极速":
             thinking = "极速档：跳过规划，直接基于综合概述性记忆生成"
-            new_mc.append({"agent": "主Agent·规划", "content": thinking})
-            new_steps.append({"agent": "主Agent·规划", "status": "done", "detail": "极速档：跳过规划"})
+            new_mc.append({"agent": "学习助手·规划", "content": thinking})
+            new_steps.append({"agent": "学习助手·规划", "status": "done", "detail": "极速档：跳过规划"})
             return {
                 "processed_input": state["user_input"],
                 "_plan": [],
-                "_output_subs": [],
                 "complexity": "simple",  # 极速档：跳过规划直接生成，视为简单问题
                 "mindchain": new_mc,
                 "steps": new_steps,
@@ -282,7 +266,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             }
         try:
             thinking, result = think_then_json(_pick_llm(cfg, llm_fast), _PLAN_PROMPT,
-                _append_example(cfg, state["user_input"]), "主Agent·规划")
+                _append_example(cfg, state["user_input"]), "学习助手·规划")
             state["processed_input"] = result.get("processed", state["user_input"])
             state["_plan"] = result.get("plan", []) or []
             state["complexity"] = result.get("complexity", "normal")
@@ -305,76 +289,22 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             # 覆盖程序规则（_is_rule_simple）暂无覆盖的闲聊/寒暄场景（替代部分关键词规则）
             if result.get("category") == "chat" and not state["_plan"]:
                 state["complexity"] = "simple"
-            # 输出增强能力已融入主 Agent 生成 prompt（用户要求特定形式时直接组织），不再按模板调度输出子 Agent
-            state["_output_subs"] = []
+            # 输出增强能力已融入学习助手生成 prompt（用户要求特定形式时直接组织），不再按模板调度输出子 Agent
         except Exception:
             thinking = "规划失败，使用原始输入"
             state["processed_input"] = state["user_input"]
             state["_plan"] = []
-        new_mc.append({"agent": "主Agent·规划", "content": thinking})
-        new_steps.append({"agent": "主Agent·规划", "status": "done",
+        new_mc.append({"agent": "学习助手·规划", "content": thinking})
+        new_steps.append({"agent": "学习助手·规划", "status": "done",
             "detail": f"规划完成，调用: {state['_plan'] if state['_plan'] else '无需子Agent'}"})
         return {
             "processed_input": state.get("processed_input", state["user_input"]),
             "_plan": state.get("_plan", []),
-            "_output_subs": state.get("_output_subs", []),
             "complexity": state.get("complexity", "normal"),
             "clarify": state.get("clarify", {}),
             "mindchain": new_mc,
             "steps": new_steps,
             "task_stats": _stats("plan", int((time.time() - t0) * 1000), 1, len(thinking) // 2),
-        }
-
-    def study_memory_node(state: AgentState) -> AgentState:
-        """学情与记忆管理：读取记忆（可关）+ 学情画像（快模型，一次调用）"""
-        new_steps = [{"agent": "学情与记忆管理", "status": "running"}]
-        t0 = time.time()
-        cfg = _agent_cfg("study")
-        # 会话级缓存：同一会话内画像几乎不变，命中直接复用（全局设定③学情画像，几乎零成本）
-        session_id = state.get("session_id") or "default"
-        _cached = _PROFILE_CACHE.get(session_id)
-        if _cached is not None:
-            new_steps.append({"agent": "学情与记忆管理", "status": "done", "detail": "复用会话缓存画像"})
-            return {
-                "profile": _cached,
-                "memory": state.get("memory", {}),
-                "mindchain": [{"agent": "学情与记忆管理", "content": "复用会话内已生成的学情画像（会话缓存，无需重新调用）"}],
-                "steps": new_steps,
-                "task_stats": _stats("study_memory", 0, 0, 0),
-            }
-        from skills.registry import registry
-        memory_txt = ""
-        try:
-            if (cfg.get("memoryEnabled") is not False):
-                mem = registry.execute("memory_ops", action="read", layer=settings.get('memoryLayer', 'L2'), project_id=state.get("project_id", "default"))
-                state["memory"] = mem.get("memory", {})
-                if state["memory"]:
-                    memory_txt = "\n已有记忆: " + json.dumps(state["memory"], ensure_ascii=False)
-            else:
-                state["memory"] = {}
-        except Exception:
-            state["memory"] = {}
-        try:
-            thinking, result = think_then_json(_pick_llm(cfg, llm_fast), STUDY_MEMORY_PROMPT,
-                _append_example(cfg, state["user_input"] + memory_txt), "学情与记忆管理")
-            state["profile"] = result if isinstance(result, dict) else {}
-        except Exception:
-            thinking = "学情分析异常"
-            state["profile"] = {"level": "unknown"}
-        # 写入会话缓存（同会话后续对话直接复用）
-        try:
-            if state.get("profile") and state["profile"].get("level") != "unknown":
-                _PROFILE_CACHE[session_id] = state["profile"]
-        except Exception:
-            pass
-        new_steps.append({"agent": "学情与记忆管理", "status": "done"})
-        # 只返回变更字段（partial）：不就地修改共享 state 的可变字段，避免并行分支互相污染/重复合并
-        return {
-            "profile": state.get("profile", {}),
-            "memory": state.get("memory", {}),
-            "mindchain": [{"agent": "学情与记忆管理", "content": thinking}],
-            "steps": new_steps,
-            "task_stats": _stats("study_memory", int((time.time() - t0) * 1000), 1, len(thinking) // 2),
         }
 
     def kb_node(state: AgentState) -> AgentState:
@@ -395,7 +325,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
 
         with ThreadPoolExecutor(max_workers=2) as _ex:
             _f1 = _ex.submit(_do_retrieve)
-            # 联网搜索归主 Agent 调度：仅当主 Agent 规划判定需要联网（plan 含"搜索增强"）时才派发执行
+            # 联网搜索归学习助手调度：仅当学习助手规划判定需要联网（plan 含"搜索增强"）时才派发执行
             _need_search = any(k in (state.get("_plan") or []) for k in ("搜索增强", "联网搜索"))
             _f2 = _ex.submit(_do_search) if _need_search else None
             try:
@@ -454,8 +384,8 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         return out
 
     def generate_node(state: AgentState) -> AgentState:
-        """主 Agent·生成：基于学情/知识库/历史生成定制学习内容（强模型）"""
-        new_steps = [{"agent": "主Agent·生成", "status": "running", "detail": "生成输出"}]
+        """学习助手·生成：基于学情/知识库/历史生成定制学习内容（强模型）"""
+        new_steps = [{"agent": "学习助手·生成", "status": "running", "detail": "生成输出"}]
         new_mc: list = []
         t0 = time.time()
         cfg = _agent_cfg("main")
@@ -536,13 +466,15 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 pass
             if _summary:
                 context += NL + "【综合概述性记忆】" + NL + NL.join(_summary) + NL
-                new_mc.append({"agent": "综合概述性记忆", "content": "极速档：合并个人/项目记忆与知识库概述，不额外调用各 Agent"})
+                # 极速档无深度思考（非思考模式），生成节点不产生 reasoning → 手动补一条"学习助手·生成"思考，
+                # 说明极速档行为（合并综合概述性记忆直接生成）；标题保持真实 agent 名，不新增伪 agent
+                new_mc.append({"agent": "学习助手·生成", "content": "极速档：合并个人/项目记忆与知识库概述，直接生成回答"})
             else:
                 context += NL + "【综合概述性记忆】暂无已保存的记忆与知识库数据（首次使用时请先走完整流程，让各 Agent 保存信息后再用极速档）。" + NL
         if state.get("sub_outputs") and state["sub_outputs"].get("kb"):
             context += NL + "【知识库子Agent整理】" + NL + state["sub_outputs"]["kb"] + NL
         if state.get("review_feedback"): context += NL + "【审核修正要求】上一版未通过审核，请针对以下意见修改后再生成：" + NL + state["review_feedback"] + NL
-        # 可用 Skill：让主 Agent 知道自己可调用的技能（来自 Agent 配置的 skill 字段）
+        # 可用 Skill：让学习助手知道自己可调用的技能（来自 Agent 配置的 skill 字段）
         if cfg.get("skill"):
             context += NL + "【可用 Skill】" + NL + str(cfg["skill"]) + NL
         # 读最近对话历史（历史条数可配置）+ 会话摘要（压缩产物）+ 历史向量召回
@@ -581,7 +513,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                     pass
         except Exception:
             pass
-        # 输出增强能力已融入主 Agent（见 MAIN_GENERATE_PROMPT 输出形式指令），不再按模板调用输出子 Agent
+        # 输出增强能力已融入学习助手（见 MAIN_GENERATE_PROMPT 输出形式指令），不再按模板调用输出子 Agent
         try:
             # 简单问题/极速档：非思考模式直接生成回答（无说明文字，规划后马上流式输出，不再显示生成阶段）；
             # 复杂问题：思考模式深入生成
@@ -590,7 +522,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             # 简单问题：系统提示改为纯文本回答（直接输出回答文本，无解释/无JSON/无围栏），content 即回答本身
             _gen_sys = "你是一个友好的AI助手。请直接、简洁地回答用户的问题，只输出回答文本本身，" \
                        "不要输出任何解释、说明、JSON或代码围栏，直接开始回答。" if _is_simple else _GENERATE_PROMPT
-            # 生成节点的思考（reasoning）流式进思维链（thought_token，"主Agent·生成"标题下逐字显示）；
+            # 生成节点的思考（reasoning）流式进思维链（thought_token，"学习助手·生成"标题下逐字显示）；
             # 回答内容（content）逐 token 直接流式推送给前端（对话区实时显示）
             _gen_collected = []
             _gen_thinking = []
@@ -599,13 +531,14 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             def _gen_think(chunk):
                 _gen_thinking.append(chunk)
                 if on_token:
-                    on_token("主Agent·生成", chunk)
+                    on_token("学习助手·生成", chunk)
             def _gen_answer(piece):
                 if on_answer:
                     on_answer(piece)
-            # 复杂问题触发"生成"step：状态"正在思考生成…"（simple 不触发：规划后直接流式输出回答）
-            if on_token and not _is_simple:
-                on_token("主Agent·生成", "")  # 触发 step：状态"正在思考生成…"
+            # 复杂问题触发"生成"step：状态"正在思考生成…"；极速档虽视为 simple，但档位特性是"跳过规划直接生成"，
+            # 同样推 step 让前端如实显示"已开始生成"（避免长时间停在"正在等待模型响应"）
+            if on_token and (not _is_simple or tpl == "极速"):
+                on_token("学习助手·生成", "")  # 触发 step：状态"正在思考生成…"
             _gen_llm.chat_stream(
                 [{"role": "system", "content": _gen_sys},
                  {"role": "user", "content": _append_example(cfg, context)}],
@@ -616,7 +549,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             )
             # 生成节点的思考落库进思维链（与前端流式一致；顺序：规划 → 生成 → 审核）
             if _gen_thinking:
-                new_mc.append({"agent": "主Agent·生成", "content": "".join(_gen_thinking)[:1500]})
+                new_mc.append({"agent": "学习助手·生成", "content": "".join(_gen_thinking)[:1500]})
             # 用户手动停止：标记取消，不继续生成（已流式到前端的部分由前端保留展示）
             if cancel_event and cancel_event.is_set():
                 state["cancelled"] = True
@@ -633,7 +566,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             state["generated"] = _raw.strip()
         except Exception as e:
             state["generated"] = f"抱歉，生成内容时出现错误：{str(e)[:200]}"
-        new_steps.append({"agent": "主Agent·生成", "status": "done", "detail": "生成完成"})
+        new_steps.append({"agent": "学习助手·生成", "status": "done", "detail": "生成完成"})
         # 只返回变更字段（partial）：不就地修改共享 state 的可变字段，避免并行分支互相污染/重复合并
         out = {
             "generated": state.get("generated", ""),
@@ -678,9 +611,15 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         cfg = _agent_cfg("review")
         generated = state.get("generated", "")
         profile_txt = json.dumps(state.get("profile", {}), ensure_ascii=False) if state.get("profile") else "未知学情"
+        # 符实性核查依据：注入本次检索到的知识库片段与联网搜索结果，审核 Agent 对照原文核查幻觉
+        kb_txt = ""
+        if state.get("knowledge"):
+            kb_txt = "\n知识库检索片段：" + json.dumps(state["knowledge"], ensure_ascii=False)[:2000]
+        if state.get("search_results"):
+            kb_txt += "\n联网搜索结果：" + json.dumps(state["search_results"], ensure_ascii=False)[:2000]
         try:
             thinking, result = think_then_json(_pick_llm(cfg, llm_fast), REVIEW_PROMPT,
-                _append_example(cfg, generated + chr(10) + "学情画像：" + profile_txt), "审核")
+                _append_example(cfg, generated + chr(10) + "学情画像：" + profile_txt + kb_txt), "审核")
             state["reviewed"] = result if isinstance(result, dict) else {"passed": True, "score": 80}
             if not state["reviewed"].get("passed", True):
                 issues = state["reviewed"].get("issues") or []
@@ -714,22 +653,18 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
 
     def route_plan(state: AgentState) -> list[str]:
         """一次规划 → 并行分发到需要的子 Agent（跳过被禁用的节点）
-        极速档：最快速路径，不做知识库检索（后台资料处理，检索按需由主 Agent 规划）
-        思考/研究档：知识库管理按主 Agent 规划按需调用（用户指出库内有未检索到 / 研究档详细查阅 / 明确要求基于资料）
+        极速档：最快速路径，不做知识库检索（后台资料处理，检索按需由学习助手规划）
+        思考/研究档：知识库管理按学习助手规划按需调用（用户指出库内有未检索到 / 研究档详细查阅 / 明确要求基于资料）
         需求澄清：plan 判定需求不明确 → 中断流程（返回 end，前端弹选项，选择后作为新消息重发）"""
         if state.get("clarify"):
             return ["end"]
         _cur_tpl = settings.get("template") or "思考"
-        if _cur_tpl == "极速":
-            # 极速档：无规划决策（直接生成），不做知识库检索
+        # 目标判定（极速/思考/研究差异、研究档强制搜索）由纯函数 _resolve_plan_targets 负责
+        targets = _resolve_plan_targets(_cur_tpl, state.get("_plan") or [])
+        # 知识库管理被禁用：即使 plan 要求也不调 kb，直接生成
+        if "kb" in targets and _agent_cfg("kb").get("enabled") is False:
             return ["generate"]
-        plan = state.get("_plan") or []
-        cfg_kb = _agent_cfg("kb")
-        targets = []
-        # 知识库管理按需调用：仅当主 Agent 规划判定需要时（触发条件见 MAIN_PLAN_PROMPT）
-        if "知识库管理" in plan and (cfg_kb.get("enabled") is not False):
-            targets.append("kb")
-        return targets or ["generate"]
+        return targets
 
     def route_review(state: AgentState) -> str:
         # 审核 Agent 被禁用：直接通过
@@ -750,13 +685,12 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
     # ---------------- 图组装 ----------------
 
     graph = StateGraph(AgentState)
-    for name, node in [("plan", plan_node), ("study_memory", study_memory_node), ("kb", kb_node),
+    for name, node in [("plan", plan_node), ("kb", kb_node),
                        ("generate", generate_node), ("review", review_node)]:
         graph.add_node(name, node)
     graph.set_entry_point("plan")
     graph.add_conditional_edges("plan", route_plan,
-        {"study_memory": "study_memory", "kb": "kb", "generate": "generate", "end": END})
-    graph.add_edge("study_memory", "generate")
+        {"kb": "kb", "generate": "generate", "end": END})
     graph.add_edge("kb", "generate")
     graph.add_edge("generate", "review")
     graph.add_conditional_edges("review", route_review,
