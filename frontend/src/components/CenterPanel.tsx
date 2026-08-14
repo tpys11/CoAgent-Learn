@@ -3,13 +3,6 @@ import { Send, Bot, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown,
 import type { Message, Project } from '../types'
 import MarkdownIt from 'markdown-it'
 
-const SPECIAL_FORMS = [
-  { key: 'table', label: '表格' },
-  { key: 'flow', label: '流程图' },
-  { key: 'tree', label: '树状图' },
-  { key: 'report', label: '报告' },
-  { key: 'quiz', label: '测试题' },
-]
 
 // ---------- 思维链渲染：markdown-it 轻量渲染（html:false 防 XSS，换行生效）----------
 const mdThink = new MarkdownIt({ html: false, linkify: true, breaks: true })
@@ -72,10 +65,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   // 特殊形式输出建议卡片：各消息选中的形式 key（默认全选）+ 已忽略的消息 idx
   const [specialSel, setSpecialSel] = useState<Record<number, string[]>>({})
   const [dismissedSpecial, setDismissedSpecial] = useState<Set<number>>(new Set())
-  // 特殊形式生成（固定入口）：展开面板 / 生成结果 / 加载中
-  const [specialOpen, setSpecialOpen] = useState<Record<number, boolean>>({})
-  const [specialResults, setSpecialResults] = useState<Record<number, Record<string, string>>>({})
-  const [specialLoading, setSpecialLoading] = useState<number | null>(null)
   useEffect(() => {
     const el = msgScrollRef.current
     if (!el) return
@@ -254,28 +243,6 @@ const TEMPLATE_OPTIONS = [
   }, [])
 
   // 消息渲染：文件标记段转成卡片，其余文本正常显示
-  const doGenerateSpecial = async (idx: number, content: string) => {
-    const forms = specialSel[idx] || ['table']
-    if (!forms.length) return
-    setSpecialLoading(idx)
-    try {
-      const r = await fetch('/api/generate-special', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content, forms, api_key: localStorage.getItem('coagent-apikey') || '' }),
-      })
-      const d = await r.json()
-      if (d.status === 'ok') {
-        setSpecialResults(prev => ({ ...prev, [idx]: d.results || {} }))
-      } else {
-        alert('生成失败：' + (d.msg || '未知'))
-      }
-    } catch (e) {
-      alert('生成失败：' + e)
-    } finally {
-      setSpecialLoading(null)
-    }
-  }
-
   const renderContent = function(content: string) {
     const html = content
       .replace(/【用户上传文件: ([^】]+)】[\s\S]*?(?=【用户上传文件:|$)/g,
@@ -479,57 +446,6 @@ const TEMPLATE_OPTIONS = [
                         </div>
                       </div>
                     )}
-                    {/* 生成更多形式（固定入口，用户主动触发） */}
-                    <div className="mt-2.5">
-                      {specialOpen[idx] ? (
-                        <div className="border hairline rounded-xl px-3 py-2.5 bg-[var(--bg-panel)]">
-                          <div className="flex flex-wrap gap-1.5 mb-2">
-                            {SPECIAL_FORMS.map(f => {
-                              const sel = (specialSel[idx] ?? ['table']).includes(f.key)
-                              return (
-                                <button key={f.key}
-                                  onClick={() => setSpecialSel(prev => {
-                                    const cur = prev[idx] ?? ['table']
-                                    const next = sel ? cur.filter(k => k !== f.key) : [...cur, f.key]
-                                    return { ...prev, [idx]: next }
-                                  })}
-                                  className={"chip text-left text-[11px] px-2.5 py-1 transition-all" + (sel ? '' : ' opacity-40')}>
-                                  {f.label}
-                                </button>
-                              )
-                            })}
-                          </div>
-                          <div className="flex items-center justify-end gap-3">
-                            <button onClick={() => setSpecialOpen(prev => ({ ...prev, [idx]: false }))}
-                              className="text-[10px] text-dim hover:text-[var(--text)]">取消</button>
-                            <button onClick={() => doGenerateSpecial(idx, msg.content)} disabled={specialLoading === idx}
-                              className="text-[10px] font-semibold text-[var(--accent)] hover:underline disabled:opacity-50">
-                              {specialLoading === idx ? '生成中…' : '生成'}
-                            </button>
-                          </div>
-                          {specialResults[idx] && (
-                            <div className="mt-3 space-y-3">
-                              {Object.entries(specialResults[idx]).map(([k, v]) => {
-                                const label = SPECIAL_FORMS.find(f => f.key === k)?.label || k
-                                return (
-                                  <div key={k} className="border hairline rounded-lg px-3 py-2">
-                                    <p className="text-[10px] font-semibold text-dim mb-1.5">{label}</p>
-                                    {k === 'flow'
-                                      ? <div className="text-xs md-answer-body" dangerouslySetInnerHTML={{ __html: renderMd('```mermaid\n' + v + '\n```') }} />
-                                      : <div className="text-xs md-answer-body" dangerouslySetInnerHTML={{ __html: renderMd(v) }} />}
-                                  </div>
-                                )
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <button onClick={() => setSpecialOpen(prev => ({ ...prev, [idx]: true }))}
-                          className="text-[11px] text-dim hover:text-[var(--accent)] flex items-center gap-1 transition-colors">
-                          <LayoutTemplate size={12} /> 生成更多形式
-                        </button>
-                      )}
-                    </div>
                     {/* 新建课程引导消息：右下角「手动初始化」按钮（仅初次创建、未完成手动填写时显示） */}
                     {msg.content.includes('课程创建成功') && onManualSetup && !(currentProject && (() => {
                       try { return (JSON.parse(localStorage.getItem('coagent-manual-setup-done') || '[]') as string[]).includes(currentProject.id) } catch { return false }

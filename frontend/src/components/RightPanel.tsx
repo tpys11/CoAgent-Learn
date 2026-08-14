@@ -1,5 +1,6 @@
 ﻿import { Map, Send, MessagesSquare, X, PanelRightClose, SlidersHorizontal, FileText } from 'lucide-react'
 import { useEffect, useRef, useState, Fragment } from 'react'
+import type { Message } from '../types'
 import { KnowledgeTree } from './KbTree'
 import SpecialOutputPane from './SpecialOutputPane'
 import MarkdownIt from 'markdown-it'
@@ -14,6 +15,8 @@ interface Props {
   /** 第二对话 id（App 持有，主对话完成后为它同步生成横向拓展追问） */
   sideDialogueId?: string
   onCollapse: () => void
+  /** 当前对话全部消息（供特殊形式输出基于整个对话生成） */
+  messages?: Message[]
 }
 
 type WinKey = 'flow' | 'graph' | 'chat' | 'special'
@@ -68,7 +71,7 @@ function DragHandle({ onDown }: { onDown: (e: React.MouseEvent) => void }) {
   )
 }
 
-export default function RightPanel({ messageCount, projectId, sideDialogueId, onCollapse }: Props) {
+export default function RightPanel({ messageCount, projectId, sideDialogueId, onCollapse, messages }: Props) {
   // 三个窗口高度（px）
   const [heights, setHeights] = useState<Record<WinKey, number>>({ ...DEFAULT_HEIGHTS })
   // 右侧栏展示设置（可勾选要显示的窗口，持久化）
@@ -299,7 +302,7 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
                 </div>
               </div>
             )}
-            {w.key === 'special' && <SpecialOutputPane />}
+            {w.key === 'special' && <SpecialOutputPane messages={messages || []} />}
           </Pane>
         </Fragment>
       ))}

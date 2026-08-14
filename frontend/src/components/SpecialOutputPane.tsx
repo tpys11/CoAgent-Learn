@@ -1,42 +1,95 @@
 import { useState } from 'react'
-import { FileText, Workflow, Network, Table as TableIcon, BarChart3, Volume2, ClipboardList } from 'lucide-react'
+import { FileText, Workflow, Network, Table as TableIcon, BarChart3, Volume2, ClipboardList, Sparkles } from 'lucide-react'
+import MarkdownIt from 'markdown-it'
+import type { Message } from '../types'
+
+const md = new MarkdownIt({ html: false, linkify: true, breaks: true })
+const renderMd = (text: string) => md.render(text || '')
 
 type FormKey = 'report' | 'flow' | 'tree' | 'table' | 'chart' | 'audio' | 'quiz'
 
 const FORMS: Array<{ key: FormKey; label: string; icon: any; desc: string }> = [
-  { key: 'report', label: '报告', icon: FileText, desc: '汇总对话生成的讲解、测试题等学习内容' },
+  { key: 'report', label: '报告', icon: FileText, desc: '汇总整个对话生成结构化报告' },
   { key: 'flow', label: '流程图', icon: Workflow, desc: '流程步骤图' },
-  { key: 'tree', label: '树状图', icon: Network, desc: '基于上传资料的层级树状展示' },
-  { key: 'table', label: '表格', icon: TableIcon, desc: '知识点掌握度等数据以表格呈现' },
+  { key: 'tree', label: '树状图', icon: Network, desc: '知识层级树状展示' },
+  { key: 'table', label: '表格', icon: TableIcon, desc: '知识点/维度以表格呈现' },
   { key: 'chart', label: '统计图', icon: BarChart3, desc: '学习趋势统计图' },
-  { key: 'audio', label: '音频', icon: Volume2, desc: '音频概览（朗读 / 双人讨论播客形式）' },
+  { key: 'audio', label: '音频', icon: Volume2, desc: '音频概览（朗读 / 播客）' },
   { key: 'quiz', label: '测试题', icon: ClipboardList, desc: '分阶测试题' },
 ]
 
-/** 特殊形式输出：先以矩形占位（具体实现后续补充） */
-export default function SpecialOutputPane() {
+/** 后端当前支持的生成形式 */
+const SUPPORTED: FormKey[] = ['report', 'flow', 'tree', 'table', 'quiz']
+
+/** 特殊形式输出：基于整个对话生成（报告/流程图/树状图/表格/测试题） */
+export default function SpecialOutputPane({ messages }: { messages: Message[] }) {
   const [form, setForm] = useState<FormKey>('report')
+  const [result, setResult] = useState('')
+  const [loading, setLoading] = useState(false)
   const cur = FORMS.find(f => f.key === form) || FORMS[0]
+  const isSupported = SUPPORTED.includes(form)
+
+  const doGenerate = async () => {
+    // 拼接整个对话（用户 + AI 全部消息）
+    const convo = messages
+      .filter(m => m.role !== 'thinking' && m.content && String(m.content).trim())
+      .map(m => (m.role === 'user' ? '用户：' : 'AI：') + m.content)
+      .join('\n')
+    if (!convo.trim()) { alert('当前对话还没有内容'); return }
+    setLoading(true); setResult('')
+    try {
+      const r = await fetch('/api/generate-special', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: convo, forms: [form], api_key: localStorage.getItem('coagent-apikey') || '' }),
+      })
+      const d = await r.json()
+      if (d.status === 'ok') setResult(d.results?.[form] || '')
+      else alert('生成失败：' + (d.msg || '未知'))
+    } catch (e) {
+      alert('生成失败：' + e)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="w-full h-full flex flex-col min-h-0">
-      {/* 形式选项：正方形宫格（图标+名称竖排） */}
+      {/* 形式选项：正方形宫格 */}
       <div className="grid grid-cols-4 gap-1.5 px-3 pt-2.5 flex-shrink-0">
         {FORMS.map(f => (
-          <button key={f.key} onClick={() => setForm(f.key)} title={f.desc}
+          <button key={f.key} onClick={() => { setForm(f.key); setResult('') }} title={f.desc}
             className={`flex flex-col items-center justify-center gap-1.5 rounded-xl aspect-square transition-colors ${form === f.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] text-dim hover:opacity-80'}`}>
             <f.icon size={18} strokeWidth={1.8} />
             <span className="text-[9px] leading-none">{f.label}</span>
           </button>
         ))}
       </div>
-      {/* 内容区：矩形占位 */}
-      <div className="flex-1 min-h-0 p-3">
-        <div className="w-full h-full min-h-[220px] border-2 border-dashed hairline rounded-2xl flex flex-col items-center justify-center gap-2 text-dim">
-          <cur.icon size={28} strokeWidth={1.5} />
-          <p className="text-xs font-semibold text-[var(--text)]">{cur.label}</p>
-          <p className="text-[10px] text-center px-6 leading-relaxed">{cur.desc}</p>
-          <span className="text-[9px] px-2 py-0.5 rounded-full bg-[var(--bg-hover)]">待实现</span>
-        </div>
+      {/* 内容区 */}
+      <div className="flex-1 min-h-0 p-3 flex flex-col gap-2 overflow-hidden">
+        {isSupported ? (
+          <>
+            <button onClick={doGenerate} disabled={loading}
+              className="flex items-center justify-center gap-1.5 py-2 rounded-xl bg-[#1a1a1a] text-white text-xs font-semibold hover:bg-[#333333] transition-colors disabled:opacity-50 flex-shrink-0">
+              <Sparkles size={13} /> {loading ? '生成中…' : '基于整个对话生成「' + cur.label + '」'}
+            </button>
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              {result ? (
+                form === 'flow'
+                  ? <div className="text-xs md-answer-body" dangerouslySetInnerHTML={{ __html: renderMd('```mermaid\n' + result + '\n```') }} />
+                  : <div className="text-xs md-answer-body" dangerouslySetInnerHTML={{ __html: renderMd(result) }} />
+              ) : (
+                <div className="text-xs text-dim text-center pt-10 leading-relaxed">选择上方形式，点「生成」基于整个对话生成{cur.label}</div>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="flex-1 border-2 border-dashed hairline rounded-2xl flex flex-col items-center justify-center gap-2 text-dim">
+            <cur.icon size={28} strokeWidth={1.5} />
+            <p className="text-xs font-semibold text-[var(--text)]">{cur.label}</p>
+            <p className="text-[10px] text-center px-6 leading-relaxed">{cur.desc}</p>
+            <span className="text-[9px] px-2 py-0.5 rounded-full bg-[var(--bg-hover)]">待实现</span>
+          </div>
+        )}
       </div>
     </div>
   )
