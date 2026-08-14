@@ -26,7 +26,7 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
         key={key}
         onClick={() => onChange(key)}
         title={label}
-        className={`w-full h-9 flex items-center gap-3 px-3 rounded-md text-sm font-medium transition-colors ${
+        className={`w-full h-9 mb-2 flex items-center gap-3 px-3 rounded-md text-sm font-medium transition-colors ${
           active ? 'bg-[#1a1a1a] text-white' : 'text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)]'
         }`}
       >
@@ -38,7 +38,7 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
         key={key}
         onClick={() => onChange(key)}
         title={label}
-        className={`w-full h-9 px-3 flex flex-col items-start justify-center rounded-2xl transition-all ${
+        className={`w-full h-9 mb-2 px-3 flex flex-col items-start justify-center rounded-2xl transition-all ${
           active ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'
         }`}
       >
@@ -60,7 +60,7 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
           </a>
         </div>
       ) : (
-        <div className="h-[80px] px-6 pt-4 mb-2 flex justify-start">
+        <div className="h-[80px] px-3 pt-4 mb-2 flex justify-start">
           <span className="font-display text-sm tracking-wide text-dim select-none">CA</span>
         </div>
       )}
