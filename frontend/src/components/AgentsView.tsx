@@ -54,6 +54,15 @@ const PRESET_TEMPLATES: Array<{ name: string; desc: string; intro: string; detai
 const SKILL_ENABLED_KEY = 'coagent-skill-enabled'
 const CUSTOM_TEMPLATES_KEY = 'coagent-custom-templates'
 
+/** 全局性基础设定卡片（默认文案；用户可在前端编辑，localStorage 持久化覆盖） */
+const DEFAULT_GLOBAL_CARDS: Array<[string, string]> = [
+  ['搜索机制', '固定搜索规则：优质信息源（优质社区、官方信息），并行搜索 agent 返回 10-20 条优质内容（思考/研究档共享）'],
+  ['知识库管理', '后台入库（切片/向量化）；对话中按主 Agent 判定按需检索；联网搜索由主 Agent 派发搜索子 Agent 执行'],
+  ['学情画像', '后台提炼画像文档（基本情况/学习情况/阅读偏好），生成时直接注入（0 对话时间）'],
+  ['上下文自动压缩', '每满 30 条后台压缩最早 30% 为会话摘要；历史细节可向量召回'],
+  ['特殊形式输出', '回答完成后模型判断适合的形式并建议（与档位无关）'],
+]
+
 /** 各模板的节点颜色深浅分布：按模板编排的基础逻辑标注各节点职责负载（0-5，越深负载越高） */
 const TEMPLATE_LEVELS: Record<string, Record<string, number>> = {
   '极速': { plan: 1, study_memory: 1, kb: 1, generate: 2, review: 1 },
@@ -306,6 +315,17 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   // Skill 实现源码（点开详情→查看实现）
   const [skillSource, setSkillSource] = useState<string | null>(null)
   const [skillSrcLoading, setSkillSrcLoading] = useState(false)
+  // 对话设定（项目介绍可编辑，localStorage 持久化；缺省用内置默认）
+  const [globalCards, setGlobalCards] = useState<Array<[string, string]>>(() => {
+    try { const s = localStorage.getItem('coagent-intro-global'); if (s) { const a = JSON.parse(s); if (Array.isArray(a) && a.length) return a } } catch { /* 忽略 */ }
+    return DEFAULT_GLOBAL_CARDS
+  })
+  const [tierOverrides, setTierOverrides] = useState<Record<string, { intro: string; detail: Array<[string, string]> }>>(() => {
+    try { const s = localStorage.getItem('coagent-intro-tiers'); if (s) { const o = JSON.parse(s); if (o && typeof o === 'object') return o } } catch { /* 忽略 */ }
+    return {}
+  })
+  const [editingGlobal, setEditingGlobal] = useState(false)
+  const [editingTier, setEditingTier] = useState<string | null>(null)
   // 对话流程：Agent 自定义选中的 Agent
   const [templateAgentId, setTemplateAgentId] = useState(agents[0]?.id || '')
   // 对话流程：选中模板（展开详情）、自定义模板、保存名称
@@ -397,8 +417,10 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   const fieldLabel = 'text-xs font-semibold text-dim uppercase tracking-wider mb-2 block'
   // 对话流程：模板集合（预设 + 自定义）、保存自定义
   const allTemplates = [...PRESET_TEMPLATES, ...customTemplates]
-  // 模板介绍：自定义模板无内置文案时，从 Agent 团队配置推导细节
+  // 模板介绍：优先用户编辑的档位覆盖（localStorage），其次内置文案，自定义模板从 Agent 配置推导
   const tplInfo = (t: { name: string; intro?: string; detail?: Array<[string, string]>; agents: AgentConfig[] }) => {
+    const ov = tierOverrides[t.name]
+    if (ov && ov.intro) return { intro: ov.intro, detail: ov.detail || [] }
     if (t.intro && t.detail) return { intro: t.intro, detail: t.detail }
     const main = t.agents.find(a => a.id === 'main')
     const kb = t.agents.find(a => a.id === 'kb')
@@ -800,21 +822,34 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
 
             {/* 全局性基础设定（独立界面：所有模式共有，先介绍再选模式） */}
             <div className="flex flex-col gap-3">
-              <p className="text-xs font-semibold text-dim uppercase tracking-wider">全局性基础设定（所有模式共有）</p>
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-dim uppercase tracking-wider">全局性基础设定（所有模式共有）</p>
+                <button onClick={() => setEditingGlobal(!editingGlobal)}
+                  className="text-[10px] px-2 py-1 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">
+                  {editingGlobal ? '完成编辑' : '编辑'}
+                </button>
+              </div>
               <div className="grid grid-cols-2 gap-3">
-                {[
-                  ['搜索机制', '固定搜索规则：优质信息源（优质社区、官方信息），并行搜索 agent 返回 10-20 条优质内容（思考/研究档共享）'],
-                  ['知识库管理', '后台入库（切片/向量化）；对话中按学习助手判定按需检索；联网搜索由学习助手派发搜索子 Agent 执行'],
-                  ['学情画像', '后台提炼画像文档（基本情况/学习情况/阅读偏好），生成时直接注入（0 对话时间）'],
-                  ['上下文自动压缩', '每满 30 条后台压缩最早 30% 为会话摘要；历史细节可向量召回'],
-                  ['特殊形式输出', '回答完成后模型判断适合的形式并建议（与档位无关）'],
-                ].map(([t, d]) => (
-                  <div key={t} className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-1">
+                {globalCards.map(([t, d], i) => editingGlobal ? (
+                  <div key={i} className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-1.5">
+                    <input value={t} onChange={e => { const n = [...globalCards]; n[i] = [e.target.value, n[i][1]]; setGlobalCards(n) }}
+                      className="text-[11px] font-semibold bg-transparent outline-none border-b hairline pb-0.5" />
+                    <textarea value={d} rows={3} onChange={e => { const n = [...globalCards]; n[i] = [n[i][0], e.target.value]; setGlobalCards(n) }}
+                      className="text-[10px] text-dim leading-snug bg-transparent outline-none resize-y" />
+                  </div>
+                ) : (
+                  <div key={i} className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-1">
                     <span className="text-[11px] font-semibold">{t}</span>
                     <span className="text-[10px] text-dim leading-snug">{d}</span>
                   </div>
                 ))}
               </div>
+              {editingGlobal && (
+                <button onClick={() => { try { localStorage.setItem('coagent-intro-global', JSON.stringify(globalCards)) } catch { /* 忽略 */ } setEditingGlobal(false) }}
+                  className="w-fit px-3 py-1.5 rounded-lg bg-[#1a1a1a] text-white text-[11px] font-medium hover:bg-[#333333] transition-colors">
+                  保存全局设定
+                </button>
+              )}
               <p className="text-[10px] text-dim leading-relaxed">以下机制对所有对话模式生效：搜索、知识库、学情、压缩、特殊形式输出在后台或按需运行，不随档位变化。模式之间的差异（响应速度、内容量、检测强度）由下方模式按钮决定。</p>
             </div>
 
@@ -840,24 +875,60 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
               const tpl = PRESET_TEMPLATES.find(t => t.name === selectedTpl)
               if (!tpl) return null
               const info = tplInfo(tpl)
+              const isEditingTier = editingTier === tpl.name
               return (
                 <div className="flex flex-col gap-4">
-                  <p className="text-xs font-semibold text-dim uppercase tracking-wider">{tpl.name} 模式详情</p>
-                  <div className="flex flex-col gap-3">
-                    <div className="flex flex-col gap-1.5">
-                      <p className="text-xs font-semibold text-dim uppercase tracking-wider">适用场景</p>
-                      <FormattedText text={info.intro} />
-                    </div>
-                    <div className="flex flex-col gap-2.5">
-                      <p className="text-xs font-semibold text-dim uppercase tracking-wider">内部细节设定<span className="ml-1 text-[9px] font-normal text-dim/70">（预设，仅展示）</span></p>
-                      {info.detail.map(([k, v]) => (
-                        <div key={k} className="flex flex-col gap-0.5">
-                          <span className="text-[10px] font-semibold text-dim uppercase tracking-wider">{k}</span>
-                          <span className="text-[11px] leading-relaxed text-[var(--text-muted)]">{v}</span>
-                        </div>
-                      ))}
-                    </div>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-dim uppercase tracking-wider">{tpl.name} 模式详情</p>
+                    <button onClick={() => setEditingTier(isEditingTier ? null : tpl.name)}
+                      className="text-[10px] px-2 py-1 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">
+                      {isEditingTier ? '完成编辑' : '编辑'}
+                    </button>
                   </div>
+                  {isEditingTier ? (() => {
+                    const ov = tierOverrides[tpl.name] || { intro: info.intro, detail: info.detail }
+                    const setOv = (patch: { intro?: string; detail?: Array<[string, string]> }) => {
+                      const next = { ...tierOverrides, [tpl.name]: { intro: patch.intro ?? ov.intro, detail: patch.detail ?? ov.detail } }
+                      setTierOverrides(next)
+                      try { localStorage.setItem('coagent-intro-tiers', JSON.stringify(next)) } catch { /* 忽略 */ }
+                    }
+                    return (
+                      <div className="flex flex-col gap-3">
+                        <div className="flex flex-col gap-1.5">
+                          <p className="text-xs font-semibold text-dim uppercase tracking-wider">适用场景</p>
+                          <textarea value={ov.intro} rows={8} onChange={e => setOv({ intro: e.target.value })}
+                            className="text-[11px] leading-relaxed border hairline rounded-xl p-2.5 bg-[var(--bg-input)] outline-none resize-y" />
+                        </div>
+                        <div className="flex flex-col gap-2.5">
+                          <p className="text-xs font-semibold text-dim uppercase tracking-wider">内部细节设定</p>
+                          {ov.detail.map(([k, v], di) => (
+                            <div key={k} className="flex flex-col gap-1">
+                              <input value={k} onChange={e => { const nd = [...ov.detail]; nd[di] = [e.target.value, nd[di][1]]; setOv({ detail: nd }) }}
+                                className="text-[10px] font-semibold bg-transparent outline-none border-b hairline pb-0.5" />
+                              <textarea value={v} rows={2} onChange={e => { const nd = [...ov.detail]; nd[di] = [nd[di][0], e.target.value]; setOv({ detail: nd }) }}
+                                className="text-[11px] leading-relaxed border hairline rounded-lg p-2 bg-[var(--bg-input)] outline-none resize-y" />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })() : (
+                    <div className="flex flex-col gap-3">
+                      <div className="flex flex-col gap-1.5">
+                        <p className="text-xs font-semibold text-dim uppercase tracking-wider">适用场景</p>
+                        <FormattedText text={info.intro} />
+                      </div>
+                      <div className="flex flex-col gap-2.5">
+                        <p className="text-xs font-semibold text-dim uppercase tracking-wider">内部细节设定</p>
+                        {info.detail.map(([k, v]) => (
+                          <div key={k} className="flex flex-col gap-0.5">
+                            <span className="text-[10px] font-semibold text-dim uppercase tracking-wider">{k}</span>
+                            <span className="text-[11px] leading-relaxed text-[var(--text-muted)]">{v}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )
             })()}

@@ -59,7 +59,17 @@ function App() {
 
 从第 1 项开始回复我即可，我会一步步帮你完善这门课程。`
   const [isLoading, setIsLoading] = useState(false)
-  const [agents, setAgents] = useState<AgentConfig[]>(DEFAULT_AGENTS)
+  const [agents, setAgents] = useState<AgentConfig[]>(() => {
+    // 项目介绍 Agent 设定持久化：用户编辑后刷新保留（缺省用内置 DEFAULT_AGENTS）
+    try {
+      const s = localStorage.getItem('coagent-agents')
+      if (s) {
+        const arr = JSON.parse(s)
+        if (Array.isArray(arr) && arr.length > 0 && arr.every((a: any) => a && typeof a === 'object' && a.id)) return arr as AgentConfig[]
+      }
+    } catch { /* 忽略损坏数据 */ }
+    return DEFAULT_AGENTS
+  })
   const [showSettings, setShowSettings] = useState(false)
   // 项目配置弹窗（Sidebar 项目三点进入：项目记忆 / 项目资源）
   const [showProjectConfig, setShowProjectConfig] = useState(false)
@@ -676,12 +686,18 @@ function App() {
     handleSendMessage(option ? `${original}\n（我选择：${option}）` : original, { clarified: true })
   }, [handleSendMessage])
   const handleSaveAgent = useCallback((updated: AgentConfig) => {
-    setAgents(prev => prev.map(a => a.id === updated.id ? updated : a))
+    setAgents(prev => {
+      const next = prev.map(a => a.id === updated.id ? updated : a)
+      // 持久化：用户对项目介绍 Agent 设定的编辑刷新后保留
+      try { localStorage.setItem('coagent-agents', JSON.stringify(next)) } catch { /* 忽略 */ }
+      return next
+    })
   }, [])
   // 模板应用 / 导入：整体替换 Agent 团队配置
   const handleReplaceAgents = useCallback((next: AgentConfig[]) => {
     if (!Array.isArray(next) || next.length === 0) return
     setAgents(next)
+    try { localStorage.setItem('coagent-agents', JSON.stringify(next)) } catch { /* 忽略 */ }
   }, [])
 
   return (
