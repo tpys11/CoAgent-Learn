@@ -20,13 +20,18 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
   const [memSummary, setMemSummary] = useState<Record<string, any>>({})
   const [kbDocs, setKbDocs] = useState<Array<{ source: string; chunks: number }>>([])
   // 栏目展示开关（与右侧栏一致，持久化）
-  // 左侧栏三个分区默认全开（不持久化关闭状态：避免之前全关后每次进入都"全部收起"）
-  const [visible, setVisible] = useState<Record<'memory' | 'resource' | 'chat', boolean>>({ memory: true, resource: true, chat: true })
+  const [visible, setVisible] = useState<Record<'memory' | 'resource' | 'chat', boolean>>(() => {
+    try { return { memory: true, resource: true, chat: true, ...(JSON.parse(localStorage.getItem('coagent-project-sidebar-v') || '{}')) } } catch { return { memory: true, resource: true, chat: true } }
+  })
   const [showSettings, setShowSettings] = useState(false)
   // 正在行内重命名的对话 id
   const [editingId, setEditingId] = useState<string | null>(null)
   const toggleVisible = (k: 'memory' | 'resource' | 'chat') => {
-    setVisible(prev => ({ ...prev, [k]: !prev[k] }))
+    setVisible(prev => {
+      const next = { ...prev, [k]: !prev[k] }
+      localStorage.setItem('coagent-project-sidebar-v', JSON.stringify(next))
+      return next
+    })
   }
   const SECTIONS: Array<{ key: 'memory' | 'resource' | 'chat'; label: string }> = [
     { key: 'memory', label: '记忆与进程' },
