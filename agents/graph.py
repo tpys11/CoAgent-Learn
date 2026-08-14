@@ -395,8 +395,9 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
 
         with ThreadPoolExecutor(max_workers=2) as _ex:
             _f1 = _ex.submit(_do_retrieve)
-            # 极速档只做知识库检索（全局设定①），跳过联网搜索（保秒回）
-            _f2 = _ex.submit(_do_search) if tpl != "极速" else None
+            # 联网搜索归主 Agent 调度：仅当主 Agent 规划判定需要联网（plan 含"搜索增强"）时才派发执行
+            _need_search = any(k in (state.get("_plan") or []) for k in ("搜索增强", "联网搜索"))
+            _f2 = _ex.submit(_do_search) if _need_search else None
             try:
                 result = _f1.result()
                 state["knowledge"] = result.get("results", [])
