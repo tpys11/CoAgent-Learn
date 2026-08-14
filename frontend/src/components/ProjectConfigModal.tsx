@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { FileText, BookOpen, Upload, Trash2, Save, X, Loader2, CheckCircle2 } from 'lucide-react'
+import { FileText, BookOpen, Upload, Trash2, Save, X, Loader2, CheckCircle2, ExternalLink } from 'lucide-react'
 import MemoryView from './MemoryView'
 import ResourceView from './ResourceView'
 
@@ -139,6 +139,7 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
   type PendingItem =
     | { kind: 'file'; id: string; file: File }
     | { kind: 'text'; id: string; title: string; body: string }
+    | { kind: 'link'; id: string; title: string; url: string }
   const [pendingItems, setPendingItems] = useState<PendingItem[]>([])
   const pendingCount = pendingItems.length
   const load = useCallback(() => {
@@ -170,6 +171,16 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
           const d = await r.json().catch(() => ({}))
           if (d.status === 'ok') { total += (d.chunks || 0); okCount++ }
           else alert(`「${it.file.name}」接入失败：${d.msg || '处理失败'}`)
+        } else if (it.kind === 'link') {
+          // 链接资源：后端抓取网页正文入库（真实内容，非空转）
+          const r = await fetch('/api/knowledge/upload-url?wait=true', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ project_id: projectId, url: it.url, source: it.title, session_id: 'project-res', api_key: localStorage.getItem('coagent-apikey') || '' }),
+          })
+          const d = await r.json().catch(() => ({}))
+          if (d.status === 'ok') { total += (d.chunks || 0); okCount++ }
+          else alert(`「${it.title}」接入失败：${d.msg || '处理失败'}`)
         } else {
           // wait 是后端 query 参数（非 body），必须放在 URL 上，否则走异步分支返回 processing
           const r = await fetch('/api/knowledge/upload?wait=true', {
@@ -215,9 +226,19 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
     if (!pendingCount) { alert('请先把资源拖入虚线框，或点击选择文件'); return }
     uploadItems()
   }
-  /** 卡片「加入课程」/ 拖入的卡片 → 仅占位进待上传列表（不真正上传） */
-  const addPreset = (title: string, body: string) => {
-    addTextItem(title, body)
+  /** 卡片「加入课程」/ 拖入的卡片 → 仅占位进待上传列表；无链接又无实质内容的资源明确提示，不假装上传 */
+  const addPreset = (title: string, body: string, url?: string) => {
+    const u = (url || '').trim()
+    if (u) { addLinkItem(title, u); return }
+    if ((body || '').trim().length >= 50) { addTextItem(title, body); return }
+    alert(`「${title}」还没有链接或正文内容，无法接入知识库（请先为该资源补充链接）`)
+  }
+  /** 加入链接占位 */
+  const addLinkItem = (title: string, url: string) => {
+    setPendingItems(prev => {
+      if (prev.some(x => x.kind === 'link' && x.url === url)) return prev
+      return [...prev, { kind: 'link' as const, id: 'l' + Date.now() + Math.random().toString(36).slice(2, 7), title, url }]
+    })
   }
   const [removeTarget, setRemoveTarget] = useState<string | null>(null)
   /** 删除已上传资源：弹内部确认框，确认后删除 */
@@ -238,7 +259,7 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
     if (json) {
       try {
         const it = JSON.parse(json)
-        if (it && it.title && it.body) { addPreset(it.title, it.body); return }
+        if (it && it.title && (it.body || it.url)) { addPreset(it.title, it.body || '', it.url || ''); return }
       } catch { /* 忽略 */ }
     }
     if (e.dataTransfer.files.length) { addFileItem(e.dataTransfer.files) }
@@ -283,7 +304,7 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
               {pendingItems.map(it => (
                 <div key={it.id} className="flex items-center gap-2 border border-dashed rounded-xl px-3 py-2 bg-[color-mix(in_srgb,var(--accent)_4%,var(--bg-panel))]">
                   <span className="w-7 h-7 rounded-lg bg-[#1a1a1a] text-white flex items-center justify-center flex-shrink-0">
-                    {it.kind === 'file' ? <FileText size={13} /> : <BookOpen size={13} />}
+                    {it.kind === 'file' ? <FileText size={13} /> : it.kind === 'link' ? <ExternalLink size={13} /> : <BookOpen size={13} />}
                   </span>
                   <span className="text-xs font-semibold truncate flex-1 min-w-0" title={it.kind === 'file' ? it.file.name : it.title}>
                     {it.kind === 'file' ? it.file.name : it.title}

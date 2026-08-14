@@ -230,7 +230,7 @@ const GEN_CATS = [
 const GEN_MATCH: Record<string, string[]> = { '讲义': ['讲义'], '实操指南': ['实操指南'], '测试题': ['测试题'] }
 
 /** 资源界面：hyper.ai 风格——顶部 Hero + 领域/分类选择 + 分区卡片流（配色跟随主题变量） */
-export default function ResourceView({ projectId, onUseItem, refreshSignal }: { projectId: string | null; onUseItem?: (title: string, body: string) => void; refreshSignal?: number }) {
+export default function ResourceView({ projectId, onUseItem, refreshSignal }: { projectId: string | null; onUseItem?: (title: string, body: string, url?: string) => void; refreshSignal?: number }) {
   const [tab, setTab] = useState<Tab>('tutorials')
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
   const [genProjects, setGenProjects] = useState<Array<{ id: string; name: string }>>([])
@@ -451,7 +451,7 @@ const exportItem = (item: ListItem) => {
             key={item.id}
             onClick={() => setDetail(item)}
             draggable={!!onUseItem}
-            onDragStart={onUseItem ? (e) => { e.dataTransfer.setData('text/obs-item', JSON.stringify({ title: item.title, body: item.body || '' })); e.dataTransfer.effectAllowed = 'copy' } : undefined}
+            onDragStart={onUseItem ? (e) => { e.dataTransfer.setData('text/obs-item', JSON.stringify({ title: item.title, body: item.body || '', url: item.url || '' })); e.dataTransfer.effectAllowed = 'copy' } : undefined}
             className="group card-surface rounded-2xl p-6 flex flex-col gap-4 cursor-pointer transition-all hover:shadow-lg hover:-translate-y-1 hover:border-[var(--border-strong)]"
           >
             <div className="flex items-start justify-between">
@@ -810,7 +810,7 @@ const exportItem = (item: ListItem) => {
               ) : <span />}
               <div className="flex items-center gap-2">
                 {onUseItem && detail.body && (
-                  <button onClick={() => onUseItem(detail.title, detail.body)}
+                  <button onClick={() => onUseItem(detail.title, detail.body, detail.url)}
                     className="flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-white rounded-xl shadow-soft hover:scale-105 transition-transform"
                     style={{ background: 'var(--accent)' }}>
                     <Plus size={14} /> 加入课程
