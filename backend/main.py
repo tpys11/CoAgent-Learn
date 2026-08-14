@@ -260,6 +260,14 @@ class GenerateDomainReq(BaseModel):
     model: str = "deepseek-v4-flash"
 
 
+class GenerateSpecialReq(BaseModel):
+    content: str
+    forms: list = []
+    api_key: str = ""
+    base_url: str = "https://api.deepseek.com/v1"
+    model: str = "deepseek-v4-flash"
+
+
 @app.post("/api/generate-domain")
 async def generate_domain(req: GenerateDomainReq):
     """新建领域：AI 生成该领域的系统学习教程 + 百科词条"""
@@ -294,6 +302,47 @@ async def generate_domain(req: GenerateDomainReq):
         if not data:
             return {"status": "error", "msg": "AI 返回内容无法解析"}
         return {"status": "ok", "tutorials": data.get("tutorials") or [], "wiki": data.get("wiki") or []}
+    except Exception as e:
+        return {"status": "error", "msg": str(e)[:200]}
+
+
+@app.post("/api/generate-special")
+async def generate_special(req: GenerateSpecialReq):
+    """特殊形式生成：把回答内容转换成指定形式（表格/流程图/树状图/报告/测试题）"""
+    import requests as _req
+    from core.memory_analysis import _extract_json
+    if not (req.content or "").strip() or not req.forms:
+        return {"status": "error", "msg": "参数不完整"}
+    forms_desc = {
+        "table": "markdown 表格（列清晰、适合对比/维度）",
+        "flow": "mermaid 流程图代码（flowchart TD 语法，不要代码块围栏）",
+        "tree": "树状层级文本（用缩进空格表示层级）",
+        "report": "markdown 结构化报告（分小节）",
+        "quiz": "3-5 道测试题（每题含 题目/选项/答案）",
+    }
+    selected = "、".join(forms_desc.get(k, k) for k in req.forms if k in forms_desc)
+    if not selected:
+        return {"status": "error", "msg": "没有支持的形式"}
+    prompt = (
+        "把下面的学习内容转换成指定形式，严格输出 JSON（不要 markdown 代码块，不要额外文字）：\n"
+        "内容：\n" + (req.content or "")[:4000] + "\n\n"
+        "需要的形式（每种形式对应 JSON 一个字段）：\n" + selected + "\n\n"
+        "输出格式示例：{\"table\":\"...\", \"flow\":\"...\"}，没有的形式省略。"
+    )
+    try:
+        h = {"Authorization": "Bearer " + (req.api_key or ""), "Content-Type": "application/json"}
+        resp = _req.post(
+            req.base_url.rstrip("/") + "/chat/completions",
+            json={"model": req.model, "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]},
+            headers=h, timeout=90,
+        )
+        if resp.status_code != 200:
+            return {"status": "error", "msg": "模型调用失败（HTTP " + str(resp.status_code) + "），请检查 API Key"}
+        content = resp.json()["choices"][0]["message"]["content"] or ""
+        data = _extract_json(content)
+        if not data:
+            return {"status": "error", "msg": "AI 返回内容无法解析"}
+        return {"status": "ok", "results": data}
     except Exception as e:
         return {"status": "error", "msg": str(e)[:200]}
 
