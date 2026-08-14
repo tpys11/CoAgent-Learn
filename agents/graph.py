@@ -14,7 +14,7 @@ from langgraph.graph import StateGraph, END
 from core.base_llm import DeepSeekLLM
 from agents.prompts import (
     MAIN_PLAN_PROMPT, MAIN_GENERATE_PROMPT, CLARIFY_GEN_PROMPT,
-    REVIEW_PROMPT, GENERATE_RULES,
+    REVIEW_PROMPT, GENERATE_RULES, TIER_TIME_EXPECT,
 )
 
 # 决策类节点（规划/审核）使用的快模型：按 base_url 域名自动映射，映射不到则与主模型一致
@@ -400,6 +400,9 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 new_mc.append({"agent": "视觉分析", "content": "已调用 glm-4v-flash 分析用户图片：" + img_desc[:150]})
             except Exception as e:
                 context += "【用户上传了图片，但视觉分析失败：" + str(e)[:100] + "】" + NL
+        # 档位时间期望（写入提示词）：极速必快、思考视情况、研究至少思考半分钟
+        if TIER_TIME_EXPECT.get(tpl):
+            context += TIER_TIME_EXPECT[tpl] + NL
         # 知识库模式（按需检索后生效）：本次检索过知识库时优先基于知识库回答；未命中必须申明
         if state.get("knowledge"):
             context += "【知识库模式】请优先基于知识库内容回答；若知识库没有相关内容，回答第一句必须明确告知：⚠️ 未在知识库中检索到相关内容，以下为模型通识回答。" + NL
