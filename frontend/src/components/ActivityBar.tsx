@@ -60,9 +60,7 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
           </a>
         </div>
       ) : (
-        <div className="h-[80px] px-3 pt-4 mb-2 flex justify-start">
-          <span className="font-display text-sm tracking-wide text-dim select-none">CA</span>
-        </div>
+        <div className="h-[80px] px-3 mb-2" />
       )}
       {ITEMS.map(({ key, icon, label }) => renderBtn(key, icon, label, view === key))}
       <div className="flex-1" />
