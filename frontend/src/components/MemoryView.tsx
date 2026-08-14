@@ -124,16 +124,16 @@ function PrefSummary({ pref }: { pref: Record<string, any> | null }) {
       <div className="flex flex-col gap-1.5">
         <p className="text-[11px] font-bold uppercase tracking-widest text-[var(--accent)]">结构化程度</p>
         <div className="flex flex-col gap-1 text-[var(--text-muted)]">
-          <p><span className="font-semibold text-[var(--text)]">列表</span>　{list ? (list.喜欢 ? `喜欢 · ${list.有序 ? '有序' : '无序'}` : '不喜欢') : '（未设置）'}</p>
-          <p><span className="font-semibold text-[var(--text)]">表格</span>　{table ? (table.喜欢 ? '喜欢' : '不喜欢') : '（未设置）'}</p>
+          <p><span className="font-semibold text-[var(--text)]">列表</span>　{list ? (list.喜欢 ? `喜欢 · ${list.有序 ? '有序' : '无序'}` : '不喜欢') : ''}</p>
+          <p><span className="font-semibold text-[var(--text)]">表格</span>　{table ? (table.喜欢 ? '喜欢' : '不喜欢') : ''}</p>
         </div>
       </div>
       <div className="flex flex-col gap-1.5">
         <p className="text-[11px] font-bold uppercase tracking-widest text-[var(--accent)]">特殊格式</p>
         <div className="flex flex-col gap-1 text-[var(--text-muted)]">
-          <p>latex 格式：{sp?.latex !== undefined ? (sp.latex ? '需要' : '不需要') : '（未设置）'}</p>
-          <p>md 文档格式：{sp?.['md文档'] !== undefined ? (sp['md文档'] ? '喜欢' : '不喜欢') : '（未设置）'}</p>
-          <p>复制内容到笔记：{sp?.['喜欢复制到笔记'] !== undefined ? (sp['喜欢复制到笔记'] ? '是' : '否') : '（未设置）'}</p>
+          <p>latex 格式：{sp?.latex !== undefined ? (sp.latex ? '需要' : '不需要') : ''}</p>
+          <p>md 文档格式：{sp?.['md文档'] !== undefined ? (sp['md文档'] ? '喜欢' : '不喜欢') : ''}</p>
+          <p>复制内容到笔记：{sp?.['喜欢复制到笔记'] !== undefined ? (sp['喜欢复制到笔记'] ? '是' : '否') : ''}</p>
         </div>
       </div>
     </div>
@@ -632,9 +632,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                           <span className="font-semibold text-[var(--text)]">{label}：</span>
                           {gFields[k] ? (
                             <span className="text-[var(--text-muted)]">{gFields[k]}</span>
-                          ) : (
-                            <span className="text-dim">（未填写 · 可在对话中告知或通过"修改记忆"更新）</span>
-                          )}
+                          ) : null}
                         </p>
                       ))}
                     </div>
@@ -645,9 +643,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                     <span className="text-sm font-semibold">学习情况</span>
                     {gStudy.总体概述 ? (
                       <p className="text-xs text-[var(--text-muted)] leading-relaxed">{gStudy.总体概述}</p>
-                    ) : (
-                      <p className="text-[11px] text-dim">（总体概述占位：对话后系统自动提炼，可通过右侧"修改记忆"对话框更新）</p>
-                    )}
+                    ) : null}
                     {projects.length > 0 ? (
                       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
                         {projects.map(p => (
@@ -661,9 +657,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                     ) : (
                       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
                         {Array.from({ length: 5 }).map((_, i) => (
-                          <div key={i} className="aspect-square rounded-xl border border-dashed hairline bg-[var(--bg-input)] flex items-center justify-center">
-                            <span className="text-[10px] text-dim">课程占位</span>
-                          </div>
+                          <div key={i} className="aspect-square rounded-xl border border-dashed hairline bg-[var(--bg-input)]" />
                         ))}
                       </div>
                     )}
@@ -672,9 +666,6 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                   {/* 阅读偏好（只读展示，修改走右侧对话框） */}
                   <div className="border hairline rounded-2xl p-5 bg-[var(--bg-panel)] flex flex-col gap-2">
                     <span className="text-sm font-semibold">阅读偏好</span>
-                    {gPref ? null : (
-                      <p className="text-[11px] text-dim">（占位：未设置 · 通过右侧"修改记忆"对话框设置）</p>
-                    )}
                     <PrefSummary pref={gPref} />
                   </div>
                 </div>
