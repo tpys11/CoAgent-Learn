@@ -362,9 +362,9 @@ const TEMPLATE_OPTIONS = [
                           <ReasoningBlock items={msg.think} streaming={streaming} activeAgent={flowActiveAgent} activeStatus={flowStatus} onClarifyPick={onClarifyPick} />
                         </div>
                       )}
-                      {/* 回答正文：流式逐帧 StreamingMd / 完成 markdown 渲染 */}
+                      {/* 回答正文：流式逐字纯文本（绝不 markdown）/ 完成一次性 markdown 渲染 */}
                       {streaming
-                        ? (msg.content ? <StreamingMd text={msg.content} /> : null)
+                        ? (msg.content ? <StreamingMd text={msg.content} streaming /> : null)
                         : (msg.content ? <div className="md-answer-body" dangerouslySetInnerHTML={{ __html: renderMd(msg.content) }} /> : null)}
                       {/* 流式等待指示器（回答尚未开始流式时显示） */}
                       {streaming && !msg.content && (
@@ -586,17 +586,16 @@ const TEMPLATE_OPTIONS = [
   )
 }
 
-/** 流式 markdown 渲染：requestAnimationFrame 对齐刷新率（~16ms）逐帧更新，比 100ms 防抖更顺滑；
- * 渲染未就绪时纯文本兜底；完成后（shown===text）显示最终渲染结果，与完成态 renderMd 一致无跳变。 */
-function StreamingMd({ text }: { text: string }) {
-  const [shown, setShown] = useState('')
-  useEffect(() => {
-    if (text === shown) return
-    const raf = requestAnimationFrame(() => setShown(text))
-    return () => cancelAnimationFrame(raf)
-  }, [text, shown])
-  const html = useMemo(() => (shown ? renderMd(shown) : ''), [shown])
-  if (shown === text && html) {
+/** 流式 markdown 渲染：
+ * - 流式中（streaming=true）：直接渲染纯文本（text 实时完整），绝不跑 markdown 解析——每 token 全量 markdown
+ *   渲染 + DOM 切换是"一段一段/闪烁"的元凶；纯文本渲染开销 O(n) 且无 DOM 结构变化
+ * - 完成（streaming=false）：一次性 markdown 渲染，与完成态一致无跳变 */
+function StreamingMd({ text, streaming }: { text: string; streaming?: boolean }) {
+  if (streaming) {
+    return <div className="whitespace-pre-wrap break-words">{text}</div>
+  }
+  const html = useMemo(() => (text ? renderMd(text) : ''), [text])
+  if (html) {
     return <div className="md-answer-body" dangerouslySetInnerHTML={{ __html: html }} />
   }
   return <div className="whitespace-pre-wrap break-words">{text}</div>
@@ -627,9 +626,11 @@ function ReasoningBlock({ items, streaming, activeAgent, activeStatus, onClarify
   // 展开/折叠：流式中强制展开；完成（streaming true→false）自动折叠为一行；用户可手动切换
   const [open, setOpen] = useState(true)
   const prevStreaming = useRef(streaming)
+  // 含澄清选项的条目：完成态也必须展开（用户必须能看到并点击选项）——除非用户手动折叠
+  const hasClarify = merged.some(it => !!(it as any).clarify)
   useEffect(() => {
-    if (prevStreaming.current && !streaming) setOpen(false)  // 完成：折叠
-    if (streaming) setOpen(true)  // 流式中：展开逐字
+    if (streaming) { setOpen(true); return }
+    if (prevStreaming.current && !streaming) setOpen(hasClarify)  // 完成：默认折叠；含澄清则展开
     prevStreaming.current = streaming
   }, [streaming])
   if (merged.length === 0) return null

@@ -171,11 +171,15 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         return {node: {"ms": ms, "llm_calls": llm_calls}, "token_estimate": tokens}
 
     # 澄清触发信号：思考文本中明确表达"需要澄清"的关键词（JSON 漏输出 clarify 字段时的兜底判定）
-    _CLARIFY_SIGNALS = ["澄清", "需求不明确", "需要明确", "需要确认", "请明确", "请确认", "信息不足", "无法确定",
-                        "难以确定", "询问用户", "想学什么", "哪个方面", "什么方面", "先确认", "需要了解"]
+    # 注意：必须排除否定语境（"无需澄清/不需要澄清"）与弱语境词（"信息不足"在"信息不足则联网"里很常见）——过宽曾导致意图明确的问题也弹澄清
+    _CLARIFY_SIGNALS = ["需要澄清", "请求澄清", "请用户澄清", "向用户澄清", "需求不明确", "意图不明确",
+                        "无法判断用户意图", "无法判断用户需求", "需要用户明确", "需要用户确认", "请用户选择"]
+    _CLARIFY_NEG = ["无需澄清", "不需要澄清", "不必澄清", "无需确认", "不需要确认", "无需明确", "不需要明确", "不澄清"]
 
     def _need_clarify(text: str) -> bool:
         t = text or ""
+        if any(n in t for n in _CLARIFY_NEG):
+            return False
         return any(k in t for k in _CLARIFY_SIGNALS)
 
     def _gen_clarify_options(llm, user_input: str) -> dict:

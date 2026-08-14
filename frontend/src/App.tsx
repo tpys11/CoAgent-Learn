@@ -166,6 +166,8 @@ function App() {
   // 围栏状态机（后端拆字推送后，``` 围栏逐字到达）：围栏内内容丢弃
   const fenceBufRef = useRef('')
   const fenceInRef = useRef(false)
+  // 本轮是否被需求澄清中断（后端 clarify 事件后直接结束 SSE，无 done）——流结束后保留占位消息等待用户选择
+  const clarifyRef = useRef(false)
   const sessionId = useRef(SESSION_ID)
   // 第二对话 id：App 持有（主对话完成后为它生成横向拓展追问），传给 RightPanel 使用
   const secondDialogueIdRef = useRef('sd-' + Math.random().toString(36).slice(2) + Date.now().toString(36))
@@ -414,9 +416,12 @@ function App() {
     setFlowActiveAgent(null)
     streamedRef.current = false
     userStoppedRef.current = false
+    clarifyRef.current = false
     requestIdRef.current = null
     fenceBufRef.current = ''
     fenceInRef.current = false
+    pendingAnswerRef.current = ''
+    pendingMindRef.current = null
     activeDidRef.current = did || null
     // 自动命名：对话名为「对话 N」时，按首条消息内容改名
     const curDlg = dialogues.find(d => d.id === did)
@@ -496,8 +501,9 @@ function App() {
           const data = JSON.parse(line.slice(6))
           if (data.type === 'start') { requestIdRef.current = data.request_id || null; continue }
           if (data.type === 'clarify') {
-            // 需求澄清（reasonix 式）：把澄清问题+选项写进思维链"学习助手·规划"条目（不结束流程、不删占位消息）；
-            // 用户点选项后同一轮流程内继续（复用占位消息与思维链）
+            // 需求澄清（reasonix 式）：后端发 clarify 后中断流程（无 done）；把澄清问题+选项写进思维链"学习助手·规划"条目；
+            // 用户点选项后作为新消息重发。标记 clarifyRef——流结束后保留占位消息等待选择（不显示"处理完成"）
+            clarifyRef.current = true
             const item: any = { agent: '学习助手·规划', content: '', clarify: { question: data.question || '请明确你的需求', options: Array.isArray(data.options) ? data.options : [] } }
             setFlowMindchain(prev => { const next = [...prev, item]; mindchainRef.current = next; return next })
             setAllMessages(prev => {
@@ -569,6 +575,9 @@ function App() {
             }
           }
           if (data.type === 'done') {
+            // 竞态防护：清空 rAF 待 flush 的流式残字（done 用完整 finalReply 替换，不能再追加）
+            pendingAnswerRef.current = ''
+            pendingMindRef.current = null
             finalReply = data.reply; steps.push(...(data.steps || [])); taskStats = data.task_stats || null
             // 特殊形式输出建议（模型判断）：key → label 映射，随最终消息展示
             const SPECIAL_LABELS: Record<string, string> = { report: '报告', flow: '流程图', tree: '树状图', table: '表格', chart: '统计图', audio: '音频', quiz: '测试题' }
@@ -609,6 +618,19 @@ function App() {
         }
         const thinkArr = mindchainRef.current
         if (debugLine) thinkArr.push({ agent: "运行统计", content: debugLine })
+        // 需求澄清中断（后端 clarify 后无 done）：保留占位消息（content 空、think 含澄清选项），
+        // 等待用户点击选项重新发消息——不显示"处理完成"、不跑打字机
+        if (clarifyRef.current && !finalReply && !userStoppedRef.current && !flowError) {
+          setAllMessages(prev => {
+            const arr = prev[activeDidRef.current || ''] || []
+            const lastMsg = arr[arr.length - 1]
+            if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content === '') {
+              return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, think: thinkArr }] }
+            }
+            return prev
+          })
+          return
+        }
         const finalContent = finalReply || (flowError ? '⚠️ ' + flowError : '处理完成')
         // 打字机效果（设置开关）
         const typingOn = true  // 流式逐字输出固定开启
@@ -673,15 +695,27 @@ function App() {
   // 手动停止生成：前端中断 SSE 流 + 通知后端取消（后端置位 cancel_event 后中断 LLM、不落库不后处理；已流式内容保留展示）
   const handleStopGeneration = useCallback(() => {
     userStoppedRef.current = true
+    // 停止时清空 rAF 待 flush 的流式残字（已显示的保留，未 flush 的丢弃——停止语义）
+    pendingAnswerRef.current = ''
+    pendingMindRef.current = null
     try { if (abortCtrlRef.current) abortCtrlRef.current.abort() } catch (e) {}
     if (requestIdRef.current) {
       fetch('/api/chat/stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: requestIdRef.current }) }).catch(() => {})
     }
   }, [])
-  // 需求澄清选项点击（reasonix 式）：同一轮流程内继续——复用占位消息与思维链，以"原问题+选择"继续生成
+  // 需求澄清选项点击（reasonix 式）：清理上一轮澄清占位消息，以"原问题+选择"作为新消息重新发送（走完整流程）
   const handleClarifyPick = useCallback((option: string | null) => {
     const original = lastUserMsgRef.current || ''
     if (!original) return
+    // 移除被澄清中断的占位消息（content 空 + think 含 clarify），避免遗留空消息
+    setAllMessages(prev => {
+      const arr = prev[activeDidRef.current || ''] || []
+      const lastMsg = arr[arr.length - 1]
+      if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content === '' && Array.isArray(lastMsg.think) && lastMsg.think.some((t: any) => t && t.clarify)) {
+        return { ...prev, [activeDidRef.current || '']: arr.slice(0, -1) }
+      }
+      return prev
+    })
     clarifyContinueRef.current = true
     handleSendMessage(option ? `${original}\n（我选择：${option}）` : original, { clarified: true })
   }, [handleSendMessage])
