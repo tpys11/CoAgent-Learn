@@ -26,7 +26,7 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
         key={key}
         onClick={() => onChange(key)}
         title={label}
-        className={`w-3/4 h-9 mb-2 flex items-center gap-3 px-3 rounded-md text-sm font-medium transition-colors ${
+        className={`w-full h-9 mb-2 flex items-center gap-3 px-3 rounded-md text-sm font-medium transition-colors ${
           active ? 'bg-[#1a1a1a] text-white' : 'text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)]'
         }`}
       >
@@ -48,7 +48,7 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
     )
   )
   return (
-    <nav className={`h-full flex-shrink-0 flex flex-col transition-all duration-300 ${expanded ? 'w-64 py-4 items-stretch' : 'w-[104px] py-4 items-stretch'}`}>
+    <nav className={`h-full flex-shrink-0 flex flex-col transition-all duration-300 ${expanded ? 'w-48 py-4 items-stretch' : 'w-[104px] py-4 items-stretch'}`}>
       {/* 顶部品牌区（两态等高 h-[80px]+mb-2，保证按钮起始 y 锚定） */}
       {expanded ? (
         <div className="h-[80px] px-6 pt-2 mb-2 border-b hairline flex flex-col gap-2">
@@ -68,12 +68,12 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
       {expanded ? (
         <div className="flex flex-col gap-1.5">
           <button onClick={() => onChange('tutorial')} title="使用引导"
-            className={`w-3/4 h-9 flex items-center gap-3 px-3 rounded-md text-sm font-medium transition-colors ${view === 'tutorial' ? 'bg-[#1a1a1a] text-white' : 'text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)]'}`}>
+            className={`w-full h-9 flex items-center gap-3 px-3 rounded-md text-sm font-medium transition-colors ${view === 'tutorial' ? 'bg-[#1a1a1a] text-white' : 'text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)]'}`}>
             <GraduationCap size={16} strokeWidth={1.6} />
             <span className="leading-none">使用引导</span>
           </button>
           <button onClick={onSettings} title="设置"
-            className="w-3/4 h-9 flex items-center gap-3 px-3 rounded-md text-sm font-medium text-dim transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)]">
+            className="w-full h-9 flex items-center gap-3 px-3 rounded-md text-sm font-medium text-dim transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)]">
             <Settings size={16} strokeWidth={1.6} />
             <span className="leading-none">设置</span>
           </button>
