@@ -127,11 +127,12 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
   )
 }
 
-/** 课程资源：栏目一为课程资源（可上传文件、拖入文件或系统资源），栏目二为系统内置资源（可拖入/加入） */
+/** 项目资源：栏目一为项目资源（可上传文件、拖入文件或系统资源），栏目二为系统内置资源（可拖入/加入） */
 function ProjectResources({ projectId, naturalHeight }: { projectId: string | null; naturalHeight?: boolean }) {
   const [docs, setDocs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
   const [dragOver, setDragOver] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const load = useCallback(() => {
@@ -156,7 +157,7 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
       await fetch('/api/knowledge/upload-file', { method: 'POST', body: fd })
     }
     setUploading('')
-    setTimeout(load, 2000)
+    setTimeout(() => { load(); setRefreshKey(k => k + 1) }, 2000)
   }
   const addPreset = async (title: string, body: string) => {
     if (!projectId) return
@@ -167,12 +168,15 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
       body: JSON.stringify({ project_id: projectId, text: body, source: title, session_id: 'project-res', api_key: localStorage.getItem('coagent-apikey') || '' }),
     })
     setUploading('')
-    setTimeout(load, 2000)
+    setTimeout(() => { load(); setRefreshKey(k => k + 1) }, 2000)
   }
   const removeDoc = (source: string) => {
-    if (!window.confirm(`从课程资源移除「${source}」？`)) return
+    if (!window.confirm(`从项目资源移除「${source}」？`)) return
     fetch('/api/knowledge/delete?project_id=' + encodeURIComponent(projectId || 'default') + '&source=' + encodeURIComponent(source), { method: 'DELETE' })
-      .then(() => setDocs(prev => prev.filter(d => d.source !== source)))
+      .then(() => {
+        setDocs(prev => prev.filter(d => d.source !== source))
+        setRefreshKey(k => k + 1)  // 刷新嵌套 ResourceView（原文已转存资源表）
+      })
   }
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault()
@@ -188,13 +192,13 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
   }
   return (
     <div className={`p-6 flex flex-col gap-5 ${naturalHeight ? '' : 'h-full overflow-hidden'}`}>
-      {/* 上：课程资源（可上传 / 拖入） */}
+      {/* 上：项目资源（可上传 / 拖入） */}
       <div className="flex-shrink-0 flex flex-col gap-2.5"
         onDragOver={e => { e.preventDefault(); setDragOver(true) }}
         onDragLeave={() => setDragOver(false)}
         onDrop={onDrop}>
         <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold text-dim uppercase tracking-wider">课程资源</p>
+          <p className="text-xs font-semibold text-dim uppercase tracking-wider">项目资源</p>
           <div className="flex items-center gap-2">
             {uploading && <span className="text-[11px] text-dim">处理中：{uploading}</span>}
             <button onClick={() => fileRef.current?.click()}
@@ -205,32 +209,29 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
               onChange={e => { if (e.target.files?.length) uploadFiles(e.target.files); e.target.value = '' }} />
           </div>
         </div>
-        <div className={`border rounded-2xl p-3 flex flex-col gap-2 max-h-[26vh] overflow-y-auto transition-colors ${dragOver ? 'border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_6%,var(--bg-panel))]' : 'border-dashed hairline'}`}>
+        <div className={`border rounded-2xl p-3 grid grid-cols-2 md:grid-cols-3 gap-2 max-h-[26vh] overflow-y-auto transition-colors ${dragOver ? 'border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_6%,var(--bg-panel))]' : 'border-dashed hairline'}`}>
           {loading ? (
-            <div className="p-6 flex items-center justify-center text-xs text-dim">加载中…</div>
+            <div className="col-span-full p-6 flex items-center justify-center text-xs text-dim">加载中…</div>
           ) : docs.length === 0 ? (
-            <div className="p-6 flex flex-col items-center justify-center gap-1.5 text-xs text-dim">
+            <div className="col-span-full p-6 flex flex-col items-center justify-center gap-1.5 text-xs text-dim">
               <Upload size={18} className="opacity-50" />
               <span>暂无资源 — 上传文件，或从下方系统资源拖入</span>
             </div>
           ) : docs.map(d => (
-            <div key={d.source} className="flex items-center gap-3 border hairline rounded-xl px-3.5 py-2.5 bg-[var(--bg-panel)]">
-              <span className="w-8 h-8 rounded-lg bg-[#1a1a1a] text-white flex items-center justify-center flex-shrink-0"><FileText size={14} /></span>
-              <div className="flex flex-col gap-0.5 min-w-0 flex-1">
-                <span className="text-xs font-semibold truncate">{d.source}</span>
-                <span className="text-[10px] text-dim">{d.chunks} 块 · {d.preview || ''}</span>
-              </div>
+            <div key={d.source} className="group flex items-center gap-2 border hairline rounded-xl px-3 py-2 bg-[var(--bg-panel)]">
+              <span className="w-7 h-7 rounded-lg bg-[#1a1a1a] text-white flex items-center justify-center flex-shrink-0"><FileText size={13} /></span>
+              <span className="text-xs font-semibold truncate flex-1 min-w-0" title={d.source}>{d.source}</span>
               <button onClick={() => removeDoc(d.source)} title="移除"
-                className="p-1.5 rounded-lg text-dim hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"><Trash2 size={13} /></button>
+                className="opacity-0 group-hover:opacity-100 p-1 rounded text-dim hover:text-red-500 transition-colors flex-shrink-0"><Trash2 size={12} /></button>
             </div>
           ))}
         </div>
       </div>
       {/* 下：系统内置资源（可拖入 / 加入课程），撑满剩余空间 */}
       <div className="flex-1 min-h-0 flex flex-col gap-2.5 overflow-hidden">
-        <p className="text-xs font-semibold text-dim uppercase tracking-wider flex items-center gap-1.5 flex-shrink-0"><BookOpen size={13} /> 系统内置资源<span className="font-normal text-[10px] text-dim">（卡片可拖入上方，或点卡片详情「加入课程」）</span></p>
+        <p className="text-xs font-semibold text-dim uppercase tracking-wider flex items-center gap-1.5 flex-shrink-0"><BookOpen size={13} /> 系统内置资源{docs.length === 0 && <span className="font-normal text-[10px] text-dim">（卡片可拖入上方，或点卡片详情「加入课程」）</span>}</p>
         <div className={`border hairline rounded-2xl overflow-hidden ${naturalHeight ? 'h-[45vh]' : 'flex-1 min-h-0'}`}>
-          <ResourceView projectId={projectId} onUseItem={addPreset} />
+          <ResourceView refreshSignal={refreshKey} projectId={projectId} onUseItem={addPreset} />
         </div>
       </div>
     </div>

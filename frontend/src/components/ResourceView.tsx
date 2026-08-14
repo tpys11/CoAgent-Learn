@@ -20,12 +20,16 @@ interface Resource {
   file_ext?: string
   file_size?: number
   file_path?: string
+  project_id?: string
+  project_name?: string
 }
 
 interface KbDoc {
   source: string
   chunks: number
   preview: string
+  project_id?: string
+  project_name?: string
 }
 
 interface Tutorial {
@@ -54,6 +58,7 @@ type ListItem = {
   kind: 'tutorial' | 'artifact' | 'resource' | 'kb' | 'wiki' | 'gen'; url?: string
   deletable: boolean
   time?: string
+  pid?: string
 }
 
 const TYPE_ICONS: Record<string, any> = {
@@ -213,6 +218,8 @@ const WIKI_ENTRIES: WikiEntry[] = [
 
 const TUTORIALS_KEY = 'coagent-tutorials'
 const CUSTOM_GENS_KEY = 'coagent-custom-gens'
+const DOMAINS_KEY = 'coagent-domains'
+const WIKI_KEY = 'coagent-custom-wiki'
 
 /** 我的生成：预设分类（按生成物类型匹配） */
 const GEN_CATS = [
@@ -272,16 +279,30 @@ async function collectObsFiles(h: FileSystemDirectoryHandle, depth: number, out:
   }
 }
 
-export default function ResourceView({ projectId, onUseItem }: { projectId: string | null; onUseItem?: (title: string, body: string) => void }) {
+export default function ResourceView({ projectId, onUseItem, refreshSignal }: { projectId: string | null; onUseItem?: (title: string, body: string) => void; refreshSignal?: number }) {
   const [tab, setTab] = useState<Tab>('tutorials')
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
+  const [genProjects, setGenProjects] = useState<Array<{ id: string; name: string }>>([])
+  const [selGenProject, setSelGenProject] = useState<string>('')
   const [resources, setResources] = useState<Resource[]>([])
   const [kbDocs, setKbDocs] = useState<KbDoc[]>([])
   const [tutorials, setTutorials] = useState<Tutorial[]>(() => {
     try { return JSON.parse(localStorage.getItem(TUTORIALS_KEY) || '[]') } catch { return [] }
   })
-  // 领域（系统预设）
+  // 领域：系统预设 + 自定义（localStorage 持久化）
+  const [customDomains, setCustomDomains] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem(DOMAINS_KEY) || '[]') } catch { return [] }
+  })
+  const domains = [...DEFAULT_DOMAINS, ...customDomains]
   const [selectedDomain, setSelectedDomain] = useState(DEFAULT_DOMAINS[0])
+  // 自定义百科词条（新建领域 AI 生成后存 localStorage）
+  const [customWiki, setCustomWiki] = useState<WikiEntry[]>(() => {
+    try { return JSON.parse(localStorage.getItem(WIKI_KEY) || '[]') } catch { return [] }
+  })
+  // 新建领域
+  const [showNewDomain, setShowNewDomain] = useState(false)
+  const [newDomainName, setNewDomainName] = useState('')
+  const [newDomainLoading, setNewDomainLoading] = useState(false)
   // 分类（固定三类）
   const [selectedCat, setSelectedCat] = useState(CATEGORIES[0].key)
   // 百科：主题筛选（顶部按钮）
@@ -291,7 +312,7 @@ export default function ResourceView({ projectId, onUseItem }: { projectId: stri
   // 我的生成：分类（预设 + 自定义）
   const [genCat, setGenCat] = useState('all')
   const [uploadCat, setUploadCat] = useState('all')
-  const [customGens, setCustomGens] = useState<Array<{ id: string; name: string; items: Array<{ id: string; title: string; content: string }> }>>(() => {
+  const [customGens, setCustomGens] = useState<Array<{ id: string; name: string; items: Array<{ id: string; title: string; content: string; kind?: string }> }>>(() => {
     try { return JSON.parse(localStorage.getItem(CUSTOM_GENS_KEY) || '[]') } catch { return [] }
   })
   const [showNewGenCat, setShowNewGenCat] = useState(false)
@@ -385,18 +406,30 @@ export default function ResourceView({ projectId, onUseItem }: { projectId: stri
   }
 
   const load = useCallback(() => {
-    if (!projectId) return
     setLoading(true)
-    fetch('/api/artifacts?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' })
-      .then(r => r.json()).then(d => setArtifacts(d.artifacts || [])).catch(() => {})
-    fetch('/api/resources?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' })
+    // 我的生成：按选中项目加载
+    const gpid = selGenProject || projectId || ''
+    if (gpid) {
+      fetch('/api/artifacts?project_id=' + encodeURIComponent(gpid), { cache: 'no-store' })
+        .then(r => r.json()).then(d => setArtifacts(d.artifacts || [])).catch(() => {})
+    }
+    // 我的上传：全局聚合（所有项目）
+    fetch('/api/resources/all', { cache: 'no-store' })
       .then(r => r.json()).then(d => setResources(d.resources || [])).catch(() => {})
-    fetch('/api/knowledge/list?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' })
+    fetch('/api/knowledge/list-all', { cache: 'no-store' })
       .then(r => r.json()).then(d => setKbDocs(d.docs || [])).catch(() => {})
-      .finally(() => setLoading(false))
-  }, [projectId])
+    setTimeout(() => setLoading(false), 200)
+  }, [projectId, selGenProject])
 
   useEffect(() => { setDetail(null); load() }, [load])
+  useEffect(() => { if (refreshSignal) load() }, [refreshSignal])
+  useEffect(() => {
+    fetch('/api/projects', { cache: 'no-store' }).then(r => r.json()).then(d => {
+      const ps = (d.projects || []).map((p: any) => ({ id: p.id, name: p.name }))
+      setGenProjects(ps)
+      if (!selGenProject && ps.length) setSelGenProject(projectId || ps[0].id)
+    }).catch(() => {})
+  }, [])
 
   // 教程资源
   const allTutorials = [...PRESET_TUTORIALS, ...tutorials]
@@ -409,6 +442,43 @@ export default function ResourceView({ projectId, onUseItem }: { projectId: stri
     saveTutorials(tutorials.filter(t => t.id !== id))
   }
 
+  // 新建领域：调后端 AI 生成该领域的教程 + 百科词条，存 localStorage
+  const createDomain = async () => {
+    const name = newDomainName.trim()
+    if (!name) return
+    if (domains.includes(name)) { alert('该领域已存在'); return }
+    setNewDomainLoading(true)
+    try {
+      const r = await fetch('/api/generate-domain', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ domain: name, api_key: localStorage.getItem('coagent-apikey') || '' }),
+      })
+      const d = await r.json()
+      if (d.status === 'ok') {
+        const nt = (d.tutorials || []).map((t: any) => ({ ...t, id: 'dom-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), domain: name, preset: false }))
+        const nw = (d.wiki || []).map((w: any) => ({ ...w, domain: name }))
+        const nextT = [...tutorials, ...nt]
+        const nextW = [...customWiki, ...nw]
+        saveTutorials(nextT)
+        setCustomWiki(nextW)
+        localStorage.setItem(WIKI_KEY, JSON.stringify(nextW))
+        const nextDomains = [...customDomains, name]
+        setCustomDomains(nextDomains)
+        localStorage.setItem(DOMAINS_KEY, JSON.stringify(nextDomains))
+        setSelectedDomain(name)
+        setSelectedCat(CATEGORIES[0].key)
+        setNewDomainName('')
+        setShowNewDomain(false)
+      } else {
+        alert('生成失败：' + (d.msg || '请检查 API Key'))
+      }
+    } catch (e) {
+      alert('生成失败：' + e)
+    } finally {
+      setNewDomainLoading(false)
+    }
+  }
+
   // ---------- 我的上传 ----------
   const deleteResource = (id: string) => {
     if (!window.confirm('确定删除该资料？')) return
@@ -417,12 +487,13 @@ export default function ResourceView({ projectId, onUseItem }: { projectId: stri
       setDetail(null)
     })
   }
-  const deleteKbDoc = (source: string) => {
+  const deleteKbDoc = (source: string, pid?: string) => {
     if (!window.confirm(`确定删除知识库文档「${source}」？`)) return
-    fetch('/api/knowledge/delete?project_id=' + encodeURIComponent(projectId || 'default') + '&source=' + encodeURIComponent(source), { method: 'DELETE' })
+    fetch('/api/knowledge/delete?project_id=' + encodeURIComponent(pid || projectId || 'default') + '&source=' + encodeURIComponent(source), { method: 'DELETE' })
       .then(() => {
         setKbDocs(prev => prev.filter(d => d.source !== source))
         setDetail(null)
+        load()  // 重新加载（原文已转存资源表，出现在"保存的资料"）
       })
   }
   // 我的上传：手动添加资料
@@ -450,7 +521,18 @@ export default function ResourceView({ projectId, onUseItem }: { projectId: stri
       try {
         const r = await fetch('/api/resources/upload', { method: 'POST', body: fd })
         const d = await r.json()
-        if (d.status === 'ok') ok++
+        if (d.status === 'ok') {
+          ok++
+          // 当前在「我的分类」下上传：既显示在全部，也复制到该分类
+          if (isCustomUploadCat) {
+            const newItem = { id: 'fi-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), title: f.name, content: d.preview || '', kind: 'file' }
+            setCustomGens(prev => {
+              const next = prev.map(cg => cg.id === uploadCat ? { ...cg, items: [...cg.items, newItem] } : cg)
+              localStorage.setItem(CUSTOM_GENS_KEY, JSON.stringify(next))
+              return next
+            })
+          }
+        }
       } catch (e) { /* 忽略单个失败 */ }
     }
     setResUploading(false)
@@ -502,7 +584,7 @@ export default function ResourceView({ projectId, onUseItem }: { projectId: stri
   }))
 
   // 百科词条（当前领域）
-  const wikiEntries = WIKI_ENTRIES.filter(w => w.domain === selectedDomain)
+  const wikiEntries = [...WIKI_ENTRIES, ...customWiki].filter(w => w.domain === selectedDomain)
   const wikiThemes = Array.from(new Set(wikiEntries.map(w => w.theme)))
   const filteredWiki = wikiTheme === 'all' ? wikiEntries : wikiEntries.filter(w => w.theme === wikiTheme)
 
@@ -519,12 +601,13 @@ export default function ResourceView({ projectId, onUseItem }: { projectId: stri
       kind: 'artifact' as const, deletable: false, time: fmtTime(a.created_at),
     }))
   } else if (tab === 'uploads') {
-    const kbItems: ListItem[] = kbDocs.map(d => ({ id: 'kb:' + d.source, title: d.source, sub: `知识库文档 · ${d.chunks} 块`, body: d.preview || '（无预览内容）', icon: Upload, kind: 'kb' as const, deletable: true, time: '' }))
+    const kbItems: ListItem[] = kbDocs.map(d => ({ id: 'kb:' + d.source, title: d.source, sub: `${d.project_name || ''} · ${d.chunks} 块`, body: d.preview || '（无预览内容）', icon: Upload, kind: 'kb' as const, deletable: true, time: '', pid: d.project_id }))
     const resItems: ListItem[] = resources.map(r => {
       const isFile = r.type === 'file'
       const sizeStr = r.file_size ? ((r.file_size / 1024).toFixed(1) + ' KB') : ''
-      const sub = isFile ? ('文件 · ' + (r.file_ext ? r.file_ext.toUpperCase() : '') + (sizeStr ? ' · ' + sizeStr : '')) : '文本资料'
-      return { id: r.id, title: r.name, sub, body: r.content || '', icon: isFile ? Upload : FileText, kind: 'resource' as const, deletable: true, time: fmtTime(r.created_at) }
+      const projName = r.project_name ? r.project_name + ' · ' : ''
+      const sub = projName + (isFile ? ('文件 · ' + (r.file_ext ? r.file_ext.toUpperCase() : '') + (sizeStr ? ' · ' + sizeStr : '')) : '文本资料')
+      return { id: r.id, title: r.name, sub, body: r.content || '', icon: isFile ? Upload : FileText, kind: 'resource' as const, deletable: true, time: fmtTime(r.created_at), pid: r.project_id }
     })
     if (uploadCat === 'all') list = [...kbItems, ...resItems]
     else if (uploadCat === 'kb') list = kbItems
@@ -535,7 +618,7 @@ export default function ResourceView({ projectId, onUseItem }: { projectId: stri
   const removeItem = (item: ListItem) => {
     if (item.kind === 'tutorial') removeTutorial(item.id)
     else if (item.kind === 'resource') deleteResource(item.id)
-    else if (item.kind === 'kb') deleteKbDoc(item.title)
+    else if (item.kind === 'kb') deleteKbDoc(item.title, item.pid)
     else if (item.kind === 'gen') removeGenItem(item.id)
   }
 
@@ -683,10 +766,13 @@ const exportItem = (item: ListItem) => {
   // 我的生成：当前是否为自定义分类 + 其内容列表
   const isCustomCat = customGens.some(c => c.id === genCat)
   const isCustomUploadCat = customGens.some(c => c.id === uploadCat)
-  const customItems: ListItem[] = (customGens.find(c => c.id === (tab === 'generated' ? genCat : uploadCat))?.items || []).map(i => ({
-    id: i.id, title: i.title, sub: '自定义内容', body: i.content, icon: Sparkles,
-    kind: 'gen' as const, deletable: true, time: '',
-  }))
+  const customItems: ListItem[] = (customGens.find(c => c.id === uploadCat)?.items || []).map(i => {
+    const isFile = i.kind === 'file'
+    return {
+      id: i.id, title: i.title, sub: isFile ? '上传的文件' : '自定义内容', body: i.content, icon: isFile ? Upload : Sparkles,
+      kind: 'gen' as const, deletable: true, time: '',
+    }
+  })
 
   /** 左侧栏「我的分类」公共区块（我的生成 / 我的上传 共用） */
   const renderMyCats = (active: string, onSelect: (id: string) => void) => (
@@ -727,39 +813,22 @@ const exportItem = (item: ListItem) => {
     <div className="flex-1 h-full min-w-0 flex flex-col panel rounded-3xl overflow-hidden">
       {/* 顶部 Hero：主题化配色（跟随 light/dark/warm） */}
       <div className="flex-shrink-0 px-8 pt-6 pb-6 bg-[var(--bg-panel)] border-b border-[var(--border-color)]">
-          {/* 领域选择（逻辑上最先选领域：置于最顶、靠左展开） */}
-          <div className="flex items-center gap-3 mb-4 flex-wrap">
-            {DEFAULT_DOMAINS.map(d => { const c = domainColor(d); return (
-              <button
-                key={d}
-                onClick={() => { setSelectedDomain(d); setSelectedCat(CATEGORIES[0].key); setDetail(null) }}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-all ${
-                  selectedDomain === d
-                    ? `${c.active} text-white border-transparent shadow-soft`
-                    : `${c.bg} ${c.text} ${c.border} ${c.hover}`
-                }`}
-              >
-                {d}
-              </button>
-            ) })}
-          </div>
-
           {/* 三个区域选择（教程资源 / 我的生成 / 我的上传） */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
             {([
-              { key: 'tutorials' as Tab, icon: BookOpen, label: '教程资源', desc: '系统整理的学习教程与主题词条' },
-              { key: 'generated' as Tab, icon: Sparkles, label: '我的生成', desc: 'AI 生成的内容，可查看与导出' },
-              { key: 'uploads' as Tab, icon: Upload, label: '我的上传', desc: '上传的文档与知识库资料' },
-            ]).map(({ key, icon: Icon, label, desc }) => (
+              { key: 'tutorials' as Tab, icon: BookOpen, label: '教程资源', desc: '系统整理的学习教程与主题词条', color: 'bg-blue-600' },
+              { key: 'generated' as Tab, icon: Sparkles, label: '我的生成', desc: 'AI 生成的内容，可查看与导出', color: 'bg-violet-600' },
+              { key: 'uploads' as Tab, icon: Upload, label: '我的上传', desc: '上传的文档与知识库资料', color: 'bg-emerald-600' },
+            ]).map(({ key, icon: Icon, label, desc, color }) => (
               <button
                 key={key}
                 onClick={() => { setTab(key); setDetail(null) }}
-                className={`card-surface rounded-2xl p-5 flex flex-col gap-2 text-left transition-all hover:shadow-soft ${
-                  tab === key ? 'border-[var(--accent)] bg-[var(--bg-hover)]' : ''
+                className={`card-surface rounded-2xl p-5 flex flex-col gap-2 text-left transition-all hover:shadow-soft border ${
+                  tab === key ? 'border-[#1a1a1a] bg-[var(--bg-hover)] shadow-soft' : 'border-transparent'
                 }`}
               >
                 <span className="flex items-center gap-2">
-                  <span className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 bg-[#1a1a1a] text-white">
+                  <span className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 text-white ${color}`}>
                     <Icon size={14} />
                   </span>
                   <span className="text-sm font-semibold">{label}</span>
@@ -774,42 +843,49 @@ const exportItem = (item: ListItem) => {
       <div className="flex-1 flex min-h-0">
         {tab === 'tutorials' && (
           <div className="w-40 flex-shrink-0 border-r hairline bg-[var(--bg-sidebar)] p-2.5 flex flex-col gap-1 overflow-y-auto">
-            {CATEGORIES.map(c => {
-              const Icon = CAT_ICONS[c.key]
-              const active = selectedCat === c.key
+            <p className="text-[10px] font-bold text-dim uppercase tracking-wider px-2.5 mt-1 mb-0.5">领域</p>
+            {domains.map(d => {
+              const c = domainColor(d)
+              const active = selectedDomain === d
               return (
                 <button
-                  key={c.key}
-                  onClick={() => { setSelectedCat(c.key); setDetail(null) }}
+                  key={d}
+                  onClick={() => { setSelectedDomain(d); setSelectedCat(CATEGORIES[0].key); setDetail(null) }}
                   className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-colors ${
                     active ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
                   }`}
                 >
-                  {Icon && <Icon size={14} className={active ? 'text-white' : 'text-dim'} />}
-                  <span className="font-semibold">{c.key}</span>
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${c.active}`} />
+                  <span className="font-semibold truncate">{d}</span>
                 </button>
               )
             })}
+            <button onClick={() => setShowNewDomain(true)}
+              className="flex items-center gap-2 px-3 py-2 mt-1 rounded-xl text-xs text-dim hover:bg-[var(--bg-hover)] transition-colors">
+              <Plus size={13} /> 新建领域
+            </button>
           </div>
         )}
         {tab === 'generated' && (
           <div className="w-40 flex-shrink-0 border-r hairline bg-[var(--bg-sidebar)] p-2.5 flex flex-col gap-1 overflow-y-auto">
-            <p className="text-[10px] font-bold text-dim uppercase tracking-wider px-2.5 mt-1 mb-0.5">预设分类</p>
-            {GEN_CATS.map(c => (
-              <button key={c.key} onClick={() => { setGenCat(c.key); setDetail(null) }}
+            <p className="text-[10px] font-bold text-dim uppercase tracking-wider px-2.5 mt-1 mb-0.5">项目</p>
+            {genProjects.length === 0 && (
+              <p className="text-[11px] text-dim px-2.5 py-1">暂无项目</p>
+            )}
+            {genProjects.map(p => (
+              <button key={p.id} onClick={() => { setSelGenProject(p.id); setGenCat('all'); setDetail(null) }}
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-left transition-colors ${
-                  genCat === c.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
+                  (selGenProject || projectId) === p.id ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
                 }`}>
-                <Sparkles size={13} /> {c.label}
+                <span className="font-semibold truncate">{p.name}</span>
               </button>
             ))}
-            {renderMyCats(genCat, setGenCat)}
           </div>
         )}
         {tab === 'uploads' && (
           <div className="w-40 flex-shrink-0 border-r hairline bg-[var(--bg-sidebar)] p-2.5 flex flex-col gap-1 overflow-y-auto">
             <p className="text-[10px] font-bold text-dim uppercase tracking-wider px-2.5 mt-1 mb-0.5">预设分类</p>
-            {[{ key: 'all', label: '全部' }, { key: 'kb', label: '知识库文档' }, { key: 'resource', label: '保存的资料' }].map(c => (
+            {[{ key: 'all', label: '全部' }, { key: 'kb', label: '已上传到知识库' }, { key: 'resource', label: '保存的资料' }].map(c => (
               <button key={c.key} onClick={() => { setUploadCat(c.key); setDetail(null) }}
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-left transition-colors ${
                   uploadCat === c.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
@@ -822,48 +898,54 @@ const exportItem = (item: ListItem) => {
         )}
         <div className="flex-1 overflow-y-auto px-10 py-8">
           <div className="max-w-6xl mx-auto">
-          {tab === 'tutorials' && (selectedCat === WIKI_CAT ? wikiSection : tutorialSection)}
+          {tab === 'tutorials' && (
+            <>
+              {showNewDomain && (
+                <div className="border border-[var(--border-color)] rounded-2xl p-4 mb-5 flex flex-col gap-2 bg-[var(--bg-panel)] shadow-soft">
+                  <p className="text-sm font-semibold">新建领域</p>
+                  <input autoFocus value={newDomainName} onChange={e => setNewDomainName(e.target.value)} placeholder="领域名称（如：机器学习 / 前端开发）"
+                    className="px-3 py-2 text-xs input-surface rounded-xl outline-none" />
+                  <p className="text-[11px] text-dim">将由 AI 自动生成该领域的系统学习教程与百科词条</p>
+                  <div className="flex gap-2 justify-end">
+                    <button onClick={() => { setShowNewDomain(false); setNewDomainName('') }} className="px-3 py-1.5 text-[11px] text-dim rounded-xl row-hover">取消</button>
+                    <button onClick={createDomain} disabled={newDomainLoading}
+                      className="px-3 py-1.5 text-[11px] bg-[#1a1a1a] text-white font-semibold rounded-xl disabled:opacity-50">
+                      {newDomainLoading ? '生成中…' : '生成领域内容'}
+                    </button>
+                  </div>
+                </div>
+              )}
+              <div className="flex gap-2 flex-wrap mb-6">
+                {CATEGORIES.map(c => (
+                  <button key={c.key} onClick={() => { setSelectedCat(c.key); setDetail(null) }}
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                      selectedCat === c.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'
+                    }`}>
+                    {c.key}
+                  </button>
+                ))}
+              </div>
+              {selectedCat === WIKI_CAT ? wikiSection : tutorialSection}
+            </>
+          )}
           {tab === 'generated' && (
             <>
               <div className="flex items-end justify-between mb-5">
                 <h2 className="text-lg font-bold flex items-center gap-2"><Sparkles size={18} /> 我的生成</h2>
-                {isCustomCat && !showNewGenItem && (
-                  <button
-                    onClick={() => setShowNewGenItem(true)}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors"
-                  >
-                    <Plus size={13} /> 新建内容
-                  </button>
-                )}
               </div>
-
-              {isCustomCat && showNewGenItem && (
-                <div className="border border-[var(--border-color)] rounded-2xl p-3 mb-5 flex flex-col gap-2 bg-[var(--bg-panel)] shadow-soft">
-                  <input autoFocus value={gTitle} onChange={e => setGTitle(e.target.value)} placeholder="内容名称"
-                    className="px-3 py-2 text-xs input-surface rounded-xl outline-none" />
-                  <textarea value={gContent} onChange={e => setGContent(e.target.value)} placeholder="内容（支持多行）"
-                    rows={4}
-                    className="px-3 py-2 text-xs input-surface rounded-xl outline-none resize-none" />
-                  <div className="flex gap-2 justify-end">
-                    <button onClick={() => setShowNewGenItem(false)} className="px-3 py-1.5 text-[11px] text-dim rounded-xl row-hover">取消</button>
-                    <button onClick={addGenItem} className="px-3 py-1.5 text-[11px] bg-[#1a1a1a] text-white font-semibold rounded-xl">保存</button>
-                  </div>
-                </div>
-              )}
-
-              {isCustomCat ? (
-                <>
-                  {loading && <p className="text-xs text-dim text-center py-16">加载中…</p>}
-                  {!loading && customItems.length === 0 && emptyState('该分类暂无内容', '点击右上角「新建内容」添加')}
-                  {!loading && customItems.length > 0 && cardGrid(customItems)}
-                </>
-              ) : (
-                <>
-                  {loading && <p className="text-xs text-dim text-center py-16">加载中…</p>}
-                  {!loading && list.length === 0 && emptyState('暂无生成物', '对话生成讲义 / 指南 / 测试题后自动收录到这里')}
-                  {!loading && list.length > 0 && cardGrid(list)}
-                </>
-              )}
+              <div className="flex gap-2 flex-wrap mb-6">
+                {GEN_CATS.map(c => (
+                  <button key={c.key} onClick={() => { setGenCat(c.key); setDetail(null) }}
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                      genCat === c.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'
+                    }`}>
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+              {loading && <p className="text-xs text-dim text-center py-16">加载中…</p>}
+              {!loading && list.length === 0 && emptyState('暂无生成物', '对话生成讲义 / 指南 / 测试题后自动收录到这里')}
+              {!loading && list.length > 0 && cardGrid(list)}
             </>
           )}
           {tab === 'uploads' && (

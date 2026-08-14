@@ -125,7 +125,19 @@ _active_cancels: dict = {}
 
 
 def _process_upload(project_id, text, source, session_id, api_key):
-    """后台处理上传：切块+前缀+入库+抽取图谱"""
+    """后台处理上传：存原文到资源表 + 切块入库 + 抽取图谱"""
+    try:
+        # 存原文到资源表（"我的上传/保存的资料"保留一份原文，与知识库独立）
+        from core.postgres_client import pg_client as _pg0
+        import hashlib as _hl0
+        _rid = _hl0.md5((source + project_id).encode()).hexdigest()[:16]
+        _has = _pg0.execute("SELECT id FROM resources WHERE id=%s", (_rid,))
+        if _has:
+            _pg0.execute("UPDATE resources SET content=%s WHERE id=%s", (text[:6000], _rid))
+        else:
+            _pg0.execute("INSERT INTO resources (id, name, content, project_id, type) VALUES (%s,%s,%s,%s,'text')", (_rid, source, text[:6000], project_id))
+    except Exception:
+        pass
     try:
         from core.knowledge_service import add_document
         add_document(project_id, text, source, session_id, api_key)
@@ -175,6 +187,21 @@ async def knowledge_upload_file(
 async def knowledge_list(project_id: str = "default"):
     from core.knowledge_service import list_docs
     return {"docs": list_docs(project_id)}
+
+
+@app.get("/api/knowledge/list-all")
+async def knowledge_list_all():
+    """我的上传：聚合所有项目的知识库文档（带项目名）"""
+    from core.knowledge_service import list_docs
+    from core.postgres_client import pg_client
+    proj_names = {r["id"]: r["name"] for r in pg_client.execute("SELECT id, name FROM projects")}
+    pids = pg_client.execute("SELECT DISTINCT project_id FROM kb_vectors")
+    all_docs = []
+    for p in pids:
+        pid = p["project_id"]
+        for d in list_docs(pid):
+            all_docs.append({**d, "project_id": pid, "project_name": proj_names.get(pid, pid)})
+    return {"docs": all_docs}
 
 
 @app.get("/api/kb/{project_id}")
@@ -262,10 +289,66 @@ class ResourceSave(BaseModel):
     project_id: str = "default"
 
 
+class GenerateDomainReq(BaseModel):
+    domain: str
+    api_key: str = ""
+    base_url: str = "https://api.deepseek.com/v1"
+    model: str = "deepseek-v4-flash"
+
+
+@app.post("/api/generate-domain")
+async def generate_domain(req: GenerateDomainReq):
+    """新建领域：AI 生成该领域的系统学习教程 + 百科词条"""
+    import requests as _req
+    from core.memory_analysis import _extract_json
+    name = (req.domain or "").strip()
+    if not name:
+        return {"status": "error", "msg": "领域名称不能为空"}
+    prompt = (
+        "请为领域「" + name + "」生成学习资源内容，严格输出 JSON（不要 markdown 代码块，不要额外文字）：\n"
+        "{\n"
+        "  \"tutorials\": [\n"
+        "    {\"title\": \"教程名称\", \"category\": \"系统学习 或 技术工具\", \"desc\": \"一句话简介\", \"url\": \"\"}\n"
+        "  ],\n"
+        "  \"wiki\": [\n"
+        "    {\"name\": \"词条名称\", \"theme\": \"主题分组\", \"intro\": \"一句话简介\", \"detail\": \"详细介绍（100字左右）\"}\n"
+        "  ]\n"
+        "}\n"
+        "要求：tutorials 生成 3-4 篇（覆盖系统学习和技术工具两类）；wiki 生成 5-8 个该领域核心词条。"
+    )
+    try:
+        h = {"Authorization": "Bearer " + (req.api_key or ""), "Content-Type": "application/json"}
+        resp = _req.post(
+            req.base_url.rstrip("/") + "/chat/completions",
+            json={"model": req.model, "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]},
+            headers=h, timeout=90,
+        )
+        if resp.status_code != 200:
+            return {"status": "error", "msg": "模型调用失败（HTTP " + str(resp.status_code) + "），请检查 API Key"}
+        content = resp.json()["choices"][0]["message"]["content"] or ""
+        data = _extract_json(content)
+        if not data:
+            return {"status": "error", "msg": "AI 返回内容无法解析"}
+        return {"status": "ok", "tutorials": data.get("tutorials") or [], "wiki": data.get("wiki") or []}
+    except Exception as e:
+        return {"status": "error", "msg": str(e)[:200]}
+
+
 @app.get("/api/resources")
 async def list_resources(project_id: str = "default"):
     from core.postgres_client import pg_client
     rows = pg_client.execute("SELECT id, name, content, type, file_ext, file_size, created_at FROM resources WHERE project_id=%s ORDER BY created_at DESC", (project_id,))
+    return {"resources": rows}
+
+
+@app.get("/api/resources/all")
+async def list_resources_all():
+    """我的上传：聚合所有项目的资源（带项目名）"""
+    from core.postgres_client import pg_client
+    proj_names = {r["id"]: r["name"] for r in pg_client.execute("SELECT id, name FROM projects")}
+    rows = pg_client.execute("SELECT id, name, content, type, file_ext, file_size, project_id, created_at FROM resources ORDER BY created_at DESC")
+    for r in rows:
+        r["project_name"] = proj_names.get(r.get("project_id", ""), r.get("project_id", ""))
     return {"resources": rows}
 
 
@@ -1430,6 +1513,7 @@ async def chat(req: ChatRequest):
                     result["mindchain"] = _merge_mindchain(result.get("mindchain") or [])
                     # 立即发 done（回复已完整）：stats/focus_log/task_stats/落库等写入移到后台线程，
                     # 避免 Windows 挂载卷上 SQLite 瞬时锁阻塞 done → 前端状态卡"正在输出回答"、发送键不复位
+                    # （task_stats/messages 落库 + autoSaveResource 已由下方后台 _persist() 线程承担）
                     token_queue.put(("done", result))
                     def _persist():
                         import time as _time2
