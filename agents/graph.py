@@ -397,12 +397,14 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         except Exception as e:
             state["knowledge"] = []
             thinking = f"知识库检索异常：{e}"
-        try:
-            sres = registry.execute("web_search", query=query)
-            state["search_results"] = sres.get("results", [])
-            thinking += f"；联网搜索 {sres.get('total', 0)} 条"
-        except Exception:
-            state["search_results"] = []
+        # 极速档只做知识库检索（全局设定①），跳过联网搜索（保秒回）
+        if tpl != "极速":
+            try:
+                sres = registry.execute("web_search", query=query)
+                state["search_results"] = sres.get("results", [])
+                thinking += f"；联网搜索 {sres.get('total', 0)} 条"
+            except Exception:
+                state["search_results"] = []
         # 检索增强模板：强制调用知识库与搜索 Agent 的子 Agent（内置默认：知识库管理/搜索；用户自定义则用自定义）
         kb_cfg = _agent_cfg("kb")
         kb_subs = kb_cfg.get("subAgents") or _DEFAULT_KB_SUBS
@@ -704,18 +706,23 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
 
     def route_plan(state: AgentState) -> list[str]:
         """一次规划 → 并行分发到需要的子 Agent（跳过被禁用的节点）
-        极速档：不调用任何 Agent，直接进入主 Agent 生成（综合概述性记忆由生成节点合并已保存信息）
+        极速档：跳过规划/学情/审核，但知识库检索仍全局在线（纯工具无 LLM，不破秒回）
+        思考/研究档：强制知识库节点（检索+联网+子Agent整理），不依赖主 Agent 规划
         需求澄清：plan 判定需求不明确 → 中断流程（返回 end，前端弹选项，选择后作为新消息重发）"""
         if state.get("clarify"):
             return ["end"]
-        if (settings.get("template") or "思考") == "极速":
+        _cur_tpl = settings.get("template") or "思考"
+        if _cur_tpl == "极速":
+            # 极速档：知识库检索全局在线（全局设定①），跳过学情/审核
+            if _agent_cfg("kb").get("enabled") is not False:
+                return ["kb", "generate"]
             return ["generate"]
         plan = state.get("_plan") or []
         cfg_study = _agent_cfg("study")
         cfg_kb = _agent_cfg("kb")
         targets = []
-        # 检索增强模板：强制执行知识库节点（检索+联网+子Agent整理），不依赖主 Agent 规划
-        if (settings.get("template") or "思考") == "思考" and (cfg_kb.get("enabled") is not False):
+        # 思考/研究档：强制执行知识库节点（检索+联网+子Agent整理），不依赖主 Agent 规划
+        if _cur_tpl in ("思考", "研究") and (cfg_kb.get("enabled") is not False):
             targets.append("kb")
         if "学情与记忆管理" in plan and (cfg_study.get("enabled") is not False):
             targets.append("study_memory")

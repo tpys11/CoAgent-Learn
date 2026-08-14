@@ -20,9 +20,10 @@ const PRESET_TEMPLATES: Array<{ name: string; desc: string; intro: string; detai
     name: '极速', desc: '最短响应（1 秒内首字）',
     intro: '档位概述：面向一般对话环节——概念确认、即兴提问、碎片化学习，用户希望时间尽可能短。\n**效果**\n- 时间：绝大多数时候 1 秒内输出首字，最长不超过 3 秒\n- 内容总量：字数偏少，大多数 500-800 字，最多不超过 1000 字\n**全局设定（每种模式都有）**\n- 知识库向量检索：固定逻辑保证幻觉率降低，一点都没命中会申明\n- 学情画像：按用户水平调难度（会话缓存，几乎零成本）',
     detail: [
-      ['编排流程', '主 Agent（接收综合概述性记忆）→ 输出'],
-      ['生成模型', '快模型（速度优先）'],
-      ['检测机制', '无（保秒回，知识库检索全局兜底）'],
+      ['编排流程', '知识库检索（全局在线）→ 主 Agent（快模型）→ 输出（跳过审核）'],
+      ['知识库检索', '向量检索（本地毫秒级），命中注入+溯源；未命中申明'],
+      ['生成模型', '快模型（flash，保 1 秒内首字）'],
+      ['检测机制', '无（跳过审核保秒回，知识库检索全局兜底）'],
     ],
     agents: DEFAULT_AGENTS.map(a => a.id === 'main' ? { ...a, model: 'fast' } : { ...a }),
   },
@@ -31,20 +32,20 @@ const PRESET_TEMPLATES: Array<{ name: string; desc: string; intro: string; detai
     intro: '档位概述：面向需要认真一点的回答——知识库无对应内容但对精确度要求不高。\n**效果**\n- 内容增强：并行搜索 agent 按固定规则（优质信息源：优质社区、官方信息）返回优质内容，通常搜索 10-20 条，一轮搜索\n- 内容总量：大部分 800-1200 字，最多不超过 1500 字\n- 检测机制：flash 轻量单审\n**全局设定（每种模式都有）**\n- 知识库向量检索：固定逻辑保证幻觉率降低，一点都没命中会申明\n- 学情画像：按用户水平调难度（会话缓存，几乎零成本）',
     detail: [
       ['编排流程', '规划 → 学情与记忆 ∥ 知识库与搜索 → 生成 → flash 单审 → 输出'],
-      ['内容增强', '并行搜索 agent 一轮 10-20 条（优质信息源规则）'],
+      ['内容增强', '联网搜索一轮 + 知识库/搜索子 Agent 整理（来源→核心观点→关键数据）'],
       ['生成模型', '强模型（质量优先）'],
-      ['检测机制', 'flash 轻量单审'],
+      ['检测机制', 'flash 轻量单审（三维度：符实性/难度适配/规范性）'],
     ],
     agents: DEFAULT_AGENTS,
   },
   {
-    name: '研究', desc: '完整流程 + 独立检测',
-    intro: '档位概述：面向对内容精确度要求极高的任务——知识库无对应内容且需要严谨。\n**效果**\n- 内容增强：并行搜索 agent 一轮 10-20 条（优质信息源规则），每轮结束总结，信息不够继续搜索，可进行 1-5 轮\n- 内容总量：不做限制\n- 独立检测机制：用其他模型厂商的模型作为独立检测阶段\n**全局设定（每种模式都有）**\n- 知识库向量检索：固定逻辑保证幻觉率降低，一点都没命中会申明\n- 学情画像：按用户水平调难度（会话缓存，几乎零成本）',
+    name: '研究', desc: '完整流程 + 严格检测',
+    intro: '档位概述：面向对内容精确度要求极高的任务——知识库无对应内容且需要严谨。\n**效果**\n- 内容增强：并行搜索 agent 一轮 10-20 条（优质信息源规则），每轮结束总结，信息不够继续搜索，可进行 1-5 轮（多轮搜索待实现，当前一轮）\n- 内容总量：不做限制\n- 独立检测机制：用其他模型厂商的模型作为独立检测阶段（待实现，当前为 flash 单审）\n**全局设定（每种模式都有）**\n- 知识库向量检索：固定逻辑保证幻觉率降低，一点都没命中会申明\n- 学情画像：按用户水平调难度（会话缓存，几乎零成本）',
     detail: [
-      ['编排流程', '规划 → 学情与记忆 ∥ 知识库与搜索（多轮）→ 生成 → 独立检测 → 输出'],
-      ['内容增强', '并行搜索 agent 1-5 轮（每轮总结，不足续搜）'],
+      ['编排流程', '与思考档一致：规划 → 学情与记忆 ∥ 知识库与搜索 → 生成 → 单审 → 输出'],
+      ['内容增强', '联网搜索一轮（多轮搜索待实现：1-5 轮，每轮总结、不足续搜）'],
       ['生成模型', '强模型（质量优先）'],
-      ['检测机制', '其他模型厂商模型独立检测'],
+      ['检测机制', 'flash 单审（其他模型厂商独立检测待实现）'],
     ],
     agents: DEFAULT_AGENTS,
   },
@@ -202,25 +203,15 @@ const FlowGraph = ({ agents, templateName, templateAgentId, onSelect }: { agents
   const kbSubs = templateName === '思考' ? subOf('kb') : []
   // 输出增强模板：生成节点只连接一个「输出增强」节点（规划节点不展示子 Agent）
   const mainSubs: string[] = []
-  // 极速档：流程只剩 主 Agent（左侧虚线框：综合概述性记忆，箭头指向主 Agent）→ 审核与输出，排布宽松
+  // 极速档实际流程：知识库检索（全局在线）→ 主 Agent（快模型）→ 输出（跳过审核）
   if (templateName === '极速') {
     return (
-      <div className="flex flex-col items-center gap-8 py-10">
-        {/* 主 Agent：虚线框绝对定位在左侧（不参与布局，主干保持居中），矩形比节点略大，箭头指向主 Agent */}
-        <div className="relative">
-          <FlowNode icon={Workflow} name="主 Agent" level={lv('plan')} active={act('main')} onClick={pick('main')} />
-          <div className="absolute right-full mr-8 top-1/2 -translate-y-1/2 w-[164px] border-2 border-dashed border-[var(--border-color)] rounded-xl px-4 py-4 flex flex-col items-center justify-center gap-2 text-center">
-            <span className="text-xs font-semibold text-dim leading-snug">综合概述性记忆</span>
-            <span className="text-[9px] text-dim/70 leading-snug">对话记忆 · 个人记忆<br />项目记忆 · 知识库概述</span>
-          </div>
-          {/* 虚线框 → 主 Agent 的箭头（画在主 Agent 左侧空隙，起点虚线框、终点主 Agent） */}
-          <svg className="absolute right-full top-1/2 -translate-y-1/2" width="30" height="10" viewBox="0 0 30 10">
-            <line x1="0" y1="5" x2="23" y2="5" stroke="var(--border-strong)" strokeWidth="1.5" />
-            <path d="M 21 1.5 L 28 5 L 21 8.5" fill="none" stroke="var(--border-strong)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </div>
+      <div className="flex flex-col items-center gap-1 py-6">
+        <FlowNode icon={Database} name="知识库检索" level={lv('kb')} active={act('kb')} onClick={pick('kb')} />
         <DownArrow />
-        <FlowNode icon={Scale} name="审核与输出" level={lv('review')} active={act('review')} onClick={pick('review')} />
+        <FlowNode icon={Workflow} name="主 Agent" level={lv('generate')} active={act('main')} onClick={pick('main')} />
+        <DownArrow />
+        <FlowNode icon={Scale} name="输出" level={lv('review')} />
       </div>
     )
   }
@@ -240,6 +231,9 @@ const FlowGraph = ({ agents, templateName, templateAgentId, onSelect }: { agents
       <AgentRow node={<FlowNode icon={Workflow} name="生成" level={lv('generate')} active={act('main')} onClick={pick('main')} />} subs={mainSubs} />
       <DownArrow />
       <FlowNode icon={Scale} name="审核与输出" level={lv('review')} active={act('review')} onClick={pick('review')} />
+      {templateName === '研究' && (
+        <p className="text-[9px] text-dim mt-1">多轮搜索 · 其他厂商独立检测（待实现，当前与思考档一致）</p>
+      )}
     </div>
   )
 }
@@ -839,6 +833,24 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                 <FlowGraph agents={agents} templateName={selectedTpl || '思考'} templateAgentId={templateAgentId} onSelect={(id) => setTemplateAgentId(id)} />
               </div>
               <p className="text-[10px] text-dim -mt-2">节点颜色越深表示该节点在模板编排中的职责负载越高</p>
+            </div>
+
+            {/* 全局设定（所有档位共有，与后端实际逻辑一致） */}
+            <div className="flex flex-col gap-3">
+              <p className="text-xs font-semibold text-dim uppercase tracking-wider">全局设定（所有档位共有）</p>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  ['知识库向量检索', '本地毫秒级检索，命中注入+溯源；一点没命中必须申明'],
+                  ['学情画像', '会话缓存：同会话首轮生成后复用（几乎零成本），按用户水平调难度'],
+                  ['上下文自动压缩', '每满 30 条后台压缩最早 30% 为会话摘要；历史细节可向量召回'],
+                  ['特殊形式输出', '回答完成后模型判断适合的形式并建议（与档位无关）'],
+                ].map(([t, d]) => (
+                  <div key={t} className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-1">
+                    <span className="text-[11px] font-semibold">{t}</span>
+                    <span className="text-[10px] text-dim leading-snug">{d}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
