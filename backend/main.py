@@ -141,6 +141,21 @@ async def knowledge_list(project_id: str = "default"):
     return {"docs": list_docs(project_id)}
 
 
+@app.get("/api/knowledge/list-all")
+async def knowledge_list_all():
+    """我的上传：聚合所有项目的知识库文档（带项目名）"""
+    from core.knowledge_service import list_docs
+    from core.postgres_client import pg_client
+    proj_names = {r["id"]: r["name"] for r in pg_client.execute("SELECT id, name FROM projects")}
+    pids = pg_client.execute("SELECT DISTINCT project_id FROM kb_vectors")
+    all_docs = []
+    for p in pids:
+        pid = p["project_id"]
+        for d in list_docs(pid):
+            all_docs.append({**d, "project_id": pid, "project_name": proj_names.get(pid, pid)})
+    return {"docs": all_docs}
+
+
 @app.get("/api/kb/{project_id}")
 async def kb_list(project_id: str):
     """前端项目资源区/首页/记忆/侧栏通用：直接返回知识库文档列表（数组）"""
@@ -275,6 +290,17 @@ async def generate_domain(req: GenerateDomainReq):
 async def list_resources(project_id: str = "default"):
     from core.postgres_client import pg_client
     rows = pg_client.execute("SELECT id, name, content, type, file_ext, file_size, created_at FROM resources WHERE project_id=%s ORDER BY created_at DESC", (project_id,))
+    return {"resources": rows}
+
+
+@app.get("/api/resources/all")
+async def list_resources_all():
+    """我的上传：聚合所有项目的资源（带项目名）"""
+    from core.postgres_client import pg_client
+    proj_names = {r["id"]: r["name"] for r in pg_client.execute("SELECT id, name FROM projects")}
+    rows = pg_client.execute("SELECT id, name, content, type, file_ext, file_size, project_id, created_at FROM resources ORDER BY created_at DESC")
+    for r in rows:
+        r["project_name"] = proj_names.get(r.get("project_id", ""), r.get("project_id", ""))
     return {"resources": rows}
 
 
@@ -1417,21 +1443,6 @@ async def chat(req: ChatRequest):
                             _pg.execute("INSERT INTO messages(dialogue_id,role,content,think) VALUES(%s,%s,%s,%s)",(_did,"assistant",_reply,_think))
                     except Exception as _e:
                         print("[存储]",_e)
-                    # 自动保存生成物到"我的上传"（设置开关 autoSaveResource）
-                    if req.settings and req.settings.get('autoSaveResource') and result.get("final_reply"):
-                        try:
-                            import hashlib as _hl
-                            from core.postgres_client import pg_client as _pg3
-                            _fr = result.get("final_reply","")
-                            _nm = "对话生成·" + _fr.strip()[:14]
-                            _rid = _hl.md5((_nm + pid).encode()).hexdigest()[:16]
-                            _has = _pg3.execute("SELECT id FROM resources WHERE id=%s", (_rid,))
-                            if _has:
-                                _pg3.execute("UPDATE resources SET content=%s WHERE id=%s", (_fr[:6000], _rid))
-                            else:
-                                _pg3.execute("INSERT INTO resources (id, name, content, project_id) VALUES (%s,%s,%s,%s)", (_rid, _nm, _fr[:6000], pid))
-                        except Exception as _e:
-                            print("[auto-save]", _e)
                     token_queue.put(("done", result))
                     # 后台异步分析记忆 + 生成追问（开关可配）
                     try:

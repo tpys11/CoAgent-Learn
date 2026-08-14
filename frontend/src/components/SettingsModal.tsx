@@ -96,7 +96,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
   const [settingsGroup, setSettingsGroup] = useState('base')
 
   // 生成后动作
-  const [postActions, setPostActions] = useState(() => getJSON('coagent-post-actions', { autoSaveResource: true, autoFollowups: true }))
+  const [postActions, setPostActions] = useState(() => getJSON('coagent-post-actions', { autoFollowups: true }))
   // 模型与 Key
   const [provider, setProvider] = useState(() => get('coagent-provider', 'deepseek'))
   const [provKeys, setProvKeys] = useState<Record<string, string>>(() => getJSON('coagent-provider-keys', {}))
@@ -266,8 +266,6 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             {show('actions') && (
               <Section icon={Zap} title="生成后动作">
                 <div className="flex flex-col gap-4">
-                  <SwitchRow label="自动保存生成物到「我的上传」" desc="对话结束后将回复存入资料列表" checked={postActions.autoSaveResource}
-                    onChange={v => setPostActions({ ...postActions, autoSaveResource: v })} />
                   <SwitchRow label="自动生成追问" desc="对话结束后生成推荐追问（右侧栏展示）" checked={postActions.autoFollowups}
                     onChange={v => setPostActions({ ...postActions, autoFollowups: v })} />
                 </div>

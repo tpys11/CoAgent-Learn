@@ -50,6 +50,7 @@ type ListItem = {
   kind: 'tutorial' | 'artifact' | 'resource' | 'kb' | 'wiki' | 'gen'; url?: string
   deletable: boolean
   time?: string
+  pid?: string
 }
 
 const TYPE_ICONS: Record<string, any> = {
@@ -404,13 +405,11 @@ export default function ResourceView({ projectId, onUseItem }: { projectId: stri
       fetch('/api/artifacts?project_id=' + encodeURIComponent(gpid), { cache: 'no-store' })
         .then(r => r.json()).then(d => setArtifacts(d.artifacts || [])).catch(() => {})
     }
-    // 我的上传：按当前项目加载
-    if (projectId) {
-      fetch('/api/resources?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' })
-        .then(r => r.json()).then(d => setResources(d.resources || [])).catch(() => {})
-      fetch('/api/knowledge/list?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' })
-        .then(r => r.json()).then(d => setKbDocs(d.docs || [])).catch(() => {})
-    }
+    // 我的上传：全局聚合（所有项目）
+    fetch('/api/resources/all', { cache: 'no-store' })
+      .then(r => r.json()).then(d => setResources(d.resources || [])).catch(() => {})
+    fetch('/api/knowledge/list-all', { cache: 'no-store' })
+      .then(r => r.json()).then(d => setKbDocs(d.docs || [])).catch(() => {})
     setTimeout(() => setLoading(false), 200)
   }, [projectId, selGenProject])
 
@@ -479,9 +478,9 @@ export default function ResourceView({ projectId, onUseItem }: { projectId: stri
       setDetail(null)
     })
   }
-  const deleteKbDoc = (source: string) => {
+  const deleteKbDoc = (source: string, pid?: string) => {
     if (!window.confirm(`确定删除知识库文档「${source}」？`)) return
-    fetch('/api/knowledge/delete?project_id=' + encodeURIComponent(projectId || 'default') + '&source=' + encodeURIComponent(source), { method: 'DELETE' })
+    fetch('/api/knowledge/delete?project_id=' + encodeURIComponent(pid || projectId || 'default') + '&source=' + encodeURIComponent(source), { method: 'DELETE' })
       .then(() => {
         setKbDocs(prev => prev.filter(d => d.source !== source))
         setDetail(null)
@@ -581,12 +580,13 @@ export default function ResourceView({ projectId, onUseItem }: { projectId: stri
       kind: 'artifact' as const, deletable: false, time: fmtTime(a.created_at),
     }))
   } else if (tab === 'uploads') {
-    const kbItems: ListItem[] = kbDocs.map(d => ({ id: 'kb:' + d.source, title: d.source, sub: `知识库文档 · ${d.chunks} 块`, body: d.preview || '（无预览内容）', icon: Upload, kind: 'kb' as const, deletable: true, time: '' }))
+    const kbItems: ListItem[] = kbDocs.map(d => ({ id: 'kb:' + d.source, title: d.source, sub: `${d.project_name || ''} · ${d.chunks} 块`, body: d.preview || '（无预览内容）', icon: Upload, kind: 'kb' as const, deletable: true, time: '', pid: d.project_id }))
     const resItems: ListItem[] = resources.map(r => {
       const isFile = r.type === 'file'
       const sizeStr = r.file_size ? ((r.file_size / 1024).toFixed(1) + ' KB') : ''
-      const sub = isFile ? ('文件 · ' + (r.file_ext ? r.file_ext.toUpperCase() : '') + (sizeStr ? ' · ' + sizeStr : '')) : '文本资料'
-      return { id: r.id, title: r.name, sub, body: r.content || '', icon: isFile ? Upload : FileText, kind: 'resource' as const, deletable: true, time: fmtTime(r.created_at) }
+      const projName = r.project_name ? r.project_name + ' · ' : ''
+      const sub = projName + (isFile ? ('文件 · ' + (r.file_ext ? r.file_ext.toUpperCase() : '') + (sizeStr ? ' · ' + sizeStr : '')) : '文本资料')
+      return { id: r.id, title: r.name, sub, body: r.content || '', icon: isFile ? Upload : FileText, kind: 'resource' as const, deletable: true, time: fmtTime(r.created_at), pid: r.project_id }
     })
     if (uploadCat === 'all') list = [...kbItems, ...resItems]
     else if (uploadCat === 'kb') list = kbItems
@@ -597,7 +597,7 @@ export default function ResourceView({ projectId, onUseItem }: { projectId: stri
   const removeItem = (item: ListItem) => {
     if (item.kind === 'tutorial') removeTutorial(item.id)
     else if (item.kind === 'resource') deleteResource(item.id)
-    else if (item.kind === 'kb') deleteKbDoc(item.title)
+    else if (item.kind === 'kb') deleteKbDoc(item.title, item.pid)
     else if (item.kind === 'gen') removeGenItem(item.id)
   }
 
@@ -861,7 +861,7 @@ const exportItem = (item: ListItem) => {
         {tab === 'uploads' && (
           <div className="w-40 flex-shrink-0 border-r hairline bg-[var(--bg-sidebar)] p-2.5 flex flex-col gap-1 overflow-y-auto">
             <p className="text-[10px] font-bold text-dim uppercase tracking-wider px-2.5 mt-1 mb-0.5">预设分类</p>
-            {[{ key: 'all', label: '全部' }, { key: 'kb', label: '知识库文档' }, { key: 'resource', label: '保存的资料' }].map(c => (
+            {[{ key: 'all', label: '全部' }, { key: 'kb', label: '已上传到知识库' }, { key: 'resource', label: '保存的资料' }].map(c => (
               <button key={c.key} onClick={() => { setUploadCat(c.key); setDetail(null) }}
                 className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-left transition-colors ${
                   uploadCat === c.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
