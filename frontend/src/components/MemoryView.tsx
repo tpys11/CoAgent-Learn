@@ -411,6 +411,8 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
   const [projLoading, setProjLoading] = useState(false)
   // 当前查看的课程（点击课程按钮切换）
   const [activeProject, setActiveProject] = useState<string | null>(projectOnly ? projectId : null)
+  // 课程详情弹层（个人画像·学习情况 点击课程方形按钮打开）
+  const [courseModal, setCourseModal] = useState(false)
   // 初次手动初始化：基本情况/目的/初始情况 三个区域的编辑值（随课程数据加载初始化）
   const [editFields, setEditFields] = useState<Record<string, string>>({})
   useEffect(() => {
@@ -500,9 +502,8 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
   }
   useEffect(() => { loadGlobal() }, [level === 'global'])
 
-  // ---------- 课程记忆加载（全部课程） ----------
+  // ---------- 课程记忆加载（全部课程，常驻加载供个人画像·学习情况使用） ----------
   useEffect(() => {
-    if (level !== 'project') return
     setProjLoading(true)
     fetch('/api/projects', { cache: 'no-store' }).then(r => r.json()).then(d => {
       const arr = d.projects || d || []
@@ -615,62 +616,33 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
 
   return (
     <div className={`flex-1 min-w-0 flex panel rounded-3xl ${initialEdit ? '' : 'h-full overflow-hidden'}`}>
-      {/* 左侧：层级列表导航（个人全局性记忆 / 课程记忆） */}
-      {!projectOnly && (
-      <div className="w-52 bg-[var(--bg-sidebar)] border-r hairline flex flex-col flex-shrink-0">
-        <div className="p-2 flex flex-col gap-1 border-b hairline">
-          <button onClick={() => setLevel('global')}
-            className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-left transition-colors ${
-              level === 'global' ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
-            }`}>
-            <User size={14} /> 个人全局性记忆
-          </button>
-          <button onClick={() => setLevel('project')}
-            className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-medium text-left transition-colors ${
-              level === 'project' ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
-            }`}>
-            <FolderTree size={14} /> 课程记忆
-          </button>
-        </div>
-        <div className="flex-1" />
-      </div>
-      )}
-
       {/* 右侧内容：初始化时自然高度（随外层整体滚动），否则内部滚动 */}
       <div className={`flex-1 p-6 ${initialEdit ? '' : 'overflow-y-auto'}`}>
-        {/* ========== 个人全局性记忆 ========== */}
+        {/* ========== 个人画像 ========== */}
         {level === 'global' && (
-          <div className="flex items-start gap-4">
-          <div className="flex-1 min-w-0 max-w-4xl flex flex-col gap-6">
-            <h2 className="text-xl font-bold flex items-center gap-2"><User size={16} /> 个人全局性记忆</h2>
+          <div className="flex items-start gap-6">
+          <div className="flex-1 min-w-0 max-w-4xl pl-14 flex flex-col gap-6">
+            <h1 className="text-2xl font-bold">个人画像</h1>
 
             {gLoading ? <p className="text-xs text-dim text-center py-10">加载中…</p> : (
               <>
-                {/* 三栏：基本情况 / 学习情况 / 阅读偏好 */}
-                <div className="flex flex-col gap-4">
-                  {/* 基本情况：一段 <500 字概述 */}
-                  <div className="border hairline rounded-2xl p-5 bg-[var(--bg-panel)] flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold">基本情况</span>
-                      {editBasic ? (
-                        <button onClick={() => { const v = editBasicVal; setGBasic(v); setEditBasic(false); saveGlobal(gFields, gExtra, v) }}
-                          className="text-[10px] font-semibold text-[var(--accent)] hover:underline">保存</button>
-                      ) : (
-                        <button onClick={() => { setEditBasicVal(gBasic); setEditBasic(true) }}
-                          className="flex items-center gap-1 text-[10px] text-dim hover:text-[var(--text)]"><PenLine size={11} /> 编辑</button>
-                      )}
+                {/* 简历框：基本信息 / 阅读偏好 / 学习情况 */}
+                <div className="border hairline rounded-2xl p-6 bg-[var(--bg-panel)] flex flex-col gap-6">
+                  {/* 基本信息：身份 / 年龄 */}
+                  <div className="flex flex-col gap-2">
+                    <h3 className="text-sm font-semibold">基本信息</h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      {[['身份', '身份'], ['年龄', '年龄']].map(([label, k]) => (
+                        <div key={k} className="rounded-xl border hairline bg-[var(--bg-input)] px-4 py-3">
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-dim">{label}</span>
+                          {gFields[k] ? (
+                            <p className="mt-1 text-xs text-[var(--text)]">{gFields[k]}</p>
+                          ) : (
+                            <p className="mt-1 text-[11px] text-dim">（未填写 · 可在对话中告知或通过"修改记忆"更新）</p>
+                          )}
+                        </div>
+                      ))}
                     </div>
-                    {editBasic ? (
-                      <textarea value={editBasicVal} rows={6} maxLength={500} placeholder="一段不超过 500 字的身份与背景概述（系统也会从对话中自动提炼）"
-                        onChange={e => setEditBasicVal(e.target.value)}
-                        className="w-full border hairline rounded-xl px-3 py-2 bg-[var(--bg-input)] text-[13px] leading-6 outline-none resize-y focus:border-[var(--accent)]" />
-                    ) : gBasic ? (
-                      <div className="text-xs text-[var(--text-muted)] leading-relaxed"><MiniMD text={gBasic} /></div>
-                    ) : (
-                      <div className="rounded-xl border border-dashed hairline bg-[var(--bg-input)] px-4 py-3">
-                        <p className="text-[11px] text-dim leading-relaxed">概述占位：这里将显示你的身份与背景概述（对话后系统自动提炼，或点编辑手动填写，不超过 500 字）</p>
-                      </div>
-                    )}
                   </div>
 
                   {/* 学习情况：总体概述 + 按课程（目标 / 当前情况占位） */}
@@ -694,25 +666,23 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                     ) : (
                       <p className="text-[11px] text-dim">（总体概述占位：对话后系统自动提炼）</p>
                     )}
-                    {gStudy.课程.length > 0 ? (
-                      <div className="flex flex-col gap-2">
-                        {gStudy.课程.map((c, i) => (
-                          <div key={i} className="rounded-xl border hairline bg-[var(--bg-input)] px-4 py-3">
-                            <p className="text-xs font-semibold">{c.课程名 || '未命名课程'}</p>
-                            <ul className="mt-1 flex flex-col gap-0.5 text-[11px] text-[var(--text-muted)] list-disc list-inside">
-                              <li>目标：{c.目标 || '（占位）'}</li>
-                              <li>当前情况：{c.当前情况 || '（占位）'}</li>
-                            </ul>
-                          </div>
+                    {projects.length > 0 ? (
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                        {projects.map(p => (
+                          <button key={p.id} onClick={() => { setActiveProject(p.id); setLevel('project'); setCourseModal(true) }}
+                            className="aspect-square rounded-xl border hairline bg-[var(--bg-input)] flex flex-col items-center justify-center gap-1 hover:border-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors">
+                            <span className="text-lg font-bold leading-none text-[var(--text)]">{p.name.slice(0, 1)}</span>
+                            <span className="text-[10px] text-dim leading-tight text-center px-1 truncate max-w-full">{p.name}</span>
+                          </button>
                         ))}
                       </div>
                     ) : (
-                      <div className="rounded-xl border border-dashed hairline bg-[var(--bg-input)] px-4 py-3">
-                        <p className="text-xs font-semibold text-dim">课程占位（对话学习后自动按课程分类生成）</p>
-                        <ul className="mt-1 flex flex-col gap-0.5 text-[11px] text-dim list-disc list-inside">
-                          <li>目标：——</li>
-                          <li>当前情况：——</li>
-                        </ul>
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <div key={i} className="aspect-square rounded-xl border border-dashed hairline bg-[var(--bg-input)] flex items-center justify-center">
+                            <span className="text-[10px] text-dim">课程占位</span>
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>
@@ -731,27 +701,6 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                   </div>
                 </div>
 
-                {/* 课程摘要（只读） */}
-                {Object.keys(gSummary).length > 0 && (
-                  <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)]">
-                    <p className={fieldLabel}>跨课程摘要</p>
-                    <div className="flex flex-col gap-2">
-                      {Object.entries(gSummary).map(([pid, info]: [string, any]) => (
-                        <div key={pid} className="text-xs text-[var(--text-muted)] leading-relaxed">
-                          <span className="font-semibold text-[var(--text)]">{pid}</span>
-                          {info && (info.抽象项目情况 || info.当前水平 || (info.偏好 || []).length || (info.薄弱点 || []).length) && (
-                            <span className="ml-1">
-                              {info.抽象项目情况 && `概况: ${info.抽象项目情况}；`}
-                              {info.当前水平 && `水平: ${info.当前水平}；`}
-                              {(info.偏好 || []).length > 0 && `偏好: ${info.偏好.join(', ')}；`}
-                              {(info.薄弱点 || []).length > 0 && `薄弱点: ${info.薄弱点.join(', ')}`}
-                            </span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </>
             )}
           </div>
@@ -788,7 +737,14 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
           </div>
         )}
 
-        {/* ========== 课程记忆 ========== */}
+        {/* ========== 课程详情弹层 ========== */}
+        {courseModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-6" onClick={() => setCourseModal(false)}>
+            <div className="w-[960px] max-h-[85vh] overflow-y-auto panel rounded-3xl p-6 flex flex-col gap-4" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between flex-shrink-0">
+                <span className="text-base font-bold">课程记忆{activeProject ? ` · ${projects.find(p => p.id === activeProject)?.name || ''}` : ''}</span>
+                <button onClick={() => setCourseModal(false)} className="text-xs text-dim hover:text-[var(--text)]">关闭 ✕</button>
+              </div>
         {level === 'project' && (
           <div className="w-full flex flex-col gap-4">
             {projLoading ? <p className="text-xs text-dim text-center py-10">加载中…</p> : projects.length === 0 ? (
@@ -1058,6 +1014,9 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
             )}
           </div>
         )}
+          </div>
+        </div>
+      )}
       </div>
 
       {/* 记忆模块只读详情（修改记忆由 AI 处理：跳转主对话并以 [模块名] 引用） */}
