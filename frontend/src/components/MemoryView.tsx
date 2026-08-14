@@ -621,7 +621,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
               <>
                 {/* 简历框：基本信息 / 阅读偏好 / 学习情况 */}
                 <div className="border hairline rounded-2xl p-6 bg-[var(--bg-panel)] flex flex-col gap-6">
-                  {/* 基本信息：身份 / 年龄（行式：设定项：值） */}
+                  {/* 基本信息：身份 / 年龄（行式）+ 其他（虚线框占位） */}
                   <div className="flex flex-col gap-2">
                     <h3 className="text-sm font-semibold">基本信息</h3>
                     <div className="flex flex-col gap-1.5">
@@ -634,14 +634,23 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                         </p>
                       ))}
                     </div>
+                    <div className="rounded-xl border border-dashed hairline bg-[var(--bg-input)] px-4 py-3">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-dim">其他</span>
+                      {gBasic ? (
+                        <p className="mt-1 text-xs text-[var(--text-muted)] leading-relaxed"><MiniMD text={gBasic} /></p>
+                      ) : null}
+                    </div>
                   </div>
 
                   {/* 学习情况：总体概述 + 课程方形按钮（只读展示，修改走右侧对话框） */}
                   <div className="border hairline rounded-2xl p-5 bg-[var(--bg-panel)] flex flex-col gap-3">
                     <span className="text-sm font-semibold">学习情况</span>
-                    {gStudy.总体概述 ? (
-                      <p className="text-xs text-[var(--text-muted)] leading-relaxed">{gStudy.总体概述}</p>
-                    ) : null}
+                    <div className="rounded-xl border border-dashed hairline bg-[var(--bg-input)] px-4 py-3">
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-dim">概述</span>
+                      {gStudy.总体概述 ? (
+                        <p className="mt-1 text-xs text-[var(--text-muted)] leading-relaxed">{gStudy.总体概述}</p>
+                      ) : null}
+                    </div>
                     {projects.length > 0 ? (
                       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
                         {projects.map(p => (
