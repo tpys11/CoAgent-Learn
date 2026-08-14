@@ -484,6 +484,7 @@ export default function ResourceView({ projectId, onUseItem }: { projectId: stri
       .then(() => {
         setKbDocs(prev => prev.filter(d => d.source !== source))
         setDetail(null)
+        load()  // 重新加载（原文已转存资源表，出现在"保存的资料"）
       })
   }
   // 我的上传：手动添加资料

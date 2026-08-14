@@ -166,6 +166,22 @@ async def kb_list(project_id: str):
 @app.delete("/api/knowledge/delete")
 async def knowledge_delete(project_id: str = "default", source: str = ""):
     from core.knowledge_service import delete_doc
+    from core.postgres_client import pg_client
+    import hashlib
+    # 删除前：把原文转存到资源表（"全部/保存的资料"里保留一份原文）
+    try:
+        rows = pg_client.execute("SELECT content FROM kb_vectors WHERE project_id=%s AND source=%s ORDER BY chunk", (project_id, source))
+        if rows:
+            content = chr(10).join((r["content"] or "") for r in rows)
+            if content.strip():
+                rid = hashlib.md5((source + project_id).encode()).hexdigest()[:16]
+                has = pg_client.execute("SELECT id FROM resources WHERE id=%s", (rid,))
+                if has:
+                    pg_client.execute("UPDATE resources SET content=%s WHERE id=%s", (content, rid))
+                else:
+                    pg_client.execute("INSERT INTO resources (id, name, content, project_id, type) VALUES (%s,%s,%s,%s,'text')", (rid, source, content, project_id))
+    except Exception:
+        pass
     n = delete_doc(project_id, source)
     graph_n = 0
     try:

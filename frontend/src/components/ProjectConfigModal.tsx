@@ -173,7 +173,10 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
   const removeDoc = (source: string) => {
     if (!window.confirm(`从课程资源移除「${source}」？`)) return
     fetch('/api/knowledge/delete?project_id=' + encodeURIComponent(projectId || 'default') + '&source=' + encodeURIComponent(source), { method: 'DELETE' })
-      .then(() => setDocs(prev => prev.filter(d => d.source !== source)))
+      .then(() => {
+        setDocs(prev => prev.filter(d => d.source !== source))
+        setRefreshKey(k => k + 1)  // 刷新嵌套 ResourceView（原文已转存资源表）
+      })
   }
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault()
