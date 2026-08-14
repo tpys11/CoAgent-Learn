@@ -134,13 +134,17 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
   const [uploading, setUploading] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
   const [dragOver, setDragOver] = useState(false)
-  // 「添加文档」流程（对齐 DeepTutor Add documents）：点「确认上传」展开流程区，
-  // 虚线框拖拽/选择文件 → 文件列表暂存 → 点流程区「确认上传」才同步向量化上传
+  // 「添加文档」流程（对齐 DeepTutor Add documents）：拖入/选择仅占位进列表，
+  // 点「确认上传」才真正上传（文件与卡片文本统一）
   const [showAddDoc, setShowAddDoc] = useState(false)
-  const [pendingFiles, setPendingFiles] = useState<File[]>([])
   const [dropActive, setDropActive] = useState(false)
   const [doneMsg, setDoneMsg] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+  type PendingItem =
+    | { kind: 'file'; id: string; file: File }
+    | { kind: 'text'; id: string; title: string; body: string }
+  const [pendingItems, setPendingItems] = useState<PendingItem[]>([])
+  const pendingCount = pendingItems.length
   const load = useCallback(() => {
     if (!projectId) { setDocs([]); setLoading(false); return }
     fetch('/api/kb/' + encodeURIComponent(projectId), { cache: 'no-store' })
@@ -151,59 +155,71 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
   }, [projectId])
   useEffect(() => { load() }, [load])
 
-  const uploadFiles = async (files: FileList | File[]) => {
+  const uploadItems = async () => {
     if (!projectId) return
     let total = 0
-    const fileCount = Array.from(files).length
-    for (const f of Array.from(files)) {
-      setUploading(f.name)
-      const fd = new FormData()
-      fd.append('project_id', projectId)
-      fd.append('session_id', 'project-res')
-      fd.append('api_key', localStorage.getItem('coagent-apikey') || '')
-      fd.append('wait', '1')  // 同步等待后端切块+向量化入库完成
-      fd.append('file', f, f.name)
+    const count = pendingItems.length
+    for (const it of pendingItems) {
+      setUploading(it.kind === 'file' ? it.file.name : it.title)
       try {
-        const r = await fetch('/api/knowledge/upload-file', { method: 'POST', body: fd })
-        const d = await r.json().catch(() => ({}))
-        if (d.status === 'ok') total += (d.chunks || 0)
-        else alert(`「${f.name}」接入失败：${d.msg || '处理失败'}`)
+        if (it.kind === 'file') {
+          const fd = new FormData()
+          fd.append('project_id', projectId)
+          fd.append('session_id', 'project-res')
+          fd.append('api_key', localStorage.getItem('coagent-apikey') || '')
+          fd.append('wait', '1')  // 同步等待后端切块+向量化入库完成
+          fd.append('file', it.file, it.file.name)
+          const r = await fetch('/api/knowledge/upload-file', { method: 'POST', body: fd })
+          const d = await r.json().catch(() => ({}))
+          if (d.status === 'ok') total += (d.chunks || 0)
+          else alert(`「${it.file.name}」接入失败：${d.msg || '处理失败'}`)
+        } else {
+          const r = await fetch('/api/knowledge/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ project_id: projectId, text: it.body, source: it.title, session_id: 'project-res', api_key: localStorage.getItem('coagent-apikey') || '', wait: true }),
+          })
+          const d = await r.json().catch(() => ({}))
+          if (d.status === 'ok') total += (d.chunks || 0)
+          else alert(`「${it.title}」接入失败：${d.msg || '处理失败'}`)
+        }
       } catch (e) {
-        alert(`「${f.name}」上传失败：${(e as any)?.message || '网络异常'}`)
+        alert(`「${it.kind === 'file' ? it.file.name : it.title}」上传失败：${(e as any)?.message || '网络异常'}`)
       }
     }
     setUploading('')
-    setPendingFiles([])
+    setPendingItems([])
     // 明确反馈（对齐 DeepTutor「资源已上传」）：持久显示，直到下次上传
-    setDoneMsg(`资源已上传：${fileCount} 个文件已接入课程知识库（${total} 个内容块）`)
+    setDoneMsg(`资源已上传：${count} 个资源已接入课程知识库（${total} 个内容块）`)
     setTimeout(() => { load(); setRefreshKey(k => k + 1) }, 500)
   }
-  /** 追加文件到待上传列表（按文件名去重，对齐 DeepTutor mergeSelectedFiles） */
-  const addFiles = (fs: FileList | File[]) => {
+  /** 加入文件占位（按文件名去重） */
+  const addFileItem = (fs: FileList | File[]) => {
     const incoming = Array.from(fs)
-    setPendingFiles(prev => {
-      const names = new Set(prev.map(f => f.name))
-      return [...prev, ...incoming.filter(f => !names.has(f.name))]
+    setPendingItems(prev => {
+      const names = new Set(prev.filter(x => x.kind === 'file').map(x => x.file.name))
+      return [...prev, ...incoming.filter(f => !names.has(f.name)).map(f => ({ kind: 'file' as const, id: 'f' + Date.now() + Math.random().toString(36).slice(2, 7), file: f }))]
     })
   }
-  /** 确认上传：把暂存的文件直接上传到课程（同步向量化）；不弹系统文件选择器 */
+  /** 加入卡片/文本占位（按标题去重） */
+  const addTextItem = (title: string, body: string) => {
+    setPendingItems(prev => {
+      if (prev.some(x => x.kind === 'text' && x.title === title)) return prev
+      return [...prev, { kind: 'text' as const, id: 't' + Date.now() + Math.random().toString(36).slice(2, 7), title, body }]
+    })
+  }
+  /** 确认上传：把占位列表里的资源真正上传（同步向量化）；拖入只占位，不弹选择器 */
   const confirmUpload = () => {
     if (uploading) return
-    if (!pendingFiles.length) { alert('请先拖入或选择文件'); return }
-    uploadFiles(pendingFiles)
+    if (!pendingCount) { alert('请先把资源拖入虚线框，或点击选择文件'); return }
+    uploadItems()
   }
   /** 文件大小格式化 */
   const fmtSize = (b: number) => b < 1024 ? b + 'B' : b < 1024 * 1024 ? (b / 1024).toFixed(1) + 'KB' : (b / (1024 * 1024)).toFixed(1) + 'MB'
-  const addPreset = async (title: string, body: string) => {
-    if (!projectId) return
-    setUploading('加入 ' + title)
-    await fetch('/api/knowledge/upload', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project_id: projectId, text: body, source: title, session_id: 'project-res', api_key: localStorage.getItem('coagent-apikey') || '' }),
-    })
-    setUploading('')
-    setTimeout(() => { load(); setRefreshKey(k => k + 1) }, 2000)
+  /** 卡片「加入课程」/ 拖入的卡片 → 仅占位进待上传列表（不真正上传） */
+  const addPreset = (title: string, body: string) => {
+    addTextItem(title, body)
+    setShowAddDoc(true)
   }
   const removeDoc = (source: string) => {
     if (!window.confirm(`从项目资源移除「${source}」？`)) return
@@ -223,7 +239,7 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
         if (it && it.title && it.body) { addPreset(it.title, it.body); return }
       } catch { /* 忽略 */ }
     }
-    if (e.dataTransfer.files.length) { addFiles(e.dataTransfer.files); setShowAddDoc(true) }
+    if (e.dataTransfer.files.length) { addFileItem(e.dataTransfer.files); setShowAddDoc(true) }
   }
   return (
     <div className={`p-6 flex flex-col gap-5 ${naturalHeight ? '' : 'h-full overflow-hidden'}`}>
@@ -248,7 +264,7 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
               {uploading ? '上传中…' : showAddDoc ? '收起' : '确认上传'}
             </button>
             <input ref={fileRef} type="file" multiple className="hidden"
-              onChange={e => { if (e.target.files?.length) addFiles(e.target.files); e.target.value = '' }} />
+              onChange={e => { if (e.target.files?.length) addFileItem(e.target.files); e.target.value = '' }} />
           </div>
         </div>
         <div className={`border rounded-2xl p-3 grid grid-cols-2 md:grid-cols-3 gap-2 max-h-[26vh] overflow-y-auto transition-colors ${dragOver ? 'border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_6%,var(--bg-panel))]' : 'border-dashed hairline'}`}>
@@ -275,7 +291,7 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
               <p className="text-[13px] font-semibold">添加文档</p>
               <p className="mt-0.5 text-[11px] text-dim">拖拽文件到这里，或点击选择文件；确认后接入课程知识库（自动向量化）</p>
             </div>
-            {/* 虚线框：点击选择 / 拖拽，对齐 DeepTutor FileDropZone */}
+            {/* 虚线框：点击选择 / 拖拽（文件或卡片），仅占位进列表 */}
             <button
               type="button"
               disabled={!!uploading}
@@ -283,42 +299,51 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
               onDragEnter={e => { e.preventDefault(); setDropActive(true) }}
               onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' }}
               onDragLeave={() => setDropActive(false)}
-              onDrop={e => { e.preventDefault(); setDropActive(false); if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files) }}
+              onDrop={e => {
+                e.preventDefault(); setDropActive(false)
+                const json = e.dataTransfer.getData('text/obs-item')
+                if (json) {
+                  try { const it = JSON.parse(json); if (it && it.title && it.body) { addTextItem(it.title, it.body); return } } catch { /* 忽略 */ }
+                }
+                if (e.dataTransfer.files.length) addFileItem(e.dataTransfer.files)
+              }}
               className={`flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-7 text-center transition-colors ${dropActive ? 'border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_6%,var(--bg-panel))]' : 'border-[var(--border-color)] hover:border-[var(--text)]/30 hover:bg-[var(--bg-hover)]'} ${uploading ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               <Upload size={20} className="text-dim" />
               <span className="text-[12px] font-medium">
-                {dropActive ? '释放文件即可添加' : pendingFiles.length ? `已选择 ${pendingFiles.length} 个文件` : '点击选择文件，或拖拽文件到此处'}
+                {dropActive ? '释放即可添加' : pendingCount ? `已选择 ${pendingCount} 个资源（待确认上传）` : '点击选择文件，或拖拽文件/卡片到此处'}
               </span>
-              <span className="text-[10px] text-dim">支持 TXT/MD/代码、PDF、Word、PPT</span>
+              <span className="text-[10px] text-dim">支持文件（TXT/MD/PDF/Word/PPT）与系统资源卡片</span>
             </button>
-            {/* 文件列表：对齐 DeepTutor SelectionSummary */}
-            {pendingFiles.length > 0 && (
+            {/* 待上传列表：对齐 DeepTutor SelectionSummary（文件 + 卡片文本占位） */}
+            {pendingCount > 0 && (
               <div className="flex flex-col gap-1.5">
-                {pendingFiles.map((f, i) => (
-                  <div key={i} className="flex items-center gap-2.5 rounded-xl border hairline px-3 py-2 bg-[var(--bg-panel)]">
-                    <span className="w-7 h-7 rounded-lg bg-[#1a1a1a] text-white flex items-center justify-center flex-shrink-0"><FileText size={13} /></span>
+                {pendingItems.map(it => (
+                  <div key={it.id} className="flex items-center gap-2.5 rounded-xl border hairline px-3 py-2 bg-[var(--bg-panel)]">
+                    <span className="w-7 h-7 rounded-lg bg-[#1a1a1a] text-white flex items-center justify-center flex-shrink-0">
+                      {it.kind === 'file' ? <FileText size={13} /> : <BookOpen size={13} />}
+                    </span>
                     <div className="min-w-0 flex-1">
-                      <p className="text-[11.5px] font-medium truncate">{f.name}</p>
-                      <p className="text-[10px] text-dim">{fmtSize(f.size)}</p>
+                      <p className="text-[11.5px] font-medium truncate">{it.kind === 'file' ? it.file.name : it.title}</p>
+                      <p className="text-[10px] text-dim">{it.kind === 'file' ? fmtSize(it.file.size) : '系统资源'}</p>
                     </div>
-                    <button onClick={() => setPendingFiles(prev => prev.filter((_, j) => j !== i))}
+                    <button onClick={() => setPendingItems(prev => prev.filter(x => x.id !== it.id))}
                       className="p-1.5 rounded-lg text-dim hover:bg-[var(--bg-hover)] hover:text-red-500 flex-shrink-0" title="移除">
                       <X size={12} />
                     </button>
                   </div>
                 ))}
-                <button onClick={() => setPendingFiles([])} className="self-end text-[10px] text-dim hover:text-red-500 px-1" title="清空">
+                <button onClick={() => setPendingItems([])} className="self-end text-[10px] text-dim hover:text-red-500 px-1" title="清空">
                   清空选择
                 </button>
               </div>
             )}
-            {/* 确认上传按钮：点击即上传（同步向量化） */}
+            {/* 确认上传按钮：点击才真正上传（同步向量化） */}
             <div className="flex justify-end">
-              <button onClick={confirmUpload} disabled={!pendingFiles.length || !!uploading}
+              <button onClick={confirmUpload} disabled={!pendingCount || !!uploading}
                 className="inline-flex items-center gap-1.5 rounded-lg bg-[#1a1a1a] px-4 py-1.5 text-[12px] font-medium text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">
                 {uploading ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
-                {uploading ? '上传中…' : `确认上传（${pendingFiles.length}）`}
+                {uploading ? '上传中…' : `确认上传（${pendingCount}）`}
               </button>
             </div>
           </div>

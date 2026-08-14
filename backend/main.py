@@ -165,7 +165,12 @@ class KnowledgeUpload(BaseModel):
 
 
 @app.post("/api/knowledge/upload")
-async def knowledge_upload(req: KnowledgeUpload):
+async def knowledge_upload(req: KnowledgeUpload, wait: bool = False):
+    if wait:
+        # 同步模式：等待切块+向量化入库完成再返回（与 upload-file 的 wait 一致）
+        from starlette.concurrency import run_in_threadpool
+        chunks = await run_in_threadpool(_process_upload, req.project_id, req.text, req.source, req.session_id, req.api_key)
+        return {"status": "ok", "chunks": chunks, "source": req.source}
     _threading.Thread(target=_process_upload, args=(req.project_id, req.text, req.source, req.session_id, req.api_key), daemon=True).start()
     return {"status": "processing", "msg": "正在处理，稍后刷新查看"}
 
