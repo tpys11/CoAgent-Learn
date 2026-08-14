@@ -42,7 +42,7 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
           active ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'
         }`}
       >
-        <Icon size={20} strokeWidth={active ? 2 : 1.6} />
+        <Icon size={16} strokeWidth={active ? 2 : 1.6} />
         <span className="text-[9px] leading-none">{label}</span>
       </button>
     )
@@ -60,7 +60,7 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
           </a>
         </div>
       ) : (
-        <div className="w-full px-3 mb-3 flex justify-start">
+        <div className="w-full px-6 mb-3 flex justify-start">
           <span className="font-display text-sm tracking-wide text-dim select-none">CA</span>
         </div>
       )}
@@ -84,11 +84,11 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
         <>
           <button onClick={() => onChange('tutorial')} title="使用引导"
             className={`w-full px-3 mb-1.5 flex flex-col items-start justify-center gap-1 py-2 rounded-2xl transition-all ${view === 'tutorial' ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'}`}>
-            <GraduationCap size={18} strokeWidth={1.6} />
+            <GraduationCap size={16} strokeWidth={1.6} />
             <span className="text-[8px] leading-none">引导</span>
           </button>
           <button onClick={onSettings} title="设置" className="w-full px-3 flex flex-col items-start justify-center gap-1 py-2 rounded-2xl icon-btn transition-all">
-            <Settings size={18} strokeWidth={1.6} />
+            <Settings size={16} strokeWidth={1.6} />
             <span className="text-[8px] leading-none">设置</span>
           </button>
         </>
