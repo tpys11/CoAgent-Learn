@@ -134,8 +134,9 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
   const [uploading, setUploading] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
   const [dragOver, setDragOver] = useState(false)
-  // 两步式上传：选中的文件先暂存待确认，点「确认上传」才真正上传
+  // 两步式上传：选中的文件先暂存待确认，点「确认上传」才真正上传（同步等待向量化完成并反馈）
   const [pendingFiles, setPendingFiles] = useState<File[]>([])
+  const [doneMsg, setDoneMsg] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
   const load = useCallback(() => {
     if (!projectId) { setDocs([]); setLoading(false); return }
@@ -149,18 +150,29 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
 
   const uploadFiles = async (files: FileList | File[]) => {
     if (!projectId) return
+    let total = 0
     for (const f of Array.from(files)) {
       setUploading(f.name)
       const fd = new FormData()
       fd.append('project_id', projectId)
       fd.append('session_id', 'project-res')
       fd.append('api_key', localStorage.getItem('coagent-apikey') || '')
+      fd.append('wait', '1')  // 同步等待后端切块+向量化入库完成
       fd.append('file', f, f.name)
-      await fetch('/api/knowledge/upload-file', { method: 'POST', body: fd })
+      try {
+        const r = await fetch('/api/knowledge/upload-file', { method: 'POST', body: fd })
+        const d = await r.json().catch(() => ({}))
+        if (d.status === 'ok') total += (d.chunks || 0)
+        else alert(`「${f.name}」接入失败：${d.msg || '处理失败'}`)
+      } catch (e) {
+        alert(`「${f.name}」上传失败：${(e as any)?.message || '网络异常'}`)
+      }
     }
     setUploading('')
     setPendingFiles([])
-    setTimeout(() => { load(); setRefreshKey(k => k + 1) }, 2000)
+    setDoneMsg(`已接入课程知识库 ${total} 个内容块`)
+    setTimeout(() => setDoneMsg(''), 5000)
+    setTimeout(() => { load(); setRefreshKey(k => k + 1) }, 500)
   }
   /** 确认上传：把暂存的文件真正提交上传 */
   const confirmUpload = () => {
@@ -209,11 +221,12 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
           <p className="text-xs font-semibold text-dim uppercase tracking-wider">项目资源</p>
           <div className="flex flex-col items-end gap-1.5">
             <div className="flex items-center gap-2">
-              {uploading && <span className="text-[11px] text-dim">处理中：{uploading}</span>}
+              {uploading && <span className="text-[11px] text-dim">向量化中：{uploading}</span>}
+              {!uploading && doneMsg && <span className="text-[11px] text-emerald-600 font-medium">{doneMsg}</span>}
               <button onClick={pendingFiles.length ? confirmUpload : () => fileRef.current?.click()}
                 disabled={!!uploading}
                 className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors disabled:opacity-50">
-                <Upload size={12} /> {uploading ? '处理中…' : pendingFiles.length ? `确认上传（${pendingFiles.length}）` : '确认上传'}
+                <Upload size={12} /> {uploading ? '向量化中…' : pendingFiles.length ? `确认上传（${pendingFiles.length}）` : '确认上传'}
               </button>
               <input ref={fileRef} type="file" multiple className="hidden"
                 onChange={e => {

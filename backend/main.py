@@ -124,8 +124,10 @@ import threading as _threading
 _active_cancels: dict = {}
 
 
-def _process_upload(project_id, text, source, session_id, api_key):
-    """后台处理上传：存原文到资源表 + 切块入库 + 抽取图谱"""
+def _process_upload(project_id, text, source, session_id, api_key) -> int:
+    """处理上传：存原文到资源表 + 切块向量化入库 + 抽取图谱，返回入库块数。
+    后台线程调用时忽略返回值；同步模式（wait=1）用它拿到块数反馈给前端。"""
+    n = 0
     try:
         # 存原文到资源表（"我的上传/保存的资料"保留一份原文，与知识库独立）
         from core.postgres_client import pg_client as _pg0
@@ -140,15 +142,16 @@ def _process_upload(project_id, text, source, session_id, api_key):
         pass
     try:
         from core.knowledge_service import add_document
-        add_document(project_id, text, source, session_id, api_key)
-    except Exception:
-        pass
+        n = add_document(project_id, text, source, session_id, api_key) or 0
+    except Exception as e:
+        print("[kb] 入库失败:", e)
     try:
         from core.graph_service import extract_relations, store_relations
         rels = extract_relations(text, api_key)
         store_relations(project_id, rels, source)
     except Exception:
         pass
+    return n
 
 
 
@@ -172,6 +175,7 @@ async def knowledge_upload_file(
     project_id: str = Form("default"),
     session_id: str = Form("default"),
     api_key: str = Form(""),
+    wait: bool = Form(False),
     file: UploadFile = File(...),
 ):
     from core.file_parser import parse_file
@@ -179,7 +183,13 @@ async def knowledge_upload_file(
     text = parse_file(file.filename or "file", data)
     if not text.strip():
         return {"status": "error", "msg": "无法解析该文件内容（可能为空或格式不支持）"}
-    _threading.Thread(target=_process_upload, args=(project_id, text, file.filename or "file", session_id, api_key), daemon=True).start()
+    source = file.filename or "file"
+    if wait:
+        # 同步模式：等待切块+向量化入库完成再返回（前端据此反馈「已接入知识库 N 块」）
+        from starlette.concurrency import run_in_threadpool
+        chunks = await run_in_threadpool(_process_upload, project_id, text, source, session_id, api_key)
+        return {"status": "ok", "chunks": chunks, "source": source}
+    _threading.Thread(target=_process_upload, args=(project_id, text, source, session_id, api_key), daemon=True).start()
     return {"status": "processing", "msg": "正在处理，稍后刷新查看"}
 
 
