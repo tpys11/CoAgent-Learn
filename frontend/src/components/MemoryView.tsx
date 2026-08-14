@@ -1001,24 +1001,6 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                           </div>
                         </div>
                         )}
-                        {/* 时间：内容量趋势 + 日历（横向排布，占满详情宽度）；初始化时不展示 */}
-                        {!initialEdit && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                          <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col">
-                            <TimeLineChart days={data?.days || {}} />
-                          </div>
-                          <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-1.5">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-semibold text-dim uppercase tracking-wider">日历</span>
-                              <span className="text-[9px] text-dim">{data?.count || 0} 次对话{data?.latest ? ` · 最近 ${data.latest}` : ''}</span>
-                            </div>
-                            <CalendarHeatmap
-                              data={Object.fromEntries(Object.entries(data?.days || {}).map(([d, items]) => [d, items.length]))}
-                              onPick={d => setDayDetail({ date: d, items: (data?.days || {})[d] || [] })}
-                            />
-                          </div>
-                        </div>
-                        )}
                       </div>
                     </div>
                     </div>
