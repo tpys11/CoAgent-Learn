@@ -132,6 +132,7 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
   const [docs, setDocs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
   const [dragOver, setDragOver] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const load = useCallback(() => {
@@ -156,7 +157,7 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
       await fetch('/api/knowledge/upload-file', { method: 'POST', body: fd })
     }
     setUploading('')
-    setTimeout(load, 2000)
+    setTimeout(() => { load(); setRefreshKey(k => k + 1) }, 2000)
   }
   const addPreset = async (title: string, body: string) => {
     if (!projectId) return
@@ -167,7 +168,7 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
       body: JSON.stringify({ project_id: projectId, text: body, source: title, session_id: 'project-res', api_key: localStorage.getItem('coagent-apikey') || '' }),
     })
     setUploading('')
-    setTimeout(load, 2000)
+    setTimeout(() => { load(); setRefreshKey(k => k + 1) }, 2000)
   }
   const removeDoc = (source: string) => {
     if (!window.confirm(`从课程资源移除「${source}」？`)) return
@@ -230,7 +231,7 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
       <div className="flex-1 min-h-0 flex flex-col gap-2.5 overflow-hidden">
         <p className="text-xs font-semibold text-dim uppercase tracking-wider flex items-center gap-1.5 flex-shrink-0"><BookOpen size={13} /> 系统内置资源<span className="font-normal text-[10px] text-dim">（卡片可拖入上方，或点卡片详情「加入课程」）</span></p>
         <div className={`border hairline rounded-2xl overflow-hidden ${naturalHeight ? 'h-[45vh]' : 'flex-1 min-h-0'}`}>
-          <ResourceView projectId={projectId} onUseItem={addPreset} />
+          <ResourceView key={refreshKey} projectId={projectId} onUseItem={addPreset} />
         </div>
       </div>
     </div>

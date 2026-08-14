@@ -806,10 +806,10 @@ const exportItem = (item: ListItem) => {
           {/* 三个区域选择（教程资源 / 我的生成 / 我的上传） */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
             {([
-              { key: 'tutorials' as Tab, icon: BookOpen, label: '教程资源', desc: '系统整理的学习教程与主题词条' },
-              { key: 'generated' as Tab, icon: Sparkles, label: '我的生成', desc: 'AI 生成的内容，可查看与导出' },
-              { key: 'uploads' as Tab, icon: Upload, label: '我的上传', desc: '上传的文档与知识库资料' },
-            ]).map(({ key, icon: Icon, label, desc }) => (
+              { key: 'tutorials' as Tab, icon: BookOpen, label: '教程资源', desc: '系统整理的学习教程与主题词条', color: 'bg-blue-600' },
+              { key: 'generated' as Tab, icon: Sparkles, label: '我的生成', desc: 'AI 生成的内容，可查看与导出', color: 'bg-violet-600' },
+              { key: 'uploads' as Tab, icon: Upload, label: '我的上传', desc: '上传的文档与知识库资料', color: 'bg-emerald-600' },
+            ]).map(({ key, icon: Icon, label, desc, color }) => (
               <button
                 key={key}
                 onClick={() => { setTab(key); setDetail(null) }}
@@ -818,7 +818,7 @@ const exportItem = (item: ListItem) => {
                 }`}
               >
                 <span className="flex items-center gap-2">
-                  <span className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 bg-[#1a1a1a] text-white">
+                  <span className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 text-white ${color}`}>
                     <Icon size={14} />
                   </span>
                   <span className="text-sm font-semibold">{label}</span>
