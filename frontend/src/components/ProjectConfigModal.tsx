@@ -254,7 +254,6 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
         <div className="flex items-center justify-between">
           <p className="text-xs font-semibold text-dim uppercase tracking-wider">项目资源</p>
           <div className="flex items-center gap-2">
-            {uploading && <span className="text-[11px] text-dim">向量化中：{uploading}</span>}
             {!uploading && doneMsg && (
               <span className="flex items-center gap-1 text-[11px] text-emerald-600 font-medium">
                 <CheckCircle2 size={12} /> {doneMsg}
