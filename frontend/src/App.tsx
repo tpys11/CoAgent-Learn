@@ -739,7 +739,7 @@ function App() {
           <PanelLeftOpen size={15} />
         </button>
       )}
-      {view === 'tutorial' && <TutorialView />}
+      {view === 'tutorial' && <TutorialView agents={agents} onSave={handleSaveAgent} onReplace={handleReplaceAgents} projectId={currentProjectId} />}
       {view === 'resources' && <ResourceView projectId={currentProjectId} />}
       {view === 'memory' && <MemoryView projectId={currentProjectId} onRequestModify={handleRequestModify} onRequestAnalyze={handleRequestAnalyze} />}
       {view === 'knowledge' && <KnowledgeView projectId={projectKBId ?? currentProjectId} onClose={() => { setView('chat'); setChatOpen(true) }} />}
