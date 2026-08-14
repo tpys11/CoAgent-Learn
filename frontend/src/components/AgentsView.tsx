@@ -139,7 +139,7 @@ const SKILL_CAT_MAP: Record<string, string> = {
 const BLOCKS: Array<{ key: Block; icon: any; label: string }> = [
   { key: 'agents', icon: Settings, label: 'Agent 管理' },
   { key: 'skills', icon: Layers, label: 'Skill 管理' },
-  { key: 'templates', icon: LayoutTemplate, label: '对话流程' },
+  { key: 'templates', icon: LayoutTemplate, label: '对话' },
 ]
 
 /** 格式化文本：**标题** → 主题色加粗标题；「- 名称：内容」→ 加粗名称 + 正文；普通行 → 正文段落（与 Agent 提示词展示一致） */
@@ -793,48 +793,14 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
           </div>
         )}
 
-        {/* ========== 对话流程 ========== */}
+        {/* ========== 对话 ========== */}
         {block === 'templates' && (
           <div className="max-w-3xl flex flex-col gap-6">
-            <h2 className="text-xl font-bold flex items-center gap-2"><LayoutTemplate size={18} /> 对话流程</h2>
+            <h2 className="text-xl font-bold flex items-center gap-2"><LayoutTemplate size={18} /> 对话</h2>
 
-            {/* 预设模板：点击展开详情 */}
+            {/* 全局性基础设定（独立界面：所有模式共有，先介绍再选模式） */}
             <div className="flex flex-col gap-3">
-              <div className="flex gap-2 flex-wrap items-center">
-                {allTemplates.map(t => {
-                  const isCustom = customTemplates.some(c => c.name === t.name)
-                  return (
-                    <div key={t.name} className="relative group flex-shrink-0">
-                      <button onClick={() => setSelectedTpl(selectedTpl === t.name ? null : t.name)}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-medium transition-all ${
-                          selectedTpl === t.name
-                            ? 'border-[var(--border-strong)] bg-[#1a1a1a] text-white shadow-soft'
-                            : isCustom
-                              ? 'border-dashed border-[var(--border-color)] bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'
-                              : 'border hairline bg-[var(--bg-panel)] text-dim hover:bg-[var(--bg-hover)]'
-                        }`}>
-                        <LayoutTemplate size={13} /> {t.name}
-                      </button>
-                      {isCustom && (
-                        <button onClick={(e) => { e.stopPropagation(); removeCustomTemplate(t.name) }}
-                          className="hidden group-hover:flex absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white items-center justify-center shadow" title="删除模板">
-                          <X size={9} />
-                        </button>
-                      )}
-                    </div>
-                  )
-                })}
-                <span className="w-px h-5 bg-[var(--border-color)]" />
-                <button onClick={() => setShowNewTplModal(true)}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium border border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors flex-shrink-0">
-                  <Plus size={13} /> 新建模板
-                </button>
-              </div>
-            </div>
-
-            {/* 全局设定（单独小界面：所有档位共有，与后端实际逻辑一致；三档详情不再重复） */}
-            <div className="flex flex-col gap-3">
-              <p className="text-xs font-semibold text-dim uppercase tracking-wider">全局设定（所有档位共有）</p>
+              <p className="text-xs font-semibold text-dim uppercase tracking-wider">全局性基础设定（所有模式共有）</p>
               <div className="grid grid-cols-2 gap-3">
                 {[
                   ['搜索机制', '固定搜索规则：优质信息源（优质社区、官方信息），并行搜索 agent 返回 10-20 条优质内容（思考/研究档共享）'],
@@ -849,9 +815,27 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                   </div>
                 ))}
               </div>
+              <p className="text-[10px] text-dim leading-relaxed">以下机制对所有对话模式生效：搜索、知识库、学情、压缩、特殊形式输出在后台或按需运行，不随档位变化。模式之间的差异（响应速度、内容量、检测强度）由下方模式按钮决定。</p>
             </div>
 
-            {/* 编排框架设定（节点图内点击 Agent，右侧独立栏展开设定） */}
+            {/* 具体模式：三个按钮，点击展示详情 */}
+            <div className="flex flex-col gap-3">
+              <p className="text-xs font-semibold text-dim uppercase tracking-wider">具体模式</p>
+              <div className="flex gap-2 flex-wrap items-center">
+                {PRESET_TEMPLATES.map(t => (
+                  <button key={t.name} onClick={() => setSelectedTpl(selectedTpl === t.name ? null : t.name)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-medium transition-all ${
+                      selectedTpl === t.name
+                        ? 'border-[var(--border-strong)] bg-[#1a1a1a] text-white shadow-soft'
+                        : 'border hairline bg-[var(--bg-panel)] text-dim hover:bg-[var(--bg-hover)]'
+                    }`}>
+                    <LayoutTemplate size={13} /> {t.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 编排框架设定（选中模式的节点图） */}
             <div className="flex flex-col gap-4">
               <p className="text-xs font-semibold text-dim uppercase tracking-wider">编排框架设定</p>
               <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex items-center justify-center">
