@@ -144,6 +144,11 @@ function App() {
   const activeDidRef = useRef<string | null>(null)
   // 本次回答是否已通过 answer_token 流式显示（是则 done 后直接替换，不二次打字机）
   const streamedRef = useRef(false)
+  // 流式渲染节奏（rAF 帧循环）：token 到达只累积，每帧 flush 一次——渲染固定在帧边界，
+  // 消除"网络批量到达 + React 自动批处理"导致的回答一段一段出现
+  const pendingAnswerRef = useRef('')
+  const pendingMindRef = useRef<{ agent: string; char: string } | null>(null)
+  const rafScheduledRef = useRef(false)
   // 手动停止：abort 控制器 + 用户停止标记 + 生成请求 id（POST /api/chat/stop 通知后端取消生成）
   const abortCtrlRef = useRef<AbortController | null>(null)
   const userStoppedRef = useRef(false)
@@ -316,6 +321,48 @@ function App() {
     }
     return arr
   }
+  // 每帧 flush 一次累积的流式字符（回答正文 + 思维链），渲染节奏固定在 rAF 帧边界
+  const flushStreamPending = () => {
+    rafScheduledRef.current = false
+    const pa = pendingAnswerRef.current
+    if (pa) {
+      pendingAnswerRef.current = ''
+      setAllMessages(prev => {
+        const arr = prev[activeDidRef.current || ''] || []
+        const lastMsg = arr[arr.length - 1]
+        if (lastMsg && lastMsg.role === 'assistant') {
+          return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, content: (lastMsg.content || '') + pa }] }
+        }
+        return prev
+      })
+    }
+    const pm = pendingMindRef.current
+    if (pm) {
+      pendingMindRef.current = null
+      setFlowMindchain(prev => {
+        const last = prev[prev.length - 1]
+        const next = (last && last.agent === pm.agent)
+          ? [...prev.slice(0, -1), { agent: pm.agent, content: last.content + pm.char }]
+          : [...prev, { agent: pm.agent, content: pm.char }]
+        mindchainRef.current = next
+        return next
+      })
+      setAllMessages(prev => {
+        const arr = prev[activeDidRef.current || ''] || []
+        const lastMsg = arr[arr.length - 1]
+        if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content === '') {
+          return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, think: mindchainRef.current }] }
+        }
+        return prev
+      })
+    }
+  }
+  const scheduleStreamFlush = () => {
+    if (rafScheduledRef.current) return
+    rafScheduledRef.current = true
+    requestAnimationFrame(flushStreamPending)
+  }
+
   const handleSendMessage = useCallback(async (text: string, settings?: Record<string, any>) => {
     let did = currentDialogueId
     // 澄清继续模式：复用当前占位消息继续（不新建消息、不清空思维链），流程在同一轮内衔接
@@ -496,24 +543,9 @@ function App() {
             fenceBufRef.current = ''
             if (fenceInRef.current) continue  // 围栏内内容丢弃
             if (!c) continue  // 空串跳过，绝不能中断 SSE 解析循环
-            // 到达即 append 到当前 agent 的思维链条目（不 rAF 缓冲 → 无积压、不憋段）
-            setFlowMindchain(prev => {
-              const last = prev[prev.length - 1]
-              const next = (last && last.agent === data.agent)
-                ? [...prev.slice(0, -1), { agent: data.agent, content: last.content + c }]
-                : [...prev, { agent: data.agent, content: c }]
-              mindchainRef.current = next
-              return next
-            })
-            // 同步到占位消息 think（纯文本，低成本）
-            setAllMessages(prev => {
-              const arr = prev[activeDidRef.current || ''] || []
-              const lastMsg = arr[arr.length - 1]
-              if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content === '') {
-                return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, think: mindchainRef.current }] }
-              }
-              return prev
-            })
+            // 累积到 rAF 帧循环：每帧 flush 一次，渲染节奏固定（消除网络批量到达导致的"一段一段"）
+            pendingMindRef.current = { agent: data.agent, char: c }
+            scheduleStreamFlush()
           }
           if (data.type === 'answer_token') {
             const ch = data.chunk || ''
@@ -521,15 +553,9 @@ function App() {
               streamedRef.current = true
               // simple 流程无 step 事件：回答开始流式即更新状态（避免一直显示"等待模型响应"）
               setFlowStatus('正在输出回答…')
-              // 后端已逐字推送（on_answer 拆字），到达即 append → 无积压、不憋段、最流畅
-              setAllMessages(prev => {
-                const arr = prev[activeDidRef.current || ''] || []
-                const lastMsg = arr[arr.length - 1]
-                if (lastMsg && lastMsg.role === 'assistant') {
-                  return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, content: (lastMsg.content || '') + ch }] }
-                }
-                return prev
-              })
+              // 累积到 rAF 帧循环：每帧 flush 一次（同上）
+              pendingAnswerRef.current += ch
+              scheduleStreamFlush()
             }
           }
           if (data.type === 'done') {
