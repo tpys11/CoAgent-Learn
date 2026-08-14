@@ -835,13 +835,22 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
               </div>
             </div>
 
-            {/* 编排框架设定（选中模式的节点图） */}
-            <div className="flex flex-col gap-4">
-              <p className="text-xs font-semibold text-dim uppercase tracking-wider">编排框架设定</p>
-              <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex items-center justify-center">
-                <FlowGraph agents={agents} templateName={selectedTpl || '思考'} templateAgentId={templateAgentId} onSelect={(id) => setTemplateAgentId(id)} />
+            {/* 编排框架（文字介绍替代节点图） */}
+            <div className="flex flex-col gap-3">
+              <p className="text-xs font-semibold text-dim uppercase tracking-wider">编排框架</p>
+              <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2">
+                {PRESET_TEMPLATES.map(t => {
+                  const flow = (t.detail.find(([k]) => k === '编排流程') || [])[1] || ''
+                  const active = selectedTpl === t.name
+                  return (
+                    <div key={t.name} className={`flex items-start gap-2 text-xs leading-relaxed rounded-lg px-2 py-1.5 ${active ? 'bg-[var(--bg-hover)]' : ''}`}>
+                      <span className={`flex-shrink-0 font-semibold ${active ? 'text-[var(--text)]' : 'text-dim'}`}>{t.name}</span>
+                      <span className="text-[var(--text-muted)]">{flow}</span>
+                    </div>
+                  )
+                })}
+                <p className="text-[10px] text-dim pt-2 border-t hairline">选中模式高亮显示，点击上方模式按钮可切换。</p>
               </div>
-              <p className="text-[10px] text-dim -mt-2">节点颜色越深表示该节点在模板编排中的职责负载越高</p>
             </div>
           </div>
         )}
