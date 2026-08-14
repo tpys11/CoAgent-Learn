@@ -490,7 +490,9 @@ function App() {
       let firstByte = true
       const resetTimer = () => {
         clearTimeout(timeoutTimer)
-        timeoutTimer = setTimeout(() => abortCtrlRef.current?.abort(), firstByte ? timeoutMs : 60000)
+        // 首字节超时给 15s 下限：用户把"请求超时"设成 1-5s 时，首字节（后端初始化/代理转发）
+        // 偶发超时会导致「一瞬间就报网络中断」；流中空闲仍 60s
+        timeoutTimer = setTimeout(() => abortCtrlRef.current?.abort(), firstByte ? Math.max(15000, timeoutMs) : 60000)
       }
       for (let _try = 0; _try < 2; _try++) {
         const ctrl = new AbortController()
