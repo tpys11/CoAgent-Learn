@@ -334,33 +334,39 @@ function App() {
     return arr
   }
   // 每帧 flush 一次累积的流式字符（回答正文 + 思维链），渲染节奏固定在 rAF 帧边界
-  const flushStreamPending = () => {
-    rafScheduledRef.current = false
+  // 持续 reveal 循环：不管 token 何时到达（只进队列），每帧从队列吐出固定节奏的字（2-4 字/帧）。
+  // 显示节奏 = 帧率（16ms 均匀），与网络批量到达节奏完全解耦——消除"每批到达就整批蹦出"的一段一段。
+  const revealRunningRef = useRef(false)
+  const revealTick = () => {
     const pa = pendingAnswerRef.current
     if (pa) {
-      pendingAnswerRef.current = ''
+      // 每帧吐：积压少吐 2 字（匀速），积压多吐 4 字（防越积越多跟不上模型）
+      const take = Math.min(pa.length, pa.length > 40 ? 4 : 2)
+      const out = pa.slice(0, take)
+      pendingAnswerRef.current = pa.slice(take)
       setAllMessages(prev => {
         const arr = prev[activeDidRef.current || ''] || []
         const lastMsg = arr[arr.length - 1]
         if (lastMsg && lastMsg.role === 'assistant') {
-          return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, content: (lastMsg.content || '') + pa }] }
+          return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, content: (lastMsg.content || '') + out }] }
         }
         return prev
       })
     }
     const pm = pendingMindRef.current
     if (pm) {
-      pendingMindRef.current = null
-      const { agent, text } = pm
+      const take = Math.min(pm.text.length, 3)
+      const out = pm.text.slice(0, take)
+      pm.text = pm.text.slice(take)
+      if (pm.text.length === 0) pendingMindRef.current = null
       setFlowMindchain(prev => {
-        // 追加到最近的同 agent 条目（agent 切换时 lastIndexOf 定位，鲁棒）；无则新建
-        const idx = prev.map(x => x.agent).lastIndexOf(agent)
+        const idx = prev.map(x => x.agent).lastIndexOf(pm.agent)
         let next: Array<{ agent: string; content: string }>
         if (idx >= 0) {
           next = prev.slice()
-          next[idx] = { agent, content: next[idx].content + text }
+          next[idx] = { agent: pm.agent, content: next[idx].content + out }
         } else {
-          next = [...prev, { agent, content: text }]
+          next = [...prev, { agent: pm.agent, content: out }]
         }
         mindchainRef.current = next
         return next
@@ -374,11 +380,17 @@ function App() {
         return prev
       })
     }
+    if (!pendingAnswerRef.current && !pendingMindRef.current) {
+      // 队列空：停循环，等下一个 token 到达再启动
+      revealRunningRef.current = false
+      return
+    }
+    requestAnimationFrame(revealTick)
   }
-  const scheduleStreamFlush = () => {
-    if (rafScheduledRef.current) return
-    rafScheduledRef.current = true
-    requestAnimationFrame(flushStreamPending)
+  const ensureRevealLoop = () => {
+    if (revealRunningRef.current) return
+    revealRunningRef.current = true
+    requestAnimationFrame(revealTick)
   }
 
   const handleSendMessage = useCallback(async (text: string, settings?: Record<string, any>) => {
@@ -572,7 +584,7 @@ function App() {
             } else {
               pendingMindRef.current = { agent: data.agent, text: c }
             }
-            scheduleStreamFlush()
+            ensureRevealLoop()
           }
           if (data.type === 'answer_token') {
             const ch = data.chunk || ''
@@ -582,7 +594,7 @@ function App() {
               setFlowStatus('正在输出回答…')
               // 累积到 rAF 帧循环：每帧 flush 一次（同上）
               pendingAnswerRef.current += ch
-              scheduleStreamFlush()
+              ensureRevealLoop()
             }
           }
           if (data.type === 'done') {
