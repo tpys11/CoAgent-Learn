@@ -26,7 +26,7 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
         key={key}
         onClick={() => onChange(key)}
         title={label}
-        className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+        className={`w-full h-9 flex items-center gap-3 px-3 rounded-md text-sm font-medium transition-colors ${
           active ? 'bg-[#1a1a1a] text-white' : 'text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)]'
         }`}
       >
@@ -38,7 +38,7 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
         key={key}
         onClick={() => onChange(key)}
         title={label}
-        className={`w-full px-3 mb-2 flex flex-col items-start justify-center gap-1 py-2 rounded-2xl transition-all ${
+        className={`w-full h-9 px-3 flex flex-col items-start justify-center rounded-2xl transition-all ${
           active ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'
         }`}
       >
@@ -48,10 +48,10 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
     )
   )
   return (
-    <nav className={`h-full flex-shrink-0 flex flex-col transition-all duration-300 ${expanded ? 'w-64 py-4 items-stretch' : 'w-[64px] py-3 items-stretch'}`}>
-      {/* 顶部品牌区（deeptutor 式：p-6 边距、名称+GitHub 链接，border-b 分隔） */}
+    <nav className={`h-full flex-shrink-0 flex flex-col transition-all duration-300 ${expanded ? 'w-64 py-4 items-stretch' : 'w-[64px] py-4 items-stretch'}`}>
+      {/* 顶部品牌区（两态等高 h-[80px]+mb-2，保证按钮起始 y 锚定） */}
       {expanded ? (
-        <div className="px-6 pt-6 pb-4 mb-2 border-b hairline flex flex-col gap-2">
+        <div className="h-[80px] px-6 pt-4 mb-2 border-b hairline flex flex-col gap-2">
           <span className="font-display text-[20px] tracking-wide select-none">CoAgent-Learn</span>
           <a href="https://github.com/tpys11/CoAgent-Learn" target="_blank" rel="noreferrer"
             className="flex items-center gap-2 text-xs text-dim hover:text-[var(--text)] transition-colors w-fit"
@@ -60,7 +60,7 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
           </a>
         </div>
       ) : (
-        <div className="w-full px-6 mb-3 flex justify-start">
+        <div className="h-[80px] px-6 pt-4 mb-2 flex justify-start">
           <span className="font-display text-sm tracking-wide text-dim select-none">CA</span>
         </div>
       )}
@@ -70,12 +70,12 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
       {expanded ? (
         <div className="flex flex-col gap-1.5">
           <button onClick={() => onChange('tutorial')} title="使用引导"
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${view === 'tutorial' ? 'bg-[#1a1a1a] text-white' : 'text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)]'}`}>
+            className={`w-full h-9 flex items-center gap-3 px-3 rounded-md text-sm font-medium transition-colors ${view === 'tutorial' ? 'bg-[#1a1a1a] text-white' : 'text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)]'}`}>
             <GraduationCap size={16} strokeWidth={1.6} />
             <span className="leading-none">使用引导</span>
           </button>
           <button onClick={onSettings} title="设置"
-            className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-dim transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)]">
+            className="w-full h-9 flex items-center gap-3 px-3 rounded-md text-sm font-medium text-dim transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)]">
             <Settings size={16} strokeWidth={1.6} />
             <span className="leading-none">设置</span>
           </button>
@@ -83,11 +83,11 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
       ) : (
         <>
           <button onClick={() => onChange('tutorial')} title="使用引导"
-            className={`w-full px-3 mb-1.5 flex flex-col items-start justify-center gap-1 py-2 rounded-2xl transition-all ${view === 'tutorial' ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'}`}>
+            className={`w-full h-9 px-3 flex flex-col items-start justify-center rounded-2xl transition-all ${view === 'tutorial' ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'}`}>
             <GraduationCap size={16} strokeWidth={1.6} />
             <span className="text-[8px] leading-none">引导</span>
           </button>
-          <button onClick={onSettings} title="设置" className="w-full px-3 flex flex-col items-start justify-center gap-1 py-2 rounded-2xl icon-btn transition-all">
+          <button onClick={onSettings} title="设置" className="w-full h-9 px-3 flex flex-col items-start justify-center rounded-2xl icon-btn transition-all">
             <Settings size={16} strokeWidth={1.6} />
             <span className="text-[8px] leading-none">设置</span>
           </button>
