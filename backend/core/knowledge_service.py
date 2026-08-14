@@ -30,8 +30,8 @@ def _get_embedder():
     return _embedder or None
 
 
-def _embed(texts: list[str]) -> list[list[float]]:
-    """批量向量化；模型不可用时降级为哈希伪向量（仍可检索但效果差）"""
+def _embed_local(texts: list[str]) -> list[list[float]]:
+    """本地模型批量向量化；模型不可用时降级为哈希伪向量（仍可检索但效果差）"""
     emb = _get_embedder()
     if emb:
         return emb.encode(texts, normalize_embeddings=True).tolist()
@@ -43,6 +43,38 @@ def _embed(texts: list[str]) -> list[list[float]]:
             v[i] = (ord(ch) % 100) / 100.0
         vecs.append(v)
     return vecs
+
+
+def _embed_api(texts: list[str]) -> list[list[float]]:
+    """OpenAI 兼容 embedding API（如硅基流动 bge-m3）"""
+    import requests as _req
+    from core.config import config as _cfg
+    url = (_cfg.EMBEDDING_BASE_URL or "").rstrip("/") + "/embeddings"
+    h = {"Authorization": "Bearer " + _cfg.EMBEDDING_API_KEY, "Content-Type": "application/json"}
+    resp = _req.post(url, json={"model": _cfg.EMBEDDING_MODEL, "input": list(texts)}, headers=h, timeout=60)
+    resp.raise_for_status()
+    data = resp.json().get("data") or []
+    data.sort(key=lambda d: d.get("index", 0))  # 部分服务乱序返回，按 index 复原
+    vecs = [d["embedding"] for d in data]
+    # 维度断言：与配置不符立即报错（向量表维度固定，维度变了需清库重灌）
+    for v in vecs:
+        if len(v) != _cfg.EMBEDDING_DIM:
+            raise RuntimeError(
+                f"embedding 维度 {len(v)} 与配置 EMBEDDING_DIM={_cfg.EMBEDDING_DIM} 不符；"
+                "切换 embedding 后端后请清空知识库重新入库"
+            )
+    return vecs
+
+
+def _embed(texts: list[str]) -> list[list[float]]:
+    """批量向量化，按配置路由：api 后端 > 本地模型 > 伪向量降级"""
+    from core.config import config as _cfg
+    if _cfg.EMBEDDING_BACKEND == "api" and _cfg.EMBEDDING_API_KEY:
+        try:
+            return _embed_api(texts)
+        except Exception as _e:
+            print("[embed-api] 失败，降级本地:", _e)
+    return _embed_local(texts)
 
 
 def _tokenize(text: str) -> list:
@@ -257,20 +289,59 @@ def search(project_id: str, query: str, top_k: int = 3) -> list:
     return cands[:top_k]
 
 
-# P3 重排序模型（懒加载，进程内只加载一次）
-_reranker = None
+# P3 重排序后端（懒加载；本地 CrossEncoder 与 API 实例分别缓存）
+_reranker_local = None
+_reranker_api = None
+
+
+class _ApiReranker:
+    """OpenAI 兼容 rerank API（如硅基流动 bge-reranker-v2-m3），
+    接口对齐 CrossEncoder.predict(pairs) —— pairs 为 [(query, doc), ...]，返回分数列表。
+    """
+
+    def __init__(self):
+        from core.config import config as _cfg
+        self._url = (_cfg.RERANK_BASE_URL or "").rstrip("/") + "/rerank"
+        self._key = _cfg.RERANK_API_KEY
+        self._model = _cfg.RERANK_MODEL
+
+    def predict(self, pairs):
+        if not pairs:
+            return []
+        import requests as _req
+        query = pairs[0][0]
+        docs = [p[1] for p in pairs]
+        resp = _req.post(
+            self._url,
+            json={"model": self._model, "query": query, "documents": docs, "top_n": len(docs)},
+            headers={"Authorization": "Bearer " + self._key, "Content-Type": "application/json"},
+            timeout=60,
+        )
+        resp.raise_for_status()
+        scores = [0.0] * len(docs)
+        for r in resp.json().get("results") or []:
+            scores[r["index"]] = r.get("score", 0.0)
+        return scores
 
 
 def _get_reranker():
-    global _reranker
-    if _reranker is None:
+    """重排序后端路由：RERANK_BACKEND=none 禁用；=api 走外接服务（未配 key 回退本地）；默认本地"""
+    global _reranker_api, _reranker_local
+    from core.config import config as _cfg
+    if _cfg.RERANK_BACKEND == "none":
+        return None
+    if _cfg.RERANK_BACKEND == "api" and _cfg.RERANK_API_KEY:
+        if _reranker_api is None:
+            _reranker_api = _ApiReranker()
+        return _reranker_api
+    if _reranker_local is None:
         try:
             # 直连 huggingface.co（同 _get_embedder 的原因）
             from sentence_transformers import CrossEncoder
-            _reranker = CrossEncoder("BAAI/bge-reranker-base", max_length=512)
+            _reranker_local = CrossEncoder("BAAI/bge-reranker-base", max_length=512)
         except Exception:
-            _reranker = False
-    return _reranker or None
+            _reranker_local = False
+    return _reranker_local or None
 
 
 def list_docs(project_id: str) -> list:
