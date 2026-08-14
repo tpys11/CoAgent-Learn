@@ -113,29 +113,27 @@ function MiniMD({ text }: { text: string }) {
   return <div className="flex flex-col gap-1.5">{nodes}</div>
 }
 
-/** 阅读偏好：结构化展示（大标题：结构化程度/特殊格式，小标题：列表/表格），未设置项显示占位 */
+/** 阅读偏好：结构化程度展示（列表/表格），未设置项留空 */
 function PrefSummary({ pref }: { pref: Record<string, any> | null }) {
   const jc = pref?.结构化程度 || {}
   const list = jc?.列表
   const table = jc?.表格
+  return (
+    <div className="flex flex-col gap-1.5 text-xs leading-relaxed">
+      <p><span className="font-semibold text-[var(--text)]">列表</span>　{list ? (list.喜欢 ? `喜欢 · ${list.有序 ? '有序' : '无序'}` : '不喜欢') : ''}</p>
+      <p><span className="font-semibold text-[var(--text)]">表格</span>　{table ? (table.喜欢 ? '喜欢' : '不喜欢') : ''}</p>
+    </div>
+  )
+}
+
+/** 特殊需求：特殊格式展示（latex / md 文档 / 复制到笔记），未设置项留空 */
+function SpecialPref({ pref }: { pref: Record<string, any> | null }) {
   const sp = pref?.特殊格式 || {}
   return (
-    <div className="flex flex-col gap-3 text-xs leading-relaxed">
-      <div className="flex flex-col gap-1.5">
-        <p className="text-[11px] font-bold uppercase tracking-widest text-[var(--accent)]">结构化程度</p>
-        <div className="flex flex-col gap-1 text-[var(--text-muted)]">
-          <p><span className="font-semibold text-[var(--text)]">列表</span>　{list ? (list.喜欢 ? `喜欢 · ${list.有序 ? '有序' : '无序'}` : '不喜欢') : ''}</p>
-          <p><span className="font-semibold text-[var(--text)]">表格</span>　{table ? (table.喜欢 ? '喜欢' : '不喜欢') : ''}</p>
-        </div>
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <p className="text-[11px] font-bold uppercase tracking-widest text-[var(--accent)]">特殊格式</p>
-        <div className="flex flex-col gap-1 text-[var(--text-muted)]">
-          <p>latex 格式：{sp?.latex !== undefined ? (sp.latex ? '需要' : '不需要') : ''}</p>
-          <p>md 文档格式：{sp?.['md文档'] !== undefined ? (sp['md文档'] ? '喜欢' : '不喜欢') : ''}</p>
-          <p>复制内容到笔记：{sp?.['喜欢复制到笔记'] !== undefined ? (sp['喜欢复制到笔记'] ? '是' : '否') : ''}</p>
-        </div>
-      </div>
+    <div className="flex flex-col gap-1.5 text-xs leading-relaxed">
+      <p><span className="font-semibold text-[var(--text)]">latex 格式</span>　{sp?.latex !== undefined ? (sp.latex ? '需要' : '不需要') : ''}</p>
+      <p><span className="font-semibold text-[var(--text)]">md 文档格式</span>　{sp?.['md文档'] !== undefined ? (sp['md文档'] ? '喜欢' : '不喜欢') : ''}</p>
+      <p><span className="font-semibold text-[var(--text)]">复制内容到笔记</span>　{sp?.['喜欢复制到笔记'] !== undefined ? (sp['喜欢复制到笔记'] ? '是' : '否') : ''}</p>
     </div>
   )
 }
@@ -663,10 +661,16 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                     )}
                   </div>
 
-                  {/* 阅读偏好（只读展示，修改走右侧对话框） */}
-                  <div className="border hairline rounded-2xl p-5 bg-[var(--bg-panel)] flex flex-col gap-2">
-                    <span className="text-sm font-semibold">阅读偏好</span>
-                    <PrefSummary pref={gPref} />
+                  {/* 阅读偏好 | 特殊需求（同一水平并排） */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="border hairline rounded-2xl p-5 bg-[var(--bg-panel)] flex flex-col gap-2">
+                      <span className="text-sm font-semibold">阅读偏好</span>
+                      <PrefSummary pref={gPref} />
+                    </div>
+                    <div className="border hairline rounded-2xl p-5 bg-[var(--bg-panel)] flex flex-col gap-2">
+                      <span className="text-sm font-semibold">特殊需求</span>
+                      <SpecialPref pref={gPref} />
+                    </div>
                   </div>
                 </div>
 
