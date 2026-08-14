@@ -271,7 +271,7 @@ async function collectObsFiles(h: FileSystemDirectoryHandle, depth: number, out:
   }
 }
 
-export default function ResourceView({ projectId, onUseItem }: { projectId: string | null; onUseItem?: (title: string, body: string) => void }) {
+export default function ResourceView({ projectId, onUseItem, refreshSignal }: { projectId: string | null; onUseItem?: (title: string, body: string) => void; refreshSignal?: number }) {
   const [tab, setTab] = useState<Tab>('tutorials')
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
   const [genProjects, setGenProjects] = useState<Array<{ id: string; name: string }>>([])
@@ -414,6 +414,7 @@ export default function ResourceView({ projectId, onUseItem }: { projectId: stri
   }, [projectId, selGenProject])
 
   useEffect(() => { setDetail(null); load() }, [load])
+  useEffect(() => { if (refreshSignal) load() }, [refreshSignal])
   useEffect(() => {
     fetch('/api/projects', { cache: 'no-store' }).then(r => r.json()).then(d => {
       const ps = (d.projects || []).map((p: any) => ({ id: p.id, name: p.name }))
@@ -815,7 +816,7 @@ const exportItem = (item: ListItem) => {
                 key={key}
                 onClick={() => { setTab(key); setDetail(null) }}
                 className={`card-surface rounded-2xl p-5 flex flex-col gap-2 text-left transition-all hover:shadow-soft ${
-                  tab === key ? 'border-[var(--accent)] bg-[var(--bg-hover)]' : ''
+                  tab === key ? 'bg-[#1a1a1a] text-white border-transparent shadow-soft' : ''
                 }`}
               >
                 <span className="flex items-center gap-2">
@@ -824,7 +825,7 @@ const exportItem = (item: ListItem) => {
                   </span>
                   <span className="text-sm font-semibold">{label}</span>
                 </span>
-                <span className="text-[11px] text-dim leading-relaxed">{desc}</span>
+                <span className={`text-[11px] leading-relaxed ${tab === key ? 'text-white/70' : 'text-dim'}`}>{desc}</span>
               </button>
             ))}
           </div>
