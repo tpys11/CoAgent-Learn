@@ -304,7 +304,7 @@ export default function ResourceView({ projectId, onUseItem }: { projectId: stri
   // 我的生成：分类（预设 + 自定义）
   const [genCat, setGenCat] = useState('all')
   const [uploadCat, setUploadCat] = useState('all')
-  const [customGens, setCustomGens] = useState<Array<{ id: string; name: string; items: Array<{ id: string; title: string; content: string }> }>>(() => {
+  const [customGens, setCustomGens] = useState<Array<{ id: string; name: string; items: Array<{ id: string; title: string; content: string; kind?: string }> }>>(() => {
     try { return JSON.parse(localStorage.getItem(CUSTOM_GENS_KEY) || '[]') } catch { return [] }
   })
   const [showNewGenCat, setShowNewGenCat] = useState(false)
@@ -511,7 +511,18 @@ export default function ResourceView({ projectId, onUseItem }: { projectId: stri
       try {
         const r = await fetch('/api/resources/upload', { method: 'POST', body: fd })
         const d = await r.json()
-        if (d.status === 'ok') ok++
+        if (d.status === 'ok') {
+          ok++
+          // 当前在「我的分类」下上传：既显示在全部，也复制到该分类
+          if (isCustomUploadCat) {
+            const newItem = { id: 'fi-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), title: f.name, content: d.preview || '', kind: 'file' }
+            setCustomGens(prev => {
+              const next = prev.map(cg => cg.id === uploadCat ? { ...cg, items: [...cg.items, newItem] } : cg)
+              localStorage.setItem(CUSTOM_GENS_KEY, JSON.stringify(next))
+              return next
+            })
+          }
+        }
       } catch (e) { /* 忽略单个失败 */ }
     }
     setResUploading(false)
@@ -745,10 +756,13 @@ const exportItem = (item: ListItem) => {
   // 我的生成：当前是否为自定义分类 + 其内容列表
   const isCustomCat = customGens.some(c => c.id === genCat)
   const isCustomUploadCat = customGens.some(c => c.id === uploadCat)
-  const customItems: ListItem[] = (customGens.find(c => c.id === (tab === 'generated' ? genCat : uploadCat))?.items || []).map(i => ({
-    id: i.id, title: i.title, sub: '自定义内容', body: i.content, icon: Sparkles,
-    kind: 'gen' as const, deletable: true, time: '',
-  }))
+  const customItems: ListItem[] = (customGens.find(c => c.id === uploadCat)?.items || []).map(i => {
+    const isFile = i.kind === 'file'
+    return {
+      id: i.id, title: i.title, sub: isFile ? '上传的文件' : '自定义内容', body: i.content, icon: isFile ? Upload : Sparkles,
+      kind: 'gen' as const, deletable: true, time: '',
+    }
+  })
 
   /** 左侧栏「我的分类」公共区块（我的生成 / 我的上传 共用） */
   const renderMyCats = (active: string, onSelect: (id: string) => void) => (
