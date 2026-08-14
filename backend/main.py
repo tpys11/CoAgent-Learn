@@ -175,6 +175,46 @@ async def knowledge_upload(req: KnowledgeUpload, wait: bool = False):
     return {"status": "processing", "msg": "正在处理，稍后刷新查看"}
 
 
+class KnowledgeUrlUpload(BaseModel):
+    project_id: str = "default"
+    url: str = ""
+    source: str = ""
+    session_id: str = "default"
+    api_key: str = ""
+
+
+@app.post("/api/knowledge/upload-url")
+async def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
+    """链接上传：抓取网页正文 → 切块向量化入库（仿 DeepTutor add resource 的链接方式）"""
+    url = (req.url or "").strip()
+    if not url.startswith(("http://", "https://")):
+        return {"status": "error", "msg": "链接格式不正确（需以 http:// 或 https:// 开头）"}
+    source = (req.source or "").strip() or url
+    text = ""
+    try:
+        import requests as _req
+        import re as _re
+        resp = _req.get(url, timeout=20, headers={"User-Agent": "Mozilla/5.0 (coagent-learn)"})
+        resp.raise_for_status()
+        html = resp.text
+        # 简单 HTML → 文本：去 script/style、标签、多余空白
+        html = _re.sub(r"(?is)<(script|style)[^>]*>.*?</\1>", " ", html)
+        text = _re.sub(r"(?is)<[^>]+>", " ", html)
+        text = _re.sub(r"\s+", " ", text).strip()
+        if len(text) > 60000:
+            text = text[:60000]
+    except Exception as e:
+        return {"status": "error", "msg": f"抓取链接失败：{e}"}
+    if len(text) < 20:
+        return {"status": "error", "msg": "链接内容过短或无法解析为文本"}
+    if wait:
+        from starlette.concurrency import run_in_threadpool
+        chunks = await run_in_threadpool(_process_upload, req.project_id, text, source, req.session_id, req.api_key)
+        return {"status": "ok", "chunks": chunks, "source": source}
+    _threading.Thread(target=_process_upload, args=(req.project_id, text, source, req.session_id, req.api_key), daemon=True).start()
+    return {"status": "processing", "msg": "正在处理，稍后刷新查看"}
+
+
 @app.post("/api/knowledge/upload-file")
 async def knowledge_upload_file(
     project_id: str = Form("default"),

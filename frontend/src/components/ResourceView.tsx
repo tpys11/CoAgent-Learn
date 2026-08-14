@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useCallback, useRef } from 'react'
-import { BookOpen, Sparkles, Upload, FileText, Trash2, Wrench, ExternalLink, Plus, X, FolderTree, FolderOpen, Library, Download, ChevronRight } from 'lucide-react'
+import { BookOpen, Sparkles, Upload, FileText, Trash2, Wrench, ExternalLink, Plus, X, FolderTree, FolderOpen, Library, Download, ChevronRight, Loader2 } from 'lucide-react'
 
 interface Artifact {
   id: string
@@ -324,6 +324,16 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
   const [showAddResource, setShowAddResource] = useState(false)
   const [rName, setRName] = useState('')
   const [rContent, setRContent] = useState('')
+  // 其他：三种上传方式（文本 / 文件 / 链接，仿 DeepTutor add resource）
+  const [upMode, setUpMode] = useState<'text' | 'file' | 'link'>('text')
+  const [upTitle, setUpTitle] = useState('')
+  const [upText, setUpText] = useState('')
+  const [upUrl, setUpUrl] = useState('')
+  const [upItems, setUpItems] = useState<Array<{ id: string; kind: 'file' | 'text' | 'link'; name: string; file?: File; body?: string; url?: string }>>([])
+  const [upUploading, setUpUploading] = useState('')
+  const [upDone, setUpDone] = useState('')
+  const [upDropActive, setUpDropActive] = useState(false)
+  const upFileRef = useRef<HTMLInputElement>(null)
 
   // ---------- Obsidian 文件夹导入 ----------
   const [obsOpen, setObsOpen] = useState(false)
@@ -423,6 +433,60 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
 
   useEffect(() => { setDetail(null); load() }, [load])
   useEffect(() => { if (refreshSignal) load() }, [refreshSignal])
+
+  // ---------- 其他：三种上传方式（文本 / 文件 / 链接，仿 DeepTutor add resource）----------
+  const upAddText = () => {
+    const title = upTitle.trim() || '文本资料'
+    if (!upText.trim()) { alert('请输入文本内容'); return }
+    setUpItems(prev => [...prev, { id: 'u' + Date.now() + Math.random().toString(36).slice(2, 6), kind: 'text', name: title, body: upText }])
+    setUpTitle(''); setUpText('')
+  }
+  const upAddLink = () => {
+    const url = upUrl.trim()
+    if (!url) { alert('请输入链接'); return }
+    if (!/^https?:\/\//.test(url)) { alert('链接需以 http:// 或 https:// 开头'); return }
+    const title = upTitle.trim() || url
+    setUpItems(prev => [...prev, { id: 'u' + Date.now() + Math.random().toString(36).slice(2, 6), kind: 'link', name: title, url }])
+    setUpTitle(''); setUpUrl('')
+  }
+  const upAddFiles = (fs: FileList | File[]) => {
+    const incoming = Array.from(fs)
+    setUpItems(prev => {
+      const names = new Set(prev.filter(x => x.kind === 'file' && x.file).map(x => x.name))
+      return [...prev, ...incoming.filter(f => !names.has(f.name)).map(f => ({ id: 'u' + Date.now() + Math.random().toString(36).slice(2, 6), kind: 'file' as const, name: f.name, file: f }))]
+    })
+  }
+  const upUploadAll = async () => {
+    if (!projectId || !upItems.length || upUploading) return
+    let total = 0; let ok = 0
+    const count = upItems.length
+    for (const it of upItems) {
+      setUpUploading(it.name)
+      try {
+        let d: any = null
+        if (it.kind === 'file' && it.file) {
+          const fd = new FormData()
+          fd.append('project_id', projectId); fd.append('session_id', 'project-res')
+          fd.append('api_key', localStorage.getItem('coagent-apikey') || '')
+          fd.append('wait', '1'); fd.append('file', it.file, it.file.name)
+          d = await (await fetch('/api/knowledge/upload-file', { method: 'POST', body: fd })).json()
+        } else if (it.kind === 'text') {
+          d = await (await fetch('/api/knowledge/upload?wait=true', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project_id: projectId, text: it.body, source: it.name, session_id: 'project-res', api_key: localStorage.getItem('coagent-apikey') || '' }) })).json()
+        } else if (it.kind === 'link') {
+          d = await (await fetch('/api/knowledge/upload-url?wait=true', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project_id: projectId, url: it.url, source: it.name, session_id: 'project-res', api_key: localStorage.getItem('coagent-apikey') || '' }) })).json()
+        }
+        if (d && d.status === 'ok') { total += (d.chunks || 0); ok++ }
+        else alert(`「${it.name}」接入失败：${(d && d.msg) || '处理失败'}`)
+      } catch (e) {
+        alert(`「${it.name}」上传失败：${(e as any)?.message || '网络异常'}`)
+      }
+    }
+    setUpUploading('')
+    setUpItems([])
+    const failed = count - ok
+    setUpDone(failed === 0 ? `资源已上传：${count} 个资源已接入课程知识库（${total} 个内容块）` : `上传完成：${ok} 个成功（${total} 个内容块），${failed} 个失败`)
+    setTimeout(() => load(), 500)
+  }
   useEffect(() => {
     fetch('/api/projects', { cache: 'no-store' }).then(r => r.json()).then(d => {
       const ps = (d.projects || []).map((p: any) => ({ id: p.id, name: p.name }))
@@ -813,12 +877,12 @@ const exportItem = (item: ListItem) => {
     <div className="flex-1 h-full min-w-0 flex flex-col panel rounded-3xl overflow-hidden">
       {/* 顶部 Hero：主题化配色（跟随 light/dark/warm） */}
       <div className="flex-shrink-0 px-8 pt-6 pb-6 bg-[var(--bg-panel)] border-b border-[var(--border-color)]">
-          {/* 三个区域选择（教程资源 / 我的生成 / 我的上传） */}
+          {/* 三个区域选择（系统教程 / 我的生成 / 其他） */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
             {([
-              { key: 'tutorials' as Tab, icon: BookOpen, label: '教程资源', desc: '系统整理的学习教程与主题词条', color: 'bg-blue-600' },
+              { key: 'tutorials' as Tab, icon: BookOpen, label: '系统教程', desc: '系统整理的学习教程与主题词条', color: 'bg-blue-600' },
               { key: 'generated' as Tab, icon: Sparkles, label: '我的生成', desc: 'AI 生成的内容，可查看与导出', color: 'bg-violet-600' },
-              { key: 'uploads' as Tab, icon: Upload, label: '我的上传', desc: '上传的文档与知识库资料', color: 'bg-emerald-600' },
+              { key: 'uploads' as Tab, icon: Upload, label: '其他', desc: '', color: 'bg-emerald-600' },
             ]).map(({ key, icon: Icon, label, desc, color }) => (
               <button
                 key={key}
@@ -833,7 +897,7 @@ const exportItem = (item: ListItem) => {
                   </span>
                   <span className="text-sm font-semibold">{label}</span>
                 </span>
-                <span className="text-[11px] text-dim leading-relaxed">{desc}</span>
+                {desc && <span className="text-[11px] text-dim leading-relaxed">{desc}</span>}
               </button>
             ))}
           </div>
@@ -950,6 +1014,85 @@ const exportItem = (item: ListItem) => {
           )}
           {tab === 'uploads' && (
             <>
+              {/* 其他：三种上传方式（文本 / 文件 / 链接，仿 DeepTutor add resource） */}
+              <div className="border border-[var(--border-color)] rounded-2xl p-4 mb-5 bg-[var(--bg-panel)] shadow-soft flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-bold flex items-center gap-2"><Upload size={15} /> 上传资源</p>
+                  {upUploading && <span className="text-[11px] text-dim">上传中：{upUploading}</span>}
+                  {!upUploading && upDone && <span className="text-[11px] text-emerald-600 font-medium">✓ {upDone}</span>}
+                </div>
+                {/* 三种方式切换 */}
+                <div className="flex gap-2">
+                  {([['text', '文本'], ['file', '文件'], ['link', '链接']] as const).map(([k, label]) => (
+                    <button key={k} onClick={() => setUpMode(k)}
+                      className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${upMode === k ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'}`}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {/* 文本方式 */}
+                {upMode === 'text' && (
+                  <div className="flex flex-col gap-2">
+                    <input value={upTitle} onChange={e => setUpTitle(e.target.value)} placeholder="标题（可选）"
+                      className="px-3 py-2 text-xs input-surface rounded-xl outline-none" />
+                    <textarea value={upText} onChange={e => setUpText(e.target.value)} rows={3} placeholder="粘贴文本内容"
+                      className="px-3 py-2 text-xs input-surface rounded-xl outline-none resize-none" />
+                    <div className="flex justify-end">
+                      <button onClick={upAddText} className="px-3.5 py-1.5 text-[11px] bg-[#1a1a1a] text-white font-semibold rounded-xl hover:bg-[#333333] transition-colors">加入上传</button>
+                    </div>
+                  </div>
+                )}
+                {/* 文件方式 */}
+                {upMode === 'file' && (
+                  <button type="button" onClick={() => upFileRef.current?.click()}
+                    onDragEnter={e => { e.preventDefault(); setUpDropActive(true) }}
+                    onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' }}
+                    onDragLeave={() => setUpDropActive(false)}
+                    onDrop={e => { e.preventDefault(); setUpDropActive(false); if (e.dataTransfer.files.length) upAddFiles(e.dataTransfer.files) }}
+                    className={`flex w-full flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed px-5 py-5 text-center transition-colors ${upDropActive ? 'border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_6%,var(--bg-panel))]' : 'border-[var(--border-color)] hover:bg-[var(--bg-hover)]'}`}>
+                    <Upload size={18} className="text-dim" />
+                    <span className="text-[11.5px] text-dim">点击选择文件，或拖拽到此处</span>
+                  </button>
+                )}
+                {/* 链接方式 */}
+                {upMode === 'link' && (
+                  <div className="flex flex-col gap-2">
+                    <input value={upTitle} onChange={e => setUpTitle(e.target.value)} placeholder="标题（可选，默认取链接）"
+                      className="px-3 py-2 text-xs input-surface rounded-xl outline-none" />
+                    <input value={upUrl} onChange={e => setUpUrl(e.target.value)} placeholder="https://…"
+                      className="px-3 py-2 text-xs input-surface rounded-xl outline-none" />
+                    <div className="flex justify-end">
+                      <button onClick={upAddLink} className="px-3.5 py-1.5 text-[11px] bg-[#1a1a1a] text-white font-semibold rounded-xl hover:bg-[#333333] transition-colors">加入上传</button>
+                    </div>
+                  </div>
+                )}
+                <input ref={upFileRef} type="file" multiple className="hidden"
+                  accept=".txt,.md,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml,.pdf,.docx,.pptx"
+                  onChange={e => { if (e.target.files?.length) upAddFiles(e.target.files); e.target.value = '' }} />
+                {/* 待上传列表 + 确认上传 */}
+                {upItems.length > 0 && (
+                  <div className="flex flex-col gap-1.5 border-t hairline pt-3">
+                    <p className="text-[11px] font-semibold text-dim">待上传（{upItems.length}）</p>
+                    {upItems.map(it => (
+                      <div key={it.id} className="flex items-center gap-2 rounded-lg border hairline px-2.5 py-1.5">
+                        <span className="w-6 h-6 rounded-md bg-[#1a1a1a] text-white flex items-center justify-center flex-shrink-0">
+                          {it.kind === 'file' ? <FileText size={11} /> : it.kind === 'link' ? <ExternalLink size={11} /> : <Sparkles size={11} />}
+                        </span>
+                        <span className="text-[11px] font-medium truncate flex-1">{it.name}</span>
+                        <span className="text-[9px] text-dim flex-shrink-0">{it.kind === 'file' ? '文件' : it.kind === 'link' ? '链接' : '文本'}</span>
+                        <button onClick={() => setUpItems(prev => prev.filter(x => x.id !== it.id))} className="p-1 rounded text-dim hover:text-red-500 flex-shrink-0" title="移除"><X size={11} /></button>
+                      </div>
+                    ))}
+                    <div className="flex justify-end gap-2">
+                      <button onClick={() => setUpItems([])} className="px-3 py-1.5 text-[11px] text-dim rounded-xl row-hover transition-colors">清空</button>
+                      <button onClick={upUploadAll} disabled={!!upUploading} className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-[#1a1a1a] text-[12px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40">
+                        {upUploading ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+                        {upUploading ? '上传中…' : `确认上传（${upItems.length}）`}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
               <div className="flex items-end justify-between mb-5">
                 <h2 className="text-lg font-bold flex items-center gap-2"><Upload size={18} /> 我的上传</h2>
                 <div className="flex items-center gap-2">
