@@ -383,28 +383,39 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         }
 
     def kb_node(state: AgentState) -> AgentState:
-        """知识库管理：知识库检索 + 联网搜索（工具调用，不耗 LLM 推理）"""
+        """知识库管理：知识库检索 + 搜索增强（两个职责并行执行，均为纯工具调用，不耗 LLM 推理）"""
         new_steps = [{"agent": "知识库管理", "status": "running"}]
         new_mc: list = []
         t0 = time.time()
         from skills.registry import registry
         query = state.get("processed_input", state["user_input"])
         thinking = ""
-        try:
-            result = registry.execute("knowledge_retrieval", query=query, project_id=state.get("project_id", "default"))
-            state["knowledge"] = result.get("results", [])
-            thinking = f"知识库检索完成：{result.get('total', 0)}条结果"
-        except Exception as e:
-            state["knowledge"] = []
-            thinking = f"知识库检索异常：{e}"
-        # 极速档只做知识库检索（全局设定①），跳过联网搜索（保秒回）
-        if tpl != "极速":
+        from concurrent.futures import ThreadPoolExecutor
+
+        def _do_retrieve():
+            return registry.execute("knowledge_retrieval", query=query, project_id=state.get("project_id", "default"))
+
+        def _do_search():
+            return registry.execute("web_search", query=query)
+
+        with ThreadPoolExecutor(max_workers=2) as _ex:
+            _f1 = _ex.submit(_do_retrieve)
+            # 极速档只做知识库检索（全局设定①），跳过联网搜索（保秒回）
+            _f2 = _ex.submit(_do_search) if tpl != "极速" else None
             try:
-                sres = registry.execute("web_search", query=query)
-                state["search_results"] = sres.get("results", [])
-                thinking += f"；联网搜索 {sres.get('total', 0)} 条"
-            except Exception:
-                state["search_results"] = []
+                result = _f1.result()
+                state["knowledge"] = result.get("results", [])
+                thinking = f"知识库检索完成：{result.get('total', 0)}条结果"
+            except Exception as e:
+                state["knowledge"] = []
+                thinking = f"知识库检索异常：{e}"
+            if _f2:
+                try:
+                    sres = _f2.result()
+                    state["search_results"] = sres.get("results", [])
+                    thinking += f"；联网搜索 {sres.get('total', 0)} 条"
+                except Exception:
+                    state["search_results"] = []
         # 检索增强模板：强制调用知识库与搜索 Agent 的子 Agent（内置默认：知识库管理/搜索；用户自定义则用自定义）
         kb_cfg = _agent_cfg("kb")
         kb_subs = kb_cfg.get("subAgents") or _DEFAULT_KB_SUBS

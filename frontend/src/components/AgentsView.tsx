@@ -224,7 +224,7 @@ const FlowGraph = ({ agents, templateName, templateAgentId, onSelect }: { agents
       <div className="flex items-center gap-3">
         <FlowNode icon={Brain} name="学情与记忆" level={lv('study_memory')} active={act('study')} onClick={pick('study')} />
         <span className="text-[9px] text-dim">∥ 并行</span>
-        <AgentRow node={<FlowNode icon={Database} name={nameOf('kb', '知识库与搜索')} level={lv('kb')} active={act('kb')} onClick={pick('kb')} />} subs={kbSubs} />
+        <AgentRow node={<FlowNode icon={Database} name={nameOf('kb', '知识库管理')} level={lv('kb')} active={act('kb')} onClick={pick('kb')} />} subs={kbSubs} />
       </div>
       <DownArrow />
       {/* 生成（输出增强 子 Agent 右侧连接） */}
