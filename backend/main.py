@@ -285,7 +285,7 @@ def _fetch_site_text(base_url: str) -> str:
 def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
     """链接上传：trafilatura 抓取网页（主页面 + sitemap 全站正文）→ 切块向量化入库。
     同步 def（FastAPI 自动放线程池）：缓存读写与入库同一线程，避免共享 sqlite 连接跨线程交错。"""
-    url = (req.url or "").strip()
+    url = (req.url or "").strip().split("#")[0]  # 去掉 # 锚点（不影响内容，避免 sitemap 拼接失效）
     if not url.startswith(("http://", "https://")):
         return {"status": "error", "msg": "链接格式不正确（需以 http:// 或 https:// 开头）"}
     from urllib.parse import urlparse
