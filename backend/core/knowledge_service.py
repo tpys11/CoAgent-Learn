@@ -168,66 +168,25 @@ def _chunk_text(text: str, size: int = 512, overlap: int = 50) -> list:
     return chunks
 
 
-def _gen_context(chunk: str, full_text: str, api_key: str = "") -> str:
-    """用 LLM 为单个块生成上下文前缀（P1 上下文感知检索）"""
-    try:
-        import requests as _req
-        from core.config import config as _cfg
-        NL = chr(10)
-        prompt = (
-            "下面是一篇文档的片段，请为这个片段生成一句简短的上下文说明（30字以内），"
-            "说明这段内容在整篇文档中的位置或主题，让单独看这段的人能明白它讲什么。" + NL +
-            "整篇文档开头部分：" + NL + full_text[:1500] + NL + NL +
-            "需要加说明的片段：" + NL + chunk + NL + NL +
-            "只输出说明文字，不要引号、不要多余内容。"
-        )
-        h = {"Authorization": "Bearer " + (api_key or _cfg.DEEPSEEK_API_KEY), "Content-Type": "application/json"}
-        resp = _req.post(_cfg.DEEPSEEK_BASE_URL + "/chat/completions",
-            json={"model": "deepseek-v4-flash", "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}], "max_tokens": 80},
-            headers=h, timeout=30)
-        if resp.status_code == 200:
-            txt = (resp.json()["choices"][0]["message"]["content"] or "").strip()
-            txt = txt.strip("\u201c\u201d\"'").strip()
-            if txt and len(txt) < 120:
-                return txt
-    except Exception:
-        pass
-    return ""
-
-
 def add_document(project_id: str, text: str, source: str = "", session_id: str = "", api_key: str = "", skip_context: bool = False) -> int:
     """上传文本：切块 → 向量化 → 入库，返回入库块数。
-    skip_context=True 时跳过「每块 LLM 生成上下文前缀」（链接上传/大批量内容用，
-    几百块逐块调 LLM 会慢到分钟级；检索质量由 bge+BM25+rerank 保证）"""
+    已移除「每块 LLM 生成上下文前缀」（_gen_context，2026-08-15 删除）：
+    对齐 DeepTutor，上传链路零 LLM 调用，几百块从分钟级降到秒级；
+    上下文连续性由 512/50 重叠切块保证，检索质量由 bge+BM25+rerank 保证。
+    skip_context 参数保留仅为兼容旧调用方，不再起作用。"""
     chunks = _chunk_text(text)
     if not chunks:
         return 0
-    # 用 LLM 为每块生成上下文前缀（并发加速；skip_context 时跳过）
-    if skip_context:
-        prefixes = [""] * len(chunks)
-    else:
-        from concurrent.futures import ThreadPoolExecutor
-        try:
-            with ThreadPoolExecutor(max_workers=4) as ex:
-                prefixes = list(ex.map(lambda ck: _gen_context(ck, text, api_key), chunks))
-        except Exception:
-            prefixes = [""] * len(chunks)
-    # 组装文档文本
-    docs = []
-    for i, c in enumerate(chunks):
-        pfx = prefixes[i] if i < len(prefixes) else ""
-        docs.append((pfx + chr(10) + chr(10) + c).strip() if pfx else c)
     # 向量化（分批，模型一次 32 条）
     embeddings = []
     batch = 32
-    for i in range(0, len(docs), batch):
-        embeddings.extend(_embed(docs[i:i + batch]))
+    for i in range(0, len(chunks), batch):
+        embeddings.extend(_embed(chunks[i:i + batch]))
     # 入库（批量单事务：大批量从逐条 commit 降到一次 commit，避免分钟级锁窗口）
     bulk = []
     for i, c in enumerate(chunks):
         uid = hashlib.md5((source + str(i) + c[:80]).encode("utf-8")).hexdigest()[:24]
-        pfx = prefixes[i] if i < len(prefixes) else ""
-        bulk.append((uid, project_id, source, i, session_id, bool(pfx), docs[i], embeddings[i]))
+        bulk.append((uid, project_id, source, i, session_id, False, chunks[i], embeddings[i]))
     _db.upsert_kb_vectors_bulk(bulk)
     # 标题树：复用文档自身的形式分类逻辑（markdown 标题层级），供项目记忆知识图谱
     try:
