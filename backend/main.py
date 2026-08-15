@@ -431,6 +431,7 @@ async def generate_special(req: GenerateSpecialReq):
                 yield "data: " + _json2.dumps({"type": "error", "message": _msg[1]}) + chr(10) + chr(10)
                 break
 
+    return StreamingResponse(_gen(), media_type="text/event-stream")
 
 
 @app.get("/api/resources")
