@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect } from 'react'
-import { X, Sun, Moon, Monitor, Type, LampDesk, Sliders, Zap, MessageSquare, Key, Timer, Database, Plug, Bug, Check, Trash2, Plus, Download, Github, ChevronRight } from 'lucide-react'
+import { X, Sun, Moon, Monitor, Type, LampDesk, Sliders, Zap, MessageSquare, Key, Timer, Database, Plug, Bug, Check, Trash2, Plus, Download, Github } from 'lucide-react'
 import { getThemePref, setThemePref, type ThemePref } from '../theme'
 
 interface Props {
@@ -152,8 +152,6 @@ export default function SettingsModal({ onClose, projectId }: Props) {
   // key 输入框（不回显已存 key，只显示"已配置"状态）
   const [svcKeys, setSvcKeys] = useState({ embedding_api_key: '', rerank_api_key: '', image_api_key: '', vl_api_key: '', zhipu_api_key: '' })
   const [svcTest, setSvcTest] = useState('')
-  // 其他选择折叠
-  const [showOther, setShowOther] = useState(false)
 
   useEffect(() => {
     fetch('/api/settings').then(r => r.json()).then(d => {
@@ -413,119 +411,26 @@ export default function SettingsModal({ onClose, projectId }: Props) {
                     </div>
                     <p className="text-[10px] text-dim">两个模型共用同一个硅基流动 API Key（接口统一 https://api.siliconflow.cn/v1），按所选模型计费。</p>
                   </div>
-                  {/* 其他选择：向量化 / 重排 / 图片 分开自由配置（厂商 API 或本地部署，模型名自填），可折叠 */}
-                  <div className="flex flex-col gap-4 border-t hairline pt-4">
-                    <button onClick={() => setShowOther(o => !o)} className="text-sm font-semibold flex items-center gap-1.5 hover:text-[var(--text)] transition-colors">
-                      其他选择
-                      <ChevronRight size={14} className={`transition-transform text-dim ${showOther ? 'rotate-90' : ''}`} />
-                    </button>
-                    {showOther && (<div className="flex flex-col gap-4 pt-3">
-                    {/* 向量化 */}
-                    <div className="flex flex-col gap-2">
-                      <p className="text-[11px] font-semibold text-dim">向量化（Embedding）</p>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] text-dim w-20 flex-shrink-0">方式</span>
-                        <div className="flex gap-1.5">
-                          {[
-                            { v: 'api', l: '厂商 API' },
-                            { v: 'local', l: '本地部署' },
-                          ].map(o => (
-                            <button key={o.v} onClick={() => setSvc(s => ({ ...s, embedding_backend: o.v }))}
-                              className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${svc.embedding_backend === o.v ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-hover)] text-dim'}`}>
-                              {o.l}
-                            </button>
-                          ))}
-                        </div>
-                        {svc.embedding_key_set && <span className="text-[10px] text-green-600 flex-shrink-0">✓ Key 已配置</span>}
+                  {/* 图片处理（与知识库向量化服务同级） */}
+                  <div className="flex flex-col gap-2 border-t hairline pt-4">
+                    <p className="text-sm font-semibold">图片处理</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-dim w-20 flex-shrink-0">方式</span>
+                      <div className="flex gap-1.5">
+                        {[
+                          { v: 'api', l: '厂商 API（视觉识别）' },
+                          { v: 'none', l: '关闭' },
+                        ].map(o => (
+                          <button key={o.v} onClick={() => setSvc(s => ({ ...s, image_backend: o.v }))}
+                            className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${svc.image_backend === o.v ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-hover)] text-dim'}`}>
+                            {o.l}
+                          </button>
+                        ))}
                       </div>
-                      {svc.embedding_backend === 'api' && (
-                        <>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-dim w-20 flex-shrink-0">接口地址</span>
-                            <input value={svc.embedding_base_url} placeholder="https://api.siliconflow.cn/v1" onChange={e => setSvc(s => ({ ...s, embedding_base_url: e.target.value }))} className={inputCls} />
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-dim w-20 flex-shrink-0">API Key</span>
-                            <input type="password" value={svcKeys.embedding_api_key} placeholder={svc.embedding_key_set ? '已配置，留空保持不变' : 'sk-...'} onChange={e => setSvcKeys(k => ({ ...k, embedding_api_key: e.target.value }))} className={inputCls} />
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-dim w-20 flex-shrink-0">模型名</span>
-                            <input value={svc.embedding_model} placeholder="BAAI/bge-m3（任意 OpenAI 兼容 embedding 模型）" onChange={e => setSvc(s => ({ ...s, embedding_model: e.target.value }))} className={inputCls} />
-                          </div>
-                        </>
-                      )}
-                      {svc.embedding_backend === 'local' && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-dim w-20 flex-shrink-0">模型名</span>
-                          <input value={svc.embedding_local_model} placeholder="本地部署的 embedding 模型（HuggingFace 名或本地路径），如 BAAI/bge-large-zh-v1.5" onChange={e => setSvc(s => ({ ...s, embedding_local_model: e.target.value }))} className={inputCls} />
-                        </div>
-                      )}
                     </div>
-                    {/* 重排 */}
-                    <div className="flex flex-col gap-2">
-                      <p className="text-[11px] font-semibold text-dim">重排（Rerank）</p>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] text-dim w-20 flex-shrink-0">方式</span>
-                        <div className="flex gap-1.5">
-                          {[
-                            { v: 'api', l: '厂商 API' },
-                            { v: 'local', l: '本地部署' },
-                            { v: 'none', l: '关闭' },
-                          ].map(o => (
-                            <button key={o.v} onClick={() => setSvc(s => ({ ...s, rerank_backend: o.v }))}
-                              className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${svc.rerank_backend === o.v ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-hover)] text-dim'}`}>
-                              {o.l}
-                            </button>
-                          ))}
-                        </div>
-                        {svc.rerank_key_set && <span className="text-[10px] text-green-600 flex-shrink-0">✓ Key 已配置</span>}
-                      </div>
-                      {svc.rerank_backend === 'api' && (
-                        <>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-dim w-20 flex-shrink-0">接口地址</span>
-                            <input value={svc.rerank_base_url} placeholder="https://api.siliconflow.cn/v1（留空复用向量化地址）" onChange={e => setSvc(s => ({ ...s, rerank_base_url: e.target.value }))} className={inputCls} />
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-dim w-20 flex-shrink-0">API Key</span>
-                            <input type="password" value={svcKeys.rerank_api_key} placeholder={svc.rerank_key_set ? '已配置，留空保持不变' : '留空复用向量化 Key'} onChange={e => setSvcKeys(k => ({ ...k, rerank_api_key: e.target.value }))} className={inputCls} />
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-dim w-20 flex-shrink-0">模型名</span>
-                            <input value={svc.rerank_model} placeholder="BAAI/bge-reranker-v2-m3" onChange={e => setSvc(s => ({ ...s, rerank_model: e.target.value }))} className={inputCls} />
-                          </div>
-                        </>
-                      )}
-                      {svc.rerank_backend === 'local' && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-dim w-20 flex-shrink-0">模型名</span>
-                          <input value={svc.rerank_local_model} placeholder="本地部署的 rerank 模型（HuggingFace 名或本地路径），如 BAAI/bge-reranker-base" onChange={e => setSvc(s => ({ ...s, rerank_local_model: e.target.value }))} className={inputCls} />
-                        </div>
-                      )}
-                    </div>
-                    {/* 图片 */}
-                    <div className="flex flex-col gap-2">
-                      <p className="text-[11px] font-semibold text-dim">图片处理（多模态，图片上传时生效）</p>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] text-dim w-20 flex-shrink-0">方式</span>
-                        <div className="flex gap-1.5">
-                          {[
-                            { v: 'api', l: '厂商 API（视觉识别）' },
-                            { v: 'none', l: '关闭' },
-                          ].map(o => (
-                            <button key={o.v} onClick={() => setSvc(s => ({ ...s, image_backend: o.v }))}
-                              className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${svc.image_backend === o.v ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-hover)] text-dim'}`}>
-                              {o.l}
-                            </button>
-                          ))}
-                        </div>
-                        {svc.image_key_set && <span className="text-[10px] text-green-600 flex-shrink-0">✓ Key 已配置</span>}
-                      </div>
-                      {svc.image_backend === 'api' && (
-                        <p className="text-[10px] text-dim">复用上方「知识库向量化服务」的硅基流动 API Key，模型自动使用 <span className="text-[var(--text)]">Qwen/Qwen2.5-VL-72B-Instruct</span>；图片上传时生成文字描述入库，无需单独填 Key。</p>
-                      )}
-                    </div>
-                    </div>)}
+                    {svc.image_backend === 'api' && (
+                      <p className="text-[10px] text-dim">复用上方「知识库向量化服务」的硅基流动 API Key，模型自动使用 <span className="text-[var(--text)]">Qwen/Qwen2.5-VL-72B-Instruct</span>；图片上传时生成文字描述入库，无需单独填 Key。</p>
+                    )}
                   </div>
                   {/* 操作按钮：保存并测试 */}
                   <div className="flex items-center gap-3 border-t hairline pt-4">
