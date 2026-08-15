@@ -123,21 +123,24 @@ function renderResult(form: FormKey, content: any) {
   return <div className="text-sm md-answer-body" dangerouslySetInnerHTML={{ __html: renderMd(String(content || '')) }} />
 }
 
-export default function SpecialOutputPane({ messages }: { messages: Message[] }) {
+export default function SpecialOutputPane({ messages, projectId }: { messages: Message[]; projectId?: string | null }) {
   const [form, setForm] = useState<FormKey>('summary')
   const [generating, setGenerating] = useState(false)
   const [result, setResult] = useState<any>(null)
   const [modalForm, setModalForm] = useState<FormKey>('summary')
   const [showModal, setShowModal] = useState(false)
-  const [saved, setSaved] = useState<SavedItem[]>(() => {
-    try { return JSON.parse(localStorage.getItem(SAVED_KEY) || '[]') } catch { return [] }
-  })
+  const [saved, setSaved] = useState<SavedItem[]>([])
   const abortRef = useRef<AbortController | null>(null)
 
-  const persistSaved = (next: SavedItem[]) => {
-    setSaved(next)
-    try { localStorage.setItem(SAVED_KEY, JSON.stringify(next)) } catch {}
+  const loadSaved = () => {
+    fetch('/api/special-creations?project_id=' + encodeURIComponent(projectId || 'default'), { cache: 'no-store' })
+      .then(r => r.json())
+      .then(d => setSaved((d.creations || []).map((x: any) => ({
+        id: x.id, form: x.form, label: FORMS.find(f => f.key === x.form)?.label || x.form, content: x.content, time: x.created_at || '',
+      }))))
+      .catch(() => {})
   }
+  useEffect(() => { loadSaved() }, [projectId])
 
   const doGenerate = async (f: FormKey) => {
     const convo = messages
@@ -174,11 +177,18 @@ export default function SpecialOutputPane({ messages }: { messages: Message[] })
 
   const stopGenerate = () => { if (abortRef.current) abortRef.current.abort() }
 
-  const saveResult = () => {
-    const item: SavedItem = { id: Date.now(), form: modalForm, label: FORMS.find(f => f.key === modalForm)?.label || modalForm, content: result, time: new Date().toLocaleString() }
-    persistSaved([item, ...saved])
-    setShowModal(false)
-    setResult(null)
+  const saveResult = async () => {
+    try {
+      await fetch('/api/special-creations', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: projectId || 'default', form: modalForm, content: result }),
+      })
+      loadSaved()
+      setShowModal(false)
+      setResult(null)
+    } catch (e) {
+      alert('保存失败：' + e)
+    }
   }
 
   const viewSaved = (item: SavedItem) => {
@@ -187,7 +197,9 @@ export default function SpecialOutputPane({ messages }: { messages: Message[] })
     setShowModal(true)
   }
 
-  const removeSaved = (id: number) => persistSaved(saved.filter(s => s.id !== id))
+  const removeSaved = (id: number) => {
+    fetch('/api/special-creations/' + id, { method: 'DELETE' }).then(() => loadSaved()).catch(() => {})
+  }
 
   return (
     <div className="w-full h-full flex flex-col min-h-0">

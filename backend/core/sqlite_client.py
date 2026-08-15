@@ -220,6 +220,15 @@ class SQLiteClient:
             )
         """)
         self.execute("""
+            CREATE TABLE IF NOT EXISTS special_creations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id TEXT NOT NULL DEFAULT 'default',
+                form TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        self.execute("""
             CREATE TABLE IF NOT EXISTS resources (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,

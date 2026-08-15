@@ -365,6 +365,46 @@ async def list_resources(project_id: str = "default"):
     return {"resources": rows}
 
 
+@app.post("/api/special-creations")
+async def save_special_creation(req: dict):
+    """保存特殊形式创作（后端持久化，替代 localStorage）"""
+    import json as _json
+    from core.postgres_client import pg_client
+    form = req.get("form", "")
+    content = req.get("content")
+    project_id = req.get("project_id", "default")
+    if not form or content is None:
+        return {"status": "error", "msg": "参数不完整"}
+    if isinstance(content, (list, dict)):
+        content = _json.dumps(content, ensure_ascii=False)
+    else:
+        content = str(content)
+    pg_client.execute("INSERT INTO special_creations (project_id, form, content) VALUES (%s,%s,%s)", (project_id, form, content))
+    return {"status": "ok"}
+
+
+@app.get("/api/special-creations")
+async def list_special_creations(project_id: str = "default"):
+    """列出特殊形式创作"""
+    import json as _json
+    from core.postgres_client import pg_client
+    rows = pg_client.execute("SELECT id, project_id, form, content, created_at FROM special_creations WHERE project_id=%s ORDER BY id DESC", (project_id,))
+    for r in rows:
+        try:
+            r["content"] = _json.loads(r["content"])
+        except Exception:
+            pass
+    return {"creations": rows}
+
+
+@app.delete("/api/special-creations/{cid}")
+async def delete_special_creation(cid: int):
+    """删除特殊形式创作"""
+    from core.postgres_client import pg_client
+    pg_client.execute("DELETE FROM special_creations WHERE id=%s", (cid,))
+    return {"status": "ok"}
+
+
 @app.get("/api/resources/all")
 async def list_resources_all():
     """我的上传：聚合所有项目的资源（带项目名）"""
