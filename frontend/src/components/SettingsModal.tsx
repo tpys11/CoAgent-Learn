@@ -381,12 +381,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             {show('service') && (
               <Section icon={Database} title="AI 服务配置" desc="知识库向量化服务，保存后即时生效，无需重启">
                 <div className="flex flex-col gap-5">
-                  {/* 顶部：保存并测试按钮 + 测试结果 */}
-                  <div className="flex items-center gap-3">
-                    <button onClick={saveService} className="px-4 py-1.5 text-[11px] bg-[#1a1a1a] text-white rounded-lg font-semibold">保存并测试</button>
-                  </div>
-                  {svcTest && <p className={`text-[11px] ${svcTest.includes('失败') ? 'text-red-500' : 'text-green-600'}`}>{svcTest}</p>}
-                  {/* 硅基流动 API Key（两个卡共用） */}
+                  {/* 硅基流动 API Key（两个卡共用）+ 保存按钮（输入框右下方）+ 测试结果 */}
                   <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] text-dim w-20 flex-shrink-0">API Key</span>
@@ -394,6 +389,10 @@ export default function SettingsModal({ onClose, projectId }: Props) {
                         onChange={e => setSvcKeys(k => ({ ...k, embedding_api_key: e.target.value }))} className={inputCls} />
                       {svc.embedding_key_set && <span className="text-[10px] text-green-600 flex-shrink-0">✓ 已配置</span>}
                     </div>
+                    <div className="flex justify-end">
+                      <button onClick={saveService} className="px-4 py-1.5 text-[11px] bg-[#1a1a1a] text-white rounded-lg font-semibold">保存并测试</button>
+                    </div>
+                    {svcTest && <p className={`text-[11px] ${svcTest.includes('失败') ? 'text-red-500' : 'text-green-600'}`}>{svcTest}</p>}
                     <p className="text-[10px] text-dim">填写硅基流动 API，下方模型直接选用即可。</p>
                   </div>
                   {/* 知识库向量化服务：模型单选 */}
