@@ -205,7 +205,7 @@ async def test_settings(req: SettingsSave):
         _is_sf = bool(_vl_key or _embed_key)
         try:
             _desc_url = "https://api.siliconflow.cn/v1/chat/completions" if _is_sf else "https://open.bigmodel.cn/api/paas/v4/chat/completions"
-            _desc_model = "Qwen/Qwen2.5-VL-72B-Instruct" if _is_sf else "glm-4v-flash"
+            _desc_model = getattr(_cfg, "IMAGE_DESC_MODEL", "Qwen/Qwen2.5-VL-72B-Instruct") if _is_sf else "glm-4v-flash"
             _r = _req.post(_desc_url,
                            json={"model": _desc_model, "messages": [{"role": "user", "content": "ping"}]},
                            headers={"Authorization": "Bearer " + _desc_key}, timeout=20)

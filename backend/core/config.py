@@ -40,7 +40,7 @@ class Config:
     VL_MODEL: str = os.getenv("VL_MODEL", "Qwen/Qwen3-VL-Embedding-8B")
     VL_BASE_URL: str = os.getenv("VL_BASE_URL", "https://api.siliconflow.cn/v1")
     # 图片描述（多模态对话）：走硅基流动视觉模型（复用硅基流动 key），模型可换
-    IMAGE_DESC_MODEL: str = os.getenv("IMAGE_DESC_MODEL", "Qwen/Qwen2.5-VL-72B-Instruct")
+    IMAGE_DESC_MODEL: str = os.getenv("IMAGE_DESC_MODEL", "Qwen/Qwen3.5-4B")
 
     # ── 联网代理（可选）：容器访问国外站点（GitHub 等）失败时，配宿主梯子代理 ──
     # 例：PROXY_URL=http://host.docker.internal:7993（宿主梯子监听端口）

@@ -431,7 +431,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
                     <p className="text-sm font-semibold">图片处理</p>
                     <div className="flex flex-col gap-2">
                       {[
-                        { v: 'api', name: 'Qwen/Qwen2.5-VL-72B-Instruct', desc: '主模型无图片识别功能时自动调用补齐。' },
+                        { v: 'api', name: 'Qwen/Qwen3.5-4B', desc: '主模型无图片识别功能时自动调用补齐。' },
                         { v: 'none', name: '关闭', desc: '不处理图片，图片上传将被拒绝。' },
                       ].map(o => (
                         <button key={o.v} onClick={() => setSvc(s => ({ ...s, image_backend: o.v }))}
