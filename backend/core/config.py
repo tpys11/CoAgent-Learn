@@ -12,9 +12,6 @@ class Config:
     LLM_REQUEST_TIMEOUT: int = int(os.getenv("LLM_REQUEST_TIMEOUT", "120"))
     # 数据目录（SQLite app.db 所在目录）
     SQLITE_DIR: str = os.getenv("SQLITE_DIR", "./data")
-    NEO4J_URI: str = os.getenv("NEO4J_URI", "bolt://guashuai-neo4j:7687")
-    NEO4J_USER: str = os.getenv("NEO4J_USER", "neo4j")
-    NEO4J_PASSWORD: str = os.getenv("NEO4J_PASSWORD", "neo4j123")
 
     # ── embedding / rerank 后端（local=本地模型，api=OpenAI 兼容服务，如硅基流动）──
     # 切换方式：在 .env 里改 EMBEDDING_BACKEND=api 并填 API key 即可无缝切换；

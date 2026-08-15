@@ -125,9 +125,10 @@ _active_cancels: dict = {}
 
 
 def _process_upload(project_id, text, source, session_id, api_key, skip_context: bool = False, skip_graph: bool = False) -> int:
-    """处理上传：存原文到资源表 + 切块向量化入库 + 抽取图谱，返回入库块数。
+    """处理上传：存原文到资源表 + 切块向量化入库，返回入库块数。
     后台线程调用时忽略返回值；同步模式（wait=1）用它拿到块数反馈给前端。
-    skip_context：跳过每块 LLM 上下文前缀（大批量内容）；skip_graph：跳过图谱抽取。"""
+    skip_context：跳过每块 LLM 上下文前缀（大批量内容）。
+    已移除 Neo4j 知识图谱抽取（2026-08-15）。"""
     n = 0
     try:
         # 存原文到资源表（"我的上传/保存的资料"保留一份原文，与知识库独立）
@@ -146,13 +147,6 @@ def _process_upload(project_id, text, source, session_id, api_key, skip_context:
         n = add_document(project_id, text, source, session_id, api_key, skip_context=skip_context) or 0
     except Exception as e:
         print("[kb] 入库失败:", e)
-    if not skip_graph:
-        try:
-            from core.graph_service import extract_relations, store_relations
-            rels = extract_relations(text, api_key)
-            store_relations(project_id, rels, source)
-        except Exception:
-            pass
     return n
 
 
@@ -379,13 +373,7 @@ async def kb_list(project_id: str):
 async def knowledge_delete(project_id: str = "default", source: str = ""):
     from core.knowledge_service import delete_doc
     n = delete_doc(project_id, source)
-    graph_n = 0
-    try:
-        from core.graph_service import delete_relations_by_source
-        graph_n = delete_relations_by_source(project_id, source)
-    except Exception:
-        pass
-    return {"status": "ok", "deleted": n, "graph_relations": graph_n}
+    return {"status": "ok", "deleted": n, "graph_relations": 0}
 
 
 @app.post("/api/vision")
@@ -404,39 +392,6 @@ async def file_to_text(file: UploadFile = File(...)):
     if not text.strip():
         return {"status": "error", "msg": "无法解析该文件内容"}
     return {"status": "ok", "text": text[:50000], "chars": len(text)}
-
-
-@app.get("/api/graph")
-async def get_graph(project_id: str = "default"):
-    from fastapi.responses import JSONResponse
-    from core.graph_service import get_graph
-    resp = JSONResponse(get_graph(project_id))
-    resp.headers["Cache-Control"] = "no-store"
-    return resp
-
-
-@app.get("/api/graph/node")
-async def get_graph_node(project_id: str = "default", name: str = ""):
-    """节点详情：该实体的关系 + 知识库相关原文"""
-    from core.neo4j_client import neo4j_client
-    from core.knowledge_service import search
-    result = {"relations": [], "kb_refs": []}
-    if not name:
-        return result
-    try:
-        rows = neo4j_client.run(
-            "MATCH (a:Entity {project_id:$p, name:$n})-[r:REL {project_id:$p}]->(b:Entity) RETURN r.type AS rel, b.name AS to UNION MATCH (a:Entity {project_id:$p})-[r:REL {project_id:$p}]->(b:Entity {project_id:$p, name:$n}) RETURN r.type AS rel, a.name AS to",
-            {"p": project_id, "n": name})
-        for r in rows:
-            result["relations"].append({"rel": r.get("rel", ""), "target": r.get("to", "")})
-    except Exception:
-        pass
-    try:
-        refs = search(project_id, name, top_k=3)
-        result["kb_refs"] = [{"content": x["content"][:200], "source": (x.get("metadata") or {}).get("source", "")} for x in refs]
-    except Exception:
-        pass
-    return result
 
 
 @app.get("/api/knowledge/query")
@@ -1198,12 +1153,6 @@ async def delete_project(pid: str):
     try:
         from core.knowledge_service import delete_project_kb
         kb_deleted = delete_project_kb(pid)
-    except Exception:
-        pass
-    # 删图谱（Neo4j）
-    try:
-        from core.neo4j_client import neo4j_client
-        neo4j_client.run("MATCH (n:Entity {project_id:$p}) DETACH DELETE n", {"p": pid})
     except Exception:
         pass
     return {"status": "ok", "dialogues": len(d_ids), "kb": kb_deleted}
