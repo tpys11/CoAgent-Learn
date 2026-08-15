@@ -166,18 +166,22 @@ async def test_settings(req: SettingsSave):
             results["embedding"] = {"ok": False, "msg": str(e)[:120]}
     else:
         results["embedding"] = {"ok": True, "msg": "本地后端无需测试"}
-    # rerank
+    # rerank（地址/Key 留空时复用向量化配置，与 _ApiReranker 逻辑一致）
     if req.rerank_backend == "api":
-        try:
-            _u = (req.rerank_base_url or "").rstrip("/") + "/rerank"
-            _r = _req.post(_u, json={"model": req.rerank_model, "query": "测试", "documents": ["测试文档"]},
-                           headers={"Authorization": "Bearer " + req.rerank_api_key}, timeout=20)
-            if _r.status_code == 200:
-                results["rerank"] = {"ok": True}
-            else:
-                results["rerank"] = {"ok": False, "msg": f"HTTP {_r.status_code}: {_r.text[:120]}"}
-        except Exception as e:
-            results["rerank"] = {"ok": False, "msg": str(e)[:120]}
+        _rk = req.rerank_api_key or req.embedding_api_key
+        if not _rk:
+            results["rerank"] = {"ok": False, "msg": "未配置重排 Key（可在重排或向量化中填写）"}
+        else:
+            try:
+                _u = ((req.rerank_base_url or req.embedding_base_url) or "").rstrip("/") + "/rerank"
+                _r = _req.post(_u, json={"model": req.rerank_model, "query": "测试", "documents": ["测试文档"]},
+                               headers={"Authorization": "Bearer " + _rk}, timeout=20)
+                if _r.status_code == 200:
+                    results["rerank"] = {"ok": True}
+                else:
+                    results["rerank"] = {"ok": False, "msg": f"HTTP {_r.status_code}: {_r.text[:120]}"}
+            except Exception as e:
+                results["rerank"] = {"ok": False, "msg": str(e)[:120]}
     else:
         results["rerank"] = {"ok": True, "msg": "本地后端无需测试"}
     # 视觉（智谱 GLM-4V）
