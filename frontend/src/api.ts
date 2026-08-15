@@ -37,7 +37,7 @@ function jsonInit(method: string, body?: unknown, init?: RequestInit): RequestIn
 }
 
 export const api = {
-  getSettings: () => apiFetch<any>('/api/settings'),
+  getSettings: () => apiFetch<any>('/api/settings', { cache: 'no-store' }),
   saveSettings: (body: unknown) => apiFetch<any>('/api/settings', jsonInit('PUT', body)),
   testSettings: (body: unknown) => apiFetch<any>('/api/settings/test', jsonInit('POST', body)),
 

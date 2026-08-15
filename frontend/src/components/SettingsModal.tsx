@@ -149,7 +149,6 @@ export default function SettingsModal({ onClose, projectId }: Props) {
   // key 输入框（不回显已存 key，只显示"已配置"状态）
   const [svcKeys, setSvcKeys] = useState({ embedding_api_key: '' })
   const [svcSaved, setSvcSaved] = useState(false)
-  const [svcTest, setSvcTest] = useState('')
 
   useEffect(() => {
     api.getSettings().then(d => {
@@ -202,21 +201,6 @@ export default function SettingsModal({ onClose, projectId }: Props) {
       setSvcSaved(false)
       flash('保存失败（后端不可达）')
     }
-  }
-
-  const testService = async () => {
-    setSvcTest('测试中…')
-    try {
-      const d = await api.testSettings(buildSvcBody())
-      const rs = d.results || {}
-      const fmt = (r: any) => (r.ok ? (r.msg || 'OK') : ('失败 ' + (r.msg || '')))
-      const lines = [
-        rs.text_embedding ? `文字向量化：${fmt(rs.text_embedding)}` : '',
-        rs.rerank ? `重排：${fmt(rs.rerank)}` : '',
-        rs.image_embedding ? `图片向量/跨模态：${fmt(rs.image_embedding)}` : '',
-      ].filter(Boolean).join(' ｜ ')
-      setSvcTest(lines || '无测试项')
-    } catch { setSvcTest('测试失败（后端不可达）') }
   }
 
   const doClearDialogues = async () => {
@@ -385,7 +369,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
                   <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2.5">
                     <p className="text-sm font-semibold">硅基流动 API Key</p>
                     <div className="flex items-center gap-2">
-                      <input type="password" value={svcKeys.embedding_api_key} placeholder={svc.embedding_key_set ? '已配置，留空保持不变' : 'sk-...（硅基流动）'}
+                      <input type="password" name="siliconflow-api-key" autoComplete="new-password" value={svcKeys.embedding_api_key} placeholder={svc.embedding_key_set ? '已配置，留空保持不变' : 'sk-...（硅基流动）'}
                         onChange={e => { setSvcKeys({ embedding_api_key: e.target.value }); setSvcSaved(false) }} className={inputCls} />
                       {svc.embedding_key_set && <span className="text-[10px] text-green-600 flex-shrink-0">✓ {svc.embedding_key_hint}</span>}
                       <button onClick={saveService}
@@ -396,14 +380,11 @@ export default function SettingsModal({ onClose, projectId }: Props) {
 
                   {/* 知识库服务 */}
                   <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2.5">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-semibold">知识库服务</p>
-                      <button onClick={testService} className="px-4 py-1.5 text-[11px] border hairline rounded-lg font-semibold text-dim hover:text-[var(--text)] transition-colors">测试</button>
-                    </div>
+                    <p className="text-sm font-semibold">知识库服务</p>
                     <div className="flex flex-col gap-2">
                       {[
-                        { mode: 'light', name: 'Qwen3-VL-Embedding-8B', desc: '知识库上传时实现文字向量化、重排，模型轻、高效' },
-                        { mode: 'full', name: 'bge-reranker-v2-m3', desc: '知识库上传时实现文字向量化、重排、图片向量化、跨模态检索，模型中、全面' },
+                        { mode: 'light', name: 'bge-reranker-v2-m3', desc: '知识库上传时实现文字向量化、重排，模型轻、高效' },
+                        { mode: 'full', name: 'Qwen3-VL-Embedding-8B', desc: '知识库上传时实现文字向量化、重排、图片向量化、跨模态检索，模型中、全面' },
                       ].map(o => (
                         <button key={o.mode} onClick={() => { setSvc(s => ({ ...s, kb_mode: o.mode })); setSvcSaved(false) }}
                           className={`flex flex-col gap-0.5 text-left px-3 py-2.5 rounded-xl transition-colors ${svc.kb_mode === o.mode ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] hover:bg-[var(--bg-panel)]'}`}>
@@ -417,7 +398,6 @@ export default function SettingsModal({ onClose, projectId }: Props) {
                         </button>
                       ))}
                     </div>
-                    {svcTest && <p className={`text-[11px] ${svcTest.includes('失败') ? 'text-red-500' : 'text-green-600'}`}>{svcTest}</p>}
                   </div>
 
                   {/* 图片描述 */}
