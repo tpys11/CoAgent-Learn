@@ -150,9 +150,10 @@ export default function SettingsModal({ onClose, projectId }: Props) {
     embedding_backend: 'api', embedding_base_url: '', embedding_model: 'BAAI/bge-m3', embedding_local_model: 'BAAI/bge-small-zh-v1.5', embedding_dim: 1024, embedding_key_set: false,
     rerank_backend: 'api', rerank_base_url: '', rerank_model: 'BAAI/bge-reranker-v2-m3', rerank_local_model: 'BAAI/bge-reranker-base', rerank_key_set: false,
     image_backend: 'none', image_base_url: 'https://open.bigmodel.cn/api/paas/v4/chat/completions', image_model: 'glm-4v-flash', image_key_set: false,
+    vl_key_set: false,
   })
   // key 输入框（不回显已存 key，只显示"已配置"状态）
-  const [svcKeys, setSvcKeys] = useState({ embedding_api_key: '', rerank_api_key: '', image_api_key: '', zhipu_api_key: '' })
+  const [svcKeys, setSvcKeys] = useState({ embedding_api_key: '', rerank_api_key: '', image_api_key: '', vl_api_key: '', zhipu_api_key: '' })
   const [svcTest, setSvcTest] = useState('')
   // 其他选择折叠
   const [showOther, setShowOther] = useState(false)
@@ -176,6 +177,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
         image_base_url: d.image?.base_url ?? 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
         image_model: d.image?.model ?? 'glm-4v-flash',
         image_key_set: !!d.image?.api_key_set,
+        vl_key_set: !!d.vl?.api_key_set,
       })
     }).catch(() => {})
   }, [])
@@ -193,7 +195,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
       const g = await fetch('/api/settings').then(x => x.json())
       setSvc(s => ({ ...s,
         embedding_key_set: !!g.embedding?.api_key_set, rerank_key_set: !!g.rerank?.api_key_set,
-        image_key_set: !!g.image?.api_key_set }))
+        image_key_set: !!g.image?.api_key_set, vl_key_set: !!g.vl?.api_key_set }))
     } catch { flash('保存失败（后端不可达）') }
   }
 
@@ -210,7 +212,8 @@ export default function SettingsModal({ onClose, projectId }: Props) {
       const lines = [
         rs.embedding ? `向量化：${rs.embedding.ok ? (rs.embedding.msg || `OK${rs.embedding.dim ? '（' + rs.embedding.dim + ' 维）' : ''}`) : '失败 ' + (rs.embedding.msg || '')}` : '',
         rs.rerank ? `重排：${rs.rerank.ok ? (rs.rerank.msg || 'OK') : '失败 ' + (rs.rerank.msg || '')}` : '',
-        rs.zhipu ? `视觉：${rs.zhipu.ok ? (rs.zhipu.msg || 'OK') : '失败 ' + (rs.zhipu.msg || '')}` : '',
+        rs.vl ? `视觉向量：${rs.vl.ok ? (rs.vl.msg || `OK${rs.vl.dim ? '（' + rs.vl.dim + ' 维）' : ''}`) : '失败 ' + (rs.vl.msg || '')}` : '',
+        rs.zhipu ? `图片描述：${rs.zhipu.ok ? (rs.zhipu.msg || 'OK') : '失败 ' + (rs.zhipu.msg || '')}` : '',
       ].filter(Boolean).join(' ｜ ')
       setSvcTest(lines || '无测试项')
     } catch { setSvcTest('测试失败（后端不可达）') }
@@ -379,15 +382,25 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             {show('service') && (
               <Section icon={Database} title="AI 服务配置" desc="知识库向量化服务（bge-m3），保存后即时生效，无需重启">
                 <div className="flex flex-col gap-5">
-                  {/* bge-m3 配置块 */}
+                  {/* bge-m3 配置块（BGE 卡） */}
                   <div className="flex flex-col gap-2">
-                    <p className="text-sm font-semibold">bge-m3 <span className="text-[10px] text-dim font-normal">（接口统一 https://api.siliconflow.cn/v1）</span></p>
+                    <p className="text-sm font-semibold">BGE（bge-m3）<span className="text-[10px] text-dim font-normal">（接口统一 https://api.siliconflow.cn/v1）</span></p>
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] text-dim w-20 flex-shrink-0">API Key</span>
                       <input type="password" value={svcKeys.embedding_api_key} placeholder={svc.embedding_key_set ? '已配置，留空保持不变' : 'sk-...'} onChange={e => setSvcKeys(k => ({ ...k, embedding_api_key: e.target.value }))} className={inputCls} />
                       {svc.embedding_key_set && <span className="text-[10px] text-green-600 flex-shrink-0">✓ 已配置</span>}
                     </div>
-                    <p className="text-[10px] text-dim">BAAI 多语言向量模型：把文档/文本转为向量，供知识库语义检索（BM25 混合 + 重排精排）。同一个硅基流动 Key 自动驱动重排与图片向量，无需重复配置。</p>
+                    <p className="text-[10px] text-dim">实现文字向量化与重排，无图片向量化能力。模型小、快、便宜（推荐日常使用）。</p>
+                  </div>
+                  {/* Qwen3-VL-Embedding 卡（与 BGE 同级） */}
+                  <div className="flex flex-col gap-2 border-t hairline pt-4">
+                    <p className="text-sm font-semibold">Qwen/Qwen3-VL-Embedding-8B <span className="text-[10px] text-dim font-normal">（接口统一 https://api.siliconflow.cn/v1）</span></p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-dim w-20 flex-shrink-0">API Key</span>
+                      <input type="password" value={svcKeys.vl_api_key} placeholder={svc.vl_key_set ? '已配置，留空保持不变' : 'sk-...'} onChange={e => setSvcKeys(k => ({ ...k, vl_api_key: e.target.value }))} className={inputCls} />
+                      {svc.vl_key_set && <span className="text-[10px] text-green-600 flex-shrink-0">✓ 已配置</span>}
+                    </div>
+                    <p className="text-[10px] text-dim">实现文字向量化 + 重排 + 视觉能力（图片向量化、跨模态检索）。模型大、语义更强，但 API 成本/延迟更高。二者同时配置时优先使用 BGE。</p>
                   </div>
                   {/* 其他选择：向量化 / 重排 / 图片 分开自由配置（厂商 API 或本地部署，模型名自填），可折叠 */}
                   <div className="flex flex-col gap-4 border-t hairline pt-4">

@@ -35,6 +35,10 @@ class Config:
     IMAGE_BASE_URL: str = os.getenv("IMAGE_BASE_URL", "https://open.bigmodel.cn/api/paas/v4/chat/completions")
     IMAGE_API_KEY: str = os.getenv("IMAGE_API_KEY", "")
     IMAGE_MODEL: str = os.getenv("IMAGE_MODEL", "glm-4v-flash")
+    # Qwen3-VL-Embedding（视觉/跨模态向量，BGE 卡同级）：文本向量化优先 BGE，此 key 供视觉通道
+    VL_API_KEY: str = os.getenv("VL_API_KEY", "")
+    VL_MODEL: str = os.getenv("VL_MODEL", "Qwen/Qwen3-VL-Embedding-8B")
+    VL_BASE_URL: str = os.getenv("VL_BASE_URL", "https://api.siliconflow.cn/v1")
 
     # ── 联网代理（可选）：容器访问国外站点（GitHub 等）失败时，配宿主梯子代理 ──
     # 例：PROXY_URL=http://host.docker.internal:7993（宿主梯子监听端口）

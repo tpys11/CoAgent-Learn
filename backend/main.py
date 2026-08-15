@@ -89,6 +89,7 @@ class SettingsSave(BaseModel):
     image_base_url: str = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
     image_api_key: str = ""
     image_model: str = "glm-4v-flash"
+    vl_api_key: str = ""          # Qwen3-VL-Embedding 卡（视觉/跨模态，文本优先 BGE）
     zhipu_api_key: str = ""
 
 
@@ -118,6 +119,7 @@ async def get_settings():
             "model": getattr(_cfg, "IMAGE_MODEL", "glm-4v-flash"),
             "api_key_set": bool(getattr(_cfg, "IMAGE_API_KEY", "") or getattr(_cfg, "ZHIPU_API_KEY", "")),
         },
+        "vl": {"api_key_set": bool(getattr(_cfg, "VL_API_KEY", ""))},
         "zhipu": {"api_key_set": bool(getattr(_cfg, "ZHIPU_API_KEY", ""))},
     }
 
@@ -142,6 +144,7 @@ async def save_settings(req: SettingsSave):
     _s.set_setting("IMAGE_BASE_URL", req.image_base_url)
     _s.set_setting("IMAGE_API_KEY", req.image_api_key)
     _s.set_setting("IMAGE_MODEL", req.image_model)
+    _s.set_setting("VL_API_KEY", req.vl_api_key)
     _s.set_setting("ZHIPU_API_KEY", req.zhipu_api_key)
     _apply_dynamic_settings()
     return {"status": "ok", "msg": "配置已保存并即时生效"}
@@ -184,6 +187,20 @@ async def test_settings(req: SettingsSave):
                 results["rerank"] = {"ok": False, "msg": str(e)[:120]}
     else:
         results["rerank"] = {"ok": True, "msg": "本地后端无需测试"}
+    # Qwen3-VL-Embedding（视觉/跨模态向量）
+    if req.vl_api_key:
+        try:
+            _u = "https://api.siliconflow.cn/v1/embeddings"
+            _r = _req.post(_u, json={"model": "Qwen/Qwen3-VL-Embedding-8B", "input": ["测试"]},
+                           headers={"Authorization": "Bearer " + req.vl_api_key}, timeout=20)
+            if _r.status_code == 200 and _r.json().get("data"):
+                results["vl"] = {"ok": True, "dim": len(_r.json()["data"][0]["embedding"])}
+            else:
+                results["vl"] = {"ok": False, "msg": f"HTTP {_r.status_code}: {_r.text[:120]}"}
+        except Exception as e:
+            results["vl"] = {"ok": False, "msg": str(e)[:120]}
+    else:
+        results["vl"] = {"ok": True, "msg": "未配置，跳过"}
     # 视觉（智谱 GLM-4V）
     if req.zhipu_api_key:
         try:
