@@ -5,6 +5,7 @@ import katexPlugin from 'markdown-it-katex'
 import 'katex/dist/katex.min.css'
 import mermaid from 'mermaid'
 import { FileText, FolderOpen, FolderClosed, List, Network, ChevronRight, Pencil, Save, X } from 'lucide-react'
+import { LS, lsGet, lsSet } from '../storage'
 
 // ---------- 渲染引擎：markdown-it（与 Obsidian 同源）+ callout/mermaid/KaTeX/双链嵌入 ----------
 mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', theme: 'default' })
@@ -381,7 +382,7 @@ function ObsidianViewInner() {
   const [draft, setDraft] = useState('')
   const [saveMsg, setSaveMsg] = useState('')
   // 展开方式：列表（缩进列表）/ 树状图（带连接线），持久化记忆
-  const [expandMode, setExpandMode] = useState<'list' | 'tree'>(() => localStorage.getItem('coagent-obsidian-mode') === 'tree' ? 'tree' : 'list')
+const [expandMode, setExpandMode] = useState<'list' | 'tree'>(() => lsGet(LS.obsidianMode, 'list') === 'tree' ? 'tree' : 'list')
   // 左侧栏宽度：null = 模式默认（列表 288 / 树状图 576），拖动后保留用户值
   const [panelW, setPanelW] = useState<number | null>(null)
   const effectiveW = panelW ?? (expandMode === 'tree' ? 576 : 288)
@@ -431,7 +432,7 @@ function ObsidianViewInner() {
   }
   const switchMode = (m: 'list' | 'tree') => {
     setExpandMode(m)
-    localStorage.setItem('coagent-obsidian-mode', m)
+lsSet(LS.obsidianMode, m)
   }
   const openFile = async (node: TreeNode) => {
     if (!rootHandle) return

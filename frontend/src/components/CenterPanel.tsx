@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { Send, Bot, Lightbulb, MessagesSquare, Coins, CheckCircle2, Check, ChevronDown, Upload, Cpu, SlidersHorizontal, AlertTriangle, Search, FileText, LayoutTemplate, Image as ImageIcon, PenLine, Square, ArrowDownToLine, Timer } from 'lucide-react'
 import type { Message, Project } from '../types'
 import MarkdownIt from 'markdown-it'
+import { LS, lsGet, lsSet, lsGetJSON } from '../storage'
+import { api } from '../api'
 
 // ---------- 思维链渲染：markdown-it 轻量渲染（html:false 防 XSS，换行生效）----------
 const mdThink = new MarkdownIt({ html: false, linkify: true, breaks: true })
@@ -69,8 +71,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   const [followups, setFollowups] = useState<string[]>([])
   const loadFollowups = () => {
     if (!dialogueId) { setFollowups([]); return }
-    fetch('/api/dialogues/' + encodeURIComponent(dialogueId) + '/followups', { cache: 'no-store' })
-      .then(r => r.json())
+    api.getDialogueFollowups(dialogueId)
       .then(d => setFollowups(Array.isArray(d.questions) ? d.questions.slice(0, 3) : []))
       .catch(() => {})
   }
@@ -118,8 +119,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   const [stats, setStats] = useState<{dialogue_count: number; tokens_estimate: number; total_duration_seconds: number; metrics: any}>({dialogue_count: 0, tokens_estimate: 0, total_duration_seconds: 0, metrics: null })
   useEffect(() => {
     if (!currentProject) return
-    fetch('/api/stats?project_id=' + encodeURIComponent(currentProject.id), { cache: 'no-store' })
-      .then(r => r.json())
+    api.getStats(currentProject.id)
       .then(d => setStats(d))
       .catch(() => {})
   }, [currentProject])
@@ -154,8 +154,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
     } else if (['pdf','docx','pptx'].includes(ext)) {
       const fd = new FormData()
       fd.append('file', f)
-      fetch('/api/file-to-text', { method: 'POST', body: fd })
-        .then(r => r.json())
+      api.fileToText(fd)
         .then(d => {
           if (d.status === 'ok') {
             setAttachments(prev => [...prev, { name: f.name, content: d.text || '' }])
@@ -192,9 +191,9 @@ const TEMPLATE_OPTIONS = [
     { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', models: ['deepseek-v4-pro', 'deepseek-v4-flash'] },
     { id: 'zhipu', name: '智谱GLM', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', models: ['glm-4-plus', 'glm-4-flash'] },
   ]
-  const [selectedProvider, setSelectedProvider] = useState(() => localStorage.getItem('coagent-provider') || 'deepseek')
+  const [selectedProvider, setSelectedProvider] = useState(() => lsGet(LS.provider, 'deepseek'))
   const [selectedModel, setSelectedModel] = useState(() => {
-    const m = localStorage.getItem('coagent-model') || 'deepseek-v4-pro'
+    const m = lsGet(LS.model, 'deepseek-v4-pro')
     const alias: Record<string, string> = {
       'deepseek-chat': 'deepseek-v4-pro',
       'deepseek-reasoner': 'deepseek-v4-pro',
@@ -205,16 +204,16 @@ const TEMPLATE_OPTIONS = [
   })
   // 模板模式（与模板与编排预设一致）
   const [templateMode, setTemplateMode] = useState(() => {
-    const t = localStorage.getItem('coagent-template') || '思考'
+    const t = lsGet(LS.template, '思考')
     // 旧模板名映射新档位（兼容历史 localStorage）
     const MAP: Record<string, string> = { '基础': '思考', '检索增强': '思考', '快速': '极速', '输出增强': '思考' }
     const n = MAP[t] || t
     return ['极速', '思考', '研究'].includes(n) ? n : '思考'
   })
   // Auto：AI 根据输入自动选择模板/模式（开启后手动设置按钮禁用）
-  const [autoMode, setAutoMode] = useState(() => localStorage.getItem('coagent-auto') === '1')
+  const [autoMode, setAutoMode] = useState(() => lsGet(LS.auto, '0') === '1')
   // 模型 Auto：AI 根据输入自动选择模型（模型选择上拉栏内开关）
-  const [modelAuto, setModelAuto] = useState(() => localStorage.getItem('coagent-model-auto') === '1')
+  const [modelAuto, setModelAuto] = useState(() => lsGet(LS.modelAuto, '0') === '1')
   // 档位上拉框
   const [showTplMenu, setShowTplMenu] = useState(false)
   const tplRef = useRef<HTMLDivElement>(null)
@@ -440,7 +439,7 @@ const TEMPLATE_OPTIONS = [
                           )}
                           {/* 新建课程引导消息：右下角「手动初始化」按钮（仅初次创建、未完成手动填写时显示） */}
                           {msg.content.includes('课程创建成功') && onManualSetup && !(currentProject && (() => {
-                            try { return (JSON.parse(localStorage.getItem('coagent-manual-setup-done') || '[]') as string[]).includes(currentProject.id) } catch { return false }
+                            return lsGetJSON<string[]>(LS.manualSetupDone, []).includes(currentProject.id)
                           })()) && (
                             <div className="mt-3 flex justify-end">
                               <button onClick={onManualSetup}
@@ -542,7 +541,7 @@ const TEMPLATE_OPTIONS = [
                   <div className="absolute bottom-full left-0 mb-1.5 card-lift p-1.5 z-10 flex flex-col gap-0.5" style={{ width: 120 }}>
                     {TEMPLATE_OPTIONS.map(t => (
                       <button key={t.name}
-                        onClick={() => { setTemplateMode(t.name); localStorage.setItem('coagent-template', t.name); setShowTplMenu(false) }}
+                        onClick={() => { setTemplateMode(t.name); lsSet(LS.template, t.name); setShowTplMenu(false) }}
                         className={`text-left px-2.5 py-1.5 rounded-lg w-full flex items-center gap-1.5 text-[12px] font-medium ${templateMode === t.name ? 'bg-[var(--bg-hover)]' : 'hover:bg-[var(--bg-hover)]'}`}>
                         {t.name}
                         {templateMode === t.name && <Check size={12} className="text-[var(--accent)] ml-auto" />}
@@ -564,7 +563,7 @@ const TEMPLATE_OPTIONS = [
                   <div className="absolute bottom-full right-0 mb-1 card-lift p-2 z-10" style={{ width: 175 }}>
                     <div className="flex items-center justify-between gap-2 px-1 py-1.5 mb-1 border-b border-[#e5e5e5]">
                       <span className="text-[11px] font-medium">Auto</span>
-                      <button onClick={() => { const next = !modelAuto; setModelAuto(next); localStorage.setItem('coagent-model-auto', next ? '1' : '0') }}
+                      <button onClick={() => { const next = !modelAuto; setModelAuto(next); lsSet(LS.modelAuto, next ? '1' : '0') }}
                         className={`w-9 h-5 rounded-full relative transition-colors flex-shrink-0 ${modelAuto ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`}
                         title="Auto 开关（自动选择模型）">
                         <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${modelAuto ? 'translate-x-4' : ''}`} />
@@ -574,7 +573,7 @@ const TEMPLATE_OPTIONS = [
                     <div className="flex flex-col gap-0.5">
                       {MODEL_PROVIDERS.flatMap(p => p.models.map(m => ({ name: m, provider: p.id }))).map(x => (
                         <button key={x.name}
-                          onClick={() => { setSelectedProvider(x.provider); setSelectedModel(x.name); localStorage.setItem('coagent-provider', x.provider); localStorage.setItem('coagent-model', x.name) }}
+                          onClick={() => { setSelectedProvider(x.provider); setSelectedModel(x.name); lsSet(LS.provider, x.provider); lsSet(LS.model, x.name) }}
                           className={`text-[11px] px-2 py-1.5 rounded-lg text-left ${selectedProvider === x.provider && selectedModel === x.name ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
                           <span className="font-medium">{x.name}</span>
                         </button>
@@ -716,4 +715,3 @@ function ReasoningBlock({ items, streaming, activeAgent, activeStatus, onClarify
     </div>
   )
 }
-

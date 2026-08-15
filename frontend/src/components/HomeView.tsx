@@ -1,6 +1,7 @@
 ﻿import { useEffect, useState } from 'react'
 import { Plus, X, FolderOpen, Pencil } from 'lucide-react'
 import TrendCalendar from './TrendCalendar'
+import { api } from '../api'
 
 /** 系统预设领域 → 预存图片；非预设领域/未设置领域使用默认学习封面 */
 const DOMAIN_IMAGES: Record<string, string> = {
@@ -33,7 +34,7 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
   // 主页趋势：专注时长·最近30天（/api/stats?project_id=all 聚合全部项目）
   const [trendDays, setTrendDays] = useState<Array<{ date: string; seconds: number }>>([])
   useEffect(() => {
-    fetch('/api/stats?project_id=all', { cache: 'no-store' }).then(r => r.json()).then(d => {
+    api.getStats('all').then(d => {
       setTrendDays(Array.isArray(d.daily_focus) ? d.daily_focus : [])
     }).catch(() => {})
   }, [])
@@ -44,14 +45,14 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
     const lt: Record<string, string> = {}
     Promise.all(projects.map(p =>
       Promise.all([
-        fetch('/api/stats?project_id=' + encodeURIComponent(p.id), { cache: 'no-store' })
-          .then(r => r.json()).then(d => { m[p.id] = d.dialogue_count ?? d.count ?? 0 }).catch(() => { m[p.id] = 0 }),
-        fetch('/api/project-memory/' + encodeURIComponent(p.id), { cache: 'no-store' })
-          .then(r => r.json()).then(d => { mm[p.id] = d.memory || {} }).catch(() => { mm[p.id] = {} }),
-        fetch('/api/kb/' + encodeURIComponent(p.id), { cache: 'no-store' })
-          .then(r => r.json()).then(d => { kc[p.id] = Array.isArray(d) ? d.length : 0 }).catch(() => { kc[p.id] = 0 }),
-        fetch('/api/projects/' + encodeURIComponent(p.id) + '/dialogues', { cache: 'no-store' })
-          .then(r => r.json()).then(d => {
+        api.getStats(p.id)
+          .then(d => { m[p.id] = d.dialogue_count ?? d.count ?? 0 }).catch(() => { m[p.id] = 0 }),
+        api.getProjectMemory(p.id)
+          .then(d => { mm[p.id] = d.memory || {} }).catch(() => { mm[p.id] = {} }),
+        api.getKb(p.id)
+          .then(d => { kc[p.id] = Array.isArray(d) ? d.length : 0 }).catch(() => { kc[p.id] = 0 }),
+        api.listProjectDialogues(p.id)
+          .then(d => {
             const arr = (d.dialogues || []).slice()
             arr.sort((a: any, b: any) => String(a.created_at || '').localeCompare(String(b.created_at || '')))
             const last = arr[arr.length - 1]

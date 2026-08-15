@@ -71,6 +71,57 @@ export const api = {
   exportData: (pid: string) =>
     apiFetch<any>('/api/export?project_id=' + encodeURIComponent(pid), { cache: 'no-store' }),
 
+  uploadKnowledgeText: (body: unknown) =>
+    apiFetch<any>('/api/knowledge/upload?wait=true', jsonInit('POST', body)),
+  uploadKnowledgeUrl: (body: unknown) =>
+    apiFetch<any>('/api/knowledge/upload-url?wait=true', jsonInit('POST', body)),
+  uploadKnowledgeFile: (form: FormData) =>
+    apiFetch<any>('/api/knowledge/upload-file', { method: 'POST', body: form }),
+  listKnowledge: (projectId: string) =>
+    apiFetch<any>('/api/knowledge/list?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' }),
+  deleteKnowledge: (projectId: string, source: string) =>
+    apiFetch<any>('/api/knowledge/delete?project_id=' + encodeURIComponent(projectId) + '&source=' + encodeURIComponent(source), jsonInit('DELETE')),
+  getKb: (projectId: string) =>
+    apiFetch<any>('/api/kb/' + encodeURIComponent(projectId), { cache: 'no-store' }),
+  queryKnowledge: (projectId: string, q: string, topK = 3) =>
+    apiFetch<any>('/api/knowledge/query?project_id=' + encodeURIComponent(projectId) + '&q=' + encodeURIComponent(q) + '&top_k=' + topK),
+  fileToText: (form: FormData) =>
+    apiFetch<any>('/api/file-to-text', { method: 'POST', body: form }),
+
+  getGlobalProfile: () => apiFetch<any>('/api/global-profile', { cache: 'no-store' }),
+  saveGlobalProfile: (profile: unknown) => apiFetch<any>('/api/global-profile', jsonInit('POST', { profile })),
+  getProjectMemory: (pid: string) =>
+    apiFetch<any>('/api/project-memory/' + encodeURIComponent(pid), { cache: 'no-store' }),
+  saveProjectMemory: (pid: string, profile: unknown) =>
+    apiFetch<any>('/api/project-memory/' + encodeURIComponent(pid), jsonInit('POST', { profile })),
+  getDialogueProfile: (did: string) =>
+    apiFetch<any>('/api/dialogues/' + encodeURIComponent(did) + '/profile'),
+  getDialogueFollowups: (did: string) =>
+    apiFetch<any>('/api/dialogues/' + encodeURIComponent(did) + '/followups', { cache: 'no-store' }),
+  getLearningLog: (pid?: string) =>
+    apiFetch<any>('/api/learning-log' + (pid ? '?project_id=' + encodeURIComponent(pid) : ''), { cache: 'no-store' }),
+  getMemoryProgress: (pid: string) =>
+    apiFetch<any>('/api/memory/progress?project_id=' + encodeURIComponent(pid), { cache: 'no-store' }),
+  memoryChat: (body: unknown) => apiFetch<any>('/api/memory-chat', jsonInit('POST', body)),
+
+  listResources: (projectId: string) =>
+    apiFetch<any>('/api/resources?project_id=' + encodeURIComponent(projectId)),
+  listResourcesAll: () => apiFetch<any>('/api/resources/all'),
+  saveResource: (body: unknown) => apiFetch<any>('/api/resources', jsonInit('POST', body)),
+  uploadResource: (form: FormData) =>
+    apiFetch<any>('/api/resources/upload', { method: 'POST', body: form }),
+  deleteResource: (rid: string) =>
+    apiFetch<any>('/api/resources/' + encodeURIComponent(rid), jsonInit('DELETE')),
+  generateDomain: (body: unknown) => apiFetch<any>('/api/generate-domain', jsonInit('POST', body)),
+  listArtifacts: (projectId: string) =>
+    apiFetch<any>('/api/artifacts?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' }),
+
+  getStats: (projectId: string) =>
+    apiFetch<any>('/api/stats?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' }),
+  listSkills: () => apiFetch<any>('/api/skills'),
+  getSkillSource: (name: string) =>
+    apiFetch<any>('/api/skills/' + encodeURIComponent(name) + '/source', { cache: 'no-store' }),
+
   stopChat: (requestId: string) =>
     apiFetch<any>('/api/chat/stop', jsonInit('POST', { request_id: requestId })),
 }

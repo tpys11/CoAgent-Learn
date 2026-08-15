@@ -4,6 +4,8 @@ import { KnowledgeTree } from './KbTree'
 import SpecialOutputPane from './SpecialOutputPane'
 import MarkdownIt from 'markdown-it'
 import { streamChatResponse } from '../sse'
+import { LS, lsGet, lsGetJSON, lsSetJSON } from '../storage'
+import { api } from '../api'
 
 // 第二对话回答渲染：markdown-it 轻量渲染（html:false 防 XSS，breaks 换行生效）
 const mdSide = new MarkdownIt({ html: false, linkify: true, breaks: true })
@@ -29,7 +31,6 @@ const WINDOWS: Array<{ key: WinKey; title: string; icon: any }> = [
 const DEFAULT_HEIGHTS: Record<WinKey, number> = { flow: 200, graph: 190, chat: 240, special: 200, monitor: 180 }
 const MIN_H = 56
 const MAX_H = 800
-const WINDOWS_KEY = 'coagent-rp-windows'
 
 /** 窗口：header 常驻，内容区高度可被拖拽调整；flex 模式自动填满剩余空间。
  * 右上角独立叉 = 关闭该窗口（visible=false，可在顶部"在此处展示"重新打开） */
@@ -75,10 +76,7 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
   const [heights, setHeights] = useState<Record<WinKey, number>>({ ...DEFAULT_HEIGHTS })
   // 右侧栏展示设置（可勾选要显示的窗口，持久化）
   const [visible, setVisible] = useState<Record<WinKey, boolean>>(() => {
-    try {
-      const s = JSON.parse(localStorage.getItem(WINDOWS_KEY) || '')
-      return { flow: true, graph: true, chat: true, special: false, monitor: true, ...s }
-    } catch { return { flow: true, graph: true, chat: true, special: false, monitor: true } }
+    return { flow: true, graph: true, chat: true, special: false, monitor: true, ...lsGetJSON<Record<string, boolean>>(LS.rpWindows, {}) }
   })
   const [showWinSettings, setShowWinSettings] = useState(false)
   const dragRef = useRef<{ a: WinKey; b: WinKey; isLast: boolean; startY: number; startHa: number; startHb: number } | null>(null)
@@ -86,7 +84,7 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
   const toggleWin = (k: WinKey) => {
     setVisible(prev => {
       const next = { ...prev, [k]: !prev[k] }
-      localStorage.setItem(WINDOWS_KEY, JSON.stringify(next))
+      lsSetJSON(LS.rpWindows, next)
       return next
     })
   }
@@ -122,12 +120,10 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
   const [progressItems, setProgressItems] = useState<any[]>([])
   const loadKbTree = () => {
     if (!projectId) return
-    fetch('/api/knowledge/list?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' })
-      .then(r => r.json())
+    api.listKnowledge(projectId)
       .then(d => setTreeDocs((d.docs || []).map((x: any) => ({ source: x.source || '未命名', tree: Array.isArray(x.tree) ? x.tree : [] }))))
       .catch(() => setTreeDocs([]))
-    fetch('/api/memory/progress?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' })
-      .then(r => r.json())
+    api.getMemoryProgress(projectId)
       .then(d => setProgressItems((d && d.items) || []))
       .catch(() => setProgressItems([]))
   }
@@ -139,8 +135,7 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
   // 第二对话追问建议：横向拓展/轻松闲聊风格（后端 followup_focus=expand 生成）
   const [sideFollowups, setSideFollowups] = useState<string[]>([])
   const loadSideFollowups = () => {
-    fetch('/api/dialogues/' + encodeURIComponent(sideDialogueIdRef.current) + '/followups', { cache: 'no-store' })
-      .then(r => r.json())
+    api.getDialogueFollowups(sideDialogueIdRef.current)
       .then(d => setSideFollowups(Array.isArray(d.questions) ? d.questions.slice(0, 3) : []))
       .catch(() => {})
   }
@@ -175,7 +170,7 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
       const resp = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, dialogue_id: sideDialogueIdRef.current, project_id: projectId || 'default', api_key: localStorage.getItem('coagent-apikey') || undefined, followup_focus: 'expand' })
+        body: JSON.stringify({ message: text, dialogue_id: sideDialogueIdRef.current, project_id: projectId || 'default', api_key: lsGet(LS.apiKey, '') || undefined, followup_focus: 'expand' })
       })
       let reply = ''
       await streamChatResponse(resp, (d) => {

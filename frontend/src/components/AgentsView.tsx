@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { Settings, Upload, Folder, Download, Layers, Wrench, ExternalLink, Plus, Trash2, LayoutTemplate, X, Workflow, Brain, Database, Scale, Code2 } from 'lucide-react'
 import type { AgentConfig } from '../types'
 import { DEFAULT_AGENTS } from '../types'
+import { LS, lsGetJSON, lsSetJSON } from '../storage'
+import { api } from '../api'
 
 interface SkillInfo { name: string; description: string; folder: string }
 
@@ -50,9 +52,6 @@ const PRESET_TEMPLATES: Array<{ name: string; desc: string; intro: string; detai
     agents: DEFAULT_AGENTS,
   },
 ]
-
-const SKILL_ENABLED_KEY = 'coagent-skill-enabled'
-const CUSTOM_TEMPLATES_KEY = 'coagent-custom-templates'
 
 /** 全局性基础设定卡片（默认文案；用户可在前端编辑，localStorage 持久化覆盖） */
 const DEFAULT_GLOBAL_CARDS: Array<[string, string]> = [
@@ -308,7 +307,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   const [linkedSkills, setLinkedSkills] = useState<string[]>([])
   // Skill 全局启用开关（localStorage）
   const [skillEnabled, setSkillEnabled] = useState<Record<string, boolean>>(() => {
-    try { return JSON.parse(localStorage.getItem(SKILL_ENABLED_KEY) || '{}') } catch { return {} }
+    return lsGetJSON<Record<string, boolean>>(LS.skillEnabled, {})
   })
   // Skill 详情弹窗（独立小窗口）
   const [skillDetail, setSkillDetail] = useState<{ name: string; description: string; folder: string; category: string } | null>(null)
@@ -317,12 +316,11 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   const [skillSrcLoading, setSkillSrcLoading] = useState(false)
   // 对话设定（项目介绍可编辑，localStorage 持久化；缺省用内置默认）
   const [globalCards, setGlobalCards] = useState<Array<[string, string]>>(() => {
-    try { const s = localStorage.getItem('coagent-intro-global'); if (s) { const a = JSON.parse(s); if (Array.isArray(a) && a.length) return a } } catch { /* 忽略 */ }
-    return DEFAULT_GLOBAL_CARDS
+    const saved = lsGetJSON<Array<[string, string]>>(LS.introGlobal, [])
+    return Array.isArray(saved) && saved.length ? saved : DEFAULT_GLOBAL_CARDS
   })
   const [tierOverrides, setTierOverrides] = useState<Record<string, { intro: string; detail: Array<[string, string]> }>>(() => {
-    try { const s = localStorage.getItem('coagent-intro-tiers'); if (s) { const o = JSON.parse(s); if (o && typeof o === 'object') return o } } catch { /* 忽略 */ }
-    return {}
+    return lsGetJSON<Record<string, { intro: string; detail: Array<[string, string]> }>>(LS.introTiers, {})
   })
   const [editingGlobal, setEditingGlobal] = useState(false)
   const [editingTier, setEditingTier] = useState<string | null>(null)
@@ -331,7 +329,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   // 对话流程：选中模板（展开详情）、自定义模板、保存名称
   const [selectedTpl, setSelectedTpl] = useState<string | null>(null)
   const [customTemplates, setCustomTemplates] = useState<Array<{ name: string; desc: string; agents: AgentConfig[] }>>(() => {
-    try { return JSON.parse(localStorage.getItem(CUSTOM_TEMPLATES_KEY) || '[]') } catch { return [] }
+    return lsGetJSON<Array<{ name: string; desc: string; agents: AgentConfig[] }>>(LS.customTemplates, [])
   })
   const [saveTplName, setSaveTplName] = useState('')
   const [showNewTplModal, setShowNewTplModal] = useState(false)
@@ -353,14 +351,14 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   const [mcpType, setMcpType] = useState<'stdio' | 'http' | 'sse'>('http')
   const [mcpTarget, setMcpTarget] = useState('')
   const [mcpList, setMcpList] = useState<Array<{ id: string; name: string; type: string; target: string }>>(() => {
-    try { return JSON.parse(localStorage.getItem('coagent-mcp-servers') || '[]') } catch { return [] }
+    return lsGetJSON<Array<{ id: string; name: string; type: string; target: string }>>(LS.mcpServers, [])
   })
 
   useEffect(() => {
     setMode(agent?.mode || '均衡')
     setPrompt(agent?.systemPrompt || '')
     setSubIntroOpen(false)
-    fetch('/api/skills').then(r => r.json()).then(d => {
+    api.listSkills().then(d => {
       setAllSkills(d.skills || [])
       const names = (agent?.skill || '').match(/[a-z_]+/g) || []
       setLinkedSkills(names.filter((n: string) => (d.skills || []).some((s: SkillInfo) => s.name === n)))
@@ -392,20 +390,20 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   const toggleSkillEnabled = (name: string) => {
     const next = { ...skillEnabled, [name]: !(skillEnabled[name] ?? true) }
     setSkillEnabled(next)
-    localStorage.setItem(SKILL_ENABLED_KEY, JSON.stringify(next))
+    lsSetJSON(LS.skillEnabled, next)
   }
 
   const addMcpServer = () => {
     if (!mcpName.trim() || !mcpTarget.trim()) return
     const next = [...mcpList, { id: 'mcp-' + Date.now(), name: mcpName.trim(), type: mcpType, target: mcpTarget.trim() }]
     setMcpList(next)
-    localStorage.setItem('coagent-mcp-servers', JSON.stringify(next))
+    lsSetJSON(LS.mcpServers, next)
     setMcpName(''); setMcpTarget(''); setMcpStep(1)
   }
   const removeMcpServer = (id: string) => {
     const next = mcpList.filter(s => s.id !== id)
     setMcpList(next)
-    localStorage.setItem('coagent-mcp-servers', JSON.stringify(next))
+    lsSetJSON(LS.mcpServers, next)
   }
   const downloadTemplate = () => {
     const blob = new Blob([SKILL_TEMPLATE], { type: 'text/markdown' })
@@ -443,7 +441,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
     if (!name) return
     const next = [...customTemplates, { name, desc: '自定义模板', agents }]
     setCustomTemplates(next)
-    localStorage.setItem(CUSTOM_TEMPLATES_KEY, JSON.stringify(next))
+    lsSetJSON(LS.customTemplates, next)
     setSelectedTpl(name)
     setSaveTplName('')
     setShowNewTplModal(false)
@@ -451,7 +449,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   const removeCustomTemplate = (name: string) => {
     const next = customTemplates.filter(t => t.name !== name)
     setCustomTemplates(next)
-    localStorage.setItem(CUSTOM_TEMPLATES_KEY, JSON.stringify(next))
+    lsSetJSON(LS.customTemplates, next)
     if (selectedTpl === name) setSelectedTpl(null)
   }
 
@@ -845,7 +843,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                 ))}
               </div>
               {editingGlobal && (
-                <button onClick={() => { try { localStorage.setItem('coagent-intro-global', JSON.stringify(globalCards)) } catch { /* 忽略 */ } setEditingGlobal(false) }}
+<button onClick={() => { lsSetJSON(LS.introGlobal, globalCards); setEditingGlobal(false) }}
                   className="w-fit px-3 py-1.5 rounded-lg bg-[#1a1a1a] text-white text-[11px] font-medium hover:bg-[#333333] transition-colors">
                   保存全局设定
                 </button>
@@ -890,7 +888,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                     const setOv = (patch: { intro?: string; detail?: Array<[string, string]> }) => {
                       const next = { ...tierOverrides, [tpl.name]: { intro: patch.intro ?? ov.intro, detail: patch.detail ?? ov.detail } }
                       setTierOverrides(next)
-                      try { localStorage.setItem('coagent-intro-tiers', JSON.stringify(next)) } catch { /* 忽略 */ }
+lsSetJSON(LS.introTiers, next)
                     }
                     return (
                       <div className="flex flex-col gap-3">
@@ -1042,8 +1040,8 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                 onClick={() => {
                   if (skillSource !== null) { setSkillSource(null); return }
                   setSkillSrcLoading(true)
-                  fetch('/api/skills/' + encodeURIComponent(skillDetail.name) + '/source', { cache: 'no-store' })
-                    .then(r => r.json()).then(d => { setSkillSource(d.source || '（无源码）') })
+                  api.getSkillSource(skillDetail.name)
+                    .then(d => { setSkillSource(d.source || '（无源码）') })
                     .catch(() => setSkillSource('（加载失败）'))
                     .finally(() => setSkillSrcLoading(false))
                 }}

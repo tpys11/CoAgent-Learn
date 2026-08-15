@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { FileText, BookOpen, Upload, Trash2, Save, X, Loader2, CheckCircle2, ExternalLink } from 'lucide-react'
 import MemoryView from './MemoryView'
 import ResourceView from './ResourceView'
+import { LS, lsGet, lsGetJSON, lsSetJSON } from '../storage'
+import { api } from '../api'
 
 /** 课程记忆与资源窗口：两个页签（记忆与进程 / 资源）可切换；initialTab 决定打开时默认页签。
  * 新建课程引导消息的「手动填写」按钮也复用此弹窗（initialOnly=true：仅初次创建可手动填写，
@@ -37,22 +39,14 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
         if (collected[k]) profile[k] = collected[k]
       }
       if (collected['项目名'] && collected['项目名'].trim() && collected['项目名'].trim() !== projectName) {
-        await fetch('/api/projects/' + encodeURIComponent(projectId), {
-          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: collected['项目名'].trim() }),
-        })
+        await api.updateProject(projectId, { name: collected['项目名'].trim() })
       }
       if (Object.keys(profile).length) {
-        await fetch('/api/project-memory/' + encodeURIComponent(projectId), {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ profile }),
-        })
+        await api.saveProjectMemory(projectId, profile)
       }
       // 标记该课程已完成初次手动填写
-      try {
-        const done = JSON.parse(localStorage.getItem('coagent-manual-setup-done') || '[]')
-        if (!done.includes(projectId)) { done.push(projectId); localStorage.setItem('coagent-manual-setup-done', JSON.stringify(done)) }
-      } catch { /* 忽略 */ }
+      const done = lsGetJSON<string[]>(LS.manualSetupDone, [])
+      if (!done.includes(projectId)) { done.push(projectId); lsSetJSON(LS.manualSetupDone, done) }
       onSaved?.()
       onClose()
     } catch (e) {
@@ -144,8 +138,7 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
   const pendingCount = pendingItems.length
   const load = useCallback(() => {
     if (!projectId) { setDocs([]); setLoading(false); return }
-    fetch('/api/kb/' + encodeURIComponent(projectId), { cache: 'no-store' })
-      .then(r => r.json())
+    api.getKb(projectId)
       .then(d => setDocs(Array.isArray(d) ? d : []))
       .catch(() => setDocs([]))
       .finally(() => setLoading(false))
@@ -164,31 +157,20 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
           const fd = new FormData()
           fd.append('project_id', projectId)
           fd.append('session_id', 'project-res')
-          fd.append('api_key', localStorage.getItem('coagent-apikey') || '')
+          fd.append('api_key', lsGet(LS.apiKey, ''))
           fd.append('wait', '1')  // 同步等待后端切块+向量化入库完成
           fd.append('file', it.file, it.file.name)
-          const r = await fetch('/api/knowledge/upload-file', { method: 'POST', body: fd })
-          const d = await r.json().catch(() => ({}))
+          const d = await api.uploadKnowledgeFile(fd)
           if (d.status === 'ok') { total += (d.chunks || 0); okCount++ }
           else alert(`「${it.file.name}」接入失败：${d.msg || '处理失败'}`)
         } else if (it.kind === 'link') {
           // 链接资源：后端抓取网页正文入库（真实内容，非空转）
-          const r = await fetch('/api/knowledge/upload-url?wait=true', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ project_id: projectId, url: it.url, source: it.title, session_id: 'project-res', api_key: localStorage.getItem('coagent-apikey') || '' }),
-          })
-          const d = await r.json().catch(() => ({}))
+          const d = await api.uploadKnowledgeUrl({ project_id: projectId, url: it.url, source: it.title, session_id: 'project-res', api_key: lsGet(LS.apiKey, '') })
           if (d.status === 'ok') { total += (d.chunks || 0); okCount++ }
           else alert(`「${it.title}」接入失败：${d.msg || '处理失败'}`)
         } else {
           // wait 是后端 query 参数（非 body），必须放在 URL 上，否则走异步分支返回 processing
-          const r = await fetch('/api/knowledge/upload?wait=true', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ project_id: projectId, text: it.body, source: it.title, session_id: 'project-res', api_key: localStorage.getItem('coagent-apikey') || '' }),
-          })
-          const d = await r.json().catch(() => ({}))
+          const d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, source: it.title, session_id: 'project-res', api_key: lsGet(LS.apiKey, '') })
           if (d.status === 'ok') { total += (d.chunks || 0); okCount++ }
           else alert(`「${it.title}」接入失败：${d.msg || '处理失败'}`)
         }
@@ -246,7 +228,7 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
     const src = removeTarget
     setRemoveTarget(null)
     if (!src || !projectId) return
-    fetch('/api/knowledge/delete?project_id=' + encodeURIComponent(projectId) + '&source=' + encodeURIComponent(src), { method: 'DELETE' })
+    api.deleteKnowledge(projectId, src)
       .then(() => {
         setDocs(prev => prev.filter(d => d.source !== src))
         setRefreshKey(k => k + 1)  // 刷新嵌套 ResourceView（原文已转存资源表）

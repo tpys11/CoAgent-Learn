@@ -1,6 +1,8 @@
 ﻿import { useState, useEffect, useRef, useMemo } from 'react'
 import { Brain, User, FolderTree, Check, Loader2, PenLine, ChevronRight, ChevronDown } from 'lucide-react'
 import { KnowledgeTree } from './KbTree'
+import { LS, lsGet } from '../storage'
+import { api } from '../api'
 
 /** 个人全局性记忆：基础信息字段（固定，纵向表单） */
 const BASIC_FIELDS = [
@@ -452,7 +454,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
 
   // ---------- 课程列表 ----------
   useEffect(() => {
-    fetch('/api/projects', { cache: 'no-store' }).then(r => r.json()).then(d => {
+    api.listProjects().then(d => {
       const arr = d.projects || d || []
       setProjects(Array.isArray(arr) ? arr : [])
     }).catch(() => {})
@@ -464,8 +466,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
   // ---------- 个人全局记忆加载 ----------
   const loadGlobal = () => {
     setGLoading(true)
-    fetch('/api/global-profile', { cache: 'no-store' })
-      .then(r => r.json())
+    api.getGlobalProfile()
       .then(d => {
         const p = d.profile || {}
         const f: Record<string, string> = {}
@@ -482,8 +483,8 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
       .catch(() => {})
       .finally(() => setGLoading(false))
     // 全局学习统计 + 日历数据（所有课程）
-    fetch('/api/learning-log', { cache: 'no-store' })
-      .then(r => r.json()).then(dd => {
+    api.getLearningLog()
+      .then(dd => {
         const days: any[] = dd.days || []
         const map: Record<string, any[]> = {}
         for (const d of days) map[d.date] = d.items || []
@@ -498,7 +499,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
   // ---------- 课程记忆加载（全部课程，常驻加载供个人画像·学习情况使用） ----------
   useEffect(() => {
     setProjLoading(true)
-    fetch('/api/projects', { cache: 'no-store' }).then(r => r.json()).then(d => {
+    api.listProjects().then(d => {
       const arr = d.projects || d || []
       const plist = (Array.isArray(arr) ? arr : []) as Array<{ id: string; name: string; created_at?: string }>
       setProjects(plist)
@@ -517,10 +518,10 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
       for (const p of plist) {
         const pid = p.id
         Promise.all([
-          fetch('/api/project-memory/' + encodeURIComponent(pid), { cache: 'no-store' }).then(r => r.json()).catch(() => ({})),
-          fetch('/api/learning-log?project_id=' + encodeURIComponent(pid), { cache: 'no-store' }).then(r => r.json()).catch(() => ({ days: [] })),
-          fetch('/api/memory/progress?project_id=' + encodeURIComponent(pid), { cache: 'no-store' }).then(r => r.json()).catch(() => ({ items: [], daily: [], pace: '' })),
-          fetch('/api/kb/' + encodeURIComponent(pid), { cache: 'no-store' }).then(r => r.json()).catch(() => []),
+          api.getProjectMemory(pid).catch(() => ({})),
+          api.getLearningLog(pid).catch(() => ({ days: [] })),
+          api.getMemoryProgress(pid).catch(() => ({ items: [], daily: [], pace: '' })),
+          api.getKb(pid).catch(() => []),
         ]).then(([m, lg, pg, kb]: [any, any, any, any]) => {
           const mem = (m as any).memory || {}
           const fields: Record<string, string> = {}
@@ -543,14 +544,11 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
   }, [level, refreshTick])
 
   // ---------- 自动保存 ----------
-  const scheduleSave = (url: string, data: Record<string, any>) => {
+  const scheduleSave = (call: () => Promise<any>) => {
     setSaved('saving')
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(() => {
-      fetch(url, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ profile: data }),
-      }).then(() => { setSaved('saved'); setTimeout(() => setSaved(''), 1500) }).catch(() => setSaved(''))
+      call().then(() => { setSaved('saved'); setTimeout(() => setSaved(''), 1500) }).catch(() => setSaved(''))
     }, 800)
   }
 
@@ -564,7 +562,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
     profile['学习情况'] = study !== undefined ? study : gStudy
     const p = pref !== undefined ? pref : gPref
     if (p) profile['阅读偏好'] = p
-    scheduleSave('/api/global-profile', profile)
+    scheduleSave(() => api.saveGlobalProfile(profile))
   }
   const updateField = (k: string, v: string) => {
     const next = { ...gFields, [k]: v }
@@ -584,13 +582,9 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
     setMcInput('')
     setMcSending(true)
     try {
-      const apikey = localStorage.getItem('coagent-apikey') || ''
+      const apikey = lsGet(LS.apiKey, '')
       const target = level === 'global' ? 'global' : (activeProject || '')
-      const r = await fetch('/api/memory-chat', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, project_id: target, api_key: apikey }),
-      })
-      const d = await r.json()
+      const d = await api.memoryChat({ message: text, project_id: target, api_key: apikey })
       setMcMsgs(prev => [...prev, { role: 'assistant', content: d.reply || '已处理。' }])
       if (level === 'global') loadGlobal()
       else setRefreshTick(t => t + 1)
@@ -1034,7 +1028,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                   const base = buildMilestones(data)
                   const next = [...base, { id: 'c-' + Date.now(), label, detail, type: 'custom' as MilestoneType, pos, important: false }]
                   setProjData(prev => ({ ...prev, [activeProject || '']: { ...prev[activeProject || ''], fields: { ...prev[activeProject || '']?.fields, 里程碑: JSON.stringify(next) } } }))
-                  scheduleSave('/api/project-memory/' + encodeURIComponent(activeProject || 'default'), { 里程碑: next })
+scheduleSave(() => api.saveProjectMemory(activeProject || 'default', { 里程碑: next }))
                   setMsNode(null)
                 }}
               />
@@ -1058,7 +1052,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                         const base = buildMilestones(data)
                         const next = base.map(x => x.id === m.id ? { ...x, important: !x.important } : x)
                         setProjData(prev => ({ ...prev, [activeProject || '']: { ...prev[activeProject || ''], fields: { ...prev[activeProject || '']?.fields, 里程碑: JSON.stringify(next) } } }))
-                        scheduleSave('/api/project-memory/' + encodeURIComponent(activeProject || 'default'), { 里程碑: next })
+scheduleSave(() => api.saveProjectMemory(activeProject || 'default', { 里程碑: next }))
                       }} className="py-2 rounded-xl border hairline text-[11px] text-dim hover:bg-[var(--bg-hover)] transition-colors">
                         {m.important ? '取消重要标注' : '标注为重要节点'}
                       </button>
@@ -1066,7 +1060,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                         const data = projData[activeProject || '']
                         const next = buildMilestones(data).filter(x => x.id !== m.id)
                         setProjData(prev => ({ ...prev, [activeProject || '']: { ...prev[activeProject || ''], fields: { ...prev[activeProject || '']?.fields, 里程碑: JSON.stringify(next) } } }))
-                        scheduleSave('/api/project-memory/' + encodeURIComponent(activeProject || 'default'), { 里程碑: next })
+scheduleSave(() => api.saveProjectMemory(activeProject || 'default', { 里程碑: next }))
                         setMsNode(null)
                       }} className="py-2 rounded-xl bg-red-50 text-red-600 text-[11px] hover:bg-red-100 transition-colors">删除该节点</button>
                     </div>

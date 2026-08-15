@@ -1,5 +1,7 @@
 ﻿import { useEffect, useState } from 'react'
 import { ArrowLeft, MessageSquare, FileText, X, Plus, SlidersHorizontal, Pencil, PanelLeftClose } from 'lucide-react'
+import { LS, lsGetJSON, lsSetJSON } from '../storage'
+import { api } from '../api'
 
 interface Dialogue { id: string; name: string; archived?: boolean }
 
@@ -21,7 +23,7 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
   const [kbDocs, setKbDocs] = useState<Array<{ source: string; chunks: number }>>([])
   // 栏目展示开关（与右侧栏一致，持久化）
   const [visible, setVisible] = useState<Record<'memory' | 'resource' | 'chat', boolean>>(() => {
-    try { return { memory: true, resource: true, chat: true, ...(JSON.parse(localStorage.getItem('coagent-project-sidebar-v') || '{}')) } } catch { return { memory: true, resource: true, chat: true } }
+    return { memory: true, resource: true, chat: true, ...lsGetJSON<Record<string, boolean>>(LS.projectSidebarV, {}) }
   })
   const [showSettings, setShowSettings] = useState(false)
   // 正在行内重命名的对话 id
@@ -29,7 +31,7 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
   const toggleVisible = (k: 'memory' | 'resource' | 'chat') => {
     setVisible(prev => {
       const next = { ...prev, [k]: !prev[k] }
-      localStorage.setItem('coagent-project-sidebar-v', JSON.stringify(next))
+      lsSetJSON(LS.projectSidebarV, next)
       return next
     })
   }
@@ -40,10 +42,10 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
   ]
   useEffect(() => {
     if (!project) { setMemSummary({}); setKbDocs([]); return }
-    fetch('/api/project-memory/' + encodeURIComponent(project.id), { cache: 'no-store' })
-      .then(r => r.json()).then(d => setMemSummary(d.memory || {})).catch(() => setMemSummary({}))
-    fetch('/api/kb/' + encodeURIComponent(project.id), { cache: 'no-store' })
-      .then(r => r.json()).then(d => setKbDocs(Array.isArray(d) ? d : [])).catch(() => setKbDocs([]))
+    api.getProjectMemory(project.id)
+      .then(d => setMemSummary(d.memory || {})).catch(() => setMemSummary({}))
+    api.getKb(project.id)
+      .then(d => setKbDocs(Array.isArray(d) ? d : [])).catch(() => setKbDocs([]))
   }, [project?.id])
 
   const memLines: Array<[string, string]> = []

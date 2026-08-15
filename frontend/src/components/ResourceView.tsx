@@ -1,5 +1,7 @@
 ﻿import { useState, useEffect, useCallback, useRef } from 'react'
 import { BookOpen, Sparkles, Upload, FileText, Trash2, Wrench, ExternalLink, Plus, X, FolderTree, FolderOpen, Library, Download, ChevronRight, Loader2 } from 'lucide-react'
+import { LS, lsGet, lsGetJSON, lsSetJSON } from '../storage'
+import { api } from '../api'
 
 interface Artifact {
   id: string
@@ -216,10 +218,6 @@ const WIKI_ENTRIES: WikiEntry[] = [
     detail: '类是 type 的实例，元类即"类的类"：通过 __new__ 在类定义完成时介入，可自动注册子类、校验字段、注入方法。Django/SQLAlchemy 的模型定义、dataclass 都依赖元类机制。属于进阶话题：日常少用，但理解它能真正理解"Python 一切皆对象"。' },
 ]
 
-const TUTORIALS_KEY = 'coagent-tutorials'
-const DOMAINS_KEY = 'coagent-domains'
-const WIKI_KEY = 'coagent-custom-wiki'
-
 /** 我的生成：预设分类（按生成物类型匹配） */
 const GEN_CATS = [
   { key: 'all', label: '全部' },
@@ -236,17 +234,17 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
   const [genProjects, setGenProjects] = useState<Array<{ id: string; name: string }>>([])
   const [selGenProject, setSelGenProject] = useState<string>('')
   const [tutorials, setTutorials] = useState<Tutorial[]>(() => {
-    try { return JSON.parse(localStorage.getItem(TUTORIALS_KEY) || '[]') } catch { return [] }
+    return lsGetJSON<Tutorial[]>(LS.tutorials, [])
   })
   // 领域：系统预设 + 自定义（localStorage 持久化）
   const [customDomains, setCustomDomains] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem(DOMAINS_KEY) || '[]') } catch { return [] }
+    return lsGetJSON<string[]>(LS.domains, [])
   })
   const domains = [...DEFAULT_DOMAINS, ...customDomains]
   const [selectedDomain, setSelectedDomain] = useState(DEFAULT_DOMAINS[0])
   // 自定义百科词条（新建领域 AI 生成后存 localStorage）
   const [customWiki, setCustomWiki] = useState<WikiEntry[]>(() => {
-    try { return JSON.parse(localStorage.getItem(WIKI_KEY) || '[]') } catch { return [] }
+    return lsGetJSON<WikiEntry[]>(LS.customWiki, [])
   })
   // 新建领域
   const [showNewDomain, setShowNewDomain] = useState(false)
@@ -276,8 +274,8 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
     // 我的生成：按选中项目加载
     const gpid = selGenProject || projectId || ''
     if (gpid) {
-      fetch('/api/artifacts?project_id=' + encodeURIComponent(gpid), { cache: 'no-store' })
-        .then(r => r.json()).then(d => setArtifacts(d.artifacts || [])).catch(() => {})
+      api.listArtifacts(gpid)
+        .then(d => setArtifacts(d.artifacts || [])).catch(() => {})
     }
     setTimeout(() => setLoading(false), 200)
   }, [projectId, selGenProject])
@@ -318,13 +316,13 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
         if (it.kind === 'file' && it.file) {
           const fd = new FormData()
           fd.append('project_id', projectId); fd.append('session_id', 'project-res')
-          fd.append('api_key', localStorage.getItem('coagent-apikey') || '')
+          fd.append('api_key', lsGet(LS.apiKey, ''))
           fd.append('wait', '1'); fd.append('file', it.file, it.file.name)
-          d = await (await fetch('/api/knowledge/upload-file', { method: 'POST', body: fd })).json()
+          d = await api.uploadKnowledgeFile(fd)
         } else if (it.kind === 'text') {
-          d = await (await fetch('/api/knowledge/upload?wait=true', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project_id: projectId, text: it.body, source: it.name, session_id: 'project-res', api_key: localStorage.getItem('coagent-apikey') || '' }) })).json()
+          d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, source: it.name, session_id: 'project-res', api_key: lsGet(LS.apiKey, '') })
         } else if (it.kind === 'link') {
-          d = await (await fetch('/api/knowledge/upload-url?wait=true', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project_id: projectId, url: it.url, source: it.name, session_id: 'project-res', api_key: localStorage.getItem('coagent-apikey') || '' }) })).json()
+          d = await api.uploadKnowledgeUrl({ project_id: projectId, url: it.url, source: it.name, session_id: 'project-res', api_key: lsGet(LS.apiKey, '') })
         }
         if (d && d.status === 'ok') { total += (d.chunks || 0); ok++ }
         else alert(`「${it.name}」接入失败：${(d && d.msg) || '处理失败'}`)
@@ -339,7 +337,7 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
     setTimeout(() => load(), 500)
   }
   useEffect(() => {
-    fetch('/api/projects', { cache: 'no-store' }).then(r => r.json()).then(d => {
+    api.listProjects().then(d => {
       const ps = (d.projects || []).map((p: any) => ({ id: p.id, name: p.name }))
       setGenProjects(ps)
       if (!selGenProject && ps.length) setSelGenProject(projectId || ps[0].id)
@@ -350,7 +348,7 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
   const allTutorials = [...PRESET_TUTORIALS, ...tutorials]
   const saveTutorials = (next: Tutorial[]) => {
     setTutorials(next)
-    localStorage.setItem(TUTORIALS_KEY, JSON.stringify(next))
+    lsSetJSON(LS.tutorials, next)
   }
   const removeTutorial = (id: string) => {
     setDetail(null)
@@ -364,11 +362,7 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
     if (domains.includes(name)) { alert('该领域已存在'); return }
     setNewDomainLoading(true)
     try {
-      const r = await fetch('/api/generate-domain', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ domain: name, api_key: localStorage.getItem('coagent-apikey') || '' }),
-      })
-      const d = await r.json()
+      const d = await api.generateDomain({ domain: name, api_key: lsGet(LS.apiKey, '') })
       if (d.status === 'ok') {
         const nt = (d.tutorials || []).map((t: any) => ({ ...t, id: 'dom-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), domain: name, preset: false }))
         const nw = (d.wiki || []).map((w: any) => ({ ...w, domain: name }))
@@ -376,10 +370,10 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
         const nextW = [...customWiki, ...nw]
         saveTutorials(nextT)
         setCustomWiki(nextW)
-        localStorage.setItem(WIKI_KEY, JSON.stringify(nextW))
+        lsSetJSON(LS.customWiki, nextW)
         const nextDomains = [...customDomains, name]
         setCustomDomains(nextDomains)
-        localStorage.setItem(DOMAINS_KEY, JSON.stringify(nextDomains))
+        lsSetJSON(LS.domains, nextDomains)
         setSelectedDomain(name)
         setSelectedCat(CATEGORIES[0].key)
         setNewDomainName('')
