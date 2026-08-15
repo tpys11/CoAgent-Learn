@@ -78,6 +78,52 @@ def _embed(texts: list[str]) -> list[list[float]]:
     return _embed_local(texts)
 
 
+def _vl_key() -> str:
+    """视觉/跨模态向量 key：VL_API_KEY 优先，未配置复用硅基流动 embedding key"""
+    from core.config import config as _cfg
+    return getattr(_cfg, "VL_API_KEY", "") or getattr(_cfg, "EMBEDDING_API_KEY", "")
+
+
+def _embed_vl(inputs: list) -> list[list[float]]:
+    """Qwen3-VL-Embedding：把文本/图片映射到同一 4096 维空间（跨模态检索基础）。
+    inputs 元素为字符串（文本）或 {"image": data_uri}（图片）。"""
+    key = _vl_key()
+    if not key:
+        raise RuntimeError("未配置 VL_API_KEY / EMBEDDING_API_KEY")
+    import requests as _req
+    from core.config import config as _cfg
+    url = (getattr(_cfg, "VL_BASE_URL", "https://api.siliconflow.cn/v1") or "").rstrip("/") + "/embeddings"
+    model = getattr(_cfg, "VL_MODEL", "Qwen/Qwen3-VL-Embedding-8B")
+    resp = _req.post(
+        url,
+        json={"model": model, "input": inputs},
+        headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"},
+        timeout=120,
+    )
+    resp.raise_for_status()
+    data = resp.json().get("data") or []
+    data.sort(key=lambda d: d.get("index", 0))
+    vecs = [d["embedding"] for d in data]
+    dim = int(getattr(_cfg, "VL_EMBEDDING_DIM", 4096) or 4096)
+    for v in vecs:
+        if len(v) != dim:
+            raise RuntimeError(
+                f"VL embedding 维度 {len(v)} 与配置 VL_EMBEDDING_DIM={dim} 不符"
+            )
+    return vecs
+
+
+def embed_vl_images(image_data_uris: list) -> list[list[float]]:
+    """图片向量化（data URI 列表）"""
+    return _embed_vl([{"image": u} for u in image_data_uris])
+
+
+def embed_vl_query(text: str) -> list[float] | None:
+    """文本查询向量化（跨模态：文本查询与图片向量同空间）"""
+    vecs = _embed_vl([(text or "")])
+    return vecs[0] if vecs else None
+
+
 def _tokenize(text: str) -> list:
     """中文分词（jieba），供 BM25 使用"""
     try:
@@ -201,11 +247,64 @@ def add_document(project_id: str, text: str, source: str = "", session_id: str =
     return len(chunks)
 
 
+def add_image(project_id: str, source: str, image_data_uri: str, description: str,
+              file_path: str = "", mime: str = "image/png") -> int:
+    """图片入库：用 Qwen3-VL-Embedding 生成图片向量并写入 image_vectors。
+    与文字描述入库（add_document）并行，不替代文字链路；
+    未配置 VL key 时跳过图片向量化，返回 0（仍可走文字描述检索）。"""
+    if not _vl_key():
+        logger.warning("未配置 VL key，跳过图片向量化 source=%s", source)
+        return 0
+    try:
+        from core.config import config as _cfg
+        _db.ensure_vector_dim("image_vectors", int(getattr(_cfg, "VL_EMBEDDING_DIM", 4096) or 4096))
+        vecs = embed_vl_images([image_data_uri])
+        if not vecs:
+            return 0
+        doc_id = hashlib.md5((source + project_id).encode("utf-8")).hexdigest()[:24]
+        _db.upsert_image_vectors_bulk(
+            [(doc_id, project_id, source, description or "", file_path, mime, vecs[0])]
+        )
+        return 1
+    except Exception:
+        logger.exception("图片向量入库失败 source=%s", source)
+        return 0
+
+
+def _search_images(project_id: str, query: str, top_k: int = 3) -> list:
+    """跨模态检索图片：文本查询向量 → image_vectors。失败/无 key 返回空列表。"""
+    if not _vl_key():
+        return []
+    qvl = embed_vl_query(query)
+    if not qvl:
+        return []
+    rows = _db.search_image_vectors(project_id, qvl, k=top_k)
+    return [{
+        "content": r.get("content") or "",
+        "metadata": {
+            "source": r.get("source"),
+            "project_id": project_id,
+            "type": "image",
+            "file_path": r.get("file_path") or "",
+            "mime": r.get("mime") or "",
+        },
+        "distance": r.get("distance"),
+        "kind": "image",
+    } for r in rows]
+
+
 def search(project_id: str, query: str, top_k: int = 3) -> list:
     """混合检索：向量语义检索 + BM25 关键词检索 → RRF 融合 → P3 重排"""
     docs = _db.get_kb_docs(project_id)
+    # 图片跨模态检索（仅项目有图片向量时触发，避免无谓调用 VL 接口）
+    image_hits: list = []
+    try:
+        if _db.get_image_docs(project_id):
+            image_hits = _search_images(project_id, query, top_k)
+    except Exception:
+        logger.warning("图片跨模态检索失败 project_id=%s", project_id, exc_info=True)
     if not docs:
-        return []
+        return image_hits
     # 1. 向量检索（取 3 倍候选）
     qvec = _embed([query])[0]
     vec_rows = _db.search_kb_vectors(project_id, qvec, k=top_k * 3)
@@ -268,10 +367,10 @@ def search(project_id: str, query: str, top_k: int = 3) -> list:
             for i, s in enumerate(scores):
                 cands[i]["rerank"] = float(s)
             cands.sort(key=lambda x: -x.get("rerank", 0))
-            return cands[:top_k]
+            return cands[:top_k] + image_hits
         except Exception:
             logger.warning("重排失败，按 RRF 结果返回", exc_info=True)
-    return cands[:top_k]
+    return cands[:top_k] + image_hits
 
 
 # P3 重排序后端（懒加载；本地 CrossEncoder 与 API 实例分别缓存）
@@ -355,6 +454,7 @@ def list_docs(project_id: str) -> list:
 def delete_doc(project_id: str, source: str) -> int:
     """删除某个来源的全部块，返回删除块数"""
     n = _db.delete_kb_by_source(project_id, source)
+    _db.delete_image_by_source(project_id, source)
     _db.delete_kb_tree_by_source(project_id, source)
     _invalidate_bm25(project_id)
     return n
@@ -363,5 +463,6 @@ def delete_doc(project_id: str, source: str) -> int:
 def delete_project_kb(project_id: str) -> int:
     """删除项目全部知识库（级联删除时调用）"""
     n = _db.delete_kb_project(project_id)
+    _db.delete_image_project(project_id)
     _invalidate_bm25(project_id)
     return n

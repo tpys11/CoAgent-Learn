@@ -82,6 +82,7 @@ class SQLiteClient:
         """知识库向量表 + 记忆向量表；维度跟随 EMBEDDING_DIM，避免与模型输出不匹配。"""
         from core.config import config as _cfg
         _dim = int(getattr(_cfg, "EMBEDDING_DIM", 1024) or 1024)
+        _vl_dim = int(getattr(_cfg, "VL_EMBEDDING_DIM", 4096) or 4096)
         self.execute(
             f"CREATE VIRTUAL TABLE IF NOT EXISTS kb_vectors USING vec0("
             f"doc_id TEXT, project_id TEXT, source TEXT, chunk INTEGER, session_id TEXT,"
@@ -95,6 +96,12 @@ class SQLiteClient:
         self.execute(
             f"CREATE VIRTUAL TABLE IF NOT EXISTS message_vectors USING vec0("
             f"dialogue_id TEXT, role TEXT, content TEXT, embedding float[{_dim}])"
+        )
+        # 图片跨模态向量表：Qwen3-VL-Embedding 输出维度（独立于文字 embedding 维度）
+        self.execute(
+            f"CREATE VIRTUAL TABLE IF NOT EXISTS image_vectors USING vec0("
+            f"doc_id TEXT, project_id TEXT, source TEXT, content TEXT, file_path TEXT,"
+            f"mime TEXT, embedding float[{_vl_dim}])"
         )
         # 知识库文档标题树（上传时提取 markdown 标题层级，供项目记忆知识图谱使用）
         self.execute(
@@ -128,10 +135,12 @@ class SQLiteClient:
         m = re.search(r"float\[(\d+)\]", rows[0]["sql"])
         return int(m.group(1)) if m else None
 
-    def ensure_vector_dim(self, table: str) -> int:
-        """确认向量表维度与当前配置一致；不一致时抛明确错误，避免静默写 0 块。"""
+    def ensure_vector_dim(self, table: str, expected: int | None = None) -> int:
+        """确认向量表维度与当前配置一致；不一致时抛明确错误，避免静默写 0 块。
+        expected 为空时按 EMBEDDING_DIM；图片表传入 VL_EMBEDDING_DIM。"""
         from core.config import config as _cfg
-        expected = int(getattr(_cfg, "EMBEDDING_DIM", 1024) or 1024)
+        if expected is None:
+            expected = int(getattr(_cfg, "EMBEDDING_DIM", 1024) or 1024)
         actual = self.vector_table_dim(table)
         if actual is not None and actual != expected:
             raise RuntimeError(
@@ -218,6 +227,59 @@ class SQLiteClient:
                     [(None, it[0], it[1], it[2], it[3], it[4], int(it[5]), it[6], _sv.serialize_float32(it[7])) for it in batch],
                 )
                 self.conn.commit()
+
+    def upsert_image_vectors_bulk(self, items: list):
+        """批量 upsert 图片向量：vec0 不支持 UPDATE，先 DELETE 再 INSERT。
+        items: [(doc_id, project_id, source, content, file_path, mime, embedding)]"""
+        if not items:
+            return
+        import sqlite_vec as _sv
+        with self._lock:
+            for it in items:
+                self.conn.execute("DELETE FROM image_vectors WHERE doc_id = ?", (it[0],))
+                self.conn.execute(
+                    "INSERT INTO image_vectors(rowid, doc_id, project_id, source, content, file_path, mime, embedding) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (None, it[0], it[1], it[2], it[3], it[4], it[5], _sv.serialize_float32(it[6])),
+                )
+            self.conn.commit()
+
+    def search_image_vectors(self, project_id: str, query_embedding: list, k: int = 3) -> list[dict]:
+        import sqlite_vec as _sv
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT rowid, distance, doc_id, source, content, file_path, mime "
+                "FROM image_vectors WHERE project_id = ? AND embedding MATCH ? AND k = ? "
+                "ORDER BY distance",
+                (project_id, _sv.serialize_float32(query_embedding), k),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_image_docs(self, project_id: str) -> list[dict]:
+        """取项目全部图片向量元数据（用于判断是否需要跨模态检索）"""
+        return self.execute(
+            "SELECT rowid, doc_id, source, content, file_path, mime FROM image_vectors WHERE project_id = ?",
+            (project_id,),
+        )
+
+    def delete_image_by_source(self, project_id: str, source: str) -> int:
+        rows = self.execute(
+            "SELECT rowid FROM image_vectors WHERE project_id = ? AND source = ?",
+            (project_id, source),
+        )
+        ids = [r["rowid"] for r in rows]
+        if ids:
+            ph = ",".join("?" * len(ids))
+            self.execute(f"DELETE FROM image_vectors WHERE rowid IN ({ph})", tuple(ids))
+        return len(ids)
+
+    def delete_image_project(self, project_id: str) -> int:
+        rows = self.execute("SELECT rowid FROM image_vectors WHERE project_id = ?", (project_id,))
+        ids = [r["rowid"] for r in rows]
+        if ids:
+            ph = ",".join("?" * len(ids))
+            self.execute(f"DELETE FROM image_vectors WHERE rowid IN ({ph})", tuple(ids))
+        return len(ids)
 
     def upsert_kb_tree(self, project_id: str, source: str, tree: list):
         """保存文档标题树（json）"""

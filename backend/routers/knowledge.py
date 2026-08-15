@@ -9,6 +9,15 @@ from pydantic import BaseModel
 logger = logging.getLogger("coagent.knowledge")
 router = APIRouter()
 
+_IMG_MIME = {
+    "png": "image/png",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "gif": "image/gif",
+    "webp": "image/webp",
+    "bmp": "image/bmp",
+}
+
 
 def _process_upload(project_id, text, source, session_id, api_key, skip_context: bool = False, skip_graph: bool = False, content_hash: str = "") -> int:
     """处理上传：存原文到资源表 + 切块向量化入库，返回入库块数。
@@ -45,6 +54,33 @@ def _process_upload(project_id, text, source, session_id, api_key, skip_context:
         except Exception:
             logger.warning("记录内容去重 hash 失败", exc_info=True)
     return n
+
+
+def _store_image_vector(project_id: str, source: str, data: bytes, desc: str, ext: str):
+    """把图片落盘到 data/uploads，并生成 Qwen3-VL-Embedding 图片向量入库（失败不阻塞文字入库）。"""
+    try:
+        import base64 as _b64
+        import hashlib as _hl
+        import os as _os
+        from core.knowledge_service import add_image
+        mime = _IMG_MIME.get(ext, "image/png")
+        doc_id = _hl.md5((source + project_id).encode("utf-8")).hexdigest()[:24]
+        up_dir = "/app/data/uploads"
+        _os.makedirs(up_dir, exist_ok=True)
+        fname = doc_id + (("." + ext) if ext else "")
+        fpath = _os.path.join(up_dir, fname)
+        try:
+            with open(fpath, "wb") as f:
+                f.write(data)
+        except Exception:
+            logger.warning("图片落盘失败 source=%s", source, exc_info=True)
+            fpath = ""
+        data_uri = "data:" + mime + ";base64," + _b64.b64encode(data).decode()
+        # 存公开回显路径（/uploads 静态挂载），前端可直接 <img src=...> 展示
+        public_path = ("/uploads/" + fname) if fpath else ""
+        add_image(project_id, source, data_uri, desc, file_path=public_path, mime=mime)
+    except Exception:
+        logger.exception("图片向量处理失败 source=%s", source)
 
 
 class KnowledgeUpload(BaseModel):
@@ -218,7 +254,8 @@ async def knowledge_upload_file(
     data = await file.read()
     fname = file.filename or "file"
     _IMG_EXTS = {"png", "jpg", "jpeg", "gif", "webp", "bmp"}
-    if fname.rsplit(".", 1)[-1].lower() in _IMG_EXTS:
+    _ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
+    if _ext in _IMG_EXTS:
         from core.config import config as _cfg
         if getattr(_cfg, "IMAGE_BACKEND", "none") != "api":
             return {"status": "error", "msg": "图片处理未启用（设置→AI 服务→其他选择→图片处理 选择厂商 API）"}
@@ -238,10 +275,14 @@ async def knowledge_upload_file(
     if wait:
         from starlette.concurrency import run_in_threadpool
         chunks = await run_in_threadpool(_process_upload, project_id, text, source, session_id, api_key, False, False, _ch)
+        if _ext in _IMG_EXTS:
+            await run_in_threadpool(_store_image_vector, project_id, source, data, desc, _ext)
         if chunks == -1:
             return {"status": "ok", "chunks": 0, "duplicate": True, "source": source, "msg": "内容已存在，已跳过重复入库"}
         return {"status": "ok", "chunks": chunks, "source": source}
     _threading.Thread(target=_process_upload, args=(project_id, text, source, session_id, api_key, False, False, _ch), daemon=True).start()
+    if _ext in _IMG_EXTS:
+        _threading.Thread(target=_store_image_vector, args=(project_id, source, data, desc, _ext), daemon=True).start()
     return {"status": "processing", "msg": "正在处理，稍后刷新查看"}
 
 

@@ -10,6 +10,7 @@ from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 import json
 import logging
@@ -59,6 +60,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 图片等上传文件静态回显（跨模态检索命中图片后前端可直接取图）
+_UPLOADS_DIR = "/app/data/uploads"
+try:
+    os.makedirs(_UPLOADS_DIR, exist_ok=True)
+    app.mount("/uploads", StaticFiles(directory=_UPLOADS_DIR), name="uploads")
+except Exception:
+    logger.exception("挂载上传目录失败")
 
 app.include_router(settings_router)
 app.include_router(projects_router)

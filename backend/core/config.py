@@ -39,6 +39,8 @@ class Config:
     VL_API_KEY: str = os.getenv("VL_API_KEY", "")
     VL_MODEL: str = os.getenv("VL_MODEL", "Qwen/Qwen3-VL-Embedding-8B")
     VL_BASE_URL: str = os.getenv("VL_BASE_URL", "https://api.siliconflow.cn/v1")
+    # Qwen3-VL-Embedding 输出维度（文本/图片同一 4096 维空间，跨模态检索依赖此对齐）
+    VL_EMBEDDING_DIM: int = int(os.getenv("VL_EMBEDDING_DIM", "4096"))
     # 图片描述（多模态对话）：走硅基流动视觉模型（复用硅基流动 key），模型可换
     IMAGE_DESC_MODEL: str = os.getenv("IMAGE_DESC_MODEL", "Qwen/Qwen3.5-4B")
 
