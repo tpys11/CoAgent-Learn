@@ -178,12 +178,34 @@ export default function SettingsModal({ onClose, projectId }: Props) {
     }).catch(() => {})
   }, [])
 
+  // 构造后端 SettingsSave 提交体（显式下划线字段，避免 spread 驼峰/多余字段不匹配）
+  const buildSvcBody = () => ({
+    vector_model: svc.vectorModel,
+    embedding_backend: svc.embedding_backend,
+    embedding_base_url: svc.embedding_base_url,
+    embedding_api_key: svcKeys.embedding_api_key,
+    embedding_model: svc.embedding_model,
+    embedding_local_model: svc.embedding_local_model,
+    embedding_dim: svc.embedding_dim,
+    rerank_backend: svc.rerank_backend,
+    rerank_base_url: svc.rerank_base_url,
+    rerank_api_key: svcKeys.rerank_api_key,
+    rerank_model: svc.rerank_model,
+    rerank_local_model: svc.rerank_local_model,
+    image_backend: svc.image_backend,
+    image_base_url: svc.image_base_url,
+    image_api_key: svcKeys.image_api_key,
+    image_model: svc.image_model,
+    vl_api_key: svcKeys.vl_api_key,
+    zhipu_api_key: svcKeys.zhipu_api_key,
+  })
+
   const saveService = async () => {
     try {
       const r = await fetch('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...svc, ...svcKeys }),
+        body: JSON.stringify(buildSvcBody()),
       })
       const d = await r.json()
       if (!r.ok) { flash(d.msg || '保存失败'); return }
@@ -201,7 +223,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
       const r = await fetch('/api/settings/test', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...svc, ...svcKeys }),
+        body: JSON.stringify(buildSvcBody()),
       })
       const d = await r.json()
       const rs = d.results || {}
