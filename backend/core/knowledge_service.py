@@ -17,14 +17,13 @@ _embedder = None
 
 
 def _get_embedder():
-    """加载中文 embedding 模型（bge-small-zh-v1.5，512 维）"""
+    """加载本地部署 embedding 模型（模型名/路径由配置 EMBEDDING_LOCAL_MODEL 指定，默认 bge-small-zh-v1.5）"""
     global _embedder
     if _embedder is None:
         try:
-            # 直连 huggingface.co（实测容器内可达且稳定；hf-mirror 与
-            # huggingface_hub>=1.24 的响应头校验不兼容，会下载失败）
+            from core.config import config as _cfg
             from sentence_transformers import SentenceTransformer
-            _embedder = SentenceTransformer("BAAI/bge-small-zh-v1.5")
+            _embedder = SentenceTransformer(getattr(_cfg, "EMBEDDING_LOCAL_MODEL", "BAAI/bge-small-zh-v1.5"))
         except Exception:
             _embedder = False
     return _embedder or None
@@ -320,9 +319,9 @@ def _get_reranker():
         return _reranker_api
     if _reranker_local is None:
         try:
-            # 直连 huggingface.co（同 _get_embedder 的原因）
+            from core.config import config as _cfg
             from sentence_transformers import CrossEncoder
-            _reranker_local = CrossEncoder("BAAI/bge-reranker-base", max_length=512)
+            _reranker_local = CrossEncoder(getattr(_cfg, "RERANK_LOCAL_MODEL", "BAAI/bge-reranker-base"), max_length=512)
         except Exception:
             _reranker_local = False
     return _reranker_local or None

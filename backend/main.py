@@ -74,16 +74,21 @@ async def health_check():
 # ---------- 动态服务配置（前端设置界面读写，即时生效无需重启） ----------
 
 class SettingsSave(BaseModel):
-    embedding_backend: str = "local"
+    embedding_backend: str = "api"
     embedding_base_url: str = ""
     embedding_api_key: str = ""
     embedding_model: str = "BAAI/bge-m3"
+    embedding_local_model: str = "BAAI/bge-small-zh-v1.5"
     embedding_dim: int = 1024
-    rerank_backend: str = "local"
+    rerank_backend: str = "api"
     rerank_base_url: str = ""
     rerank_api_key: str = ""
     rerank_model: str = "BAAI/bge-reranker-v2-m3"
-    image_backend: str = "zhipu"   # none | zhipu（GLM-4V 描述）| siliconflow（Qwen3-VL 图像向量）
+    rerank_local_model: str = "BAAI/bge-reranker-base"
+    image_backend: str = "none"   # none | api（通用 OpenAI 兼容视觉接口）
+    image_base_url: str = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+    image_api_key: str = ""
+    image_model: str = "glm-4v-flash"
     zhipu_api_key: str = ""
 
 
@@ -96,6 +101,7 @@ async def get_settings():
             "backend": _cfg.EMBEDDING_BACKEND,
             "base_url": _cfg.EMBEDDING_BASE_URL,
             "model": _cfg.EMBEDDING_MODEL,
+            "local_model": getattr(_cfg, "EMBEDDING_LOCAL_MODEL", "BAAI/bge-small-zh-v1.5"),
             "dim": int(getattr(_cfg, "EMBEDDING_DIM", 1024)),
             "api_key_set": bool(getattr(_cfg, "EMBEDDING_API_KEY", "")),
         },
@@ -103,9 +109,15 @@ async def get_settings():
             "backend": _cfg.RERANK_BACKEND,
             "base_url": _cfg.RERANK_BASE_URL,
             "model": _cfg.RERANK_MODEL,
+            "local_model": getattr(_cfg, "RERANK_LOCAL_MODEL", "BAAI/bge-reranker-base"),
             "api_key_set": bool(getattr(_cfg, "RERANK_API_KEY", "")),
         },
-        "image": {"backend": getattr(_cfg, "IMAGE_BACKEND", "zhipu")},
+        "image": {
+            "backend": getattr(_cfg, "IMAGE_BACKEND", "none"),
+            "base_url": getattr(_cfg, "IMAGE_BASE_URL", ""),
+            "model": getattr(_cfg, "IMAGE_MODEL", "glm-4v-flash"),
+            "api_key_set": bool(getattr(_cfg, "IMAGE_API_KEY", "") or getattr(_cfg, "ZHIPU_API_KEY", "")),
+        },
         "zhipu": {"api_key_set": bool(getattr(_cfg, "ZHIPU_API_KEY", ""))},
     }
 
@@ -119,12 +131,17 @@ async def save_settings(req: SettingsSave):
     _s.set_setting("EMBEDDING_BASE_URL", req.embedding_base_url)
     _s.set_setting("EMBEDDING_API_KEY", req.embedding_api_key)
     _s.set_setting("EMBEDDING_MODEL", req.embedding_model)
+    _s.set_setting("EMBEDDING_LOCAL_MODEL", req.embedding_local_model)
     _s.set_setting("EMBEDDING_DIM", str(req.embedding_dim))
     _s.set_setting("RERANK_BACKEND", req.rerank_backend)
     _s.set_setting("RERANK_BASE_URL", req.rerank_base_url)
     _s.set_setting("RERANK_API_KEY", req.rerank_api_key)
     _s.set_setting("RERANK_MODEL", req.rerank_model)
+    _s.set_setting("RERANK_LOCAL_MODEL", req.rerank_local_model)
     _s.set_setting("IMAGE_BACKEND", req.image_backend)
+    _s.set_setting("IMAGE_BASE_URL", req.image_base_url)
+    _s.set_setting("IMAGE_API_KEY", req.image_api_key)
+    _s.set_setting("IMAGE_MODEL", req.image_model)
     _s.set_setting("ZHIPU_API_KEY", req.zhipu_api_key)
     _apply_dynamic_settings()
     return {"status": "ok", "msg": "配置已保存并即时生效"}
