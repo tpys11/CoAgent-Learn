@@ -192,8 +192,6 @@ export default function SettingsModal({ onClose, projectId }: Props) {
       setSvc(s => ({ ...s,
         embedding_key_set: !!g.embedding?.api_key_set, rerank_key_set: !!g.rerank?.api_key_set,
         image_key_set: !!g.image?.api_key_set, vl_key_set: !!g.vl?.api_key_set }))
-      // 保存成功后同步测试连接并返回结果
-      await testService()
     } catch { flash('保存失败（后端不可达）') }
   }
 
@@ -389,9 +387,8 @@ export default function SettingsModal({ onClose, projectId }: Props) {
                       {svc.embedding_key_set && <span className="text-[10px] text-green-600 flex-shrink-0">✓ 已配置</span>}
                     </div>
                     <div className="flex justify-end">
-                      <button onClick={saveService} className="px-4 py-1.5 text-[11px] bg-[#1a1a1a] text-white rounded-lg font-semibold">保存并测试</button>
+                      <button onClick={saveService} className="px-4 py-1.5 text-[11px] bg-[#1a1a1a] text-white rounded-lg font-semibold">保存</button>
                     </div>
-                    {svcTest && <p className={`text-[11px] ${svcTest.includes('失败') ? 'text-red-500' : 'text-green-600'}`}>{svcTest}</p>}
                     <p className="text-[10px] text-dim">填写硅基流动 API，下方模型直接选用即可。</p>
                   </div>
                   {/* 知识库向量化服务：模型单选 */}
@@ -435,6 +432,11 @@ export default function SettingsModal({ onClose, projectId }: Props) {
                         </button>
                       ))}
                     </div>
+                    {/* 测试按钮（图片处理栏右下方）+ 测试结果 */}
+                    <div className="flex justify-end">
+                      <button onClick={testService} className="px-4 py-1.5 text-[11px] border hairline rounded-lg font-semibold text-dim hover:text-[var(--text)] transition-colors">测试</button>
+                    </div>
+                    {svcTest && <p className={`text-[11px] ${svcTest.includes('失败') ? 'text-red-500' : 'text-green-600'}`}>{svcTest}</p>}
                   </div>
                 </div>
               </Section>
