@@ -156,21 +156,27 @@ async def save_settings(req: SettingsSave):
 
 @app.post("/api/settings/test")
 async def test_settings(req: SettingsSave):
-    """用传入配置测试连接（不保存）：embedding/rerank/视觉 各一次最小调用"""
+    """用传入配置测试连接（不保存）：embedding/rerank/视觉 各一次最小调用；路由跟随所选模型 vector_model"""
     import requests as _req
     results = {}
-    # embedding
+    _vm = req.vector_model or "bge"
+    # embedding（路由跟随所选模型：qwen → Qwen3-VL-Embedding-8B，bge → bge-m3）
     if req.embedding_backend == "api":
-        try:
-            _u = (req.embedding_base_url or "").rstrip("/") + "/embeddings"
-            _r = _req.post(_u, json={"model": req.embedding_model, "input": ["测试"]},
-                           headers={"Authorization": "Bearer " + req.embedding_api_key}, timeout=20)
-            if _r.status_code == 200 and _r.json().get("data"):
-                results["embedding"] = {"ok": True, "dim": len(_r.json()["data"][0]["embedding"])}
-            else:
-                results["embedding"] = {"ok": False, "msg": f"HTTP {_r.status_code}: {_r.text[:120]}"}
-        except Exception as e:
-            results["embedding"] = {"ok": False, "msg": str(e)[:120]}
+        _ek = (req.vl_api_key or req.embedding_api_key) if _vm == "qwen" else req.embedding_api_key
+        _em = "Qwen/Qwen3-VL-Embedding-8B" if _vm == "qwen" else req.embedding_model
+        if not _ek:
+            results["embedding"] = {"ok": False, "msg": "未配置 API Key"}
+        else:
+            try:
+                _u = (req.embedding_base_url or "").rstrip("/") + "/embeddings"
+                _r = _req.post(_u, json={"model": _em, "input": ["测试"]},
+                               headers={"Authorization": "Bearer " + _ek}, timeout=20)
+                if _r.status_code == 200 and _r.json().get("data"):
+                    results["embedding"] = {"ok": True, "dim": len(_r.json()["data"][0]["embedding"])}
+                else:
+                    results["embedding"] = {"ok": False, "msg": f"HTTP {_r.status_code}: {_r.text[:120]}"}
+            except Exception as e:
+                results["embedding"] = {"ok": False, "msg": str(e)[:120]}
     else:
         results["embedding"] = {"ok": True, "msg": "本地后端无需测试"}
     # rerank（地址/Key 留空时复用向量化配置，与 _ApiReranker 逻辑一致）
@@ -191,8 +197,10 @@ async def test_settings(req: SettingsSave):
                 results["rerank"] = {"ok": False, "msg": str(e)[:120]}
     else:
         results["rerank"] = {"ok": True, "msg": "本地后端无需测试"}
-    # Qwen3-VL-Embedding（视觉/跨模态向量）
-    if req.vl_api_key:
+    # Qwen3-VL-Embedding（视觉/跨模态向量）：Qwen 模式下主模型即覆盖；BGE 模式独立测 vl key
+    if _vm == "qwen":
+        results["vl"] = {"ok": True, "msg": "当前主模型为 Qwen3-VL，视觉向量已覆盖"}
+    elif req.vl_api_key:
         try:
             _u = "https://api.siliconflow.cn/v1/embeddings"
             _r = _req.post(_u, json={"model": "Qwen/Qwen3-VL-Embedding-8B", "input": ["测试"]},

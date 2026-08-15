@@ -206,9 +206,9 @@ export default function SettingsModal({ onClose, projectId }: Props) {
       const d = await r.json()
       const rs = d.results || {}
       const lines = [
-        rs.embedding ? `向量化：${rs.embedding.ok ? (rs.embedding.msg || `OK${rs.embedding.dim ? '（' + rs.embedding.dim + ' 维）' : ''}`) : '失败 ' + (rs.embedding.msg || '')}` : '',
+        rs.embedding ? `向量化（${svc.vectorModel === 'qwen' ? 'Qwen3-VL-Embedding' : 'bge-m3'}）：${rs.embedding.ok ? (rs.embedding.msg || `OK${rs.embedding.dim ? '（' + rs.embedding.dim + ' 维）' : ''}`) : '失败 ' + (rs.embedding.msg || '')}` : '',
         rs.rerank ? `重排：${rs.rerank.ok ? (rs.rerank.msg || 'OK') : '失败 ' + (rs.rerank.msg || '')}` : '',
-        rs.vl ? `视觉向量：${rs.vl.ok ? (rs.vl.msg || `OK${rs.vl.dim ? '（' + rs.vl.dim + ' 维）' : ''}`) : '失败 ' + (rs.vl.msg || '')}` : '',
+        rs.vl ? `视觉向量（Qwen3-VL）：${rs.vl.ok ? (rs.vl.msg || `OK${rs.vl.dim ? '（' + rs.vl.dim + ' 维）' : ''}`) : '失败 ' + (rs.vl.msg || '')}` : '',
         rs.zhipu ? `图片描述：${rs.zhipu.ok ? (rs.zhipu.msg || 'OK') : '失败 ' + (rs.zhipu.msg || '')}` : '',
       ].filter(Boolean).join(' ｜ ')
       setSvcTest(lines || '无测试项')
