@@ -315,7 +315,7 @@ async def generate_special(req: GenerateSpecialReq):
     forms_desc = {
         "table": "markdown 表格（列清晰、适合对比/维度）",
         "flow": "mermaid 流程图代码（flowchart TD 语法，不要代码块围栏）",
-        "tree": "树状层级结构（用 markdown 无序列表表示，每层缩进两个空格，如 '- 根节点'、'  - 子节点'、'    - 孙节点'）",
+        "tree": "树状层级结构（纯文本，用缩进表示层级：根节点顶格，子节点缩进2个空格，孙节点缩进4个空格，依此类推；不要用 markdown 列表符号、不要编号）",
         "report": "markdown 结构化报告（分小节）",
         "quiz": "3-5 道测试题（每题含 题目/选项/答案）",
     }

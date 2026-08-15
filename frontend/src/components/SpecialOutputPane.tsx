@@ -35,11 +35,8 @@ function Mermaid({ code }: { code: string }) {
         ref.current.innerHTML = svg
         const svgEl = ref.current.querySelector('svg')
         if (svgEl) {
-          // 用 !important 强制覆盖 mermaid 内联的 max-width
+          // 实测：svg 默认 width=100%，只需移除内联 max-width 即可占满容器
           svgEl.style.setProperty('max-width', 'none', 'important')
-          svgEl.style.setProperty('width', '100%', 'important')
-          svgEl.style.setProperty('height', 'auto', 'important')
-          svgEl.style.setProperty('display', 'block', 'important')
         }
       }
     }).catch(() => {
@@ -122,7 +119,9 @@ export default function SpecialOutputPane({ messages }: { messages: Message[] })
               {curResult ? (
                 form === 'flow'
                   ? <Mermaid code={curResult} />
-                  : <div className="text-xs md-answer-body" dangerouslySetInnerHTML={{ __html: renderMd(curResult) }} />
+                  : form === 'tree'
+                    ? <div className="text-xs whitespace-pre-wrap leading-relaxed font-mono">{curResult}</div>
+                    : <div className="text-xs md-answer-body" dangerouslySetInnerHTML={{ __html: renderMd(curResult) }} />
               ) : (
                 <div className="text-xs text-dim text-center pt-10 leading-relaxed">选择上方形式，点「生成」基于整个对话生成{cur.label}</div>
               )}
