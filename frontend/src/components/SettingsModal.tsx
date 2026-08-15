@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect } from 'react'
-import { X, Sun, Moon, Monitor, Type, LampDesk, Sliders, Zap, MessageSquare, Key, Timer, Database, Plug, Bug, Check, Trash2, Plus, Download, Github } from 'lucide-react'
+import { X, Sun, Moon, Monitor, Type, LampDesk, Sliders, Zap, MessageSquare, Key, Timer, Database, Plug, Bug, Check, Trash2, Plus, Download, Github, ChevronRight } from 'lucide-react'
 import { getThemePref, setThemePref, type ThemePref } from '../theme'
 
 interface Props {
@@ -154,6 +154,8 @@ export default function SettingsModal({ onClose, projectId }: Props) {
   // key 输入框（不回显已存 key，只显示"已配置"状态）
   const [svcKeys, setSvcKeys] = useState({ embedding_api_key: '', rerank_api_key: '', image_api_key: '', zhipu_api_key: '' })
   const [svcTest, setSvcTest] = useState('')
+  // 其他选择折叠
+  const [showOther, setShowOther] = useState(false)
 
   useEffect(() => {
     fetch('/api/settings').then(r => r.json()).then(d => {
@@ -387,9 +389,13 @@ export default function SettingsModal({ onClose, projectId }: Props) {
                     </div>
                     <p className="text-[10px] text-dim">BAAI 多语言向量模型：把文档/文本转为向量，供知识库语义检索（BM25 混合 + 重排精排）。同一个硅基流动 Key 自动驱动重排与图片向量，无需重复配置。</p>
                   </div>
-                  {/* 其他选择：向量化 / 重排 / 图片 分开自由配置（厂商 API 或本地部署，模型名自填） */}
+                  {/* 其他选择：向量化 / 重排 / 图片 分开自由配置（厂商 API 或本地部署，模型名自填），可折叠 */}
                   <div className="flex flex-col gap-4 border-t hairline pt-4">
-                    <p className="text-sm font-semibold">其他选择</p>
+                    <button onClick={() => setShowOther(o => !o)} className="text-sm font-semibold flex items-center gap-1.5 hover:text-[var(--text)] transition-colors">
+                      其他选择
+                      <ChevronRight size={14} className={`transition-transform text-dim ${showOther ? 'rotate-90' : ''}`} />
+                    </button>
+                    {showOther && (<div className="flex flex-col gap-4 pt-3">
                     {/* 向量化 */}
                     <div className="flex flex-col gap-2">
                       <p className="text-[11px] font-semibold text-dim">向量化（Embedding）</p>
@@ -508,6 +514,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
                         </>
                       )}
                     </div>
+                    </div>)}
                   </div>
                   {/* 操作按钮 */}
                   <div className="flex items-center gap-3 border-t hairline pt-4">
