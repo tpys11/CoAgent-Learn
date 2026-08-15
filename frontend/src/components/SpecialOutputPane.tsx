@@ -21,7 +21,7 @@ const FORMS: Array<{ key: FormKey; label: string; icon: any; desc: string }> = [
 ]
 
 const SUPPORTED: FormKey[] = ['summary', 'flashcards', 'quiz', 'mindmap', 'table']
-const TEXT_FORMS: FormKey[] = ['summary', 'mindmap', 'table']  // 文本形式：可边收边显示
+const TEXT_FORMS: FormKey[] = ['summary', 'table']  // 文本形式：可边收边显示（mindmap 是整体图，不能分段，单独处理）
 const SAVED_KEY = 'coagent-special-saved'
 
 type SavedItem = { id: number; form: FormKey; label: string; content: any; time: string }
