@@ -178,6 +178,8 @@ def add_document(project_id: str, text: str, source: str = "", session_id: str =
     chunks = _chunk_text(text)
     if not chunks:
         return 0
+    # 入库前确认向量表维度与当前 embedding 配置一致；不一致直接报错，不再静默返回 0 块
+    _db.ensure_vector_dim("kb_vectors")
     # 向量化（分批，模型一次 32 条）
     embeddings = []
     batch = 32

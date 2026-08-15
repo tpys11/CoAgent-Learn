@@ -3,6 +3,7 @@
 接口兼容原 pg_client（execute 返回 list[dict]），替换 PostgreSQL+Chroma。
 """
 import os
+import re
 import sqlite3
 import threading
 import time
@@ -78,20 +79,22 @@ class SQLiteClient:
     # ── 向量操作（sqlite-vec）──
 
     def create_vector_tables(self):
-        """知识库向量表 + 记忆向量表（float[1024]，bge-small-zh 输出 512 维亦可存）"""
+        """知识库向量表 + 记忆向量表；维度跟随 EMBEDDING_DIM，避免与模型输出不匹配。"""
+        from core.config import config as _cfg
+        _dim = int(getattr(_cfg, "EMBEDDING_DIM", 1024) or 1024)
         self.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS kb_vectors USING vec0("
-            "doc_id TEXT, project_id TEXT, source TEXT, chunk INTEGER, session_id TEXT,"
-            "has_context INTEGER, content TEXT, embedding float[1024])"
+            f"CREATE VIRTUAL TABLE IF NOT EXISTS kb_vectors USING vec0("
+            f"doc_id TEXT, project_id TEXT, source TEXT, chunk INTEGER, session_id TEXT,"
+            f"has_context INTEGER, content TEXT, embedding float[{_dim}])"
         )
         self.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS memory_vectors USING vec0("
-            "scope TEXT, content TEXT, embedding float[1024])"
+            f"CREATE VIRTUAL TABLE IF NOT EXISTS memory_vectors USING vec0("
+            f"scope TEXT, content TEXT, embedding float[{_dim}])"
         )
         # 会话消息向量表（上下文压缩后的历史召回：压缩不物理删除，细节可检索找回）
         self.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS message_vectors USING vec0("
-            "dialogue_id TEXT, role TEXT, content TEXT, embedding float[1024])"
+            f"CREATE VIRTUAL TABLE IF NOT EXISTS message_vectors USING vec0("
+            f"dialogue_id TEXT, role TEXT, content TEXT, embedding float[{_dim}])"
         )
         # 知识库文档标题树（上传时提取 markdown 标题层级，供项目记忆知识图谱使用）
         self.execute(
@@ -99,6 +102,7 @@ class SQLiteClient:
             "project_id TEXT, source TEXT, tree TEXT, updated_at TEXT DEFAULT (datetime('now')), "
             "PRIMARY KEY (project_id, source))"
         )
+
         # 链接/内置资源内容缓存：首次上传联网抓取后存库，之后同一资源直接从内部获取（不联网）
         self.execute(
             "CREATE TABLE IF NOT EXISTS preset_docs("
@@ -115,6 +119,25 @@ class SQLiteClient:
             "CREATE TABLE IF NOT EXISTS settings("
             "key TEXT PRIMARY KEY, value TEXT, updated_at TEXT DEFAULT (datetime('now')))"
         )
+
+    def vector_table_dim(self, table: str) -> int | None:
+        """读取已存在的 vec0 向量表维度；不存在或无法解析返回 None。"""
+        rows = self.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name=?", (table,))
+        if not rows or not rows[0].get("sql"):
+            return None
+        m = re.search(r"float\[(\d+)\]", rows[0]["sql"])
+        return int(m.group(1)) if m else None
+
+    def ensure_vector_dim(self, table: str) -> int:
+        """确认向量表维度与当前配置一致；不一致时抛明确错误，避免静默写 0 块。"""
+        from core.config import config as _cfg
+        expected = int(getattr(_cfg, "EMBEDDING_DIM", 1024) or 1024)
+        actual = self.vector_table_dim(table)
+        if actual is not None and actual != expected:
+            raise RuntimeError(
+                f"向量表 {table} 当前为 {actual} 维，embedding 配置为 {expected} 维；请重建向量表"
+            )
+        return actual if actual is not None else expected
 
     def get_setting(self, key: str) -> str:
         """读动态配置；未配置返回空串"""
