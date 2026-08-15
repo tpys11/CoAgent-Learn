@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, Fragment } from 'react'
 import { KnowledgeTree } from './KbTree'
 import SpecialOutputPane from './SpecialOutputPane'
 import MarkdownIt from 'markdown-it'
+import { streamChatResponse } from '../sse'
 
 // 第二对话回答渲染：markdown-it 轻量渲染（html:false 防 XSS，breaks 换行生效）
 const mdSide = new MarkdownIt({ html: false, linkify: true, breaks: true })
@@ -176,27 +177,10 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text, dialogue_id: sideDialogueIdRef.current, project_id: projectId || 'default', api_key: localStorage.getItem('coagent-apikey') || undefined, followup_focus: 'expand' })
       })
-      const reader = resp.body ? resp.body.getReader() : null
-      let buf = ''
       let reply = ''
-      if (reader) {
-        const dec = new TextDecoder()
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          buf += dec.decode(value, { stream: true })
-          let idx
-          while ((idx = buf.indexOf('\n\n')) >= 0) {
-            const chunk = buf.slice(0, idx); buf = buf.slice(idx + 2)
-            if (chunk.startsWith('data: ')) {
-              try {
-                const d = JSON.parse(chunk.slice(6))
-                if (d.type === 'done' && d.reply) reply = d.reply
-              } catch (e) {}
-            }
-          }
-        }
-      }
+      await streamChatResponse(resp, (d) => {
+        if (d.type === 'done' && d.reply) reply = d.reply
+      })
       setSideMessages(prev => [...prev, { role: 'assistant', content: reply || '（无回复）' }])
     } catch (e) {
       setSideMessages(prev => [...prev, { role: 'assistant', content: '请求失败' }])

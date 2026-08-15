@@ -26,6 +26,7 @@ import IntroPanel from './components/IntroPanel'
 import { initTheme } from './theme'
 import type { Project, Dialogue, AgentConfig, Message } from './types'
 import { DEFAULT_AGENTS } from './types'
+import { streamChatResponse, type ChatEvent } from './sse'
 
 function generateId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }
 // 项目 ID 固定：首次生成后存 localStorage，刷新复用（保证知识库/图谱数据不因刷新丢失）
@@ -521,135 +522,127 @@ function App() {
         setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'assistant', content: '⚠️ 请求失败（HTTP ' + (res ? res.status : '网络错误') + '），请检查后端服务与 API Key。' }] }))
         return
       }
-      const reader = res.body!.getReader(); const decoder = new TextDecoder()
       let finalReply = ''; const steps: any[] = []; let taskStats: any = null; let flowError = ''
       // 特殊形式输出建议（模型判断）：done 事件注入，随最终消息展示
       let special: Array<{ key: string; label: string }> = []
-      var _buf=""
-      while (true) {
-        const { done, value } = await reader.read(); if (done) break
-        resetTimer()
-        if (firstByte && value && value.length) firstByte = false
-        _buf+=decoder.decode(value,{stream:true})
-        var _lines=_buf.split(String.fromCharCode(10))
-        _buf=_lines.pop()||""
-        for (const line of _lines) {
-          if (!line.startsWith('data: ')) continue
-          const data = JSON.parse(line.slice(6))
-          if (data.type === 'start') { requestIdRef.current = data.request_id || null; continue }
-          if (data.type === 'clarify') {
-            // 需求澄清（reasonix 式）：后端发 clarify 后中断流程（无 done）；把澄清问题+选项写进思维链"学习助手·规划"条目；
-            // 用户点选项后作为新消息重发。标记 clarifyRef——流结束后保留占位消息等待选择（不显示"处理完成"）
-            clarifyRef.current = true
-            const item: any = { agent: '学习助手·规划', content: '', clarify: { question: data.question || '请明确你的需求', options: Array.isArray(data.options) ? data.options : [] } }
-            setFlowMindchain(prev => { const next = [...prev, item]; mindchainRef.current = next; return next })
-            setAllMessages(prev => {
-              const arr = [...(prev[did || ''] || [])]
-              const last = arr[arr.length - 1]
-              if (last && last.role === 'assistant' && last.content === '') {
-                arr[arr.length - 1] = { ...last, think: mindchainRef.current }
-              }
-              return { ...prev, [did || '']: arr }
-            })
-            continue
-          }
-          if (data.type === 'error') {
-            flowError = data.message || '请求出错'
-            continue
-          }
-          if (data.type === 'step') {
-            setFlowAgents(prev => prev.includes(data.agent) ? prev : [...prev, data.agent])
-            setFlowActiveAgent(data.agent)
-            // 状态文案（纯动作，显示在思维链中该 Agent 标题后面）
-            if (data.agent === '学习助手·规划') {
-              setFlowStatus('正在规划…')
-            } else if (data.agent === '学习助手·生成') {
-              setFlowStatus('正在思考生成…')
-            } else if (data.agent === '学情与记忆管理') {
-              setFlowStatus('正在阅读记忆…')
-            } else if (data.agent === '知识库管理') {
-              setFlowStatus('正在检索知识库…')
-            } else if (data.agent === '审核') {
-              setFlowStatus('正在审核…')
-            } else {
-              setFlowStatus('处理中…')
+      await streamChatResponse(res, (data: ChatEvent) => {
+        if (data.type === 'start') { requestIdRef.current = data.request_id || null; return }
+        if (data.type === 'heartbeat') return
+        if (data.type === 'clarify') {
+          // 需求澄清（reasonix 式）：后端发 clarify 后中断流程（无 done）；把澄清问题+选项写进思维链"学习助手·规划"条目；
+          // 用户点选项后作为新消息重发。标记 clarifyRef——流结束后保留占位消息等待选择（不显示"处理完成"）
+          clarifyRef.current = true
+          const item: any = { agent: '学习助手·规划', content: '', clarify: { question: data.question || '请明确你的需求', options: Array.isArray(data.options) ? data.options : [] } }
+          setFlowMindchain(prev => { const next = [...prev, item]; mindchainRef.current = next; return next })
+          setAllMessages(prev => {
+            const arr = [...(prev[did || ''] || [])]
+            const last = arr[arr.length - 1]
+            if (last && last.role === 'assistant' && last.content === '') {
+              arr[arr.length - 1] = { ...last, think: mindchainRef.current }
             }
-            // Agent 标题立即出现在思维链（内容由后续 thought_token 逐字填充）
-            setFlowMindchain(prev => {
-              const last = prev[prev.length - 1]
-              if (last && last.agent === data.agent) return prev
-              const next = [...prev, { agent: data.agent, content: '' }]
-              mindchainRef.current = next
-              return next
-            })
+            return { ...prev, [did || '']: arr }
+          })
+          return
+        }
+        if (data.type === 'error') {
+          flowError = data.message || '请求出错'
+          return
+        }
+        if (data.type === 'step') {
+          setFlowAgents(prev => prev.includes(data.agent) ? prev : [...prev, data.agent])
+          setFlowActiveAgent(data.agent)
+          // 状态文案（纯动作，显示在思维链中该 Agent 标题后面）
+          if (data.agent === '学习助手·规划') {
+            setFlowStatus('正在规划…')
+          } else if (data.agent === '学习助手·生成') {
+            setFlowStatus('正在思考生成…')
+          } else if (data.agent === '学情与记忆管理') {
+            setFlowStatus('正在阅读记忆…')
+          } else if (data.agent === '知识库管理') {
+            setFlowStatus('正在检索知识库…')
+          } else if (data.agent === '审核') {
+            setFlowStatus('正在审核…')
+          } else {
+            setFlowStatus('处理中…')
           }
-          if (data.type === 'thought_token') {
-            setFlowAgents(prev => prev.includes(data.agent) ? prev : [...prev, data.agent])
-            setFlowActiveAgent(data.agent)
-            // 后端已拆字推送（每事件 1 字）：空白字符（换行等）必须保留；``` 围栏段用状态机丢弃（防 json 围栏显示）
-            const c = data.chunk || ''
-            if (c === '`') {
-              fenceBufRef.current += '`'
-              if (fenceBufRef.current.length >= 3) { fenceInRef.current = !fenceInRef.current; fenceBufRef.current = '' }
-              continue
-            }
-            fenceBufRef.current = ''
-            if (fenceInRef.current) continue  // 围栏内内容丢弃
-            if (!c) continue  // 空串跳过，绝不能中断 SSE 解析循环
-            // 累积到 rAF 帧循环（累积式，非覆盖式——同帧多个 token 不丢失）；每帧 flush 一次
-            const cur = pendingMindRef.current
-            if (cur && cur.agent === data.agent) {
-              cur.text += c
-            } else {
-              pendingMindRef.current = { agent: data.agent, text: c }
-            }
+          // Agent 标题立即出现在思维链（内容由后续 thought_token 逐字填充）
+          setFlowMindchain(prev => {
+            const last = prev[prev.length - 1]
+            if (last && last.agent === data.agent) return prev
+            const next = [...prev, { agent: data.agent, content: '' }]
+            mindchainRef.current = next
+            return next
+          })
+          return
+        }
+        if (data.type === 'thought_token') {
+          setFlowAgents(prev => prev.includes(data.agent) ? prev : [...prev, data.agent])
+          setFlowActiveAgent(data.agent)
+          // 后端已拆字推送（每事件 1 字）：空白字符（换行等）必须保留；``` 围栏段用状态机丢弃（防 json 围栏显示）
+          const c = data.chunk || ''
+          if (c === '`') {
+            fenceBufRef.current += '`'
+            if (fenceBufRef.current.length >= 3) { fenceInRef.current = !fenceInRef.current; fenceBufRef.current = '' }
+            return
+          }
+          fenceBufRef.current = ''
+          if (fenceInRef.current) return  // 围栏内内容丢弃
+          if (!c) return  // 空串跳过，绝不能中断 SSE 解析循环
+          // 累积到 rAF 帧循环（累积式，非覆盖式——同帧多个 token 不丢失）；每帧 flush 一次
+          const cur = pendingMindRef.current
+          if (cur && cur.agent === data.agent) {
+            cur.text += c
+          } else {
+            pendingMindRef.current = { agent: data.agent, text: c }
+          }
+          ensureRevealLoop()
+          return
+        }
+        if (data.type === 'answer_token') {
+          const ch = data.chunk || ''
+          if (ch) {
+            streamedRef.current = true
+            // simple 流程无 step 事件：回答开始流式即更新状态（避免一直显示"等待模型响应"）
+            setFlowStatus('正在输出回答…')
+            // 累积到 rAF 帧循环：每帧 flush 一次（同上）
+            pendingAnswerRef.current += ch
             ensureRevealLoop()
           }
-          if (data.type === 'answer_token') {
-            const ch = data.chunk || ''
-            if (ch) {
-              streamedRef.current = true
-              // simple 流程无 step 事件：回答开始流式即更新状态（避免一直显示"等待模型响应"）
-              setFlowStatus('正在输出回答…')
-              // 累积到 rAF 帧循环：每帧 flush 一次（同上）
-              pendingAnswerRef.current += ch
-              ensureRevealLoop()
-            }
-          }
-          if (data.type === 'done') {
-            // 竞态防护：清空 rAF 待 flush 的流式残字（done 用完整 finalReply 替换，不能再追加）
-            pendingAnswerRef.current = ''
-            pendingMindRef.current = null
-            finalReply = data.reply; steps.push(...(data.steps || [])); taskStats = data.task_stats || null
-            // 特殊形式输出建议（模型判断）：key → label 映射，随最终消息展示
-            const SPECIAL_LABELS: Record<string, string> = { report: '报告', flow: '流程图', tree: '树状图', table: '表格', chart: '统计图', audio: '音频', quiz: '测试题' }
-            special = Array.isArray(data.special_suggestions)
-              ? (data.special_suggestions as string[]).map(k => ({ key: k, label: SPECIAL_LABELS[k] || k })).filter(s => s.label)
-              : []
-            setFlowStatus('')
-            setFlowActiveAgent(null)
-            // 最终同步一次占位消息 think（降频期间可能滞后）
-            setAllMessages(prev => {
-              const arr = prev[activeDidRef.current || ''] || []
-              const lastMsg = arr[arr.length - 1]
-              if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content === '') {
-                return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, think: mindchainRef.current }] }
-              }
-              return prev
-            })
-            // 通知第二对话：主对话已完成，可拉取同步生成的横向拓展追问
-            try { window.dispatchEvent(new Event('side-followups-ready')) } catch (e) {}
-            // 思维链兜底：后端返回完整 mindchain（各节点思考），流式片段缺失/不完整时覆盖
-            const mc: Array<{ agent: string; content: string }> = data.mindchain || []
-            if (mc.length > 0 && mc.length >= mindchainRef.current.length) {
-              mindchainRef.current = mc
-              setFlowMindchain(mc)
-            }
-          }
+          return
         }
-      }
+        if (data.type === 'done') {
+          // 竞态防护：清空 rAF 待 flush 的流式残字（done 用完整 finalReply 替换，不能再追加）
+          pendingAnswerRef.current = ''
+          pendingMindRef.current = null
+          finalReply = data.reply; steps.push(...(data.steps || [])); taskStats = data.task_stats || null
+          // 特殊形式输出建议（模型判断）：key → label 映射，随最终消息展示
+          const SPECIAL_LABELS: Record<string, string> = { report: '报告', flow: '流程图', tree: '树状图', table: '表格', chart: '统计图', audio: '音频', quiz: '测试题' }
+          special = Array.isArray(data.special_suggestions)
+            ? (data.special_suggestions as string[]).map(k => ({ key: k, label: SPECIAL_LABELS[k] || k })).filter(s => s.label)
+            : []
+          setFlowStatus('')
+          setFlowActiveAgent(null)
+          // 最终同步一次占位消息 think（降频期间可能滞后）
+          setAllMessages(prev => {
+            const arr = prev[activeDidRef.current || ''] || []
+            const lastMsg = arr[arr.length - 1]
+            if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content === '') {
+              return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, think: mindchainRef.current }] }
+            }
+            return prev
+          })
+          // 通知第二对话：主对话已完成，可拉取同步生成的横向拓展追问
+          try { window.dispatchEvent(new Event('side-followups-ready')) } catch (e) {}
+          // 思维链兜底：后端返回完整 mindchain（各节点思考），流式片段缺失/不完整时覆盖
+          const mc: Array<{ agent: string; content: string }> = data.mindchain || []
+          if (mc.length > 0 && mc.length >= mindchainRef.current.length) {
+            mindchainRef.current = mc
+            setFlowMindchain(mc)
+          }
+          return
+        }
+      }, { signal: abortCtrlRef.current?.signal, onProgress: () => { resetTimer(); firstByte = false } })
       try{
-        if(_buf.trim()){var _blines=_buf.split(String.fromCharCode(10));for(var _bi=0;_bi<_blines.length;_bi++){var _bl=_blines[_bi];if(!_bl.startsWith("data: "))continue;try{var _bd=JSON.parse(_bl.slice(6));if(_bd.type==="done"){finalReply=_bd.reply||finalReply;taskStats=_bd.task_stats||taskStats;var _mc=_bd.mindchain||[];if(_mc.length>0&&_mc.length>=mindchainRef.current.length){mindchainRef.current=_mc;setFlowMindchain(_mc)}}}catch(_be){}}}
         // 运行统计：各 Agent 耗时/token 摘要（回答下方展示）
         let debugLine = ''
         if (taskStats && Object.keys(taskStats).length) {
