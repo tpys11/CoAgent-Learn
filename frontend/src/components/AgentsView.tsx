@@ -1,5 +1,5 @@
-﻿import { useState, useEffect } from 'react'
-import { Settings, Upload, Folder, Download, Layers, Wrench, ExternalLink, Plus, Trash2, LayoutTemplate, X, Workflow, Brain, Database, Scale } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Settings, Upload, Folder, Download, Layers, Wrench, ExternalLink, Plus, Trash2, LayoutTemplate, X, Workflow, Brain, Database, Scale, Code2 } from 'lucide-react'
 import type { AgentConfig } from '../types'
 import { DEFAULT_AGENTS } from '../types'
 
@@ -14,54 +14,38 @@ interface Props {
 
 type Block = 'agents' | 'skills' | 'templates'
 
-/** 预设模板库（基础 / 检索增强 / 快速 / 输出增强），intro=适用场景概述，detail=预设内部细节（只读展示） */
+/** 预设档位库（极速 / 思考 / 研究），intro=档位概述，detail=预设内部细节（只读展示） */
 const PRESET_TEMPLATES: Array<{ name: string; desc: string; intro: string; detail: Array<[string, string]>; agents: AgentConfig[] }> = [
   {
-    name: '基础', desc: '默认编排',
-    intro: '基础职责概述：默认编排流程，覆盖大多数学习场景。一次规划 → 学情与记忆 ∥ 知识库与搜索（并行）→ 主 Agent 生成 → 审核与输出。\n**基础能力**\n- 规划调度：解析输入，一次规划并行调度所需 Agent\n- 学情与记忆：读取三层记忆，输出学情画像\n- 知识库与搜索：按需检索知识库与联网\n- 生成与审核：强模型生成 + 三维度质量把关\n**拓展能力**\n- 输出增强：触发条件——需要结构化产出（笔记/表格/清单等）时；执行方式——选择「输出增强」模板，由主 Agent 按需调用子 Agent 产出专项内容',
+    name: '极速', desc: '最短响应（1 秒内首字）',
+    intro: '档位概述：面向一般对话环节——概念确认、即兴提问、碎片化学习，用户希望时间尽可能短。\n**效果**\n- 时间：绝大多数时候 1 秒内输出首字，最长不超过 3 秒\n- 内容总量：字数偏少，大多数 500-800 字，最多不超过 1000 字',
     detail: [
-      ['编排流程', '规划 → 学情与记忆 ∥ 知识库与搜索 → 生成 → 审核 → 输出'],
-      ['生成模型', '强模型（质量优先）'],
-      ['知识库与搜索', '视问题需要自动调用'],
-      ['子 Agent 调用', '无'],
-      ['审核', '标准三维度审核（符实性 / 难度适配 / 规范性）'],
-    ],
-    agents: DEFAULT_AGENTS,
-  },
-  {
-    name: '检索增强', desc: '知识库管理调用子 Agent 整理资料',
-    intro: '基础职责概述：在基础流程上强化资料整理，面向「基于资料回答」的问题——复习备考、查证概念、引用知识库作答，可溯源、少幻觉。\n**基础能力**\n- 知识库检索：从向量库检索相关片段（含来源）\n- 联网搜索：必要时聚合多源权威信息\n- 子 Agent 整理：知识库管理/搜索子 Agent 将材料整理为「来源→核心观点→关键数据」条目\n**拓展能力**\n- 检索增强整理：触发条件——选择「检索增强」模板；执行方式——强制调用知识库与搜索的子 Agent（知识库管理只整理知识库片段、搜索只整理联网结果），主 Agent 基于整理结果生成',
-    detail: [
-      ['编排流程', '规划 → 学情与记忆 ∥ 知识库与搜索（强制调用子 Agent）→ 生成 → 审核 → 输出'],
-      ['知识库子 Agent', '知识库管理（整理检索片段）、搜索（整理联网结果）'],
-      ['生成模型', '强模型（质量优先）'],
-      ['子 Agent 调用', '强制调用知识库与搜索的子 Agent'],
-      ['审核', '标准三维度审核（符实性 / 难度适配 / 规范性）'],
-    ],
-    agents: DEFAULT_AGENTS,
-  },
-  {
-    name: '快速', desc: '主 Agent 生成使用快模型',
-    intro: '基础职责概述：面向简单快速的问答——概念确认、即兴提问、碎片化学习。流程只保留主 Agent 与审核与输出，速度最快、消耗最低；复杂推导类问题不建议用。\n**基础能力**\n- 综合概述性记忆：将对话记忆、个人记忆概述、项目记忆概述、知识库概述合并后直接发送主 Agent，不额外调用各 Agent（前提：首次使用时各 Agent 调用后已保存信息）\n- 快速生成：主 Agent 用快模型直接生成\n**拓展能力**\n- 无（简化流程下不调用子 Agent 与额外节点）',
-    detail: [
-      ['编排流程', '主 Agent（接收综合概述性记忆）→ 审核与输出'],
-      ['综合概述性记忆', '将对话记忆、知识库与个人记忆概述、项目记忆概述合并后直接发送给主 Agent，不再额外调用各 Agent；前提：首次使用时各 Agent 调用后已保存信息'],
-      ['生成模型', '快模型（速度优先）'],
-      ['知识库与搜索', '不调用（直接使用已保存的知识库概述）'],
-      ['子 Agent 调用', '无'],
-      ['审核', '简化审核'],
+      ['编排流程', '学习助手（快模型）→ 输出（跳过审核；不做知识库检索）'],
+      ['知识库检索', '按需：用户要求基于资料回答时由学习助手规划调用'],
+      ['生成模型', '快模型（flash，保 1 秒内首字）'],
+      ['检测机制', '无（跳过审核保秒回）'],
     ],
     agents: DEFAULT_AGENTS.map(a => a.id === 'main' ? { ...a, model: 'fast' } : { ...a }),
   },
   {
-    name: '输出增强', desc: '主 Agent 调用子 Agent 产出结构化内容',
-    intro: '基础职责概述：面向需要「结构化产出」的问题——学习笔记、要点总结、对比表格、思维导图、时间线、FAQ 清单等，产出清晰易读的结构化内容。\n**基础能力**\n- 规划选择：主 Agent 规划时按问题选择输出子 Agent（树状结构、要点卡片、思维导图、表格对比、流程图时序图、时间线、FAQ 问答对、清单检查单，按问题选 0-3 个）\n- 子 Agent 产出：被选中的子 Agent 先产出专项结构化内容\n- 组织生成：主 Agent 基于子 Agent 产出组织完整回答\n**拓展能力**\n- 结构化适配：触发条件——用户要求特定形式产出时；执行方式——规划阶段按需选择对应子 Agent 执行',
+    name: '思考', desc: '完整流程 + 轻量单审',
+    intro: '档位概述：面向需要认真一点的回答——知识库无对应内容但对精确度要求不高。\n**效果**\n- 内容增强：联网搜索一轮（搜索机制见全局设定）\n- 内容总量：大部分 800-1200 字，最多不超过 1500 字\n- 检测机制：flash 轻量单审',
     detail: [
-      ['编排流程', '规划（按需选择输出子 Agent）→ 学情与记忆 ∥ 知识库与搜索 → 生成（基于子 Agent 产出）→ 审核 → 输出'],
-      ['输出子 Agent', '树状结构、要点卡片、思维导图、表格对比、流程图时序图、时间线、FAQ 问答对、清单检查单（按问题选 0-3 个）'],
+      ['编排流程', '规划（按需调用知识库管理）→ 生成 → flash 单审 → 输出（学情画像：后台文档注入）'],
+      ['内容增强', '按需联网搜索（学习助手判定并派发搜索子 Agent）+ 子 Agent 整理（来源→核心观点→关键数据）'],
       ['生成模型', '强模型（质量优先）'],
-      ['子 Agent 调用', '按需调用输出子 Agent'],
-      ['审核', '标准三维度审核（符实性 / 难度适配 / 规范性）'],
+      ['检测机制', 'flash 轻量单审（三维度：符实性/难度适配/规范性）'],
+    ],
+    agents: DEFAULT_AGENTS,
+  },
+  {
+    name: '研究', desc: '完整流程 + 严格检测',
+    intro: '档位概述：面向对内容精确度要求极高的任务——知识库无对应内容且需要严谨。\n**效果**\n- 内容增强：联网搜索可多轮（1-5 轮，每轮总结、不足续搜；多轮待实现当前一轮）\n- 内容总量：不做限制\n- 独立检测机制：用其他模型厂商的模型作为独立检测阶段（待实现，当前为 flash 单审）',
+    detail: [
+      ['编排流程', '与思考档一致：规划（研究档需详细查阅时必调知识库管理）→ 生成 → 单审 → 输出（学情画像：后台文档注入）'],
+      ['内容增强', '联网搜索一轮（多轮搜索待实现：1-5 轮，每轮总结、不足续搜）'],
+      ['生成模型', '强模型（质量优先）'],
+      ['检测机制', 'flash 单审（其他模型厂商独立检测待实现）'],
     ],
     agents: DEFAULT_AGENTS,
   },
@@ -70,12 +54,20 @@ const PRESET_TEMPLATES: Array<{ name: string; desc: string; intro: string; detai
 const SKILL_ENABLED_KEY = 'coagent-skill-enabled'
 const CUSTOM_TEMPLATES_KEY = 'coagent-custom-templates'
 
+/** 全局性基础设定卡片（默认文案；用户可在前端编辑，localStorage 持久化覆盖） */
+const DEFAULT_GLOBAL_CARDS: Array<[string, string]> = [
+  ['搜索机制', '固定搜索规则：优质信息源（优质社区、官方信息），并行搜索 agent 返回 10-20 条优质内容（思考/研究档共享）'],
+  ['知识库管理', '后台入库（切片/向量化）；对话中按主 Agent 判定按需检索；联网搜索由主 Agent 派发搜索子 Agent 执行'],
+  ['学情画像', '后台提炼画像文档（基本情况/学习情况/阅读偏好），生成时直接注入（0 对话时间）'],
+  ['上下文自动压缩', '每满 30 条后台压缩最早 30% 为会话摘要；历史细节可向量召回'],
+  ['特殊形式输出', '回答完成后模型判断适合的形式并建议（与档位无关）'],
+]
+
 /** 各模板的节点颜色深浅分布：按模板编排的基础逻辑标注各节点职责负载（0-5，越深负载越高） */
 const TEMPLATE_LEVELS: Record<string, Record<string, number>> = {
-  '基础': { plan: 1, study_memory: 2, kb: 2, generate: 4, review: 3 },
-  '检索增强': { plan: 1, study_memory: 2, kb: 4, generate: 4, review: 3 },
-  '快速': { plan: 1, study_memory: 1, kb: 1, generate: 2, review: 2 },
-  '输出增强': { plan: 1, study_memory: 2, kb: 2, generate: 5, review: 3 },
+  '极速': { plan: 1, study_memory: 1, kb: 1, generate: 2, review: 1 },
+  '思考': { plan: 1, study_memory: 2, kb: 3, generate: 4, review: 3 },
+  '研究': { plan: 1, study_memory: 2, kb: 4, generate: 5, review: 5 },
 }
 
 /** 模型选择中文标签 */
@@ -156,7 +148,7 @@ const SKILL_CAT_MAP: Record<string, string> = {
 const BLOCKS: Array<{ key: Block; icon: any; label: string }> = [
   { key: 'agents', icon: Settings, label: 'Agent 管理' },
   { key: 'skills', icon: Layers, label: 'Skill 管理' },
-  { key: 'templates', icon: LayoutTemplate, label: '模板与编排' },
+  { key: 'templates', icon: LayoutTemplate, label: '对话' },
 ]
 
 /** 格式化文本：**标题** → 主题色加粗标题；「- 名称：内容」→ 加粗名称 + 正文；普通行 → 正文段落（与 Agent 提示词展示一致） */
@@ -212,52 +204,48 @@ const FlowGraph = ({ agents, templateName, templateAgentId, onSelect }: { agents
   const act = (id: string) => templateAgentId === id
   const pick = (id: string) => onSelect ? () => onSelect(id) : undefined
   // 当前模板对应的节点职责负载分布（未选中模板时按基础模板）
-  const levels = TEMPLATE_LEVELS[templateName || '基础'] || TEMPLATE_LEVELS['基础']
+  const levels = TEMPLATE_LEVELS[templateName || '思考'] || TEMPLATE_LEVELS['思考']
   const lv = (n: string) => levels[n] || 0
-  // 子 Agent：按模板差异化展示——检索增强只显示知识库与搜索的子 Agent，输出增强只显示主 Agent 的子 Agent，其余模板不显示子 Agent
+  // 子 Agent：按模板差异化展示——检索增强只显示知识库与搜索的子 Agent，输出增强只显示学习助手的子 Agent，其余模板不显示子 Agent
   const subOf = (id: string) => ((agents || []).find(a => a.id === id)?.subAgents || []).map(s => s.name)
   const nameOf = (id: string, fallback: string) => (agents || []).find(a => a.id === id)?.name || fallback
-  const kbSubs = templateName === '检索增强' ? subOf('kb') : []
+  const kbSubs = templateName === '思考' ? subOf('kb') : []
   // 输出增强模板：生成节点只连接一个「输出增强」节点（规划节点不展示子 Agent）
-  const mainSubs = templateName === '输出增强' ? ['输出增强'] : []
-  // 快速模板：流程只剩 主 Agent（左侧虚线框：综合概述性记忆，箭头指向主 Agent）→ 审核与输出，排布宽松
-  if (templateName === '快速') {
+  const mainSubs: string[] = []
+  // 极速档实际流程：知识库检索（全局在线）→ 学习助手（快模型）→ 输出（跳过审核）
+  if (templateName === '极速') {
     return (
-      <div className="flex flex-col items-center gap-8 py-10">
-        {/* 主 Agent：虚线框绝对定位在左侧（不参与布局，主干保持居中），矩形比节点略大，箭头指向主 Agent */}
-        <div className="relative">
-          <FlowNode icon={Workflow} name="主 Agent" level={lv('plan')} active={act('main')} onClick={pick('main')} />
-          <div className="absolute right-full mr-8 top-1/2 -translate-y-1/2 w-[164px] border-2 border-dashed border-[var(--border-color)] rounded-xl px-4 py-4 flex flex-col items-center justify-center gap-2 text-center">
-            <span className="text-xs font-semibold text-dim leading-snug">综合概述性记忆</span>
-            <span className="text-[9px] text-dim/70 leading-snug">对话记忆 · 个人记忆<br />项目记忆 · 知识库概述</span>
-          </div>
-          {/* 虚线框 → 主 Agent 的箭头（画在主 Agent 左侧空隙，起点虚线框、终点主 Agent） */}
-          <svg className="absolute right-full top-1/2 -translate-y-1/2" width="30" height="10" viewBox="0 0 30 10">
-            <line x1="0" y1="5" x2="23" y2="5" stroke="var(--border-strong)" strokeWidth="1.5" />
-            <path d="M 21 1.5 L 28 5 L 21 8.5" fill="none" stroke="var(--border-strong)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-        </div>
+      <div className="flex flex-col items-center gap-1 py-6">
+        <FlowNode icon={Database} name="知识库检索" level={lv('kb')} active={act('kb')} onClick={pick('kb')} />
         <DownArrow />
-        <FlowNode icon={Scale} name="审核与输出" level={lv('review')} active={act('review')} onClick={pick('review')} />
+        <FlowNode icon={Workflow} name="学习助手" level={lv('generate')} active={act('main')} onClick={pick('main')} />
+        <DownArrow />
+        <FlowNode icon={Scale} name="输出" level={lv('review')} />
       </div>
     )
   }
   return (
     <div className="flex flex-col items-center gap-1 py-6">
+      {/* 学情与记忆管理：后台 Agent（不占对话流程，虚线展示） */}
+      <div className="flex items-center gap-2 border border-dashed border-[var(--border-color)] rounded-lg px-2.5 py-1.5">
+        <Brain size={12} className="text-dim" />
+        <span className="text-[10px] text-dim">学情与记忆管理（后台）</span>
+        <span className="text-[9px] text-dim/70">对话后提炼画像文档 → 注入生成</span>
+      </div>
+      <DownArrow />
       {/* 规划节点：不展示子 Agent（规划职责不调用输出子 Agent） */}
       <FlowNode icon={Workflow} name="规划" level={lv('plan')} active={act('main')} onClick={pick('main')} />
       <DownArrow />
-      {/* 学情与记忆 ∥ 知识库与搜索（子 Agent 左右横向连接） */}
-      <div className="flex items-center gap-3">
-        <FlowNode icon={Brain} name="学情与记忆" level={lv('study_memory')} active={act('study')} onClick={pick('study')} />
-        <span className="text-[9px] text-dim">∥ 并行</span>
-        <AgentRow node={<FlowNode icon={Database} name={nameOf('kb', '知识库与搜索')} level={lv('kb')} active={act('kb')} onClick={pick('kb')} />} subs={kbSubs} />
-      </div>
+      {/* 知识库管理（后台入库 + 对话中检索∥搜索并行） */}
+      <AgentRow node={<FlowNode icon={Database} name={nameOf('kb', '知识库管理')} level={lv('kb')} active={act('kb')} onClick={pick('kb')} />} subs={kbSubs} />
       <DownArrow />
       {/* 生成（输出增强 子 Agent 右侧连接） */}
       <AgentRow node={<FlowNode icon={Workflow} name="生成" level={lv('generate')} active={act('main')} onClick={pick('main')} />} subs={mainSubs} />
       <DownArrow />
       <FlowNode icon={Scale} name="审核与输出" level={lv('review')} active={act('review')} onClick={pick('review')} />
+      {templateName === '研究' && (
+        <p className="text-[9px] text-dim mt-1">多轮搜索 · 其他厂商独立检测（待实现，当前与思考档一致）</p>
+      )}
     </div>
   )
 }
@@ -324,9 +312,23 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   })
   // Skill 详情弹窗（独立小窗口）
   const [skillDetail, setSkillDetail] = useState<{ name: string; description: string; folder: string; category: string } | null>(null)
-  // 模板与编排：Agent 自定义选中的 Agent
+  // Skill 实现源码（点开详情→查看实现）
+  const [skillSource, setSkillSource] = useState<string | null>(null)
+  const [skillSrcLoading, setSkillSrcLoading] = useState(false)
+  // 对话设定（项目介绍可编辑，localStorage 持久化；缺省用内置默认）
+  const [globalCards, setGlobalCards] = useState<Array<[string, string]>>(() => {
+    try { const s = localStorage.getItem('coagent-intro-global'); if (s) { const a = JSON.parse(s); if (Array.isArray(a) && a.length) return a } } catch { /* 忽略 */ }
+    return DEFAULT_GLOBAL_CARDS
+  })
+  const [tierOverrides, setTierOverrides] = useState<Record<string, { intro: string; detail: Array<[string, string]> }>>(() => {
+    try { const s = localStorage.getItem('coagent-intro-tiers'); if (s) { const o = JSON.parse(s); if (o && typeof o === 'object') return o } } catch { /* 忽略 */ }
+    return {}
+  })
+  const [editingGlobal, setEditingGlobal] = useState(false)
+  const [editingTier, setEditingTier] = useState<string | null>(null)
+  // 对话流程：Agent 自定义选中的 Agent
   const [templateAgentId, setTemplateAgentId] = useState(agents[0]?.id || '')
-  // 模板与编排：选中模板（展开详情）、自定义模板、保存名称
+  // 对话流程：选中模板（展开详情）、自定义模板、保存名称
   const [selectedTpl, setSelectedTpl] = useState<string | null>(null)
   const [customTemplates, setCustomTemplates] = useState<Array<{ name: string; desc: string; agents: AgentConfig[] }>>(() => {
     try { return JSON.parse(localStorage.getItem(CUSTOM_TEMPLATES_KEY) || '[]') } catch { return [] }
@@ -413,10 +415,12 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   }
 
   const fieldLabel = 'text-xs font-semibold text-dim uppercase tracking-wider mb-2 block'
-  // 模板与编排：模板集合（预设 + 自定义）、保存自定义
+  // 对话流程：模板集合（预设 + 自定义）、保存自定义
   const allTemplates = [...PRESET_TEMPLATES, ...customTemplates]
-  // 模板介绍：自定义模板无内置文案时，从 Agent 团队配置推导细节
+  // 模板介绍：优先用户编辑的档位覆盖（localStorage），其次内置文案，自定义模板从 Agent 配置推导
   const tplInfo = (t: { name: string; intro?: string; detail?: Array<[string, string]>; agents: AgentConfig[] }) => {
+    const ov = tierOverrides[t.name]
+    if (ov && ov.intro) return { intro: ov.intro, detail: ov.detail || [] }
     if (t.intro && t.detail) return { intro: t.intro, detail: t.detail }
     const main = t.agents.find(a => a.id === 'main')
     const kb = t.agents.find(a => a.id === 'kb')
@@ -429,7 +433,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
         ['编排流程', '规划 → 学情与记忆 ∥ 知识库与搜索 → 生成 → 审核 → 输出'],
         ['生成模型', main?.model === 'fast' ? '快模型（速度优先）' : '强模型（质量优先）'],
         ['知识库子 Agent', kbSubs.length ? kbSubs.join('、') : '无'],
-        ['主 Agent 子 Agent', mainSubs.length ? `${mainSubs.length} 个（${mainSubs.join('、')}）` : '无'],
+        ['学习助手子Agent', mainSubs.length ? `${mainSubs.length} 个（${mainSubs.join('、')}）` : '无'],
         ['审核重试上限', String(review?.retryMax ?? 2)],
       ],
     }
@@ -579,7 +583,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                   className="text-[10px] px-2 py-1 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">＋ 添加能力</button>
               </div>
               {agent.id === 'main' ? (
-                /* 主 Agent：保持单个「输出增强」卡片样式 */
+                /* 学习助手：保持单个「输出增强」卡片样式 */
                 <div className="border hairline rounded-xl bg-[var(--bg-panel)] overflow-hidden">
                   <button onClick={() => setSubIntroOpen(true)}
                     className="w-full flex flex-col items-stretch gap-2.5 px-3.5 py-9 hover:bg-[var(--bg-hover)] transition-colors">
@@ -811,80 +815,126 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
           </div>
         )}
 
-        {/* ========== 模板与编排 ========== */}
+        {/* ========== 对话 ========== */}
         {block === 'templates' && (
           <div className="max-w-3xl flex flex-col gap-6">
-            <h2 className="text-xl font-bold flex items-center gap-2"><LayoutTemplate size={18} /> 模板与编排</h2>
+            <h2 className="text-xl font-bold flex items-center gap-2"><LayoutTemplate size={18} /> 对话</h2>
 
-            {/* 预设模板：点击展开详情 */}
+            {/* 全局性基础设定（独立界面：所有模式共有，先介绍再选模式） */}
             <div className="flex flex-col gap-3">
-              <div className="flex gap-2 flex-wrap items-center">
-                {allTemplates.map(t => {
-                  const isCustom = customTemplates.some(c => c.name === t.name)
-                  return (
-                    <div key={t.name} className="relative group flex-shrink-0">
-                      <button onClick={() => setSelectedTpl(selectedTpl === t.name ? null : t.name)}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-medium transition-all ${
-                          selectedTpl === t.name
-                            ? 'border-[var(--border-strong)] bg-[#1a1a1a] text-white shadow-soft'
-                            : isCustom
-                              ? 'border-dashed border-[var(--border-color)] bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'
-                              : 'border hairline bg-[var(--bg-panel)] text-dim hover:bg-[var(--bg-hover)]'
-                        }`}>
-                        <LayoutTemplate size={13} /> {t.name}
-                      </button>
-                      {isCustom && (
-                        <button onClick={(e) => { e.stopPropagation(); removeCustomTemplate(t.name) }}
-                          className="hidden group-hover:flex absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white items-center justify-center shadow" title="删除模板">
-                          <X size={9} />
-                        </button>
-                      )}
-                    </div>
-                  )
-                })}
-                <span className="w-px h-5 bg-[var(--border-color)]" />
-                <button onClick={() => setShowNewTplModal(true)}
-                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium border border-[var(--accent)] text-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors flex-shrink-0">
-                  <Plus size={13} /> 新建模板
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold text-dim uppercase tracking-wider">全局性基础设定（所有模式共有）</p>
+                <button onClick={() => setEditingGlobal(!editingGlobal)}
+                  className="text-[10px] px-2 py-1 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">
+                  {editingGlobal ? '完成编辑' : '编辑'}
                 </button>
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                {globalCards.map(([t, d], i) => editingGlobal ? (
+                  <div key={i} className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-1.5">
+                    <input value={t} onChange={e => { const n = [...globalCards]; n[i] = [e.target.value, n[i][1]]; setGlobalCards(n) }}
+                      className="text-[11px] font-semibold bg-transparent outline-none border-b hairline pb-0.5" />
+                    <textarea value={d} rows={3} onChange={e => { const n = [...globalCards]; n[i] = [n[i][0], e.target.value]; setGlobalCards(n) }}
+                      className="text-[10px] text-dim leading-snug bg-transparent outline-none resize-y" />
+                  </div>
+                ) : (
+                  <div key={i} className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-1">
+                    <span className="text-[11px] font-semibold">{t}</span>
+                    <span className="text-[10px] text-dim leading-snug">{d}</span>
+                  </div>
+                ))}
+              </div>
+              {editingGlobal && (
+                <button onClick={() => { try { localStorage.setItem('coagent-intro-global', JSON.stringify(globalCards)) } catch { /* 忽略 */ } setEditingGlobal(false) }}
+                  className="w-fit px-3 py-1.5 rounded-lg bg-[#1a1a1a] text-white text-[11px] font-medium hover:bg-[#333333] transition-colors">
+                  保存全局设定
+                </button>
+              )}
+              <p className="text-[10px] text-dim leading-relaxed">以下机制对所有对话模式生效：搜索、知识库、学情、压缩、特殊形式输出在后台或按需运行，不随档位变化。模式之间的差异（响应速度、内容量、检测强度）由下方模式按钮决定。</p>
             </div>
 
-            {/* 编排框架设定（节点图内点击 Agent，右侧独立栏展开设定） */}
-            <div className="flex flex-col gap-4">
-              <p className="text-xs font-semibold text-dim uppercase tracking-wider">编排框架设定</p>
-              <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex items-center justify-center">
-                <FlowGraph agents={agents} templateName={selectedTpl || '均衡模式'} templateAgentId={templateAgentId} onSelect={(id) => setTemplateAgentId(id)} />
+            {/* 具体模式：三个按钮，点击展示详情 */}
+            <div className="flex flex-col gap-3">
+              <p className="text-xs font-semibold text-dim uppercase tracking-wider">具体模式</p>
+              <div className="flex gap-2 flex-wrap items-center">
+                {PRESET_TEMPLATES.map(t => (
+                  <button key={t.name} onClick={() => setSelectedTpl(selectedTpl === t.name ? null : t.name)}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-medium transition-all ${
+                      selectedTpl === t.name
+                        ? 'border-[var(--border-strong)] bg-[#1a1a1a] text-white shadow-soft'
+                        : 'border hairline bg-[var(--bg-panel)] text-dim hover:bg-[var(--bg-hover)]'
+                    }`}>
+                    <LayoutTemplate size={13} /> {t.name}
+                  </button>
+                ))}
               </div>
-              <p className="text-[10px] text-dim -mt-2">节点颜色越深表示该节点在模板编排中的职责负载越高</p>
             </div>
+
+            {/* 选中模式详情（按钮下方展示） */}
+            {selectedTpl && (() => {
+              const tpl = PRESET_TEMPLATES.find(t => t.name === selectedTpl)
+              if (!tpl) return null
+              const info = tplInfo(tpl)
+              const isEditingTier = editingTier === tpl.name
+              return (
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-dim uppercase tracking-wider">{tpl.name} 模式详情</p>
+                    <button onClick={() => setEditingTier(isEditingTier ? null : tpl.name)}
+                      className="text-[10px] px-2 py-1 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">
+                      {isEditingTier ? '完成编辑' : '编辑'}
+                    </button>
+                  </div>
+                  {isEditingTier ? (() => {
+                    const ov = tierOverrides[tpl.name] || { intro: info.intro, detail: info.detail }
+                    const setOv = (patch: { intro?: string; detail?: Array<[string, string]> }) => {
+                      const next = { ...tierOverrides, [tpl.name]: { intro: patch.intro ?? ov.intro, detail: patch.detail ?? ov.detail } }
+                      setTierOverrides(next)
+                      try { localStorage.setItem('coagent-intro-tiers', JSON.stringify(next)) } catch { /* 忽略 */ }
+                    }
+                    return (
+                      <div className="flex flex-col gap-3">
+                        <div className="flex flex-col gap-1.5">
+                          <p className="text-xs font-semibold text-dim uppercase tracking-wider">适用场景</p>
+                          <textarea value={ov.intro} rows={8} onChange={e => setOv({ intro: e.target.value })}
+                            className="text-[11px] leading-relaxed border hairline rounded-xl p-2.5 bg-[var(--bg-input)] outline-none resize-y" />
+                        </div>
+                        <div className="flex flex-col gap-2.5">
+                          <p className="text-xs font-semibold text-dim uppercase tracking-wider">内部细节设定</p>
+                          {ov.detail.map(([k, v], di) => (
+                            <div key={k} className="flex flex-col gap-1">
+                              <input value={k} onChange={e => { const nd = [...ov.detail]; nd[di] = [e.target.value, nd[di][1]]; setOv({ detail: nd }) }}
+                                className="text-[10px] font-semibold bg-transparent outline-none border-b hairline pb-0.5" />
+                              <textarea value={v} rows={2} onChange={e => { const nd = [...ov.detail]; nd[di] = [nd[di][0], e.target.value]; setOv({ detail: nd }) }}
+                                className="text-[11px] leading-relaxed border hairline rounded-lg p-2 bg-[var(--bg-input)] outline-none resize-y" />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })() : (
+                    <div className="flex flex-col gap-3">
+                      <div className="flex flex-col gap-1.5">
+                        <p className="text-xs font-semibold text-dim uppercase tracking-wider">适用场景</p>
+                        <FormattedText text={info.intro} />
+                      </div>
+                      <div className="flex flex-col gap-2.5">
+                        <p className="text-xs font-semibold text-dim uppercase tracking-wider">内部细节设定</p>
+                        {info.detail.map(([k, v]) => (
+                          <div key={k} className="flex flex-col gap-0.5">
+                            <span className="text-[10px] font-semibold text-dim uppercase tracking-wider">{k}</span>
+                            <span className="text-[11px] leading-relaxed text-[var(--text-muted)]">{v}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })()}
           </div>
         )}
       </div>
-      {/* 右侧：模板介绍（选中模板时显示：概述 + 预设内部细节只读展示） */}
-      {block === 'templates' && selectedTpl && (() => {
-        const tpl = allTemplates.find(t => t.name === selectedTpl)
-        if (!tpl) return null
-        const info = tplInfo(tpl)
-        return (
-          <div className="w-[480px] flex-shrink-0 border-l hairline bg-[var(--bg-hover)] p-6 flex flex-col gap-5 overflow-y-auto">
-            <p className="text-sm font-bold flex items-center gap-2"><LayoutTemplate size={15} /> {tpl.name} 模板</p>
-            <div className="flex flex-col gap-1.5">
-              <p className="text-xs font-semibold text-dim uppercase tracking-wider">适用场景</p>
-              <FormattedText text={info.intro} />
-            </div>
-            <div className="flex flex-col gap-2.5">
-              <p className="text-xs font-semibold text-dim uppercase tracking-wider">内部细节设定<span className="ml-1 text-[9px] font-normal text-dim/70">（预设，仅展示）</span></p>
-              {info.detail.map(([k, v]) => (
-                <div key={k} className="flex flex-col gap-0.5">
-                  <span className="text-[10px] font-semibold text-dim uppercase tracking-wider">{k}</span>
-                  <span className="text-[11px] leading-relaxed text-[var(--text-muted)]">{v}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )
-      })()}
       {/* 中间层 Agent 设定弹窗（点击图中圆心节点打开） */}
       {showMidAgent && agent && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setShowMidAgent(false)}>
@@ -988,6 +1038,22 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                 <span className="text-[10px] text-dim font-mono">{skillDetail.folder}</span>
               </div>
               <p className="text-sm leading-relaxed text-[var(--text-muted)]">{skillDetail.description}</p>
+              <button
+                onClick={() => {
+                  if (skillSource !== null) { setSkillSource(null); return }
+                  setSkillSrcLoading(true)
+                  fetch('/api/skills/' + encodeURIComponent(skillDetail.name) + '/source', { cache: 'no-store' })
+                    .then(r => r.json()).then(d => { setSkillSource(d.source || '（无源码）') })
+                    .catch(() => setSkillSource('（加载失败）'))
+                    .finally(() => setSkillSrcLoading(false))
+                }}
+                className="w-fit text-[10px] px-2.5 py-1.5 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors flex items-center gap-1">
+                <Code2 size={11} /> {skillSource !== null ? '收起实现' : '查看实现'}
+              </button>
+              {skillSrcLoading && <p className="text-[11px] text-dim">加载中…</p>}
+              {skillSource !== null && (
+                <pre className="text-[11px] font-mono leading-relaxed bg-[var(--bg-input)] border hairline rounded-xl p-3 overflow-x-auto whitespace-pre-wrap">{skillSource}</pre>
+              )}
             </div>
           </div>
         </div>

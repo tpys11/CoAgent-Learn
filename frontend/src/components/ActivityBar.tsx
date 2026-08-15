@@ -1,4 +1,4 @@
-import { MessageSquare, Library, Brain, Bot, FolderOpen, Settings, GraduationCap } from 'lucide-react'
+import { MessageSquare, Library, Brain, Bot, FolderOpen, Settings, GraduationCap, Github } from 'lucide-react'
 
 export type ViewKey = 'chat' | 'tutorial' | 'resources' | 'memory' | 'knowledge' | 'agents' | 'obsidian'
 
@@ -13,11 +13,11 @@ const ITEMS: Array<{ key: ViewKey; icon: any; label: string }> = [
   { key: 'chat', icon: MessageSquare, label: '主页' },
   { key: 'resources', icon: Library, label: '资源' },
   { key: 'memory', icon: Brain, label: '记忆' },
-  { key: 'agents', icon: Bot, label: 'Agent' },
   { key: 'obsidian', icon: FolderOpen, label: '本地文档' },
 ]
 
-/** 最左侧细轨（无边框，融入底色）：主页时展开加宽（图标在文字前横排），离开主页变窄（图标在上、文字在下） */
+/** 左侧导航栏（参考 deeptutor dashboard 侧栏：w-64=256px、分组小字标签、图标+文字导航项）。
+ * 主页时展开加宽（deeptutor 式横排），离开主页变窄（图标在上、文字在下）。 */
 export default function ActivityBar({ view, onChange, expanded, onSettings }: Props) {
   const renderBtn = (key: ViewKey, Icon: any, label: string, active: boolean) => (
     expanded ? (
@@ -25,56 +25,68 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
         key={key}
         onClick={() => onChange(key)}
         title={label}
-        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all ${
-          active ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'
+        className={`w-full h-9 mb-2 flex items-center gap-3 px-3 rounded-md text-sm font-medium transition-colors ${
+          active ? 'bg-[#1a1a1a] text-white' : 'text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)]'
         }`}
       >
-        <Icon size={17} strokeWidth={active ? 2 : 1.6} />
-        <span className="text-[11px] font-medium leading-none">{label}</span>
+        <Icon size={16} strokeWidth={active ? 2 : 1.6} />
+        <span className="leading-none">{label}</span>
       </button>
     ) : (
       <button
         key={key}
         onClick={() => onChange(key)}
         title={label}
-        className={`w-14 mb-2 flex flex-col items-center justify-center gap-1 py-2 rounded-2xl transition-all ${
+        className={`w-full h-9 mb-2 px-3 flex items-center gap-2 rounded-md text-[11px] transition-colors ${
           active ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'
         }`}
       >
-        <Icon size={20} strokeWidth={active ? 2 : 1.6} />
-        <span className="text-[9px] leading-none">{label}</span>
+        <Icon size={16} strokeWidth={active ? 2 : 1.6} />
+        <span className="leading-none truncate">{label}</span>
       </button>
     )
   )
   return (
-    <nav className={`h-full flex-shrink-0 flex flex-col transition-all duration-300 ${expanded ? 'w-44 px-2.5 py-4 items-stretch' : 'w-[64px] py-3 items-center'}`}>
-      {ITEMS.slice(0, 2).map(({ key, icon, label }) => renderBtn(key, icon, label, view === key))}
-      <div className={`bg-[#e5e5e5] my-1 ${expanded ? 'w-full h-px' : 'w-px h-3'}`} />
-      {ITEMS.slice(2).map(({ key, icon, label }) => renderBtn(key, icon, label, view === key))}
+    <nav className={`h-full flex-shrink-0 flex flex-col transition-all duration-300 ${expanded ? 'w-48 py-4 items-stretch' : 'w-[104px] py-4 items-stretch'}`}>
+      {/* 顶部品牌区（两态等高 h-[80px]+mb-2，保证按钮起始 y 锚定） */}
+      {expanded ? (
+        <div className="h-[80px] px-6 pt-2 mb-2 border-b hairline flex flex-col gap-2">
+          <span className="font-display text-[20px] tracking-wide select-none">CoAgent-Learn</span>
+          <a href="https://github.com/tpys11/CoAgent-Learn" target="_blank" rel="noreferrer"
+            className="flex items-center gap-2 text-xs text-dim hover:text-[var(--text)] transition-colors w-fit"
+            title="GitHub: tpys11/CoAgent-Learn">
+            <Github size={14} /> GitHub 仓库
+          </a>
+        </div>
+      ) : (
+        <div className="h-[80px] px-3 mb-2" />
+      )}
+      {ITEMS.map(({ key, icon, label }) => renderBtn(key, icon, label, view === key))}
       <div className="flex-1" />
       {/* 底部：使用引导（原教程界面，仅改名）挨着 设置（竖向并列） */}
       {expanded ? (
         <div className="flex flex-col gap-1.5">
-          <button onClick={() => onChange('tutorial')} title="使用引导"
-            className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-xl transition-all ${view === 'tutorial' ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'}`}>
+          <button onClick={() => onChange('tutorial')} title="项目介绍"
+            className={`w-full h-9 flex items-center gap-3 px-3 rounded-md text-sm font-medium transition-colors ${view === 'tutorial' ? 'bg-[#1a1a1a] text-white' : 'text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)]'}`}>
             <GraduationCap size={16} strokeWidth={1.6} />
-            <span className="text-[11px] leading-none">使用引导</span>
+            <span className="leading-none">项目介绍</span>
           </button>
-          <button onClick={onSettings} title="设置" className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl icon-btn transition-all">
+          <button onClick={onSettings} title="设置"
+            className="w-full h-9 flex items-center gap-3 px-3 rounded-md text-sm font-medium text-dim transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)]">
             <Settings size={16} strokeWidth={1.6} />
-            <span className="text-[11px] leading-none">设置</span>
+            <span className="leading-none">设置</span>
           </button>
         </div>
       ) : (
         <>
-          <button onClick={() => onChange('tutorial')} title="使用引导"
-            className={`w-14 mb-1.5 flex flex-col items-center justify-center gap-1 py-2 rounded-2xl transition-all ${view === 'tutorial' ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'}`}>
-            <GraduationCap size={18} strokeWidth={1.6} />
-            <span className="text-[8px] leading-none">引导</span>
+          <button onClick={() => onChange('tutorial')} title="项目介绍"
+            className={`w-full h-9 mb-2 px-3 flex items-center gap-2 rounded-md text-[11px] transition-colors ${view === 'tutorial' ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'}`}>
+            <GraduationCap size={16} strokeWidth={1.6} />
+            <span className="leading-none">介绍</span>
           </button>
-          <button onClick={onSettings} title="设置" className="w-14 flex flex-col items-center justify-center gap-1 py-2 rounded-2xl icon-btn transition-all">
-            <Settings size={18} strokeWidth={1.6} />
-            <span className="text-[8px] leading-none">设置</span>
+          <button onClick={onSettings} title="设置" className="w-full h-9 px-3 flex items-center gap-2 rounded-md text-[11px] icon-btn transition-colors">
+            <Settings size={16} strokeWidth={1.6} />
+            <span className="leading-none">设置</span>
           </button>
         </>
       )}

@@ -1,4 +1,4 @@
-﻿import { Map, Send, MessagesSquare, X, PanelRightClose, SlidersHorizontal, FileText } from 'lucide-react'
+﻿import { Map, Send, MessagesSquare, X, PanelRightClose, SlidersHorizontal, FileText, Activity } from 'lucide-react'
 import { useEffect, useRef, useState, Fragment } from 'react'
 import type { Message } from '../types'
 import { KnowledgeTree } from './KbTree'
@@ -19,15 +19,16 @@ interface Props {
   messages?: Message[]
 }
 
-type WinKey = 'flow' | 'graph' | 'chat' | 'special'
+type WinKey = 'flow' | 'graph' | 'chat' | 'special' | 'monitor'
 
 const WINDOWS: Array<{ key: WinKey; title: string; icon: any }> = [
   { key: 'graph', title: '知识图谱', icon: Map },
   { key: 'chat', title: '第二对话', icon: MessagesSquare },
   { key: 'special', title: '特殊形式输出', icon: FileText },
+  { key: 'monitor', title: '运行监控', icon: Activity },
 ]
 
-const DEFAULT_HEIGHTS: Record<WinKey, number> = { flow: 200, graph: 190, chat: 240, special: 200 }
+const DEFAULT_HEIGHTS: Record<WinKey, number> = { flow: 200, graph: 190, chat: 240, special: 200, monitor: 180 }
 const MIN_H = 56
 const MAX_H = 800
 const WINDOWS_KEY = 'coagent-rp-windows'
@@ -78,8 +79,8 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
   const [visible, setVisible] = useState<Record<WinKey, boolean>>(() => {
     try {
       const s = JSON.parse(localStorage.getItem(WINDOWS_KEY) || '')
-      return { flow: true, graph: true, chat: true, special: false, ...s }
-    } catch { return { flow: true, graph: true, chat: true, special: false } }
+      return { flow: true, graph: true, chat: true, special: false, monitor: true, ...s }
+    } catch { return { flow: true, graph: true, chat: true, special: false, monitor: true } }
   })
   const [showWinSettings, setShowWinSettings] = useState(false)
   const dragRef = useRef<{ a: WinKey; b: WinKey; isLast: boolean; startY: number; startHa: number; startHb: number } | null>(null)
@@ -137,7 +138,6 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
   const [sideMessages, setSideMessages] = useState<Array<{role: string; content: string}>>([])
   const [sideInput, setSideInput] = useState('')
   const [sideLoading, setSideLoading] = useState(false)
-  const [sideMode, setSideMode] = useState<'kb'|'free'>('free')
   // 第二对话追问建议：横向拓展/轻松闲聊风格（后端 followup_focus=expand 生成）
   const [sideFollowups, setSideFollowups] = useState<string[]>([])
   const loadSideFollowups = () => {
@@ -177,7 +177,7 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
       const resp = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, dialogue_id: sideDialogueIdRef.current, project_id: projectId || 'default', api_key: localStorage.getItem('coagent-apikey') || undefined, mode: sideMode, followup_focus: 'expand' })
+        body: JSON.stringify({ message: text, dialogue_id: sideDialogueIdRef.current, project_id: projectId || 'default', api_key: localStorage.getItem('coagent-apikey') || undefined, followup_focus: 'expand' })
       })
       const reader = resp.body ? resp.body.getReader() : null
       let buf = ''
@@ -303,6 +303,11 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
               </div>
             )}
             {w.key === 'special' && <SpecialOutputPane messages={messages || []} projectId={projectId} />}
+            {w.key === 'monitor' && (
+              <div className="w-full h-full overflow-y-auto px-3 py-2">
+                <p className="text-[11px] text-dim">运行监控（待接入：节点耗时 / LLM 调用次数 / token 估算）</p>
+              </div>
+            )}
           </Pane>
         </Fragment>
       ))}

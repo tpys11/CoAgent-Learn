@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { PanelLeftOpen, PanelRightOpen, Github } from 'lucide-react'
+import { PanelLeftOpen, PanelRightOpen } from 'lucide-react'
 
 // 模块级 session：页面刷新(JS重载)时重新生成一次；组件重挂载不改变
 const SESSION_ID = (() => {
@@ -59,7 +59,17 @@ function App() {
 
 从第 1 项开始回复我即可，我会一步步帮你完善这门课程。`
   const [isLoading, setIsLoading] = useState(false)
-  const [agents, setAgents] = useState<AgentConfig[]>(DEFAULT_AGENTS)
+  const [agents, setAgents] = useState<AgentConfig[]>(() => {
+    // 项目介绍 Agent 设定持久化：用户编辑后刷新保留（缺省用内置 DEFAULT_AGENTS）
+    try {
+      const s = localStorage.getItem('coagent-agents')
+      if (s) {
+        const arr = JSON.parse(s)
+        if (Array.isArray(arr) && arr.length > 0 && arr.every((a: any) => a && typeof a === 'object' && a.id)) return arr as AgentConfig[]
+      }
+    } catch { /* 忽略损坏数据 */ }
+    return DEFAULT_AGENTS
+  })
   const [showSettings, setShowSettings] = useState(false)
   // 项目配置弹窗（Sidebar 项目三点进入：项目记忆 / 项目资源）
   const [showProjectConfig, setShowProjectConfig] = useState(false)
@@ -135,122 +145,29 @@ function App() {
   const [flowActiveAgent, setFlowActiveAgent] = useState<string | null>(null)
   // 当前对话状态文案（等待模型响应/正在规划/正在阅读/正在思考/正在审核…）
   const [flowStatus, setFlowStatus] = useState('')
-  // 需求澄清（reasonix 式）：澄清条目直接写进思维链（"主Agent·规划"下弹选项），选择后同一轮流程内继续
+  // 需求澄清（reasonix 式）：澄清条目直接写进思维链（"学习助手·规划"下弹选项），选择后同一轮流程内继续
   const clarifyContinueRef = useRef(false)
   // 最近一次发送的用户消息（澄清选项点击后拼回原问题继续）
   const lastUserMsgRef = useRef('')
   const [flowMindchain, setFlowMindchain] = useState<Array<{agent: string; content: string}>>([])
   const mindchainRef = useRef<Array<{agent: string; content: string}>>([])
-  // 思维链逐字 reveal：收到 token 进队列，interval 按 16ms/字 逐字追加（打字机效果）
-  const pendingQueueRef = useRef<Array<{ agent: string; text: string }>>([])
-  const revealTimerRef = useRef<number | null>(null)
-  const revealTickRef = useRef(0)
   const activeDidRef = useRef<string | null>(null)
   // 本次回答是否已通过 answer_token 流式显示（是则 done 后直接替换，不二次打字机）
   const streamedRef = useRef(false)
+  // 流式渲染节奏（rAF 帧循环）：token 到达只累积，每帧 flush 一次——渲染固定在帧边界，
+  // 消除"网络批量到达 + React 自动批处理"导致的回答一段一段出现
+  const pendingAnswerRef = useRef('')
+  const pendingMindRef = useRef<{ agent: string; text: string } | null>(null)
+  const rafScheduledRef = useRef(false)
   // 手动停止：abort 控制器 + 用户停止标记 + 生成请求 id（POST /api/chat/stop 通知后端取消生成）
   const abortCtrlRef = useRef<AbortController | null>(null)
   const userStoppedRef = useRef(false)
   const requestIdRef = useRef<string | null>(null)
-  const stopReveal = () => {
-    if (revealTimerRef.current != null) { cancelAnimationFrame(revealTimerRef.current); revealTimerRef.current = null }
-    pendingQueueRef.current = []
-  }
-  const startReveal = () => {
-    if (revealTimerRef.current != null) return
-    const tick = () => {
-      revealTimerRef.current = null
-      const q = pendingQueueRef.current
-      if (q.length === 0) return  // 队列空：停止调度（下一 token 到达时重新启动），避免空转
-      revealTimerRef.current = requestAnimationFrame(tick)
-      // 逐字摊派 + 自适应加速：字是成批到达的（模型一个 chunk 几十字），逐字显示必须把每批跨帧摊开
-      // （每帧至少 1 字）；积压每多 10 字每帧多消费 1 字 → 消费速率自动贴住模型速率，既不一段段也不滞后
-      const _pendingTotal = q.reduce((s, h) => s + h.text.length, 0)
-      let budget = 1 + Math.floor(_pendingTotal / 10)
-      const updates: Array<{ agent: string; text: string }> = []
-      while (budget > 0 && q.length > 0) {
-        const head = q[0]
-        if (head.text === '') { q.shift(); continue }
-        const take = Math.min(budget, head.text.length)
-        const piece = head.text.slice(0, take)
-        head.text = head.text.slice(take)
-        if (head.text === '') q.shift()
-        const lastU = updates[updates.length - 1]
-        if (lastU && lastU.agent === head.agent) lastU.text += piece
-        else updates.push({ agent: head.agent, text: piece })
-        budget -= take
-      }
-      if (updates.length === 0) return
-      setFlowMindchain(prev => {
-        let cur = prev
-        for (const u of updates) {
-          const last = cur[cur.length - 1]
-          cur = (last && last.agent === u.agent)
-            ? [...cur.slice(0, -1), { agent: u.agent, content: last.content + u.text }]
-            : [...cur, { agent: u.agent, content: u.text }]
-        }
-        mindchainRef.current = cur
-        return cur
-      })
-      // 同步到对话流占位消息的 think：每 2 帧一次（~32ms，纯文本渲染低成本）
-      revealTickRef.current += 1
-      if (revealTickRef.current % 2 === 1) {
-        setAllMessages(prev => {
-          const arr = prev[activeDidRef.current || ''] || []
-          const lastMsg = arr[arr.length - 1]
-          if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content === '') {
-            return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, think: mindchainRef.current }] }
-          }
-          return prev
-        })
-      }
-    }
-    revealTimerRef.current = requestAnimationFrame(tick)
-  }
-  // ---------- 回答区逐字 reveal：answer_token 到达先入 pending，rAF 每帧逐字追加到占位消息 content ----------
-  // 正常每帧 1 字（≈60字/秒，接近模型极限速度且"一个字一个字蹦出来"）；积压超阈值自动加速（2-3字/帧）跟上不落后
-  const answerPendingRef = useRef('')
-  const answerTimerRef = useRef<number | null>(null)
   // 围栏状态机（后端拆字推送后，``` 围栏逐字到达）：围栏内内容丢弃
   const fenceBufRef = useRef('')
   const fenceInRef = useRef(false)
-  const startAnswerReveal = () => {
-    if (answerTimerRef.current != null) return
-    const tick = () => {
-      answerTimerRef.current = null
-      const pending = answerPendingRef.current
-      if (!pending) return  // 队列空：停止调度（下一 chunk 到达时重新启动）
-      answerTimerRef.current = requestAnimationFrame(tick)
-      // 逐字摊派 + 自适应加速（同思维链）：每帧至少 1 字，积压每多 10 字多 1 字/帧
-      const take = 1 + Math.floor(pending.length / 10)
-      const piece = pending.slice(0, take)
-      answerPendingRef.current = pending.slice(take)
-      setAllMessages(prev => {
-        const arr = prev[activeDidRef.current || ''] || []
-        const lastMsg = arr[arr.length - 1]
-        if (lastMsg && lastMsg.role === 'assistant') {
-          return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, content: (lastMsg.content || '') + piece }] }
-        }
-        return prev
-      })
-    }
-    answerTimerRef.current = requestAnimationFrame(tick)
-  }
-  const flushAnswerReveal = () => {
-    // done/停止前调用：把队列剩余一次性追加（避免内容丢失或结尾跳变）
-    if (answerTimerRef.current != null) { cancelAnimationFrame(answerTimerRef.current); answerTimerRef.current = null }
-    const rest = answerPendingRef.current
-    answerPendingRef.current = ''
-    if (!rest) return
-    setAllMessages(prev => {
-      const arr = prev[activeDidRef.current || ''] || []
-      const lastMsg = arr[arr.length - 1]
-      if (lastMsg && lastMsg.role === 'assistant') {
-        return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, content: (lastMsg.content || '') + rest }] }
-      }
-      return prev
-    })
-  }
+  // 本轮是否被需求澄清中断（后端 clarify 事件后直接结束 SSE，无 done）——流结束后保留占位消息等待用户选择
+  const clarifyRef = useRef(false)
   const sessionId = useRef(SESSION_ID)
   // 第二对话 id：App 持有（主对话完成后为它生成横向拓展追问），传给 RightPanel 使用
   const secondDialogueIdRef = useRef('sd-' + Math.random().toString(36).slice(2) + Date.now().toString(36))
@@ -404,17 +321,78 @@ function App() {
     if (v === 'chat') setChatOpen(false) // 点「主页」回到主页
   }
 
-  /** 替换/追加最后一条 assistant 消息：发送时插入的空占位（content=''）被结果替换，避免重复气泡 */
+  /** 替换最后一条 assistant 消息：发送时插入的空占位（content=''）被结果替换，避免重复气泡。
+   * 极速档的 answer_token 会先流式把占位 content 填满，done 时仍是同一条 → 必须原地替换而非 push */
   const upsertLastAssistant = (prev: Message[], msg: Message) => {
     const arr = [...prev]
     const last = arr[arr.length - 1]
-    if (last && last.role === 'assistant' && last.content === '') {
+    if (last && last.role === 'assistant') {
       arr[arr.length - 1] = msg
     } else {
       arr.push(msg)
     }
     return arr
   }
+  // 每帧 flush 一次累积的流式字符（回答正文 + 思维链），渲染节奏固定在 rAF 帧边界
+  // 持续 reveal 循环：不管 token 何时到达（只进队列），每帧从队列吐出固定节奏的字（2-4 字/帧）。
+  // 显示节奏 = 帧率（16ms 均匀），与网络批量到达节奏完全解耦——消除"每批到达就整批蹦出"的一段一段。
+  const revealRunningRef = useRef(false)
+  const revealTick = () => {
+    const pa = pendingAnswerRef.current
+    if (pa) {
+      // 每帧吐：积压少吐 2 字（匀速），积压多吐 4 字（防越积越多跟不上模型）
+      const take = Math.min(pa.length, pa.length > 40 ? 4 : 2)
+      const out = pa.slice(0, take)
+      pendingAnswerRef.current = pa.slice(take)
+      setAllMessages(prev => {
+        const arr = prev[activeDidRef.current || ''] || []
+        const lastMsg = arr[arr.length - 1]
+        if (lastMsg && lastMsg.role === 'assistant') {
+          return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, content: (lastMsg.content || '') + out }] }
+        }
+        return prev
+      })
+    }
+    const pm = pendingMindRef.current
+    if (pm) {
+      const take = Math.min(pm.text.length, 3)
+      const out = pm.text.slice(0, take)
+      pm.text = pm.text.slice(take)
+      if (pm.text.length === 0) pendingMindRef.current = null
+      setFlowMindchain(prev => {
+        const idx = prev.map(x => x.agent).lastIndexOf(pm.agent)
+        let next: Array<{ agent: string; content: string }>
+        if (idx >= 0) {
+          next = prev.slice()
+          next[idx] = { agent: pm.agent, content: next[idx].content + out }
+        } else {
+          next = [...prev, { agent: pm.agent, content: out }]
+        }
+        mindchainRef.current = next
+        return next
+      })
+      setAllMessages(prev => {
+        const arr = prev[activeDidRef.current || ''] || []
+        const lastMsg = arr[arr.length - 1]
+        if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content === '') {
+          return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, think: mindchainRef.current }] }
+        }
+        return prev
+      })
+    }
+    if (!pendingAnswerRef.current && !pendingMindRef.current) {
+      // 队列空：停循环，等下一个 token 到达再启动
+      revealRunningRef.current = false
+      return
+    }
+    requestAnimationFrame(revealTick)
+  }
+  const ensureRevealLoop = () => {
+    if (revealRunningRef.current) return
+    revealRunningRef.current = true
+    requestAnimationFrame(revealTick)
+  }
+
   const handleSendMessage = useCallback(async (text: string, settings?: Record<string, any>) => {
     let did = currentDialogueId
     // 澄清继续模式：复用当前占位消息继续（不新建消息、不清空思维链），流程在同一轮内衔接
@@ -456,13 +434,13 @@ function App() {
     setFlowActiveAgent(null)
     streamedRef.current = false
     userStoppedRef.current = false
+    clarifyRef.current = false
     requestIdRef.current = null
-    answerPendingRef.current = ''
-    if (answerTimerRef.current != null) { cancelAnimationFrame(answerTimerRef.current); answerTimerRef.current = null }
     fenceBufRef.current = ''
     fenceInRef.current = false
+    pendingAnswerRef.current = ''
+    pendingMindRef.current = null
     activeDidRef.current = did || null
-    stopReveal()
     // 自动命名：对话名为「对话 N」时，按首条消息内容改名
     const curDlg = dialogues.find(d => d.id === did)
     if (curDlg && /^对话 \d+$/.test(curDlg.name)) {
@@ -517,7 +495,7 @@ function App() {
       resetTimer()
       const res = await fetch('/api/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text.trim(), session_id: sessionId.current, dialogue_id: did, project_id: currentProjectId, api_key: apiKey, model: model, base_url: providerBaseUrls[provider], settings: mergedSettings, mode: (mergedSettings && mergedSettings.chatMode) || 'kb', image: (mergedSettings && mergedSettings.image) || undefined, agents: agents, extra_followup_did: secondDialogueIdRef.current, extra_followup_focus: 'expand', clarified: continuing }),
+        body: JSON.stringify({ message: text.trim(), session_id: sessionId.current, dialogue_id: did, project_id: currentProjectId, api_key: apiKey, model: model, base_url: providerBaseUrls[provider], settings: mergedSettings, image: (mergedSettings && mergedSettings.image) || undefined, agents: agents, extra_followup_did: secondDialogueIdRef.current, extra_followup_focus: 'expand', clarified: continuing }),
         signal: ctrl.signal,
       })
       if (!res.ok || !res.body) {
@@ -541,9 +519,10 @@ function App() {
           const data = JSON.parse(line.slice(6))
           if (data.type === 'start') { requestIdRef.current = data.request_id || null; continue }
           if (data.type === 'clarify') {
-            // 需求澄清（reasonix 式）：把澄清问题+选项写进思维链"主Agent·规划"条目（不结束流程、不删占位消息）；
-            // 用户点选项后同一轮流程内继续（复用占位消息与思维链）
-            const item: any = { agent: '主Agent·规划', content: '', clarify: { question: data.question || '请明确你的需求', options: Array.isArray(data.options) ? data.options : [] } }
+            // 需求澄清（reasonix 式）：后端发 clarify 后中断流程（无 done）；把澄清问题+选项写进思维链"学习助手·规划"条目；
+            // 用户点选项后作为新消息重发。标记 clarifyRef——流结束后保留占位消息等待选择（不显示"处理完成"）
+            clarifyRef.current = true
+            const item: any = { agent: '学习助手·规划', content: '', clarify: { question: data.question || '请明确你的需求', options: Array.isArray(data.options) ? data.options : [] } }
             setFlowMindchain(prev => { const next = [...prev, item]; mindchainRef.current = next; return next })
             setAllMessages(prev => {
               const arr = [...(prev[did || ''] || [])]
@@ -563,9 +542,9 @@ function App() {
             setFlowAgents(prev => prev.includes(data.agent) ? prev : [...prev, data.agent])
             setFlowActiveAgent(data.agent)
             // 状态文案（纯动作，显示在思维链中该 Agent 标题后面）
-            if (data.agent === '主Agent·规划') {
+            if (data.agent === '学习助手·规划') {
               setFlowStatus('正在规划…')
-            } else if (data.agent === '主Agent·生成') {
+            } else if (data.agent === '学习助手·生成') {
               setFlowStatus('正在思考生成…')
             } else if (data.agent === '学情与记忆管理') {
               setFlowStatus('正在阅读记忆…')
@@ -598,14 +577,14 @@ function App() {
             fenceBufRef.current = ''
             if (fenceInRef.current) continue  // 围栏内内容丢弃
             if (!c) continue  // 空串跳过，绝不能中断 SSE 解析循环
-            const q = pendingQueueRef.current
-            const lastQ = q[q.length - 1]
-            if (lastQ && lastQ.agent === data.agent) {
-              lastQ.text += c
+            // 累积到 rAF 帧循环（累积式，非覆盖式——同帧多个 token 不丢失）；每帧 flush 一次
+            const cur = pendingMindRef.current
+            if (cur && cur.agent === data.agent) {
+              cur.text += c
             } else {
-              q.push({ agent: data.agent, text: c })
+              pendingMindRef.current = { agent: data.agent, text: c }
             }
-            startReveal()
+            ensureRevealLoop()
           }
           if (data.type === 'answer_token') {
             const ch = data.chunk || ''
@@ -613,12 +592,15 @@ function App() {
               streamedRef.current = true
               // simple 流程无 step 事件：回答开始流式即更新状态（避免一直显示"等待模型响应"）
               setFlowStatus('正在输出回答…')
-              // 先入逐字 reveal 队列：一个字一个字蹦出来（不整块追加，避免"一串字一串字"）
-              answerPendingRef.current += ch
-              startAnswerReveal()
+              // 累积到 rAF 帧循环：每帧 flush 一次（同上）
+              pendingAnswerRef.current += ch
+              ensureRevealLoop()
             }
           }
           if (data.type === 'done') {
+            // 竞态防护：清空 rAF 待 flush 的流式残字（done 用完整 finalReply 替换，不能再追加）
+            pendingAnswerRef.current = ''
+            pendingMindRef.current = null
             finalReply = data.reply; steps.push(...(data.steps || [])); taskStats = data.task_stats || null
             // 特殊形式输出建议（模型判断）：key → label 映射，随最终消息展示
             const SPECIAL_LABELS: Record<string, string> = { report: '报告', flow: '流程图', tree: '树状图', table: '表格', chart: '统计图', audio: '音频', quiz: '测试题' }
@@ -627,9 +609,6 @@ function App() {
               : []
             setFlowStatus('')
             setFlowActiveAgent(null)
-            stopReveal()
-            // 回答 reveal 队列剩余一次性追加（content 补全后再走 streamedRef 替换，无跳变）
-            flushAnswerReveal()
             // 最终同步一次占位消息 think（降频期间可能滞后）
             setAllMessages(prev => {
               const arr = prev[activeDidRef.current || ''] || []
@@ -662,6 +641,19 @@ function App() {
         }
         const thinkArr = mindchainRef.current
         if (debugLine) thinkArr.push({ agent: "运行统计", content: debugLine })
+        // 需求澄清中断（后端 clarify 后无 done）：保留占位消息（content 空、think 含澄清选项），
+        // 等待用户点击选项重新发消息——不显示"处理完成"、不跑打字机
+        if (clarifyRef.current && !finalReply && !userStoppedRef.current && !flowError) {
+          setAllMessages(prev => {
+            const arr = prev[activeDidRef.current || ''] || []
+            const lastMsg = arr[arr.length - 1]
+            if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content === '') {
+              return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, think: thinkArr }] }
+            }
+            return prev
+          })
+          return
+        }
         const finalContent = finalReply || (flowError ? '⚠️ ' + flowError : '处理完成')
         // 打字机效果（设置开关）
         const typingOn = true  // 流式逐字输出固定开启
@@ -688,7 +680,6 @@ function App() {
     } catch (e: any) {
       if (userStoppedRef.current) {
         // 用户手动停止：保留已流式显示的内容为最终消息 + 标记（后端已取消且不落库，仅前端展示；输入框立即可继续提问）
-        flushAnswerReveal()  // 队列剩余补全，保留尽可能多的内容
         setAllMessages(prev => {
           const arr = [...(prev[did || ''] || [])]
           if (arr.length) {
@@ -700,55 +691,84 @@ function App() {
           return { ...prev, [did || '']: arr }
         })
       } else {
-        setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: (e && e.name === 'AbortError') ? '⚠️ 请求超时：生成时间过长已中断，请重试或减少内容复杂度。' : ('抱歉，请求失败。' + (e && e.message ? '（' + e.message + '）' : '')) }) }))
+        // 非用户意愿断线（超时/网络中断）：后端线程继续跑完并落库，前端重连轮询取回结果（文档：客户端重连可取结果）
+        setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: '⚠️ 网络中断，正在后台继续生成并自动取回结果…' }) }))
+        let polled = false
+        const poll = async () => {
+          if (polled) return
+          try {
+            const r = await fetch('/api/dialogues/' + encodeURIComponent(did || '') + '/messages', { cache: 'no-store' })
+            const d = await r.json()
+            const msgs = (d.messages || []).map((m: any) => ({ role: m.role, content: m.content || '', steps: m.steps, think: m.think }))
+            const last = msgs[msgs.length - 1]
+            // 后端已把最终 assistant 消息落库（非占位、非"（系统未生成内容）"）→ 取回替换
+            if (last && last.role === 'assistant' && last.content && last.content !== '（系统未生成内容）') {
+              polled = true
+              setAllMessages(prev => ({ ...prev, [did || '']: msgs }))
+              return
+            }
+          } catch (e) {}
+          // 未就绪：继续轮询（共约 90s，覆盖复杂生成）
+          if (!polled) setTimeout(poll, 3000)
+        }
+        setTimeout(poll, 4000)  // 后端落库需要时间，先等 4s 再开始轮询
       }
-    } finally { clearTimeout(timeoutTimer); stopReveal(); setIsLoading(false); abortCtrlRef.current = null }
+    } finally { clearTimeout(timeoutTimer); setIsLoading(false); abortCtrlRef.current = null }
   }, [currentDialogueId, agents, dialogues, currentProjectId])
   // 手动停止生成：前端中断 SSE 流 + 通知后端取消（后端置位 cancel_event 后中断 LLM、不落库不后处理；已流式内容保留展示）
   const handleStopGeneration = useCallback(() => {
     userStoppedRef.current = true
+    // 停止时清空 rAF 待 flush 的流式残字（已显示的保留，未 flush 的丢弃——停止语义）
+    pendingAnswerRef.current = ''
+    pendingMindRef.current = null
     try { if (abortCtrlRef.current) abortCtrlRef.current.abort() } catch (e) {}
     if (requestIdRef.current) {
       fetch('/api/chat/stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: requestIdRef.current }) }).catch(() => {})
     }
   }, [])
-  // 需求澄清选项点击（reasonix 式）：同一轮流程内继续——复用占位消息与思维链，以"原问题+选择"继续生成
+  // 需求澄清选项点击（reasonix 式）：清理上一轮澄清占位消息，以"原问题+选择"作为新消息重新发送（走完整流程）
   const handleClarifyPick = useCallback((option: string | null) => {
     const original = lastUserMsgRef.current || ''
     if (!original) return
+    // 移除被澄清中断的占位消息（content 空 + think 含 clarify），避免遗留空消息
+    setAllMessages(prev => {
+      const arr = prev[activeDidRef.current || ''] || []
+      const lastMsg = arr[arr.length - 1]
+      if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content === '' && Array.isArray(lastMsg.think) && lastMsg.think.some((t: any) => t && t.clarify)) {
+        return { ...prev, [activeDidRef.current || '']: arr.slice(0, -1) }
+      }
+      return prev
+    })
     clarifyContinueRef.current = true
     handleSendMessage(option ? `${original}\n（我选择：${option}）` : original, { clarified: true })
   }, [handleSendMessage])
   const handleSaveAgent = useCallback((updated: AgentConfig) => {
-    setAgents(prev => prev.map(a => a.id === updated.id ? updated : a))
+    setAgents(prev => {
+      const next = prev.map(a => a.id === updated.id ? updated : a)
+      // 持久化：用户对项目介绍 Agent 设定的编辑刷新后保留
+      try { localStorage.setItem('coagent-agents', JSON.stringify(next)) } catch { /* 忽略 */ }
+      return next
+    })
   }, [])
   // 模板应用 / 导入：整体替换 Agent 团队配置
   const handleReplaceAgents = useCallback((next: AgentConfig[]) => {
     if (!Array.isArray(next) || next.length === 0) return
     setAgents(next)
+    try { localStorage.setItem('coagent-agents', JSON.stringify(next)) } catch { /* 忽略 */ }
   }, [])
 
   return (
     <div ref={appRef} className="flex flex-col h-screen w-screen bg-[#ffffff] text-[#1a1a1a] overflow-hidden">
-      {/* 顶栏：wordmark + GitHub + 设置 */}
-      <header className="h-12 flex-shrink-0 flex items-center gap-3 px-4">
-        <span className="font-display text-[17px] tracking-wide select-none">CoAgent-Learn</span>
-        <a href="https://github.com/tpys11/CoAgent-Learn" target="_blank" rel="noreferrer"
-          className="p-1.5 rounded-lg icon-btn" title="GitHub: tpys11/CoAgent-Learn">
-          <Github size={15} />
-        </a>
-        <span className="flex-1" />
-</header>
-      <div className="flex-1 flex min-h-0 pb-3 pr-3">
+      <div className="flex-1 flex min-h-0 pt-3 pb-3 pr-3">
       {/* 最左侧细轨：三界面切换 */}
-      <ActivityBar view={view} onChange={handleViewChange} expanded={view === 'chat' && !chatOpen}
+      <ActivityBar view={view} onChange={handleViewChange} expanded
         onSettings={() => setShowSettings(true)} />
       {sidebarCollapsed && (
         <button onClick={() => setSidebarCollapsed(false)} className="flex-shrink-0 w-7 h-7 mt-3 ml-1.5 flex items-center justify-center rounded-lg icon-btn" title="展开侧栏">
           <PanelLeftOpen size={15} />
         </button>
       )}
-      {view === 'tutorial' && <TutorialView />}
+      {view === 'tutorial' && <TutorialView agents={agents} onSave={handleSaveAgent} onReplace={handleReplaceAgents} projectId={currentProjectId} />}
       {view === 'resources' && <ResourceView projectId={currentProjectId} />}
       {view === 'memory' && <MemoryView projectId={currentProjectId} onRequestModify={handleRequestModify} onRequestAnalyze={handleRequestAnalyze} />}
       {view === 'knowledge' && <KnowledgeView projectId={projectKBId ?? currentProjectId} onClose={() => { setView('chat'); setChatOpen(true) }} />}

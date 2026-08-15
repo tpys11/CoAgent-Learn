@@ -1,5 +1,5 @@
-﻿import { useState, useEffect, useRef } from 'react'
-import { Send, Bot, Lightbulb, MessagesSquare, Coins, CheckCircle2, ChevronDown, Upload, Cpu, SlidersHorizontal, AlertTriangle, Search, FileText, LayoutTemplate, Image as ImageIcon, PenLine, Square, ArrowDownToLine } from 'lucide-react'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { Send, Bot, Lightbulb, MessagesSquare, Coins, CheckCircle2, Check, ChevronDown, Upload, Cpu, SlidersHorizontal, AlertTriangle, Search, FileText, LayoutTemplate, Image as ImageIcon, PenLine, Square, ArrowDownToLine, Timer } from 'lucide-react'
 import type { Message, Project } from '../types'
 import MarkdownIt from 'markdown-it'
 
@@ -7,6 +7,37 @@ import MarkdownIt from 'markdown-it'
 // ---------- 思维链渲染：markdown-it 轻量渲染（html:false 防 XSS，换行生效）----------
 const mdThink = new MarkdownIt({ html: false, linkify: true, breaks: true })
 const renderMd = (text: string) => mdThink.render(text || '')
+
+// markdown 渲染结果缓存：历史消息 content 不变，命中即跳过 markdown-it 全量解析（流式 flush 每帧触发全列表重渲染时的性能关键）
+const _mdCache = new Map<string, string>()
+const renderMdCached = (text: string) => {
+  const key = text || ''
+  let h = _mdCache.get(key)
+  if (h === undefined) {
+    h = renderMd(key)
+    if (_mdCache.size > 300) {
+      // 简单上限：超出删最老（Map 迭代顺序 = 插入顺序）
+      const first = _mdCache.keys().next().value
+      if (first !== undefined) _mdCache.delete(first)
+    }
+    _mdCache.set(key, h)
+  }
+  return h
+}
+
+/** 思维链标题净化：只显示 agent 名称，去掉内部阶段后缀与伪标题。
+ * 内部阶段名（学习助手·规划/生成）、历史旧名（主Agent·规划/生成）、极速档伪标题（综合概述性记忆）
+ * 统一显示为"学习助手"；内部名仍用于"正在干什么"状态匹配。 */
+const displayAgent = (name: string) => {
+  if (typeof name !== 'string') return name
+  let base = name
+  // 去掉 ·规划 / ·生成 阶段后缀
+  const m = base.match(/^(.*?)·(规划|生成)$/)
+  if (m) base = m[1]
+  // 历史旧名 / 极速档伪标题 → 学习助手
+  if (base === '主 Agent' || base === '主Agent' || base === '综合概述性记忆') return '学习助手'
+  return base
+}
 
 
 interface CenterPanelProps {
@@ -35,7 +66,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   const [input, setInput] = useState('')
   // 记忆修改预填：draft 变化时写入输入框（从记忆界面跳转）
   useEffect(() => { if (draft) setInput(draft) }, [draft])
-  const [chatMode, setChatMode] = useState<'kb'|'free'>('kb')
   // 上次会话保存的三条追问（进入对话时展示，抢占注意力）
   const [followups, setFollowups] = useState<string[]>([])
   const loadFollowups = () => {
@@ -86,7 +116,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
     const el = msgScrollRef.current
     if (el && stickToBottomRef.current) el.scrollTop = el.scrollHeight
   }, [messages, isLoading])
-  const [stats, setStats] = useState<{dialogue_count: number; tokens_estimate: number; metrics: any}>({dialogue_count: 0, tokens_estimate: 0, metrics: null})
+  const [stats, setStats] = useState<{dialogue_count: number; tokens_estimate: number; total_duration_seconds: number; metrics: any}>({dialogue_count: 0, tokens_estimate: 0, total_duration_seconds: 0, metrics: null })
   useEffect(() => {
     if (!currentProject) return
     fetch('/api/stats?project_id=' + encodeURIComponent(currentProject.id), { cache: 'no-store' })
@@ -150,23 +180,12 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
     setAttachments(prev => prev.filter(a => a.name !== name))
   }
   const [time, setTime] = useState(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }))
-  const [searchMode, setSearchMode] = useState(1)
-  const [showFormat, setShowFormat] = useState(false)
-  const [showContent, setShowContent] = useState(false)
-  const formatRef = useRef<HTMLDivElement>(null)
-  const contentRef = useRef<HTMLDivElement>(null)
-  const [outputFormat, setOutputFormat] = useState(0)
-  const [outputStyle, setOutputStyle] = useState(0)
-  const [outputVolume, setOutputVolume] = useState(1)
-  const [depth, setDepth] = useState(1)
-  const [showSearch, setShowSearch] = useState(false)
   const [showModelModal, setShowModelModal] = useState(false)
-  // 模板模式：与「模板与编排」预设模板一致
+  // 档位模式：极速/思考/研究（用户时间-质量期望的表达），与「对话流程」区块一致
 const TEMPLATE_OPTIONS = [
-  { name: '基础', desc: '默认编排' },
-  { name: '检索增强', desc: '知识库管理调用子 Agent 整理资料' },
-  { name: '快速', desc: '生成用快模型' },
-  { name: '输出增强', desc: '主 Agent 调用子 Agent 产出结构化内容' },
+  { name: '极速', desc: '最短响应（1 秒内首字，500-800 字）' },
+  { name: '思考', desc: '完整流程 + 轻量单审（800-1200 字）' },
+  { name: '研究', desc: '完整流程 + 严格检测（多轮搜索）' },
 ]
 
 /** 模型厂家配置（仅保留最常用：DeepSeek / 智谱GLM） */
@@ -186,18 +205,18 @@ const TEMPLATE_OPTIONS = [
     return alias[m] || m
   })
   // 模板模式（与模板与编排预设一致）
-  const [templateMode, setTemplateMode] = useState(() => { const t = localStorage.getItem('coagent-template') || '基础'; return ['基础', '检索增强', '快速', '输出增强'].includes(t) ? t : '基础' })
+  const [templateMode, setTemplateMode] = useState(() => {
+    const t = localStorage.getItem('coagent-template') || '思考'
+    // 旧模板名映射新档位（兼容历史 localStorage）
+    const MAP: Record<string, string> = { '基础': '思考', '检索增强': '思考', '快速': '极速', '输出增强': '思考' }
+    const n = MAP[t] || t
+    return ['极速', '思考', '研究'].includes(n) ? n : '思考'
+  })
   // Auto：AI 根据输入自动选择模板/模式（开启后手动设置按钮禁用）
   const [autoMode, setAutoMode] = useState(() => localStorage.getItem('coagent-auto') === '1')
   // 模型 Auto：AI 根据输入自动选择模型（模型选择上拉栏内开关）
   const [modelAuto, setModelAuto] = useState(() => localStorage.getItem('coagent-model-auto') === '1')
-  // 使用模板：开启后工具栏显示「模板选择」按钮
-  const [useTemplate, setUseTemplate] = useState(() => localStorage.getItem('coagent-use-template') !== '0')
-  // 细节设定：开启后工具栏显示细节按钮（输入询问/检索模式/输出形式）
-  const [useDetail, setUseDetail] = useState(() => localStorage.getItem('coagent-use-detail') !== '0')
-  // 对话模式上拉框
-  const [showDlgMenu, setShowDlgMenu] = useState(false)
-  const dlgRef = useRef<HTMLDivElement>(null)
+  // 档位上拉框
   const [showTplMenu, setShowTplMenu] = useState(false)
   const tplRef = useRef<HTMLDivElement>(null)
   // 模型选择上拉小窗
@@ -206,23 +225,14 @@ const TEMPLATE_OPTIONS = [
     const close = (e: MouseEvent) => {
       if (tplRef.current && !tplRef.current.contains(e.target as Node)) setShowTplMenu(false)
       if (modelRef.current && !modelRef.current.contains(e.target as Node)) setShowModelModal(false)
-      if (dlgRef.current && !dlgRef.current.contains(e.target as Node)) setShowDlgMenu(false)
     }
     document.addEventListener('mousedown', close)
     return () => document.removeEventListener('mousedown', close)
   }, [])
-  const searchRef = useRef<HTMLDivElement>(null)
-  const [showInputOpt, setShowInputOpt] = useState(false)
-  const inputOptRef = useRef<HTMLDivElement>(null)
-  const [inputOptMode, setInputOptMode] = useState(0) // 0=开启优化,1=关闭优化
-  const inputOptLabels = ['开启', '关闭']
-  const [webSearchMode, setWebSearchMode] = useState(0) // 0=默认,1=增强
   const [timeRange, setTimeRange] = useState('今天')
   const [showTimeRange, setShowTimeRange] = useState(false)
   const timeRangeRef = useRef<HTMLDivElement>(null)
   const timeLabels = ['本次', '今天', '本周', '本月', '今年', '总']
-
-  const searchLabels = ['自由', '知识库']
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -232,11 +242,7 @@ const TEMPLATE_OPTIONS = [
   }, [])
   useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (formatRef.current && !formatRef.current.contains(e.target as Node)) setShowFormat(false)
-      if (contentRef.current && !contentRef.current.contains(e.target as Node)) setShowContent(false)
-      if (searchRef.current && !searchRef.current.contains(e.target as Node)) setShowSearch(false)
       if (timeRangeRef.current && !timeRangeRef.current.contains(e.target as Node)) setShowTimeRange(false)
-      if (inputOptRef.current && !inputOptRef.current.contains(e.target as Node)) setShowInputOpt(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -269,18 +275,9 @@ const TEMPLATE_OPTIONS = [
     }
     onSendMessage(full, {
       image: image,
-      chatMode: chatMode,
       template: templateMode,
       auto: autoMode,
       modelAuto: modelAuto,
-      searchMode: searchLabels[searchMode],
-      outputFormat: outputFormat === 0 ? '低结构化' : '高结构化',
-      outputStyle: outputStyle === 0 ? 'MD文档' : '对话形式',
-      thinking: '开',
-      outputVolume: ['精简', '适中', '拓展'][outputVolume],
-      depth: ['浅', '中', '深'][depth],
-      inputOptMode: inputOptMode === 0 ? '默认模式' : '不询问模式',
-      webSearchMode: webSearchMode === 0 ? '默认' : '增强',
     })
     setInput('')
     setAttachments([])
@@ -288,18 +285,9 @@ const TEMPLATE_OPTIONS = [
 
   const sendFollowup = (q: string) => {
     onSendMessage(q, {
-      chatMode: chatMode,
       template: templateMode,
       auto: autoMode,
       modelAuto: modelAuto,
-      searchMode: searchLabels[searchMode],
-      outputFormat: outputFormat === 0 ? '低结构化' : '高结构化',
-      outputStyle: outputStyle === 0 ? 'MD文档' : '对话形式',
-      thinking: '开',
-      outputVolume: ['精简', '适中', '拓展'][outputVolume],
-      depth: ['浅', '中', '深'][depth],
-      inputOptMode: inputOptMode === 0 ? '默认模式' : '不询问模式',
-      webSearchMode: webSearchMode === 0 ? '默认' : '增强',
     })
   }
 
@@ -331,6 +319,8 @@ const TEMPLATE_OPTIONS = [
           <span className="flex items-center gap-1 text-[11px]"><MessagesSquare size={12} /> {stats.dialogue_count} 对话</span>
           <span className="w-px h-3.5 bg-[#e5e5e5]" />
           <span className="flex items-center gap-1 text-[11px] tabular-nums"><Coins size={12} /> {(stats.tokens_estimate || 0).toLocaleString()} Tokens</span>
+          <span className="w-px h-3.5 bg-[#e5e5e5]" />
+          <span className="flex items-center gap-1 text-[11px] tabular-nums"><Timer size={12} /> {stats.total_duration_seconds >= 3600 ? (stats.total_duration_seconds / 3600).toFixed(1) + ' 小时' : Math.round(stats.total_duration_seconds / 60) + ' 分钟'} 专注</span>
           {stats.metrics && stats.metrics.hallucination && (
             <>
               <span className="w-px h-3.5 bg-[#e5e5e5]" />
@@ -379,100 +369,106 @@ const TEMPLATE_OPTIONS = [
               </div>
             ) : (
               <div key={idx} className="w-full text-sm leading-7 animate-[fadeIn_0.25s_ease]">
-                {(msg.content === '' || (isLoading && idx === messages.length - 1)) ? (
-                  <div>
-                    {/* 实时思维链：以对话形式推送（Agent 小标题+内容，随消息流滚动，不限定框；plain 纯文本渲染保帧率） */}
-                    {msg.think && msg.think.length > 0 && (
-                      <div className="mb-2"><ThinkBlock items={msg.think} plain activeAgent={flowActiveAgent} activeStatus={flowStatus} onClarifyPick={onClarifyPick} /></div>
-                    )}
-                    {/* 主Agent生成内容：直接流式输出在对话区（逐字 reveal，节流 markdown 渲染） */}
-                    {msg.content ? (
-                      <StreamingMd text={msg.content} />
-                    ) : null}
-                    <div className="flex items-center gap-2 text-dim">
-                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" />
-                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }} />
-                      <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }} />
-                      <span className="text-xs ml-1">{flowActiveAgent ? '处理中…' : (flowStatus || '思考中…')}</span>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    {/* 思考过程（按 Agent 逐个折叠）在输出内容上方 */}
-                    {msg.think && msg.think.length > 0 && (
-                      <AgentThinkList think={msg.think} onClarifyPick={onClarifyPick} />
-                    )}
-                    <div className="md-answer-body" dangerouslySetInnerHTML={{ __html: renderMd(msg.content) }} />
-                    {/* 运行统计：回答下面、追问上面，直接展开显示 */}
-                    {(() => {
-                      const stat = (msg.think || []).find(t => typeof t !== 'string' && (t as any).agent === '运行统计')
-                      if (!stat) return null
-                      return (
-                        <div className="mt-2.5 text-[10px] leading-relaxed text-dim border hairline rounded-lg px-3 py-2 bg-[var(--bg-panel)]">
-                          {(stat as any).content}
+                {(() => {
+                  const isLast = idx === messages.length - 1
+                  const streaming = isLoading && isLast
+                  return (
+                    <>
+                      {/* 思考过程区块（DeepSeek 式：流式展开逐字 / 完成自动折叠为一行，统一组件消除跳变） */}
+                      {msg.think && msg.think.length > 0 && (
+                        <div className="mb-3">
+                          <ReasoningBlock items={msg.think} streaming={streaming} activeAgent={flowActiveAgent} activeStatus={flowStatus} onClarifyPick={onClarifyPick} />
                         </div>
-                      )
-                    })()}
-                    {/* 特殊形式输出建议（模型判断）：弹出选项——是否生成 / 生成哪些 */}
-                    {msg.special && msg.special.length > 0 && !dismissedSpecial.has(idx) && (
-                      <div className="mt-2.5 border hairline rounded-xl px-3 py-2.5 bg-[var(--bg-panel)]">
-                        <p className="text-[10px] font-semibold text-dim mb-1.5">模型建议：内容可生成以下形式</p>
-                        <div className="flex flex-wrap gap-1.5 mb-2">
-                          {msg.special.map(s => {
-                            const sel = (specialSel[idx] ?? msg.special!.map(x => x.key)).includes(s.key)
+                      )}
+                      {/* 回答正文：流式逐字纯文本（绝不 markdown）/ 完成一次性 markdown 渲染 */}
+                      {streaming
+                        ? (msg.content ? <StreamingMd text={msg.content} streaming /> : null)
+                        : (msg.content ? <div className="md-answer-body" dangerouslySetInnerHTML={{ __html: renderMdCached(msg.content) }} /> : null)}
+                      {/* 流式等待指示器（回答尚未开始流式时显示） */}
+                      {streaming && !msg.content && (
+                        <div className="flex items-center gap-2 text-dim">
+                          <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" />
+                          <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }} />
+                          <span className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }} />
+                          <span className="text-xs ml-1">{flowActiveAgent ? '处理中…' : (flowStatus || '思考中…')}</span>
+                        </div>
+                      )}
+                      {/* 完成态附加内容 */}
+                      {!streaming && (
+                        <>
+                          {/* 运行统计：回答下面、追问上面，直接展开显示 */}
+                          {(() => {
+                            const stat = (msg.think || []).find(t => typeof t !== 'string' && (t as any).agent === '运行统计')
+                            if (!stat) return null
                             return (
-                              <button key={s.key}
-                                onClick={() => setSpecialSel(prev => {
-                                  const cur = prev[idx] ?? msg.special!.map(x => x.key)
-                                  const next = sel ? cur.filter(k => k !== s.key) : [...cur, s.key]
-                                  return { ...prev, [idx]: next }
-                                })}
-                                className={"chip text-left text-[11px] px-2.5 py-1 transition-all" + (sel ? '' : ' opacity-40')}>
-                                {s.label}
-                              </button>
+                              <div className="mt-2.5 text-[10px] leading-relaxed text-dim border hairline rounded-lg px-3 py-2 bg-[var(--bg-panel)]">
+                                {(stat as any).content}
+                              </div>
                             )
-                          })}
-                        </div>
-                        <div className="flex items-center justify-end gap-3">
-                          <button onClick={() => {
-                            const picked = specialSel[idx] ?? msg.special!.map(x => x.key)
-                            const names = msg.special!.filter(x => picked.includes(x.key)).map(x => x.label)
-                            if (names.length) alert(`「${names.join('」「')}」生成功能待实现（下一步开发）`)
-                            setDismissedSpecial(prev => new Set(prev).add(idx))
-                          }}
-                            className="text-[10px] font-semibold text-[var(--accent)] hover:underline">生成所选</button>
-                          <button onClick={() => setDismissedSpecial(prev => new Set(prev).add(idx))}
-                            className="text-[10px] text-dim hover:text-[var(--text)]">忽略</button>
-                        </div>
-                      </div>
-                    )}
-                    {/* 新建课程引导消息：右下角「手动初始化」按钮（仅初次创建、未完成手动填写时显示） */}
-                    {msg.content.includes('课程创建成功') && onManualSetup && !(currentProject && (() => {
-                      try { return (JSON.parse(localStorage.getItem('coagent-manual-setup-done') || '[]') as string[]).includes(currentProject.id) } catch { return false }
-                    })()) && (
-                      <div className="mt-3 flex justify-end">
-                        <button onClick={onManualSetup}
-                          className="text-[11px] px-3 py-1.5 rounded-lg border hairline text-dim hover:text-[var(--text)] hover:bg-[var(--bg-hover)] transition-colors flex items-center gap-1">
-                          <PenLine size={11} /> 手动初始化
-                        </button>
-                      </div>
-                    )}
-                    {/* 继续追问：附着于该条 AI 输出下方（豆包样式，仅最后一条输出） */}
-                    {idx === messages.length - 1 && followups.length > 0 && !isLoading && (
-                      <div className="mt-3 flex flex-col gap-1.5 animate-[fadeIn_0.3s_ease]">
-                        <p className="text-[11px] text-dim font-medium flex items-center gap-1"><Lightbulb size={12} /> 继续追问 · 推进学习目标</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {followups.map((q, k) => (
-                            <button key={k} onClick={() => sendFollowup(q)}
-                              className="chip text-left text-[12px] px-3 py-1.5 transition-all">
-                              {q}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
+                          })()}
+                          {/* 特殊形式输出建议（模型判断）：弹出选项——是否生成 / 生成哪些 */}
+                          {msg.special && msg.special.length > 0 && !dismissedSpecial.has(idx) && (
+                            <div className="mt-2.5 border hairline rounded-xl px-3 py-2.5 bg-[var(--bg-panel)]">
+                              <p className="text-[10px] font-semibold text-dim mb-1.5">模型建议：内容可生成以下形式</p>
+                              <div className="flex flex-wrap gap-1.5 mb-2">
+                                {msg.special.map(s => {
+                                  const sel = (specialSel[idx] ?? msg.special!.map(x => x.key)).includes(s.key)
+                                  return (
+                                    <button key={s.key}
+                                      onClick={() => setSpecialSel(prev => {
+                                        const cur = prev[idx] ?? msg.special!.map(x => x.key)
+                                        const next = sel ? cur.filter(k => k !== s.key) : [...cur, s.key]
+                                        return { ...prev, [idx]: next }
+                                      })}
+                                      className={"chip text-left text-[11px] px-2.5 py-1 transition-all" + (sel ? '' : ' opacity-40')}>
+                                      {s.label}
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                              <div className="flex items-center justify-end gap-3">
+                                <button onClick={() => {
+                                  const picked = specialSel[idx] ?? msg.special!.map(x => x.key)
+                                  const names = msg.special!.filter(x => picked.includes(x.key)).map(x => x.label)
+                                  if (names.length) alert(`「${names.join('」「')}」生成功能待实现（下一步开发）`)
+                                  setDismissedSpecial(prev => new Set(prev).add(idx))
+                                }}
+                                  className="text-[10px] font-semibold text-[var(--accent)] hover:underline">生成所选</button>
+                                <button onClick={() => setDismissedSpecial(prev => new Set(prev).add(idx))}
+                                  className="text-[10px] text-dim hover:text-[var(--text)]">忽略</button>
+                              </div>
+                            </div>
+                          )}
+                          {/* 新建课程引导消息：右下角「手动初始化」按钮（仅初次创建、未完成手动填写时显示） */}
+                          {msg.content.includes('课程创建成功') && onManualSetup && !(currentProject && (() => {
+                            try { return (JSON.parse(localStorage.getItem('coagent-manual-setup-done') || '[]') as string[]).includes(currentProject.id) } catch { return false }
+                          })()) && (
+                            <div className="mt-3 flex justify-end">
+                              <button onClick={onManualSetup}
+                                className="text-[11px] px-3 py-1.5 rounded-lg border hairline text-dim hover:text-[var(--text)] hover:bg-[var(--bg-hover)] transition-colors flex items-center gap-1">
+                                <PenLine size={11} /> 手动初始化
+                              </button>
+                            </div>
+                          )}
+                          {/* 继续追问：附着于该条 AI 输出下方（豆包样式，仅最后一条输出） */}
+                          {isLast && followups.length > 0 && !isLoading && (
+                            <div className="mt-3 flex flex-col gap-1.5 animate-[fadeIn_0.3s_ease]">
+                              <p className="text-[11px] text-dim font-medium flex items-center gap-1"><Lightbulb size={12} /> 继续追问 · 推进学习目标</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {followups.map((q, k) => (
+                                  <button key={k} onClick={() => sendFollowup(q)}
+                                    className="chip text-left text-[12px] px-3 py-1.5 transition-all">
+                                    {q}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </>
+                  )
+                })()}
               </div>
             )
           ))}
@@ -534,190 +530,27 @@ const TEMPLATE_OPTIONS = [
                 className="w-8 h-8 flex items-center justify-center rounded-xl icon-btn border border-[var(--border-strong)] bg-[var(--bg-input)]">
                 <Upload size={15} />
               </button>
-              {/* 模板选择（挨着上传按钮右边，顶部带「使用模板」开关） */}
-              {/* 对话模式：上拉框控制 Auto / 模板选择 / 细节设定 三个开关 */}
-              <div className="relative ml-2" ref={dlgRef}>
-                <button
-                  onClick={() => setShowDlgMenu(!showDlgMenu)}
-                  className="h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)]"
-                  title="对话模式">
-                  <SlidersHorizontal size={13} /> 对话模式 <ChevronDown size={9} />
-                </button>
-                {showDlgMenu && (
-                  <div className="absolute bottom-full left-0 mb-1 card-lift p-1.5 z-10" style={{ width: 125 }}>
-                    <div className="flex items-center justify-between gap-1 px-1 py-1.5 border-b border-[#e5e5e5]">
-                      <span className="text-[11px] font-medium">Auto</span>
-                      <button onClick={() => { const next = !autoMode; setAutoMode(next); localStorage.setItem('coagent-auto', next ? '1' : '0'); if (next) { setUseTemplate(false); localStorage.setItem('coagent-use-template', '0'); setUseDetail(false); localStorage.setItem('coagent-use-detail', '0') } }}
-                        className={`w-8 h-4.5 rounded-full relative transition-colors flex-shrink-0 ${autoMode ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`} style={{ height: 18 }}
-                        title="Auto（AI 自动推断模板/细节）">
-                        <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-all ${autoMode ? 'left-4' : 'left-0.5'}`} />
-                      </button>
-                    </div>
-                    <div className="flex items-center justify-between gap-1 px-1 py-1.5 border-b border-[#e5e5e5]">
-                      <span className="text-[11px] font-medium">模板选择</span>
-                      <button onClick={() => { const next = !useTemplate; setUseTemplate(next); localStorage.setItem('coagent-use-template', next ? '1' : '0'); if (next) { setAutoMode(false); localStorage.setItem('coagent-auto', '0'); setUseDetail(false); localStorage.setItem('coagent-use-detail', '0') } }}
-                        className={`w-8 h-4.5 rounded-full relative transition-colors flex-shrink-0 ${useTemplate ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`} style={{ height: 18 }}
-                        title="开启后对话框显示模板选择按钮">
-                        <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-all ${useTemplate ? 'left-4' : 'left-0.5'}`} />
-                      </button>
-                    </div>
-                    <div className="flex items-center justify-between gap-1 px-1 py-1.5">
-                      <span className="text-[11px] font-medium">细节设定</span>
-                      <button onClick={() => { const next = !useDetail; setUseDetail(next); localStorage.setItem('coagent-use-detail', next ? '1' : '0'); if (next) { setAutoMode(false); localStorage.setItem('coagent-auto', '0'); setUseTemplate(false); localStorage.setItem('coagent-use-template', '0') } }}
-                        className={`w-8 h-4.5 rounded-full relative transition-colors flex-shrink-0 ${useDetail ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`} style={{ height: 18 }}
-                        title="开启后对话框显示细节按钮（输入询问/检索模式/输出形式/输出内容）">
-                        <span className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-all ${useDetail ? 'left-4' : 'left-0.5'}`} />
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-              {/* 模板选择（使用模板滑块开启时显示） */}
-              {useTemplate && (
+              {/* 档位选择（豆包式：胶囊显示当前档位 + 弹出选项面板） */}
               <div className="relative" ref={tplRef}>
                 <button
                   onClick={() => setShowTplMenu(!showTplMenu)}
-                  className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
-                  title="模板模式（均衡/质量优先/响应更快）">
-                  <LayoutTemplate size={13} /> 模板选择 <ChevronDown size={9} />
+                  className="h-7 px-2.5 rounded-full text-[11px] flex items-center gap-1.5 border border-[var(--border-strong)] bg-[var(--bg-input)] hover:bg-[var(--bg-hover)] transition-colors"
+                  title="选择档位（极速/思考/研究）">
+                  <LayoutTemplate size={13} /> {templateMode} <ChevronDown size={10} />
                 </button>
                 {showTplMenu && (
-                  <div className="absolute bottom-full left-0 mb-1 card-lift p-1.5 z-10" style={{ width: 125 }}>
+                  <div className="absolute bottom-full left-0 mb-1.5 card-lift p-1.5 z-10 flex flex-col gap-0.5" style={{ width: 120 }}>
                     {TEMPLATE_OPTIONS.map(t => (
                       <button key={t.name}
                         onClick={() => { setTemplateMode(t.name); localStorage.setItem('coagent-template', t.name); setShowTplMenu(false) }}
-                        className={`text-[11px] px-2 py-1.5 rounded-lg text-left w-full ${templateMode === t.name ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
-                        <span className="font-medium">{t.name}</span>
+                        className={`text-left px-2.5 py-1.5 rounded-lg w-full flex items-center gap-1.5 text-[12px] font-medium ${templateMode === t.name ? 'bg-[var(--bg-hover)]' : 'hover:bg-[var(--bg-hover)]'}`}>
+                        {t.name}
+                        {templateMode === t.name && <Check size={12} className="text-[var(--accent)] ml-auto" />}
                       </button>
                     ))}
                   </div>
                 )}
               </div>
-              )}
-              {/* 细节设定（滑块开启时显示） */}
-              {useDetail && (<>
-              <div className="relative" ref={inputOptRef}>
-                <button
-                  onClick={() => { setShowInputOpt(!showInputOpt); setShowSearch(false); setShowFormat(false); setShowContent(false) }}
-                  disabled={autoMode}
-                  className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
-                >
-                  <SlidersHorizontal size={13} /> 输入优化 <ChevronDown size={9} />
-                </button>
-                {showInputOpt && (
-                  <div className="absolute bottom-full left-0 mb-1 card-lift p-1.5 z-10" style={{ width: 100 }}>
-                    {inputOptLabels.map((label, i) => (
-                      <button key={label} onClick={() => { setInputOptMode(i) }}
-                        className={`text-[11px] px-2 py-1 rounded-lg text-left w-full ${i === inputOptMode ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
-                        <span className="font-medium">{label}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {/* 检索与搜索 */}
-              <div className="relative" ref={searchRef}>
-                <button
-                  onClick={() => { setShowSearch(!showSearch); setShowFormat(false); setShowContent(false) }}
-                  disabled={autoMode}
-                  className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
-                >
-                  <Search size={13} /> 检索模式 <ChevronDown size={9} />
-                </button>
-                {showSearch && (
-                  <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 165 }}>
-                    <div className="text-[10px] text-dim mb-1">知识库检索：</div>
-                    {searchLabels.map((label, i) => (
-                      <button key={label} onClick={() => { setSearchMode(i); setChatMode(i === 1 ? 'kb' : 'free') }}
-                        className={`text-[11px] px-2 py-1 rounded-lg text-left ${i === searchMode ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
-                        <span className="font-medium">{label}</span>
-              
-                      </button>
-                    ))}
-                    <div className="text-[10px] text-dim mb-1 mt-2">联网搜索：</div>
-                    {[
-                      ['自由', 'AI自己决定是否搜索'],
-                      ['增强', '寻找优质信息源'],
-                    ].map(([label, desc], i) => (
-                      <button key={label} onClick={() => setWebSearchMode(i)}
-                        className={`text-[11px] px-2 py-1 rounded-lg text-left ${i === webSearchMode ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
-                        <span className="font-medium">{label}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {/* 输出形式 */}
-              <div className="relative" ref={formatRef}>
-                <button
-                  onClick={() => { setShowFormat(!showFormat); setShowContent(false) }}
-                  disabled={autoMode}
-                  className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
-                >
-                  输出形式 <ChevronDown size={9} />
-                </button>
-                {showFormat && (
-                  <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 165 }}>
-                    <div className="text-[10px] text-dim mb-1">结构化程度：</div>
-                    {([
-                      ['低结构化', '减少列表和表格，以段落为主'],
-                      ['高结构化', '增加有序/无序列表和表格'],
-                    ] as const).map(([s, desc], i) => (
-                      <button key={s} onClick={() => setOutputFormat(i)}
-                        className={`text-[11px] px-2 py-1 rounded-lg text-left ${i === outputFormat ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
-                        <span className="font-medium">{s}</span>
-                      </button>
-                    ))}
-                    <div className="text-[10px] text-dim mb-1 mt-2">输出格式：</div>
-                    {([
-                      ['MD文档', '包裹为完整Markdown文档输出'],
-                      ['对话形式', '以对话消息形式直接输出'],
-                    ] as const).map(([s, desc], i) => (
-                      <button key={s} onClick={() => setOutputStyle(i)}
-                        className={`text-[11px] px-2 py-1 rounded-lg text-left ${i === outputStyle ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
-                        <span className="font-medium">{s}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              {/* 输出内容（思考链固定开启，仅输出量/学习深度可选） */}
-              <div className="relative" ref={contentRef}>
-                <button
-                  onClick={() => { setShowContent(!showContent); setShowFormat(false) }}
-                  disabled={autoMode}
-                  className={`h-7 px-1.5 rounded-lg icon-btn text-[11px] flex items-center gap-1 border border-[var(--border-strong)] bg-[var(--bg-input)] ${autoMode ? 'opacity-40' : ''}`}
-                >
-                  输出内容 <ChevronDown size={9} />
-                </button>
-                {showContent && (
-                  <div className="absolute bottom-full left-0 mb-1 card-lift p-2 z-10" style={{ width: 175 }}>
-                    <div className="text-[10px] text-dim mb-1">输出量：</div>
-                    {([
-                      ['精简', '只输出核心观点'],
-                      ['适中', '观点加论证过程'],
-                      ['拓展', '补充拓展性相关内容'],
-                    ] as const).map(([s, desc], i) => (
-                      <button key={s} onClick={() => setOutputVolume(i)}
-                        className={`text-[11px] px-2 py-1 rounded-lg text-left ${i === outputVolume ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
-                        <span className="font-medium">{s}</span>
-                      </button>
-                    ))}
-                    <div className="text-[10px] text-dim mb-1 mt-2">学习深度：</div>
-                    {([
-                      ['浅', '基础概念层面'],
-                      ['中', '概念+原理层面'],
-                      ['深', '原理+推导+前沿'],
-                    ] as const).map(([s, desc], i) => (
-                      <button key={s} onClick={() => setDepth(i)}
-                        className={`text-[11px] px-2 py-1 rounded-lg text-left ${i === depth ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
-                        <span className="font-medium">{s}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              </>)}
               <span className="w-px h-4 bg-[#e5e5e5] mx-1" />
               <span className="flex-1" />
               <div className="relative" ref={modelRef}>
@@ -771,117 +604,116 @@ const TEMPLATE_OPTIONS = [
   )
 }
 
-/** 流式 markdown 渲染：reveal 逐字期间节流渲染（100ms 防抖），渲染未就绪时纯文本兜底；
- * 完成后（shown===text）显示最终渲染结果，与完成态 renderMd 一致无跳变。 */
-function StreamingMd({ text }: { text: string }) {
-  const [html, setHtml] = useState('')
-  const [shown, setShown] = useState('')
-  useEffect(() => {
-    if (text === shown) return
-    const t = setTimeout(() => { setShown(text); setHtml(renderMd(text)) }, 100)
-    return () => clearTimeout(t)
-  }, [text, shown])
-  if (html && shown === text) {
-    return <div className="md-answer-body" dangerouslySetInnerHTML={{ __html: html }} />
-  }
-  return <div className="whitespace-pre-wrap break-words">{text}</div>
-}
-
-/** 思维链内容块：Agent 小标题 + 内容（以对话形式推送，不限定高度框）。
- * 折叠交互：新 Agent 默认展开；点击标题手动折叠/展开；Agent 执行完（活跃切换到下一个）自动折叠。
- * plain=true 时用纯文本渲染（实时逐字阶段）；完成态用 markdown 渲染。 */
-function ThinkBlock({ items, plain, activeAgent, activeStatus, onClarifyPick }: { items: Array<{ agent: string; content: string; clarify?: { question: string; options: string[] } }> | string[]; plain?: boolean; activeAgent?: string | null; activeStatus?: string; onClarifyPick?: (option: string | null) => void }) {
-  const list = (items || []).map(it => typeof it === 'string' ? { agent: '', content: it } : it)
-  if (list.length === 0) return null
-  // 每个条目的展开状态（按 index，新条目默认展开）
-  const [openMap, setOpenMap] = useState<Record<number, boolean>>({})
-  // 记录每个 Agent 最新条目的 index（用于活跃切换时自动折叠）
-  const lastIdxRef = useRef<Record<string, number>>({})
-  list.forEach((it, i) => { if (it.agent) lastIdxRef.current[it.agent] = i })
-  const prevActive = useRef<string | null | undefined>(activeAgent)
-  useEffect(() => {
-    // Agent 执行完（活跃 agent 切换）：前一个自动折叠
-    if (prevActive.current && prevActive.current !== activeAgent) {
-      const idx = lastIdxRef.current[prevActive.current]
-      if (idx !== undefined) setOpenMap(prev => ({ ...prev, [idx]: false }))
+/** 流式 markdown 渐进渲染（reasonix 同款方案）：
+ * - 流式中：把文本按"稳定段落边界"（双换行 / 标题行前换行）切成 稳定前缀+尾段——
+ *   稳定前缀渲染 markdown（useMemo 按段缓存，非逐字重解析），正在输入的尾段纯文本。
+ *   流式中就有标题/加粗/列表格式感，且每段只解析一次，无"每 token 全量解析"的卡顿。
+ * - 完成：整体一次性 markdown 渲染（尾段此时也稳定了），与流式态视觉连续、无跳变 */
+function StreamingMd({ text, streaming }: { text: string; streaming?: boolean }) {
+  // 稳定边界：最后一个双换行；或最后一个"换行+标题行"边界（标题已完整时立即定型）
+  const stableEnd = useMemo(() => {
+    if (!streaming) return -1
+    let e = text.lastIndexOf('\n\n')
+    for (let i = text.length - 1; i > e && i >= 0; i--) {
+      if (text[i] === '\n' && text[i + 1] === '#') { e = i; break }
     }
-    prevActive.current = activeAgent
-  }, [activeAgent])
-  const toggle = (i: number) => setOpenMap(prev => ({ ...prev, [i]: !(prev[i] ?? true) }))
+    return e < 0 ? -1 : e + 2
+  }, [text, streaming])
+  const stable = stableEnd > 0 ? text.slice(0, stableEnd) : ''
+  const tail = stableEnd > 0 ? text.slice(stableEnd) : text
+  const html = useMemo(() => {
+    if (streaming) return stable ? renderMdCached(stable) : ''
+    return text ? renderMdCached(text) : ''
+  }, [streaming, stable, text])
+  if (!streaming) {
+    if (html) return <div className="md-answer-body" dangerouslySetInnerHTML={{ __html: html }} />
+    return <div className="whitespace-pre-wrap break-words">{text}</div>
+  }
   return (
-    <div className="flex flex-col gap-2">
-      {list.map((it, i) => (
-        <div key={i} className="animate-[fadeIn_0.15s_ease]">
-          {it.agent && (
-            <button onClick={() => toggle(i)} className="flex items-center gap-1 text-[11px] font-semibold mb-0.5 hover:opacity-80 transition-opacity text-left">
-              {/* 折叠箭头：▾ 展开 / ▸ 折叠 */}
-              <span className="text-dim text-[9px] flex-shrink-0">{openMap[i] === false ? '▸' : '▾'}</span>
-              <span>{it.agent}</span>
-              {/* 正在干什么：显示在 Agent 标题后面（仅当前活跃的 Agent） */}
-              {it.agent === activeAgent && activeStatus && (
-                <span className="ml-1 font-normal text-[10px] text-dim">{activeStatus}</span>
-              )}
-            </button>
-          )}
-          {openMap[i] !== false && (
-            <div className="text-[11px] leading-relaxed text-dim pl-2 border-l-2 hairline">
-              {/* 需求澄清（reasonix 式）：思维链内直接提问，选项点击后同一轮流程内继续 */}
-              {(it as any).clarify ? (
-                <div className="flex flex-col gap-1.5 py-1">
-                  <p className="text-[11px] font-medium text-[var(--text)]">🤔 {(it as any).clarify.question}</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {((it as any).clarify.options as string[]).map(o => (
-                      <button key={o} onClick={() => onClarifyPick && onClarifyPick(o)}
-                        className="chip text-left text-[11px] px-2.5 py-1 transition-all hover:opacity-80">
-                        {o}
-                      </button>
-                    ))}
-                  </div>
-                  <button onClick={() => onClarifyPick && onClarifyPick(null)}
-                    className="text-[10px] text-dim hover:text-[var(--text)] w-fit">直接生成（跳过澄清）</button>
-                </div>
-              ) : plain ? (
-                <div className="whitespace-pre-wrap break-words">{it.content}</div>
-              ) : (
-                <div className="md-think-body" dangerouslySetInnerHTML={{ __html: renderMd(it.content) }} />
-              )}
-            </div>
-          )}
-        </div>
-      ))}
+    <div>
+      {html ? <div className="md-answer-body" dangerouslySetInnerHTML={{ __html: html }} /> : null}
+      {tail ? <div className="whitespace-pre-wrap break-words">{tail}</div> : null}
     </div>
   )
 }
 
-/** 思考过程（按 Agent 逐个折叠）：每个 Agent 一行折叠头，点击展开该 Agent 的思考内容；
- * 未展开时显示内容预览；展开后 markdown 渲染。 */
-function AgentThinkList({ think, onClarifyPick }: { think?: Array<{ agent: string; content: string; clarify?: { question: string; options: string[] } }> | string[]; onClarifyPick?: (option: string | null) => void }) {
-  const [openSet, setOpenSet] = useState<Set<number>>(new Set())
-  const items = (think || []).map((it, i) => (typeof it === 'string' ? { agent: '', content: it, i } : { ...it, i }))
-    .filter(it => it.agent !== '运行统计')  // 运行统计独立显示在回答下方
-  if (items.length === 0) return null
-  const toggle = (i: number) => setOpenSet(prev => {
-    const n = new Set(prev)
-    if (n.has(i)) n.delete(i); else n.add(i)
-    return n
-  })
+/** 思考过程区块（DeepSeek 式独立区块）：
+ * - 流式中（streaming=true）：展开，plain 纯文本逐字（保帧率），活跃状态挂标题
+ * - 完成/历史（streaming=false）：自动折叠为一行「▸ 思考过程 · 已完成」，点击展开看 markdown
+ * - 流式→完成不卸载组件，仅 open state 从展开切到折叠，消除「一次性出现又消失」跳变
+ * - 同名 Agent（规划→生成）合并为一个「学习助手」分段；多段时才显示分段小标题 */
+function ReasoningBlock({ items, streaming, activeAgent, activeStatus, onClarifyPick }: { items: Array<{ agent: string; content: string; clarify?: { question: string; options: string[] } }> | string[]; streaming?: boolean; activeAgent?: string | null; activeStatus?: string; onClarifyPick?: (option: string | null) => void }) {
+  // 合并连续同名 agent（规划→生成→学习助手）+ 过滤运行统计（独立显示在回答下方）
+  const merged = useMemo(() => {
+    const list = (items || []).map(it => typeof it === 'string' ? { agent: '', content: it } : it)
+      .filter(it => it.agent !== '运行统计')
+    return list.reduce<Array<{ agent: string; content: string; clarify?: { question: string; options: string[] } }>>((acc, it) => {
+      const dn = displayAgent(it.agent)
+      const last = acc[acc.length - 1]
+      if (last && dn && displayAgent(last.agent) === dn) {
+        if (it.clarify) last.clarify = it.clarify
+        if (it.content) last.content = (last.content ? last.content + '\n' : '') + it.content
+        return acc
+      }
+      acc.push({ agent: it.agent, content: it.content, ...(it.clarify ? { clarify: it.clarify } : {}) })
+      return acc
+    }, [])
+  }, [items])
+  // 展开/折叠：流式中强制展开；完成（streaming true→false）自动折叠为一行；用户可手动切换
+  const [open, setOpen] = useState(true)
+  const prevStreaming = useRef(streaming)
+  // 含澄清选项的条目：完成态也必须展开（用户必须能看到并点击选项）——除非用户手动折叠
+  const hasClarify = merged.some(it => !!(it as any).clarify)
+  useEffect(() => {
+    if (streaming) { setOpen(true); return }
+    if (prevStreaming.current && !streaming) setOpen(hasClarify)  // 完成：默认折叠；含澄清则展开
+    prevStreaming.current = streaming
+  }, [streaming])
+  if (merged.length === 0) return null
+  const toggle = () => { if (!streaming) setOpen(o => !o) }  // 流式中不响应折叠（保持展开逐字）
   return (
-    <div className="mb-3 flex flex-col gap-0.5">
-      {items.map(it => (
-        <div key={it.i} className="flex flex-col">
-          <button onClick={() => toggle(it.i)}
-            className="flex items-center gap-1.5 py-0.5 text-[11px] font-semibold hover:opacity-80 transition-opacity text-left">
-            <span className="flex-shrink-0">{it.agent || '思考'}</span>
-            {/* 右侧小箭头：点击展开该 Agent 的思考内容 */}
-            <span className={`text-dim text-[9px] transition-transform ${openSet.has(it.i) ? 'rotate-90' : ''}`}>▸</span>
-          </button>
-          {openSet.has(it.i) && (
-            <div className="pl-1">
-              <ThinkBlock items={[{ agent: '', content: it.content, clarify: (it as any).clarify }]} onClarifyPick={onClarifyPick} />
+    <div className="reasoning-block">
+      <button onClick={toggle} className="flex items-center gap-1 reasoning-title hover:opacity-80 transition-opacity text-left w-full">
+        <span className="text-[9px] flex-shrink-0">{open ? '▾' : '▸'}</span>
+        <span>思考过程</span>
+        {streaming
+          ? <span className="ml-1 font-normal text-[10px]">{activeStatus || '思考中…'}</span>
+          : <span className="ml-1 font-normal text-[10px] text-dim">已完成</span>}
+      </button>
+      {open && (
+        <div className="mt-1.5 flex flex-col gap-2">
+          {merged.map((it, i) => (
+            <div key={i} className="animate-[fadeIn_0.15s_ease]">
+              {it.agent && merged.length > 1 && (
+                <div className="text-[11px] font-semibold mb-0.5 text-[var(--text)]">{displayAgent(it.agent)}</div>
+              )}
+              <div className="text-[11px] leading-relaxed text-dim">
+                {/* 需求澄清（reasonix 式）：思维链内直接提问，选项点击后同一轮流程内继续 */}
+                {(it as any).clarify ? (
+                  <div className="flex flex-col gap-1.5 py-1">
+                    <p className="text-[11px] font-medium text-[var(--text)]">🤔 {(it as any).clarify.question}</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {((it as any).clarify.options as string[]).map(o => (
+                        <button key={o} onClick={() => onClarifyPick && onClarifyPick(o)}
+                          className="chip text-left text-[11px] px-2.5 py-1 transition-all hover:opacity-80">
+                          {o}
+                        </button>
+                      ))}
+                    </div>
+                    <button onClick={() => onClarifyPick && onClarifyPick(null)}
+                      className="text-[10px] text-dim hover:text-[var(--text)] w-fit">直接生成（跳过澄清）</button>
+                  </div>
+                ) : streaming ? (
+                  <div className="whitespace-pre-wrap break-words">{it.content}</div>
+                ) : (
+                  <div className="md-think-body" dangerouslySetInnerHTML={{ __html: renderMdCached(it.content) }} />
+                )}
+              </div>
             </div>
-          )}
+          ))}
         </div>
-      ))}
+      )}
     </div>
   )
 }
+
