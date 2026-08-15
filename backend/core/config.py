@@ -28,6 +28,8 @@ class Config:
     RERANK_BASE_URL: str = os.getenv("RERANK_BASE_URL", "")            # 如 https://api.siliconflow.cn/v1
     RERANK_API_KEY: str = os.getenv("RERANK_API_KEY", "")
     RERANK_MODEL: str = os.getenv("RERANK_MODEL", "BAAI/bge-reranker-v2-m3")
+    # 图片处理（多模态）：none | zhipu（GLM-4V 描述）| siliconflow（Qwen3-VL 图像向量）
+    IMAGE_BACKEND: str = os.getenv("IMAGE_BACKEND", "zhipu")
 
     # ── 联网代理（可选）：容器访问国外站点（GitHub 等）失败时，配宿主梯子代理 ──
     # 例：PROXY_URL=http://host.docker.internal:7993（宿主梯子监听端口）

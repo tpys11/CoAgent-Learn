@@ -83,6 +83,7 @@ class SettingsSave(BaseModel):
     rerank_base_url: str = ""
     rerank_api_key: str = ""
     rerank_model: str = "BAAI/bge-reranker-v2-m3"
+    image_backend: str = "zhipu"   # none | zhipu（GLM-4V 描述）| siliconflow（Qwen3-VL 图像向量）
     zhipu_api_key: str = ""
 
 
@@ -104,6 +105,7 @@ async def get_settings():
             "model": _cfg.RERANK_MODEL,
             "api_key_set": bool(getattr(_cfg, "RERANK_API_KEY", "")),
         },
+        "image": {"backend": getattr(_cfg, "IMAGE_BACKEND", "zhipu")},
         "zhipu": {"api_key_set": bool(getattr(_cfg, "ZHIPU_API_KEY", ""))},
     }
 
@@ -122,6 +124,7 @@ async def save_settings(req: SettingsSave):
     _s.set_setting("RERANK_BASE_URL", req.rerank_base_url)
     _s.set_setting("RERANK_API_KEY", req.rerank_api_key)
     _s.set_setting("RERANK_MODEL", req.rerank_model)
+    _s.set_setting("IMAGE_BACKEND", req.image_backend)
     _s.set_setting("ZHIPU_API_KEY", req.zhipu_api_key)
     _apply_dynamic_settings()
     return {"status": "ok", "msg": "配置已保存并即时生效"}
