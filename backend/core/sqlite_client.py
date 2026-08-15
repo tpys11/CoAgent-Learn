@@ -110,6 +110,31 @@ class SQLiteClient:
             "project_id TEXT, sha256 TEXT, source TEXT, created_at TEXT DEFAULT (datetime('now')), "
             "PRIMARY KEY (project_id, sha256))"
         )
+        # 动态服务配置（前端设置界面写入）：embedding/rerank/视觉 key 等，优先于 .env
+        self.execute(
+            "CREATE TABLE IF NOT EXISTS settings("
+            "key TEXT PRIMARY KEY, value TEXT, updated_at TEXT DEFAULT (datetime('now')))"
+        )
+
+    def get_setting(self, key: str) -> str:
+        """读动态配置；未配置返回空串"""
+        rows = self.execute("SELECT value FROM settings WHERE key = ?", (key,))
+        return rows[0]["value"] if rows else ""
+
+    def set_setting(self, key: str, value: str):
+        """写动态配置（空值删除该键，恢复 .env 默认）"""
+        if value is None or str(value).strip() == "":
+            self.execute("DELETE FROM settings WHERE key = ?", (key,))
+        else:
+            self.execute(
+                "INSERT INTO settings(key, value, updated_at) VALUES (?,?,datetime('now')) "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=datetime('now')",
+                (key, str(value)),
+            )
+
+    def get_all_settings(self) -> dict:
+        rows = self.execute("SELECT key, value FROM settings")
+        return {r["key"]: r["value"] for r in rows}
 
     def has_file_hash(self, project_id: str, sha256: str) -> bool:
         """内容级去重：该项目的 sha256 是否已入库"""

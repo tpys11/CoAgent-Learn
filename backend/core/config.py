@@ -8,6 +8,8 @@ load_dotenv()
 class Config:
     DEEPSEEK_API_KEY: str = os.getenv("DEEPSEEK_API_KEY", "")
     DEEPSEEK_BASE_URL: str = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+    # 智谱 GLM-4V（图片描述入库，多模态）
+    ZHIPU_API_KEY: str = os.getenv("ZHIPU_API_KEY", "")
     LLM_MAX_CONCURRENCY: int = int(os.getenv("LLM_MAX_CONCURRENCY", "3"))
     LLM_REQUEST_TIMEOUT: int = int(os.getenv("LLM_REQUEST_TIMEOUT", "120"))
     # 数据目录（SQLite app.db 所在目录）

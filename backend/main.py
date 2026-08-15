@@ -24,10 +24,30 @@ async def lifespan(app: FastAPI):
     if missing:
         warnings.warn(f"缺少环境变量: {', '.join(missing)}。Agent 功能不可用。")
     try:
+        _apply_dynamic_settings()
+    except Exception:
+        pass
+    try:
         _ensure_default_project()
     except Exception:
         pass
     yield
+
+
+def _apply_dynamic_settings():
+    """把 settings 表（前端设置界面写入）的动态配置应用到 config 单例：
+    embedding/rerank/视觉 key 等，优先于 .env 环境变量，无需重启即时生效。"""
+    try:
+        from core.sqlite_client import get_db
+        from core.config import config as _cfg
+        for _k, _v in get_db().get_all_settings().items():
+            if hasattr(_cfg, _k):
+                try:
+                    setattr(_cfg, _k, int(_v) if _k == "EMBEDDING_DIM" else _v)
+                except Exception:
+                    pass
+    except Exception:
+        pass
 
 
 app = FastAPI(
@@ -49,6 +69,109 @@ app.add_middleware(
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "version": "0.3.0"}
+
+
+# ---------- 动态服务配置（前端设置界面读写，即时生效无需重启） ----------
+
+class SettingsSave(BaseModel):
+    embedding_backend: str = "local"
+    embedding_base_url: str = ""
+    embedding_api_key: str = ""
+    embedding_model: str = "BAAI/bge-m3"
+    embedding_dim: int = 1024
+    rerank_backend: str = "local"
+    rerank_base_url: str = ""
+    rerank_api_key: str = ""
+    rerank_model: str = "BAAI/bge-reranker-v2-m3"
+    zhipu_api_key: str = ""
+
+
+@app.get("/api/settings")
+async def get_settings():
+    """返回当前生效配置（key 只回显是否已配置，不回显内容）"""
+    from core.config import config as _cfg
+    return {
+        "embedding": {
+            "backend": _cfg.EMBEDDING_BACKEND,
+            "base_url": _cfg.EMBEDDING_BASE_URL,
+            "model": _cfg.EMBEDDING_MODEL,
+            "dim": int(getattr(_cfg, "EMBEDDING_DIM", 1024)),
+            "api_key_set": bool(getattr(_cfg, "EMBEDDING_API_KEY", "")),
+        },
+        "rerank": {
+            "backend": _cfg.RERANK_BACKEND,
+            "base_url": _cfg.RERANK_BASE_URL,
+            "model": _cfg.RERANK_MODEL,
+            "api_key_set": bool(getattr(_cfg, "RERANK_API_KEY", "")),
+        },
+        "zhipu": {"api_key_set": bool(getattr(_cfg, "ZHIPU_API_KEY", ""))},
+    }
+
+
+@app.put("/api/settings")
+async def save_settings(req: SettingsSave):
+    """保存配置到 settings 表并即时应用到 config 单例；空 key 表示清除（恢复 .env）"""
+    from core.sqlite_client import get_db as _db
+    _s = _db()
+    _s.set_setting("EMBEDDING_BACKEND", req.embedding_backend)
+    _s.set_setting("EMBEDDING_BASE_URL", req.embedding_base_url)
+    _s.set_setting("EMBEDDING_API_KEY", req.embedding_api_key)
+    _s.set_setting("EMBEDDING_MODEL", req.embedding_model)
+    _s.set_setting("EMBEDDING_DIM", str(req.embedding_dim))
+    _s.set_setting("RERANK_BACKEND", req.rerank_backend)
+    _s.set_setting("RERANK_BASE_URL", req.rerank_base_url)
+    _s.set_setting("RERANK_API_KEY", req.rerank_api_key)
+    _s.set_setting("RERANK_MODEL", req.rerank_model)
+    _s.set_setting("ZHIPU_API_KEY", req.zhipu_api_key)
+    _apply_dynamic_settings()
+    return {"status": "ok", "msg": "配置已保存并即时生效"}
+
+
+@app.post("/api/settings/test")
+async def test_settings(req: SettingsSave):
+    """用传入配置测试连接（不保存）：embedding/rerank/视觉 各一次最小调用"""
+    import requests as _req
+    results = {}
+    # embedding
+    if req.embedding_backend == "api":
+        try:
+            _u = (req.embedding_base_url or "").rstrip("/") + "/embeddings"
+            _r = _req.post(_u, json={"model": req.embedding_model, "input": ["测试"]},
+                           headers={"Authorization": "Bearer " + req.embedding_api_key}, timeout=20)
+            if _r.status_code == 200 and _r.json().get("data"):
+                results["embedding"] = {"ok": True, "dim": len(_r.json()["data"][0]["embedding"])}
+            else:
+                results["embedding"] = {"ok": False, "msg": f"HTTP {_r.status_code}: {_r.text[:120]}"}
+        except Exception as e:
+            results["embedding"] = {"ok": False, "msg": str(e)[:120]}
+    else:
+        results["embedding"] = {"ok": True, "msg": "本地后端无需测试"}
+    # rerank
+    if req.rerank_backend == "api":
+        try:
+            _u = (req.rerank_base_url or "").rstrip("/") + "/rerank"
+            _r = _req.post(_u, json={"model": req.rerank_model, "query": "测试", "documents": ["测试文档"]},
+                           headers={"Authorization": "Bearer " + req.rerank_api_key}, timeout=20)
+            if _r.status_code == 200:
+                results["rerank"] = {"ok": True}
+            else:
+                results["rerank"] = {"ok": False, "msg": f"HTTP {_r.status_code}: {_r.text[:120]}"}
+        except Exception as e:
+            results["rerank"] = {"ok": False, "msg": str(e)[:120]}
+    else:
+        results["rerank"] = {"ok": True, "msg": "本地后端无需测试"}
+    # 视觉（智谱 GLM-4V）
+    if req.zhipu_api_key:
+        try:
+            _r = _req.post("https://open.bigmodel.cn/api/paas/v4/chat/completions",
+                           json={"model": "glm-4v-flash", "messages": [{"role": "user", "content": "ping"}]},
+                           headers={"Authorization": "Bearer " + req.zhipu_api_key}, timeout=20)
+            results["zhipu"] = {"ok": _r.status_code == 200, "msg": "" if _r.status_code == 200 else f"HTTP {_r.status_code}"}
+        except Exception as e:
+            results["zhipu"] = {"ok": False, "msg": str(e)[:120]}
+    else:
+        results["zhipu"] = {"ok": True, "msg": "未配置，跳过"}
+    return {"status": "ok", "results": results}
 
 
 def _as_dict(data):

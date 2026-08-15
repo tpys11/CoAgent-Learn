@@ -9,7 +9,13 @@ ZHIPU_BASE = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
 
 
 def _get_key():
-    """从环境变量读智谱 key（.env 配置，不提交）"""
+    """从动态配置（settings 表，前端设置界面写入）读智谱 key；未配置则回退 .env（不提交）"""
+    try:
+        from core.config import config as _cfg
+        if getattr(_cfg, "ZHIPU_API_KEY", ""):
+            return _cfg.ZHIPU_API_KEY
+    except Exception:
+        pass
     return os.getenv("ZHIPU_API_KEY", "")
 
 

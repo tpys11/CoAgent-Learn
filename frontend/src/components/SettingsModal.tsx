@@ -28,6 +28,7 @@ const APP_VERSION = '0.2.0'
 /** 设置分组（左侧只排 4 个大按钮，点开后右侧展示该组全部内容） */
 const GROUPS: Array<{ key: string; label: string; icon: any }> = [
   { key: 'base', label: '基础', icon: Sliders },
+  { key: 'services', label: 'AI 服务', icon: Database },
   { key: 'chat', label: '对话', icon: MessageSquare },
   { key: 'advanced', label: '高级', icon: Plug },
   { key: 'other', label: '其他', icon: LampDesk },
@@ -36,6 +37,7 @@ const GROUPS: Array<{ key: string; label: string; icon: any }> = [
 /** 分组 → 其下设置项 */
 const GROUP_TABS: Record<string, string[]> = {
   base: ['font', 'theme', 'keys', 'timeout', 'data', 'reset'],
+  services: ['service'],
   chat: ['actions', 'cleanup'],
   advanced: ['mcp', 'debug'],
   other: ['about'],
@@ -142,6 +144,64 @@ export default function SettingsModal({ onClose, projectId }: Props) {
   }
 
   const flash = (msg: string) => { setFeedback(msg); setTimeout(() => setFeedback(''), 2000) }
+
+  // ---- AI 服务配置（后端动态生效，存 SQLite settings 表）----
+  const [svc, setSvc] = useState({
+    embedding_backend: 'local', embedding_base_url: '', embedding_model: 'BAAI/bge-m3', embedding_dim: 1024, embedding_key_set: false,
+    rerank_backend: 'local', rerank_base_url: '', rerank_model: 'BAAI/bge-reranker-v2-m3', rerank_key_set: false,
+    zhipu_key_set: false,
+  })
+  // key 输入框（不回显已存 key，只显示"已配置"状态）
+  const [svcKeys, setSvcKeys] = useState({ embedding_api_key: '', rerank_api_key: '', zhipu_api_key: '' })
+  const [svcTest, setSvcTest] = useState('')
+
+  useEffect(() => {
+    fetch('/api/settings').then(r => r.json()).then(d => {
+      setSvc({
+        embedding_backend: d.embedding?.backend ?? 'local', embedding_base_url: d.embedding?.base_url ?? '',
+        embedding_model: d.embedding?.model ?? 'BAAI/bge-m3', embedding_dim: d.embedding?.dim ?? 1024,
+        embedding_key_set: !!d.embedding?.api_key_set,
+        rerank_backend: d.rerank?.backend ?? 'local', rerank_base_url: d.rerank?.base_url ?? '',
+        rerank_model: d.rerank?.model ?? 'BAAI/bge-reranker-v2-m3', rerank_key_set: !!d.rerank?.api_key_set,
+        zhipu_key_set: !!d.zhipu?.api_key_set,
+      })
+    }).catch(() => {})
+  }, [])
+
+  const saveService = async () => {
+    try {
+      const r = await fetch('/api/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...svc, ...svcKeys }),
+      })
+      const d = await r.json()
+      flash(d.msg || (r.ok ? '配置已保存' : '保存失败'))
+      // 刷新已配置状态
+      const g = await fetch('/api/settings').then(x => x.json())
+      setSvc(s => ({ ...s,
+        embedding_key_set: !!g.embedding?.api_key_set, rerank_key_set: !!g.rerank?.api_key_set, zhipu_key_set: !!g.zhipu?.api_key_set }))
+    } catch { flash('保存失败（后端不可达）') }
+  }
+
+  const testService = async () => {
+    setSvcTest('测试中…')
+    try {
+      const r = await fetch('/api/settings/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...svc, ...svcKeys }),
+      })
+      const d = await r.json()
+      const rs = d.results || {}
+      const lines = [
+        rs.embedding ? `向量化：${rs.embedding.ok ? `OK${rs.embedding.dim ? '（' + rs.embedding.dim + ' 维）' : ''}` : '失败 ' + (rs.embedding.msg || '')}` : '',
+        rs.rerank ? `重排：${rs.rerank.ok ? 'OK' : '失败 ' + (rs.rerank.msg || '')}` : '',
+        rs.zhipu ? `视觉：${rs.zhipu.ok ? 'OK' : '失败 ' + (rs.zhipu.msg || '')}` : '',
+      ].filter(Boolean).join(' ｜ ')
+      setSvcTest(lines || '无测试项')
+    } catch { setSvcTest('测试失败（后端不可达）') }
+  }
 
   const doClearDialogues = async () => {
     if (!projectId) { flash('暂无课程'); return }
@@ -297,6 +357,95 @@ export default function SettingsModal({ onClose, projectId }: Props) {
                     <span className="text-[11px] text-dim w-20 flex-shrink-0">主 Key</span>
                     <input type="password" value={mainKey} placeholder="coagent-apikey（兼容旧配置）"
                       onChange={e => setMainKey(e.target.value)} className={inputCls} />
+                  </div>
+                </div>
+              </Section>
+            )}
+
+            {/* AI 服务配置（embedding / rerank / 视觉，后端即时生效） */}
+            {show('service') && (
+              <Section icon={Database} title="AI 服务配置" desc="向量化/重排/图片识别服务，保存后即时生效，无需重启；留空 key 表示恢复默认">
+                <div className="flex flex-col gap-5">
+                  {/* 向量化 embedding */}
+                  <div className="flex flex-col gap-2">
+                    <p className="text-[11px] font-semibold text-dim">向量化（Embedding）</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-dim w-20 flex-shrink-0">后端</span>
+                      <div className="flex gap-1.5">
+                        {['local', 'api'].map(v => (
+                          <button key={v} onClick={() => setSvc(s => ({ ...s, embedding_backend: v }))}
+                            className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${svc.embedding_backend === v ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-hover)] text-dim'}`}>
+                            {v === 'local' ? '本地（bge-small，免费离线）' : 'API（bge-m3，快）'}
+                          </button>
+                        ))}
+                      </div>
+                      {svc.embedding_key_set && <span className="text-[10px] text-green-600 flex-shrink-0">✓ API Key 已配置</span>}
+                    </div>
+                    {svc.embedding_backend === 'api' && (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-dim w-20 flex-shrink-0">接口地址</span>
+                          <input value={svc.embedding_base_url} placeholder="https://api.siliconflow.cn/v1" onChange={e => setSvc(s => ({ ...s, embedding_base_url: e.target.value }))} className={inputCls} />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-dim w-20 flex-shrink-0">模型</span>
+                          <input value={svc.embedding_model} placeholder="BAAI/bge-m3" onChange={e => setSvc(s => ({ ...s, embedding_model: e.target.value }))} className={inputCls} />
+                          <span className="text-[11px] text-dim flex-shrink-0">维度</span>
+                          <input type="number" value={svc.embedding_dim} onChange={e => setSvc(s => ({ ...s, embedding_dim: Number(e.target.value) }))} className={`${inputCls} w-20 flex-shrink-0`} />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-dim w-20 flex-shrink-0">API Key</span>
+                          <input type="password" value={svcKeys.embedding_api_key} placeholder={svc.embedding_key_set ? '已配置，留空保持不变' : 'sk-...'} onChange={e => setSvcKeys(k => ({ ...k, embedding_api_key: e.target.value }))} className={inputCls} />
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  {/* 重排 rerank */}
+                  <div className="flex flex-col gap-2 border-t hairline pt-4">
+                    <p className="text-[11px] font-semibold text-dim">重排（Rerank）</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-dim w-20 flex-shrink-0">后端</span>
+                      <div className="flex gap-1.5">
+                        {['local', 'api', 'none'].map(v => (
+                          <button key={v} onClick={() => setSvc(s => ({ ...s, rerank_backend: v }))}
+                            className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${svc.rerank_backend === v ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-hover)] text-dim'}`}>
+                            {v === 'local' ? '本地（bge-reranker-base）' : v === 'api' ? 'API（v2-m3）' : '关闭'}
+                          </button>
+                        ))}
+                      </div>
+                      {svc.rerank_key_set && <span className="text-[10px] text-green-600 flex-shrink-0">✓ API Key 已配置</span>}
+                    </div>
+                    {svc.rerank_backend === 'api' && (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-dim w-20 flex-shrink-0">接口地址</span>
+                          <input value={svc.rerank_base_url} placeholder="https://api.siliconflow.cn/v1" onChange={e => setSvc(s => ({ ...s, rerank_base_url: e.target.value }))} className={inputCls} />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-dim w-20 flex-shrink-0">模型</span>
+                          <input value={svc.rerank_model} placeholder="BAAI/bge-reranker-v2-m3" onChange={e => setSvc(s => ({ ...s, rerank_model: e.target.value }))} className={inputCls} />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-dim w-20 flex-shrink-0">API Key</span>
+                          <input type="password" value={svcKeys.rerank_api_key} placeholder={svc.rerank_key_set ? '已配置，留空保持不变' : 'sk-...'} onChange={e => setSvcKeys(k => ({ ...k, rerank_api_key: e.target.value }))} className={inputCls} />
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  {/* 视觉（图片描述） */}
+                  <div className="flex flex-col gap-2 border-t hairline pt-4">
+                    <p className="text-[11px] font-semibold text-dim">图片识别（智谱 GLM-4V，图片上传→描述入库）</p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-dim w-20 flex-shrink-0">API Key</span>
+                      <input type="password" value={svcKeys.zhipu_api_key} placeholder={svc.zhipu_key_set ? '已配置，留空保持不变' : '智谱开放平台 key'} onChange={e => setSvcKeys(k => ({ ...k, zhipu_api_key: e.target.value }))} className={inputCls} />
+                      {svc.zhipu_key_set && <span className="text-[10px] text-green-600 flex-shrink-0">✓ 已配置</span>}
+                    </div>
+                  </div>
+                  {/* 操作按钮 */}
+                  <div className="flex items-center gap-3 border-t hairline pt-4">
+                    <button onClick={saveService} className="px-4 py-1.5 text-[11px] bg-[#1a1a1a] text-white rounded-lg font-semibold">保存配置</button>
+                    <button onClick={testService} className="px-4 py-1.5 text-[11px] border hairline rounded-lg font-semibold text-dim hover:text-[var(--text)] transition-colors">测试连接</button>
+                    {svcTest && <span className={`text-[11px] ${svcTest.includes('失败') ? 'text-red-500' : 'text-green-600'}`}>{svcTest}</span>}
                   </div>
                 </div>
               </Section>
