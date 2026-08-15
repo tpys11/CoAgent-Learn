@@ -1,73 +1,138 @@
 import { useState, useEffect, useRef } from 'react'
-import { FileText, Workflow, Network, Table as TableIcon, BarChart3, Volume2, ClipboardList, Sparkles, X, Save, Trash2, Eye } from 'lucide-react'
+import { FileText, Network, Table as TableIcon, Volume2, ClipboardList, Sparkles, X, Save, Trash2, Eye, Layers, History } from 'lucide-react'
 import MarkdownIt from 'markdown-it'
-import mermaid from 'mermaid'
+import { Transformer } from 'markmap-lib'
+import { Markmap } from 'markmap-view'
 import type { Message } from '../types'
 
-mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', theme: 'default' })
-
 const md = new MarkdownIt({ html: false, linkify: true, breaks: true })
-const renderMd = (text: string) => md.render(text || '')
+const renderMd = (text: string) => md.render(String(text || ''))
 
-type FormKey = 'report' | 'flow' | 'tree' | 'table' | 'chart' | 'audio' | 'quiz'
+type FormKey = 'summary' | 'flashcards' | 'quiz' | 'mindmap' | 'table' | 'timeline' | 'audio'
 
 const FORMS: Array<{ key: FormKey; label: string; icon: any; desc: string }> = [
-  { key: 'report', label: '报告', icon: FileText, desc: '汇总整个对话生成结构化报告' },
-  { key: 'flow', label: '流程图', icon: Workflow, desc: '流程步骤图' },
-  { key: 'tree', label: '树状图', icon: Network, desc: '知识层级树状展示' },
-  { key: 'table', label: '表格', icon: TableIcon, desc: '知识点/维度以表格呈现' },
-  { key: 'chart', label: '统计图', icon: BarChart3, desc: '学习趋势统计图' },
+  { key: 'summary', label: '总结', icon: FileText, desc: '汇总整个对话生成结构化总结' },
+  { key: 'flashcards', label: '闪卡', icon: Layers, desc: '一问一答的抽认卡，点击翻面' },
+  { key: 'quiz', label: '测验', icon: ClipboardList, desc: '选择题，交互式作答' },
+  { key: 'mindmap', label: '思维导图', icon: Network, desc: '知识层级思维导图' },
+  { key: 'table', label: '表格', icon: TableIcon, desc: '知识点/维度对比表格' },
+  { key: 'timeline', label: '时间线', icon: History, desc: '事件时间线' },
   { key: 'audio', label: '音频', icon: Volume2, desc: '音频概览（朗读 / 播客）' },
-  { key: 'quiz', label: '测试题', icon: ClipboardList, desc: '分阶测试题' },
 ]
 
-const SUPPORTED: FormKey[] = ['report', 'flow', 'tree', 'table', 'quiz']
+const SUPPORTED: FormKey[] = ['summary', 'flashcards', 'quiz', 'mindmap', 'table', 'timeline']
 const SAVED_KEY = 'coagent-special-saved'
 
-type SavedItem = { id: number; form: FormKey; label: string; content: string; time: string }
+type SavedItem = { id: number; form: FormKey; label: string; content: any; time: string }
 
-function Mermaid({ code }: { code: string }) {
-  const ref = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    let cancelled = false
-    const id = 'mm-' + Math.random().toString(36).slice(2, 9)
-    mermaid.render(id, String(code)).then(({ svg }) => {
-      if (!cancelled && ref.current) {
-        ref.current.innerHTML = svg
-        const svgEl = ref.current.querySelector('svg')
-        if (svgEl) {
-          const vb = svgEl.getAttribute('viewBox')
-          const vbW = vb ? parseFloat(vb.split(/\s+/)[2]) : 0
-          if (vbW) svgEl.setAttribute('width', String(vbW))
-          svgEl.style.setProperty('max-width', 'none', 'important')
-        }
-      }
-    }).catch(() => {
-      if (ref.current) ref.current.innerHTML = '<div style="color:#d9534f;font-size:12px">图表渲染失败</div>'
-    })
-    return () => { cancelled = true }
-  }, [code])
-  return <div ref={ref} className="overflow-x-auto" />
+/** 闪卡：翻面卡片 */
+function FlashcardsView({ items }: { items: Array<{ front: string; back: string }> }) {
+  const [flipped, setFlipped] = useState<Set<number>>(new Set())
+  const toggle = (i: number) => setFlipped(prev => { const n = new Set(prev); if (n.has(i)) n.delete(i); else n.add(i); return n })
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {items.map((c, i) => (
+        <div key={i} className="cursor-pointer" onClick={() => toggle(i)}>
+          <div className={`border rounded-xl p-4 min-h-[110px] flex items-center justify-center text-center transition-all ${flipped.has(i) ? 'bg-[#1a1a1a] text-white border-transparent' : 'bg-[var(--bg-hover)]'}`}>
+            <span className="text-sm leading-relaxed">{flipped.has(i) ? c.back : c.front}</span>
+          </div>
+          <p className="text-[10px] text-dim text-center mt-1.5">{flipped.has(i) ? '点击查看问题' : '点击翻面看答案'}</p>
+        </div>
+      ))}
+    </div>
+  )
 }
 
-/** 渲染某种形式的结果 */
-function renderResult(form: FormKey, content: string) {
-  if (form === 'flow') return <Mermaid code={content} />
-  if (form === 'tree') return <div className="text-sm whitespace-pre-wrap leading-relaxed font-mono">{String(content)}</div>
-  return <div className="text-sm md-answer-body" dangerouslySetInnerHTML={{ __html: renderMd(String(content)) }} />
+/** 测验：交互式选择题 */
+function QuizView({ items }: { items: Array<{ question: string; options: string[]; answer: string }> }) {
+  const [picked, setPicked] = useState<Record<number, string>>({})
+  return (
+    <div className="space-y-5">
+      {items.map((q, i) => {
+        const p = picked[i]
+        return (
+          <div key={i} className="border hairline rounded-xl p-4">
+            <p className="text-sm font-semibold mb-2">{i + 1}. {q.question}</p>
+            <div className="space-y-1.5">
+              {(q.options || []).map((opt, oi) => {
+                const letter = String.fromCharCode(65 + oi)
+                const isPicked = p === letter
+                const isRight = q.answer === letter
+                let cls = 'border hairline text-left'
+                if (p) {
+                  if (isRight) cls = 'border-green-400 bg-green-50 text-left'
+                  else if (isPicked) cls = 'border-red-300 bg-red-50 text-left'
+                }
+                return (
+                  <button key={oi} disabled={!!p} onClick={() => setPicked(prev => ({ ...prev, [i]: letter }))}
+                    className={`w-full px-3 py-2 rounded-lg text-xs transition-colors ${cls}`}>
+                    <span className="font-semibold mr-1.5">{letter}.</span>{opt}
+                  </button>
+                )
+              })}
+            </div>
+            {p && (
+              <p className={`text-xs mt-2 ${p === q.answer ? 'text-green-600' : 'text-red-500'}`}>
+                {p === q.answer ? '✓ 回答正确' : '✗ 正确答案：' + q.answer}
+              </p>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+/** 思维导图：markmap 渲染 markdown 列表 */
+function MindmapView({ markdown }: { markdown: string }) {
+  const ref = useRef<SVGSVGElement>(null)
+  useEffect(() => {
+    if (!ref.current) return
+    try {
+      const transformer = new Transformer()
+      const { root } = transformer.transform(String(markdown || '- 空'))
+      const mm = Markmap.create(ref.current, { autoFit: true }, root)
+      return () => { try { mm.destroy() } catch {} }
+    } catch {
+      if (ref.current) ref.current.innerHTML = ''
+    }
+  }, [markdown])
+  return <svg ref={ref} className="w-full" style={{ height: 420 }} />
+}
+
+/** 时间线 */
+function TimelineView({ items }: { items: Array<{ time: string; event: string }> }) {
+  return (
+    <div className="pl-1">
+      {(items || []).map((t, i) => (
+        <div key={i} className="relative pl-5 pb-5 border-l-2 border-[var(--border-strong)] last:border-transparent">
+          <span className="absolute left-[-7px] top-0.5 w-3 h-3 rounded-full bg-[#1a1a1a] ring-4 ring-[var(--bg-panel)]" />
+          <p className="text-xs font-semibold text-[var(--accent)]">{t.time}</p>
+          <p className="text-sm mt-1">{t.event}</p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function renderResult(form: FormKey, content: any) {
+  if (form === 'flashcards') return <FlashcardsView items={Array.isArray(content) ? content : []} />
+  if (form === 'quiz') return <QuizView items={Array.isArray(content) ? content : []} />
+  if (form === 'timeline') return <TimelineView items={Array.isArray(content) ? content : []} />
+  if (form === 'mindmap') return <MindmapView markdown={String(content || '')} />
+  return <div className="text-sm md-answer-body" dangerouslySetInnerHTML={{ __html: renderMd(String(content || '')) }} />
 }
 
 export default function SpecialOutputPane({ messages }: { messages: Message[] }) {
-  const [form, setForm] = useState<FormKey>('report')
+  const [form, setForm] = useState<FormKey>('summary')
   const [generating, setGenerating] = useState(false)
-  const [result, setResult] = useState('')
-  const [modalForm, setModalForm] = useState<FormKey>('report')
+  const [result, setResult] = useState<any>(null)
+  const [modalForm, setModalForm] = useState<FormKey>('summary')
   const [showModal, setShowModal] = useState(false)
   const [saved, setSaved] = useState<SavedItem[]>(() => {
     try { return JSON.parse(localStorage.getItem(SAVED_KEY) || '[]') } catch { return [] }
   })
   const abortRef = useRef<AbortController | null>(null)
-  const cur = FORMS.find(f => f.key === form) || FORMS[0]
 
   const persistSaved = (next: SavedItem[]) => {
     setSaved(next)
@@ -82,9 +147,8 @@ export default function SpecialOutputPane({ messages }: { messages: Message[] })
     if (!convo.trim()) { alert('当前对话还没有内容'); return }
     const ctrl = new AbortController()
     abortRef.current = ctrl
-    // 点击立即弹窗，弹窗里等待生成
     setModalForm(f)
-    setResult('')
+    setResult(null)
     setShowModal(true)
     setGenerating(true)
     try {
@@ -95,12 +159,12 @@ export default function SpecialOutputPane({ messages }: { messages: Message[] })
       })
       const d = await r.json()
       if (d.status === 'ok') {
-        setResult(d.results?.[f] || '')
+        setResult(d.results?.[f] ?? null)
       } else {
         alert('生成失败：' + (d.msg || '未知'))
       }
     } catch (e: any) {
-      if (e && e.name === 'AbortError') { /* 用户停止 */ }
+      if (e && e.name === 'AbortError') { /* 停止 */ }
       else alert('生成失败：' + e)
     } finally {
       setGenerating(false)
@@ -114,7 +178,7 @@ export default function SpecialOutputPane({ messages }: { messages: Message[] })
     const item: SavedItem = { id: Date.now(), form: modalForm, label: FORMS.find(f => f.key === modalForm)?.label || modalForm, content: result, time: new Date().toLocaleString() }
     persistSaved([item, ...saved])
     setShowModal(false)
-    setResult('')
+    setResult(null)
   }
 
   const viewSaved = (item: SavedItem) => {
@@ -123,9 +187,7 @@ export default function SpecialOutputPane({ messages }: { messages: Message[] })
     setShowModal(true)
   }
 
-  const removeSaved = (id: number) => {
-    persistSaved(saved.filter(s => s.id !== id))
-  }
+  const removeSaved = (id: number) => persistSaved(saved.filter(s => s.id !== id))
 
   return (
     <div className="w-full h-full flex flex-col min-h-0">
@@ -143,7 +205,7 @@ export default function SpecialOutputPane({ messages }: { messages: Message[] })
         })}
       </div>
 
-      {/* 已保存的制作（下面区域） */}
+      {/* 已保存的制作 */}
       <div className="flex-1 min-h-0 flex flex-col p-3">
         <p className="text-[10px] font-bold text-dim uppercase tracking-wider mb-2 flex-shrink-0">已保存的制作</p>
         <div className="flex-1 min-h-0 overflow-y-auto">
@@ -162,7 +224,7 @@ export default function SpecialOutputPane({ messages }: { messages: Message[] })
         </div>
       </div>
 
-      {/* 弹窗展示生成结果 */}
+      {/* 弹窗 */}
       {showModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-6" onClick={() => setShowModal(false)}>
           <div className="w-[82vw] max-w-4xl max-h-[85vh] flex flex-col bg-[var(--bg-panel)] rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
@@ -173,13 +235,9 @@ export default function SpecialOutputPane({ messages }: { messages: Message[] })
               </span>
               <div className="flex items-center gap-2">
                 {generating ? (
-                  <button onClick={stopGenerate} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-500 text-white text-xs font-semibold hover:bg-red-600 transition-colors">
-                    停止
-                  </button>
-                ) : result ? (
-                  <button onClick={saveResult} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#1a1a1a] text-white text-xs font-semibold hover:bg-[#333333] transition-colors">
-                    <Save size={13} /> 保存
-                  </button>
+                  <button onClick={stopGenerate} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-500 text-white text-xs font-semibold hover:bg-red-600 transition-colors">停止</button>
+                ) : result != null ? (
+                  <button onClick={saveResult} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#1a1a1a] text-white text-xs font-semibold hover:bg-[#333333] transition-colors"><Save size={13} /> 保存</button>
                 ) : null}
                 <button onClick={() => setShowModal(false)} className="p-1.5 rounded-lg text-dim hover:bg-[var(--bg-hover)]"><X size={16} /></button>
               </div>
@@ -194,7 +252,7 @@ export default function SpecialOutputPane({ messages }: { messages: Message[] })
                   </span>
                   <span className="text-xs">正在生成「{FORMS.find(f => f.key === modalForm)?.label}」…</span>
                 </div>
-              ) : result ? renderResult(modalForm, result) : (
+              ) : result != null ? renderResult(modalForm, result) : (
                 <div className="text-xs text-dim text-center py-16">生成结果为空</div>
               )}
             </div>

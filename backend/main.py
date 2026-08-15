@@ -312,45 +312,48 @@ async def generate_special(req: GenerateSpecialReq):
     用 response_format=json_object 保证合法 JSON（内容含换行也不会解析失败）"""
     if not (req.content or "").strip() or not req.forms:
         return {"status": "error", "msg": "参数不完整"}
-    forms_desc = {
-        "table": "markdown 表格",
-        "flow": "mermaid 流程图代码（flowchart TD 语法）",
-        "tree": "树状层级，用缩进表示父子关系（父节点顶格，子节点缩进几个空格）",
-        "report": "markdown 结构化报告",
-        "quiz": "测试题纯文本，每题依次为：题目、A/B/C/D四个选项、答案一行",
+    # 学习导向形式：text=文本/markdown，array=结构化数组
+    FORM_SPECS = {
+        "summary": {"label": "总结", "kind": "text", "desc": "markdown 结构化总结，分小节概括整个对话"},
+        "flashcards": {"label": "闪卡", "kind": "array", "desc": "5-8 张闪卡，每张是 {front: 问题, back: 答案} 的对象"},
+        "quiz": {"label": "测验", "kind": "array", "desc": "3-5 道题，每道是 {question: 题目, options: [4个选项], answer: 正确选项字母} 的对象"},
+        "mindmap": {"label": "思维导图", "kind": "text", "desc": "markdown 无序列表（- 根节点，子节点缩进2空格），用于思维导图渲染"},
+        "table": {"label": "表格", "kind": "text", "desc": "markdown 表格"},
+        "timeline": {"label": "时间线", "kind": "array", "desc": "3-6 个事件，每个是 {time: 时间点, event: 事件描述} 的对象"},
     }
-    supported = [k for k in req.forms if k in forms_desc]
+    supported = [k for k in req.forms if k in FORM_SPECS]
     if not supported:
         return {"status": "error", "msg": "没有支持的形式"}
-    selected = "、".join(forms_desc[k] for k in supported)
-    prompt = (
-        "把下面的学习内容转换成指定形式，每种形式作为 JSON 一个字段（字段值是字符串）：\n"
-        "内容：\n" + (req.content or "")[:6000] + "\n\n"
-        "需要的形式：\n" + selected + "\n\n"
-        "要求：\n"
-        "1. 每个字段的值是纯文本字符串（tree 是缩进文本、quiz 是题目文本），不要输出 JSON 数组、不要输出嵌套对象、不要输出大括号。\n"
-        "2. quiz 每题格式：'1. 题目'、'A. xxx'、'B. xxx'、'C. xxx'、'D. xxx'、'答案：A'。\n"
-        "3. 只输出 JSON 对象，字段名用英文 key，不要额外解释，不要提知识库检索。"
-    )
-    schema = {"type": "object", "properties": {k: {"type": "string", "description": forms_desc[k]} for k in supported}}
+    selected = chr(10).join("- " + k + "（" + FORM_SPECS[k]["label"] + "）：" + FORM_SPECS[k]["desc"] for k in supported)
+    prompt = chr(10).join([
+        "把下面的学习内容转换成指定形式，每种形式作为 JSON 一个字段：",
+        "内容：",
+        (req.content or "")[:6000],
+        "",
+        "需要的形式：",
+        selected,
+        "",
+        "要求：",
+        "1. text 类形式（summary/mindmap/table）的字段值是字符串。",
+        "2. array 类形式（flashcards/quiz/timeline）的字段值是对象数组。",
+        "3. 只输出 JSON 对象，字段名用英文 key，不要额外解释，不要提知识库检索。",
+    ])
+    schema = {"type": "object", "properties": {}}
+    for k in supported:
+        if FORM_SPECS[k]["kind"] == "array":
+            schema["properties"][k] = {"type": "array", "description": FORM_SPECS[k]["desc"]}
+        else:
+            schema["properties"][k] = {"type": "string", "description": FORM_SPECS[k]["desc"]}
     try:
         from core.base_llm import DeepSeekLLM
         llm = DeepSeekLLM(api_key=req.api_key or None, model=req.model, base_url=req.base_url, thinking=False)
         data = llm.chat_with_json([{"role": "user", "content": prompt}], schema)
-        print("[gen-special] forms=", str(req.forms), " data_keys=", str(list(data.keys()) if data else "空"), flush=True)
         if not data:
             return {"status": "error", "msg": "AI 返回内容无法解析"}
-        # 防御：LLM 可能把 quiz 等字段输出成数组/对象，统一转成字符串，避免前端渲染崩溃
-        import json as _json
-        cleaned = {}
-        for _k, _v in data.items():
-            if isinstance(_v, str):
-                cleaned[_k] = _v
-            elif isinstance(_v, (list, dict)):
-                cleaned[_k] = _json.dumps(_v, ensure_ascii=False, indent=2)
-            else:
-                cleaned[_k] = str(_v)
-        return {"status": "ok", "results": cleaned}
+        return {"status": "ok", "results": data}
+    except Exception as e:
+        return {"status": "error", "msg": str(e)[:200]}
+
     except Exception as e:
         return {"status": "error", "msg": str(e)[:200]}
 
