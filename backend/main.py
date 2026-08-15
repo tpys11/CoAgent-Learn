@@ -158,11 +158,17 @@ async def save_settings(req: SettingsSave):
 async def test_settings(req: SettingsSave):
     """用传入配置测试连接（不保存）：embedding/rerank/视觉 各一次最小调用；路由跟随所选模型 vector_model"""
     import requests as _req
+    from core.config import config as _cfg
     results = {}
     _vm = req.vector_model or "bge"
+    # 前端不回显已存 Key（刷新后输入框为空但后端已保存）：请求体 Key 为空时回退已保存配置
+    _embed_key = req.embedding_api_key or getattr(_cfg, "EMBEDDING_API_KEY", "")
+    _vl_key = req.vl_api_key or getattr(_cfg, "VL_API_KEY", "")
+    _rerank_key = req.rerank_api_key or getattr(_cfg, "RERANK_API_KEY", "")
+    _zhipu_key = req.zhipu_api_key or getattr(_cfg, "ZHIPU_API_KEY", "") or getattr(_cfg, "IMAGE_API_KEY", "")
     # embedding（路由跟随所选模型：qwen → Qwen3-VL-Embedding-8B，bge → bge-m3）
     if req.embedding_backend == "api":
-        _ek = (req.vl_api_key or req.embedding_api_key) if _vm == "qwen" else req.embedding_api_key
+        _ek = (_vl_key or _embed_key) if _vm == "qwen" else _embed_key
         _em = "Qwen/Qwen3-VL-Embedding-8B" if _vm == "qwen" else req.embedding_model
         if not _ek:
             results["embedding"] = {"ok": False, "msg": "未配置 API Key"}
@@ -181,7 +187,7 @@ async def test_settings(req: SettingsSave):
         results["embedding"] = {"ok": True, "msg": "本地后端无需测试"}
     # rerank（地址/Key 留空时复用向量化配置，与 _ApiReranker 逻辑一致）
     if req.rerank_backend == "api":
-        _rk = req.rerank_api_key or req.embedding_api_key
+        _rk = _rerank_key or _embed_key
         if not _rk:
             results["rerank"] = {"ok": False, "msg": "未配置重排 Key（可在重排或向量化中填写）"}
         else:
@@ -200,11 +206,11 @@ async def test_settings(req: SettingsSave):
     # Qwen3-VL-Embedding（视觉/跨模态向量）：Qwen 模式下主模型即覆盖；BGE 模式独立测 vl key
     if _vm == "qwen":
         results["vl"] = {"ok": True, "msg": "当前主模型为 Qwen3-VL，视觉向量已覆盖"}
-    elif req.vl_api_key:
+    elif _vl_key:
         try:
             _u = "https://api.siliconflow.cn/v1/embeddings"
             _r = _req.post(_u, json={"model": "Qwen/Qwen3-VL-Embedding-8B", "input": ["测试"]},
-                           headers={"Authorization": "Bearer " + req.vl_api_key}, timeout=20)
+                           headers={"Authorization": "Bearer " + _vl_key}, timeout=20)
             if _r.status_code == 200 and _r.json().get("data"):
                 results["vl"] = {"ok": True, "dim": len(_r.json()["data"][0]["embedding"])}
             else:
@@ -214,9 +220,9 @@ async def test_settings(req: SettingsSave):
     else:
         results["vl"] = {"ok": True, "msg": "未配置，跳过"}
     # 图片描述（硅基流动视觉模型优先，复用硅基流动 Key；回退智谱）
-    _desc_key = req.vl_api_key or req.embedding_api_key or req.zhipu_api_key
+    _desc_key = _vl_key or _embed_key or _zhipu_key
     if _desc_key:
-        _is_sf = bool(req.vl_api_key or req.embedding_api_key)
+        _is_sf = bool(_vl_key or _embed_key)
         try:
             _desc_url = "https://api.siliconflow.cn/v1/chat/completions" if _is_sf else "https://open.bigmodel.cn/api/paas/v4/chat/completions"
             _desc_model = "Qwen/Qwen2.5-VL-72B-Instruct" if _is_sf else "glm-4v-flash"
