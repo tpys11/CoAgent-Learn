@@ -1,6 +1,8 @@
 ﻿import { useState, useEffect } from 'react'
 import { X, Sun, Moon, Monitor, Type, LampDesk, Sliders, Zap, MessageSquare, Key, Timer, Database, Plug, Bug, Check, Trash2, Plus, Download, Github } from 'lucide-react'
 import { getThemePref, setThemePref, type ThemePref } from '../theme'
+import { LS, lsGet, lsSet, lsGetJSON, lsSetJSON, lsRemove } from '../storage'
+import { api } from '../api'
 
 interface Props {
   onClose: () => void
@@ -14,9 +16,6 @@ const PROVIDERS = [
 ]
 
 interface McpServer { id: string; name: string; type: 'stdio' | 'http' | 'sse'; target: string }
-
-const get = (k: string, d: string) => { try { return localStorage.getItem(k) || d } catch { return d } }
-const getJSON = <T,>(k: string, d: T): T => { try { return JSON.parse(localStorage.getItem(k) || 'null') ?? d } catch { return d } }
 
 /** 当前版本号（与 package.json 同步） */
 const APP_VERSION = '0.2.0'
@@ -88,54 +87,53 @@ function SwitchRow({ label, desc, checked, onChange }: { label: string; desc?: s
 }
 
 export default function SettingsModal({ onClose, projectId }: Props) {
-  const [fontSize, setFontSize] = useState(() => parseInt(get('coagent-fontSize', '15')))
+  const [fontSize, setFontSize] = useState(() => parseInt(lsGet(LS.fontSize, '15')))
   const [theme, setTheme] = useState<ThemePref>(() => getThemePref())
   const [feedback, setFeedback] = useState('')
   const [settingsGroup, setSettingsGroup] = useState('base')
 
   // 生成后动作
-  const [postActions, setPostActions] = useState(() => getJSON('coagent-post-actions', { autoFollowups: true }))
+  const [postActions, setPostActions] = useState(() => lsGetJSON(LS.postActions, { autoFollowups: true }))
   // 模型与 Key
-  const [provider, setProvider] = useState(() => get('coagent-provider', 'deepseek'))
-  const [provKeys, setProvKeys] = useState<Record<string, string>>(() => getJSON('coagent-provider-keys', {}))
-  const [mainKey, setMainKey] = useState(() => get('coagent-apikey', ''))
+  const [provider, setProvider] = useState(() => lsGet(LS.provider, 'deepseek'))
+  const [provKeys, setProvKeys] = useState<Record<string, string>>(() => lsGetJSON(LS.providerKeys, {}))
+  const [mainKey, setMainKey] = useState(() => lsGet(LS.apiKey, ''))
   // 超时（1-30s）
-  const [timeoutSec, setTimeoutSec] = useState(() => Math.min(30, Math.max(1, parseInt(get('coagent-timeout', '30')) || 30)))
+  const [timeoutSec, setTimeoutSec] = useState(() => Math.min(30, Math.max(1, parseInt(lsGet(LS.timeout, '30')) || 30)))
   // MCP 配置
-  const [mcpServers, setMcpServers] = useState<McpServer[]>(() => getJSON('coagent-mcp-servers', []))
+  const [mcpServers, setMcpServers] = useState<McpServer[]>(() => lsGetJSON(LS.mcpServers, []))
   const [mcpShow, setMcpShow] = useState(false)
   const [mcpName, setMcpName] = useState('')
   const [mcpType, setMcpType] = useState<'stdio' | 'http' | 'sse'>('http')
   const [mcpTarget, setMcpTarget] = useState('')
   // 调试
-  const [debug, setDebug] = useState(() => get('coagent-debug', '0') === '1')
+  const [debug, setDebug] = useState(() => lsGet(LS.debug, '0') === '1')
   // 对话自动清理（0 = 关闭）
-  const [dialogueLimit, setDialogueLimit] = useState(() => parseInt(get('coagent-dialogue-limit', '0')))
+  const [dialogueLimit, setDialogueLimit] = useState(() => parseInt(lsGet(LS.dialogueLimit, '0')))
   // 检查更新
   const [updateState, setUpdateState] = useState<'idle' | 'checking' | 'latest' | 'new' | 'error'>('idle')
   const [latestVersion, setLatestVersion] = useState('')
 
   useEffect(() => {
     document.documentElement.style.setProperty('--ui-font', `${fontSize}px`)
-    localStorage.setItem('coagent-fontSize', String(fontSize))
+    lsSet(LS.fontSize, String(fontSize))
   }, [fontSize])
   useEffect(() => { setThemePref(theme) }, [theme])
-  useEffect(() => { localStorage.setItem('coagent-post-actions', JSON.stringify(postActions)) }, [postActions])
-  useEffect(() => { localStorage.setItem('coagent-provider', provider) }, [provider])
-  useEffect(() => { localStorage.setItem('coagent-provider-keys', JSON.stringify(provKeys)) }, [provKeys])
+  useEffect(() => { lsSetJSON(LS.postActions, postActions) }, [postActions])
+  useEffect(() => { lsSet(LS.provider, provider) }, [provider])
+  useEffect(() => { lsSetJSON(LS.providerKeys, provKeys) }, [provKeys])
   useEffect(() => {
-    if (mainKey.trim()) localStorage.setItem('coagent-apikey', mainKey.trim())
+    if (mainKey.trim()) lsSet(LS.apiKey, mainKey.trim())
   }, [mainKey])
-  useEffect(() => { localStorage.setItem('coagent-timeout', String(timeoutSec)) }, [timeoutSec])
-  useEffect(() => { localStorage.setItem('coagent-debug', debug ? '1' : '0') }, [debug])
-  useEffect(() => { localStorage.setItem('coagent-dialogue-limit', String(dialogueLimit)) }, [dialogueLimit])
+  useEffect(() => { lsSet(LS.timeout, String(timeoutSec)) }, [timeoutSec])
+  useEffect(() => { lsSet(LS.debug, debug ? '1' : '0') }, [debug])
+  useEffect(() => { lsSet(LS.dialogueLimit, String(dialogueLimit)) }, [dialogueLimit])
 
   /** 恢复默认设置：清除设置类键（保留 API Key / 模型 / 数据）后刷新 */
   const resetSettings = () => {
     if (!window.confirm('确定恢复默认设置？字体、主题、默认参数等将还原（API Key、对话与记忆数据不受影响）。')) return
-    ;['coagent-fontSize', 'coagent-post-actions', 'coagent-context-settings',
-      'coagent-timeout', 'coagent-debug', 'coagent-provider', 'coagent-mcp-servers', 'coagent-dialogue-limit',
-      'coagent-last-settings', 'coagent-tutorial-cats', 'coagent-tutorials'].forEach(k => localStorage.removeItem(k))
+    ;[LS.fontSize, LS.postActions, LS.contextSettings, LS.timeout, LS.debug, LS.provider,
+      LS.mcpServers, LS.dialogueLimit, LS.lastSettings, LS.tutorialCats, LS.tutorials].forEach(lsRemove)
     window.location.reload()
   }
 
@@ -154,7 +152,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
   const [svcTest, setSvcTest] = useState('')
 
   useEffect(() => {
-    fetch('/api/settings').then(r => r.json()).then(d => {
+    api.getSettings().then(d => {
       // 旧值兼容：zhipu/siliconflow → api（通用视觉接口）
       const img = d.image?.backend === 'zhipu' || d.image?.backend === 'siliconflow' ? 'api' : (d.image?.backend ?? 'none')
       setSvc({
@@ -202,15 +200,9 @@ export default function SettingsModal({ onClose, projectId }: Props) {
 
   const saveService = async () => {
     try {
-      const r = await fetch('/api/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildSvcBody()),
-      })
-      const d = await r.json()
-      if (!r.ok) { flash(d.msg || '保存失败'); return }
+      const d = await api.saveSettings(buildSvcBody())
       // 刷新已配置状态
-      const g = await fetch('/api/settings').then(x => x.json())
+      const g = await api.getSettings()
       setSvc(s => ({ ...s,
         embedding_key_set: !!g.embedding?.api_key_set, rerank_key_set: !!g.rerank?.api_key_set,
         image_key_set: !!g.image?.api_key_set, vl_key_set: !!g.vl?.api_key_set }))
@@ -220,12 +212,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
   const testService = async () => {
     setSvcTest('测试中…')
     try {
-      const r = await fetch('/api/settings/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(buildSvcBody()),
-      })
-      const d = await r.json()
+      const d = await api.testSettings(buildSvcBody())
       const rs = d.results || {}
       const lines = [
         rs.embedding ? `向量化（${svc.vectorModel === 'qwen' ? 'Qwen3-VL-Embedding' : 'bge-m3'}）：${rs.embedding.ok ? (rs.embedding.msg || `OK${rs.embedding.dim ? '（' + rs.embedding.dim + ' 维）' : ''}`) : '失败 ' + (rs.embedding.msg || '')}` : '',
@@ -240,18 +227,17 @@ export default function SettingsModal({ onClose, projectId }: Props) {
   const doClearDialogues = async () => {
     if (!projectId) { flash('暂无课程'); return }
     if (!window.confirm('确定清空当前课程的全部对话？消息将不可恢复（课程与记忆保留）。')) return
-    const r = await fetch('/api/projects/' + encodeURIComponent(projectId) + '/dialogues', { method: 'DELETE' })
-    if (r.ok) flash('对话已清空') ; else flash('清空失败')
+    await api.clearProjectDialogues(projectId)
+    flash('对话已清空')
   }
   const doClearMemories = async () => {
     if (!window.confirm('确定清空全部记忆（个人全局 / 课程 / 对话记忆）？')) return
-    const r = await fetch('/api/memories', { method: 'DELETE' })
-    if (r.ok) flash('记忆已清空') ; else flash('清空失败')
+    await api.clearMemories()
+    flash('记忆已清空')
   }
   const doExport = async () => {
     try {
-      const r = await fetch('/api/export?project_id=' + encodeURIComponent(projectId || 'default'), { cache: 'no-store' })
-      const j = await r.json()
+      const j = await api.exportData(projectId || 'default')
       const blob = new Blob([JSON.stringify(j, null, 2)], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a'); a.href = url; a.download = 'coagent-data-export.json'; a.click()
@@ -264,13 +250,13 @@ export default function SettingsModal({ onClose, projectId }: Props) {
     if (!mcpName.trim() || !mcpTarget.trim()) return
     const next = [...mcpServers, { id: 'mcp-' + Date.now(), name: mcpName.trim(), type: mcpType, target: mcpTarget.trim() }]
     setMcpServers(next)
-    localStorage.setItem('coagent-mcp-servers', JSON.stringify(next))
+    lsSetJSON(LS.mcpServers, next)
     setMcpName(''); setMcpTarget(''); setMcpShow(false)
   }
   const removeMcp = (id: string) => {
     const next = mcpServers.filter(s => s.id !== id)
     setMcpServers(next)
-    localStorage.setItem('coagent-mcp-servers', JSON.stringify(next))
+    lsSetJSON(LS.mcpServers, next)
   }
 
   const inputCls = 'w-full px-3 py-2 input-surface rounded-lg text-xs outline-none focus:border-[var(--accent)]'
@@ -606,7 +592,7 @@ export function ApiKeyPrompt({ onClose }: { onClose: () => void }) {
 
   const handleSave = () => {
     if (key.trim()) {
-      localStorage.setItem('coagent-apikey', key.trim())
+      lsSet(LS.apiKey, key.trim())
     }
     onClose()
   }

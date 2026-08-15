@@ -27,15 +27,16 @@ import { initTheme } from './theme'
 import type { Project, Dialogue, AgentConfig, Message } from './types'
 import { DEFAULT_AGENTS } from './types'
 import { streamChatResponse, type ChatEvent } from './sse'
+import { LS, lsGet, lsSet, lsGetJSON, lsSetJSON } from './storage'
+import { api } from './api'
 
 function generateId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }
 // 项目 ID 固定：首次生成后存 localStorage，刷新复用（保证知识库/图谱数据不因刷新丢失）
 const defaultProjectId = (() => {
-  const k = 'coagent-default-project'
-  const old = localStorage.getItem(k)
+  const old = lsGet(LS.defaultProject, '')
   if (old) return old
   const nid = generateId()
-  localStorage.setItem(k, nid)
+  lsSet(LS.defaultProject, nid)
   return nid
 })()
 
@@ -63,7 +64,7 @@ function App() {
   const [agents, setAgents] = useState<AgentConfig[]>(() => {
     // 项目介绍 Agent 设定持久化：用户编辑后刷新保留（缺省用内置 DEFAULT_AGENTS）
     try {
-      const s = localStorage.getItem('coagent-agents')
+      const s = lsGet(LS.agents, '')
       if (s) {
         const arr = JSON.parse(s)
         if (Array.isArray(arr) && arr.length > 0 && arr.every((a: any) => a && typeof a === 'object' && a.id)) return arr as AgentConfig[]
@@ -89,10 +90,10 @@ function App() {
   // 项目记忆分析持久提示：从记忆界面跳转对话时显示（label 区分分析/修改基本情况）
   const [analyzeHint, setAnalyzeHint] = useState<{ label: string; project: string } | null>(null)
   // 首次进入：弹出项目介绍面板（localStorage 标记，只弹一次）
-  const [showIntro, setShowIntro] = useState(() => !localStorage.getItem('coagent-intro-seen'))
+  const [showIntro, setShowIntro] = useState(() => !lsGet(LS.introSeen, ''))
   // 启动时应用保存的字体大小与主题（system 模式自动解析亮暗）
   useEffect(() => {
-    const saved = localStorage.getItem('coagent-fontSize')
+    const saved = lsGet(LS.fontSize, '')
     if (saved) document.documentElement.style.setProperty('--ui-font', saved + 'px')
     initTheme()
   }, [])
@@ -100,8 +101,7 @@ function App() {
   // 从后端加载项目/对话（持久化）
   useEffect(() => {
     let cancelled = false
-    fetch('/api/projects')
-      .then(r => r.json())
+    api.listProjects()
       .then(async (d) => {
         if (cancelled) return
         const projs: Project[] = (d.projects || []).map((p: any) => ({ id: p.id, name: p.name, domain: p.domain || '' }))
@@ -109,8 +109,7 @@ function App() {
         // 加载每个项目下的对话
         const allD: Dialogue[] = []
         for (const p of projs) {
-          const r2 = await fetch('/api/projects/' + p.id + '/dialogues')
-          const d2 = await r2.json()
+          const d2 = await api.listProjectDialogues(p.id)
           ;(d2.dialogues || []).forEach((dd: any) => allD.push({ id: dd.id, name: dd.name, projectId: p.id, createdAt: dd.created_at || '', archived: false }))
         }
         if (cancelled) return
@@ -122,8 +121,8 @@ function App() {
           if (first) {
             setCurrentDialogueId(first.id)
             // 加载默认对话的历史消息
-            fetch('/api/dialogues/' + first.id + '/messages', { cache: 'no-store' })
-              .then(r => r.json()).then(dm => {
+            api.getDialogueMessages(first.id)
+              .then(dm => {
                 if (cancelled) return
                 const msgs = (dm.messages || []).map((m: any) => ({ role: m.role, content: m.content || '', steps: m.steps, think: m.think }))
                 setAllMessages(prev => ({ ...prev, [first.id]: msgs }))
@@ -135,7 +134,7 @@ function App() {
     return () => { cancelled = true }
   }, [])
   const [showApiKeyPrompt, setShowApiKeyPrompt] = useState(
-    () => !localStorage.getItem('coagent-apikey') && !localStorage.getItem('coagent-apikey-skipped')
+    () => !lsGet(LS.apiKey, '') && !lsGet(LS.apiKeySkipped, '')
   )
   const [sidebarWidth, setSidebarWidth] = useState(240)
   const [rightPanelWidth, setRightPanelWidth] = useState(390)
@@ -194,9 +193,7 @@ function App() {
   const handleCreateProject = useCallback((name: string) => {
     (async () => {
       try {
-        const r = await fetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) })
-        if (!r.ok) throw new Error('HTTP ' + r.status)
-        const d = await r.json()
+        const d = await api.createProject({ name })
         const id = d.id
         setProjects(prev => [...prev, { id, name, simple: false }])
         setCurrentProjectId(id)
@@ -207,8 +204,8 @@ function App() {
         setCurrentDialogueId(did)
         setAllMessages(prev => ({ ...prev, [did]: [{ role: 'assistant' as const, content: PROJECT_GUIDE(name) }] }))
         // 落库：对话 + 静态引导消息（刷新后保留）
-        fetch('/api/dialogues', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project_id: id, name: dia.name, id: did }) }).catch(() => {})
-        fetch('/api/dialogues/' + did + '/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role: 'assistant', content: PROJECT_GUIDE(name) }) }).catch(() => {})
+        api.createDialogue({ project_id: id, name: dia.name, id: did }).catch(() => {})
+        api.postDialogueMessage(did, { role: 'assistant', content: PROJECT_GUIDE(name) }).catch(() => {})
         setChatOpen(true)
       } catch (e) {
         alert('创建课程失败：' + ((e as any)?.message || '网络异常') + '，请检查后端服务。')
@@ -217,7 +214,7 @@ function App() {
   }, [])
   const handleDeleteProject = useCallback((id: string) => {
     // 删除确认由前端弹窗承担（主页删除弹窗已提示后果）
-    fetch('/api/projects/' + id, { method: 'DELETE' })
+    api.deleteProject(id)
       .then(() => {
         setProjects(prev => prev.filter(p => p.id !== id))
         setDialogues(prev => prev.filter(d => d.projectId !== id))
@@ -227,7 +224,7 @@ function App() {
   const handleRenameProject = useCallback((id: string, name: string) => {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, name } : p))
     // 持久化到后端（PATCH）
-    fetch('/api/projects/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) }).catch(() => {})
+    api.updateProject(id, { name }).catch(() => {})
   }, [])
 
   const handleSelectProject = useCallback((id: string) => {
@@ -248,7 +245,7 @@ function App() {
     setCurrentDialogueId(d.id)
     setAllMessages(prev => ({ ...prev, [d.id]: [] }))
     // 落库：后端创建对话（刷新后保留）
-    fetch('/api/dialogues', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project_id: projectId, name: d.name, id: d.id }) }).catch(() => {})
+    api.createDialogue({ project_id: projectId, name: d.name, id: d.id }).catch(() => {})
     // 无画像（[简]）项目：不弹对话画像向导
     const proj = projects.find(p => p.id === projectId)
     if (!(proj && proj.simple)) {
@@ -256,8 +253,8 @@ function App() {
     }
   }, [dialogues, projects])
   const loadDialogueMessages = useCallback((id: string) => {
-    fetch('/api/dialogues/' + id + '/messages', { cache: 'no-store' })
-      .then(r => r.json()).then(d => {
+    api.getDialogueMessages(id)
+      .then(d => {
         const msgs = (d.messages || []).map((m: any) => ({ role: m.role, content: m.content || '', steps: m.steps, think: m.think }))
         setAllMessages(prev => ({ ...prev, [id]: msgs }))
       }).catch(() => {})
@@ -269,7 +266,7 @@ function App() {
   const handleArchiveDialogue = useCallback((id: string) => {
     if (!window.confirm('确定归档该对话？')) return
     // 软归档（与自动清理一致），侧栏不再显示
-    fetch('/api/dialogues/' + id + '/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: true }) })
+    api.updateDialogue(id, { archived: true })
       .then(() => {
         setDialogues(prev => prev.map(d => d.id === id ? { ...d, archived: true } : d))
         if (currentDialogueId === id) setCurrentDialogueId(null)
@@ -279,7 +276,7 @@ function App() {
     if (name.trim()) {
       setDialogues(prev => prev.map(d => d.id === id ? { ...d, name: name.trim() } : d))
       // 持久化到后端（POST /update {name}）
-      fetch('/api/dialogues/' + id + '/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name.trim() }) }).catch(() => {})
+      api.updateDialogue(id, { name: name.trim() }).catch(() => {})
     }
   }, [])
   // 对话删除：自定义确认弹窗（删除此处的对话记忆；课程记忆与生成的资源保留）
@@ -292,7 +289,7 @@ function App() {
     const t = deleteDialogueTarget
     if (!t) return
     setDeleteDialogueTarget(null)
-    fetch('/api/dialogues/' + t.id, { method: 'DELETE' })
+    api.deleteDialogue(t.id)
       .then(() => {
         setDialogues(prev => prev.filter(d => d.id !== t.id))
         setAllMessages(prev => { const n = { ...prev }; delete n[t.id]; return n })
@@ -411,14 +408,14 @@ function App() {
       setCurrentDialogueId(d.id)
       // 对话自动清理：保留最近 N 条未归档对话（设置里可配，0=关闭）
       try {
-        const lim = parseInt(localStorage.getItem('coagent-dialogue-limit') || '0', 10)
+        const lim = parseInt(lsGet(LS.dialogueLimit, '0'), 10)
         if (lim > 0) {
           const active = dialogues.filter(x => x.projectId === currentProjectId && !x.archived)
           const excess = active.length - (lim - 1)
           if (excess > 0) {
             const sorted = [...active].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''))
             sorted.slice(0, excess).forEach(x => {
-              fetch('/api/dialogues/' + x.id + '/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ archived: true }) }).catch(() => {})
+              api.updateDialogue(x.id, { archived: true }).catch(() => {})
               setDialogues(prev => prev.map(y => y.id === x.id ? { ...y, archived: true } : y))
             })
           }
@@ -448,17 +445,17 @@ function App() {
     const curDlg = dialogues.find(d => d.id === did)
     if (curDlg && /^对话 \d+$/.test(curDlg.name)) {
       const nm = text.trim().slice(0, 14) || curDlg.name
-      fetch('/api/dialogues/' + did + '/update', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: nm }) }).catch(() => {})
+      api.updateDialogue(did, { name: nm }).catch(() => {})
       setDialogues(prev => prev.map(x => x.id === did ? { ...x, name: nm } : x))
     }
     let timeoutTimer: any = null
     try {
       // 读取所选模型厂家配置
-      const provKeys = (() => { try { return JSON.parse(localStorage.getItem('coagent-provider-keys') || '{}') } catch { return {} } })()
-      const provider = localStorage.getItem('coagent-provider') || 'deepseek'
+      const provKeys = lsGetJSON<Record<string, string>>(LS.providerKeys, {})
+      const provider = lsGet(LS.provider, 'deepseek')
       const model = (() => {
         // DeepSeek 官方模型名已升级 v4：兼容 localStorage 里的旧值（deepseek-chat/reasoner/pro/flash）
-        const m = localStorage.getItem('coagent-model') || 'deepseek-v4-pro'
+        const m = lsGet(LS.model, 'deepseek-v4-pro')
         const alias: Record<string, string> = {
           'deepseek-chat': 'deepseek-v4-pro',
           'deepseek-reasoner': 'deepseek-v4-pro',
@@ -475,19 +472,19 @@ function App() {
         moonshot: 'https://api.moonshot.cn/v1',
         doubao: 'https://ark.cn-beijing.volces.com/api/v3',
       }
-      const apiKey = provKeys[provider] || localStorage.getItem('coagent-apikey') || undefined
+      const apiKey = provKeys[provider] || lsGet(LS.apiKey, '') || undefined
       // 合并设置：上下文(历史条数/记忆层级/打字机) + 对话后动作(自动保存/追问) + 上次设置 + 本次设置
-      const ctxSettings = (() => { try { return JSON.parse(localStorage.getItem('coagent-context-settings') || '{}') } catch { return {} } })()
+      const ctxSettings = lsGetJSON<Record<string, any>>(LS.contextSettings, {})
       // 上下文策略固定：流式逐字输出 / 历史 10 条 / 记忆 L2（不随 localStorage 旧值变化）
       ctxSettings.typing = true
       ctxSettings.historyLimit = 10
       ctxSettings.memoryLayer = 'L2'
-      const postActions = (() => { try { return JSON.parse(localStorage.getItem('coagent-post-actions') || '{}') } catch { return {} } })()
-      const lastSettings = (() => { try { return JSON.parse(localStorage.getItem('coagent-last-settings') || '{}') } catch { return {} } })()
+      const postActions = lsGetJSON<Record<string, any>>(LS.postActions, {})
+      const lastSettings = lsGetJSON<Record<string, any>>(LS.lastSettings, {})
       const mergedSettings = { ...ctxSettings, ...postActions, ...lastSettings, ...(settings || {}) }
-      try { localStorage.setItem('coagent-last-settings', JSON.stringify(mergedSettings)) } catch {}
+      lsSetJSON(LS.lastSettings, mergedSettings)
       // 超时：首字节超时（无任何数据到达 timeoutMs 则中止）+ 流中空闲超时（每收到数据重置，60s 无数据才断）
-      const timeoutMs = (Math.min(120, Math.max(1, parseInt(localStorage.getItem('coagent-timeout') || '30', 10) || 30))) * 1000
+      const timeoutMs = (Math.min(120, Math.max(1, parseInt(lsGet(LS.timeout, '30'), 10) || 30))) * 1000
       // 请求 + 瞬时断连自动重试一次（浏览器网络层偶发中断，重试可自愈；连续失败才报"网络中断"）
       let res: Response | null = null
       let firstByte = true
@@ -710,8 +707,7 @@ function App() {
         const poll = async () => {
           if (polled) return
           try {
-            const r = await fetch('/api/dialogues/' + encodeURIComponent(did || '') + '/messages', { cache: 'no-store' })
-            const d = await r.json()
+            const d = await api.getDialogueMessages(did || '')
             const msgs = (d.messages || []).map((m: any) => ({ role: m.role, content: m.content || '', steps: m.steps, think: m.think }))
             const last = msgs[msgs.length - 1]
             // 后端已把最终 assistant 消息落库（非占位、非"（系统未生成内容）"）→ 取回替换
@@ -736,7 +732,7 @@ function App() {
     pendingMindRef.current = null
     try { if (abortCtrlRef.current) abortCtrlRef.current.abort() } catch (e) {}
     if (requestIdRef.current) {
-      fetch('/api/chat/stop', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ request_id: requestIdRef.current }) }).catch(() => {})
+      api.stopChat(requestIdRef.current).catch(() => {})
     }
   }, [])
   // 需求澄清选项点击（reasonix 式）：清理上一轮澄清占位消息，以"原问题+选择"作为新消息重新发送（走完整流程）
@@ -759,7 +755,7 @@ function App() {
     setAgents(prev => {
       const next = prev.map(a => a.id === updated.id ? updated : a)
       // 持久化：用户对项目介绍 Agent 设定的编辑刷新后保留
-      try { localStorage.setItem('coagent-agents', JSON.stringify(next)) } catch { /* 忽略 */ }
+      lsSetJSON(LS.agents, next)
       return next
     })
   }, [])
@@ -767,7 +763,7 @@ function App() {
   const handleReplaceAgents = useCallback((next: AgentConfig[]) => {
     if (!Array.isArray(next) || next.length === 0) return
     setAgents(next)
-    try { localStorage.setItem('coagent-agents', JSON.stringify(next)) } catch { /* 忽略 */ }
+    lsSetJSON(LS.agents, next)
   }, [])
 
   return (
@@ -829,10 +825,8 @@ function App() {
         flowActiveAgent={flowActiveAgent}
         onManualSetup={() => {
           if (!currentProjectId) return
-          try {
-            const done = JSON.parse(localStorage.getItem('coagent-manual-setup-done') || '[]')
-            if (done.includes(currentProjectId)) return  // 已完成初次手动填写，后续只能对话填写
-          } catch { /* 忽略 */ }
+          const done = lsGetJSON<string[]>(LS.manualSetupDone, [])
+          if (done.includes(currentProjectId)) return  // 已完成初次手动填写，后续只能对话填写
           setManualSetupOnly(true)
           setProjectConfigTab('memory')
           setShowProjectConfig(true)
@@ -886,19 +880,19 @@ function App() {
       {wizard && <ProfileWizard mode={wizard.mode} projectName={wizard.name} onClose={() => {
         // 跳过：项目标记为无画像（simple），名字加 [简]，后续对话不弹向导
         if (wizard.mode === 'project') {
-          fetch('/api/projects/' + wizard.id + '/profile', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ profile: {} }) })
-          fetch('/api/projects/' + wizard.id, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name: '[简] ' + (wizard.name || ''), simple: true }) })
+          api.saveProjectProfile(wizard.id, {})
+          api.updateProject(wizard.id, { name: '[简] ' + (wizard.name || ''), simple: true })
           setProjects(prev => prev.map(p => p.id === wizard.id ? { ...p, name: '[简] ' + p.name, simple: true } : p))
         }
         setWizard(null)
       }}
         onSave={(profile) => {
-          const url = wizard.mode === 'project' ? '/api/projects/' + wizard.id + '/profile' : '/api/dialogues/' + wizard.id + '/profile'
-          fetch(url, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ profile }) })
+          if (wizard.mode === 'project') api.saveProjectProfile(wizard.id, profile)
+          else api.saveDialogueProfile(wizard.id, profile)
           setWizard(null)
         }} />}
-      {showApiKeyPrompt && <ApiKeyPrompt onClose={() => { setShowApiKeyPrompt(false); localStorage.setItem('coagent-apikey-skipped', '1') }} />}
-      {showIntro && <IntroPanel onClose={() => { setShowIntro(false); localStorage.setItem('coagent-intro-seen', '1') }} />}
+      {showApiKeyPrompt && <ApiKeyPrompt onClose={() => { setShowApiKeyPrompt(false); lsSet(LS.apiKeySkipped, '1') }} />}
+      {showIntro && <IntroPanel onClose={() => { setShowIntro(false); lsSet(LS.introSeen, '1') }} />}
       {/* 删除对话确认弹窗 */}
       {deleteDialogueTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-6" onClick={() => setDeleteDialogueTarget(null)}>
