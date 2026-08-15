@@ -308,9 +308,8 @@ async def generate_domain(req: GenerateDomainReq):
 
 @app.post("/api/generate-special")
 async def generate_special(req: GenerateSpecialReq):
-    """特殊形式生成：把回答内容转换成指定形式（表格/流程图/树状图/报告/测试题）"""
-    import requests as _req
-    from core.memory_analysis import _extract_json
+    """特殊形式生成：把回答内容转换成指定形式（表格/流程图/树状图/报告/测试题）
+    用 response_format=json_object 保证合法 JSON（内容含换行也不会解析失败）"""
     if not (req.content or "").strip() or not req.forms:
         return {"status": "error", "msg": "参数不完整"}
     forms_desc = {
@@ -320,26 +319,21 @@ async def generate_special(req: GenerateSpecialReq):
         "report": "markdown 结构化报告（分小节）",
         "quiz": "3-5 道测试题（每题含 题目/选项/答案）",
     }
-    selected = "、".join(forms_desc.get(k, k) for k in req.forms if k in forms_desc)
-    if not selected:
+    supported = [k for k in req.forms if k in forms_desc]
+    if not supported:
         return {"status": "error", "msg": "没有支持的形式"}
+    selected = "、".join(forms_desc[k] for k in supported)
     prompt = (
-        "把下面的学习内容转换成指定形式，严格输出 JSON（不要 markdown 代码块，不要额外文字）：\n"
-        "内容：\n" + (req.content or "")[:4000] + "\n\n"
-        "需要的形式（每种形式对应 JSON 一个字段）：\n" + selected + "\n\n"
-        "输出格式示例：{\"table\":\"...\", \"flow\":\"...\"}，没有的形式省略。"
+        "把下面的学习内容转换成指定形式，每种形式作为 JSON 一个字段：\n"
+        "内容：\n" + (req.content or "")[:6000] + "\n\n"
+        "需要的形式（每种一个字段，值就是该形式的内容）：\n" + selected + "\n\n"
+        "只输出 JSON 对象，字段名用英文 key。"
     )
+    schema = {"type": "object", "properties": {k: {"type": "string", "description": forms_desc[k]} for k in supported}}
     try:
-        h = {"Authorization": "Bearer " + (req.api_key or ""), "Content-Type": "application/json"}
-        resp = _req.post(
-            req.base_url.rstrip("/") + "/chat/completions",
-            json={"model": req.model, "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]},
-            headers=h, timeout=90,
-        )
-        if resp.status_code != 200:
-            return {"status": "error", "msg": "模型调用失败（HTTP " + str(resp.status_code) + "），请检查 API Key"}
-        content = resp.json()["choices"][0]["message"]["content"] or ""
-        data = _extract_json(content)
+        from core.base_llm import DeepSeekLLM
+        llm = DeepSeekLLM(api_key=req.api_key or None, model=req.model, base_url=req.base_url, thinking=False)
+        data = llm.chat_with_json([{"role": "user", "content": prompt}], schema)
         if not data:
             return {"status": "error", "msg": "AI 返回内容无法解析"}
         return {"status": "ok", "results": data}

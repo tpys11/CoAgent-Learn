@@ -31,7 +31,15 @@ function Mermaid({ code }: { code: string }) {
     let cancelled = false
     const id = 'mm-' + Math.random().toString(36).slice(2, 9)
     mermaid.render(id, code).then(({ svg }) => {
-      if (!cancelled && ref.current) ref.current.innerHTML = svg
+      if (!cancelled && ref.current) {
+        ref.current.innerHTML = svg
+        const svgEl = ref.current.querySelector('svg')
+        if (svgEl) {
+          svgEl.style.maxWidth = '100%'
+          svgEl.style.width = '100%'
+          svgEl.style.height = 'auto'
+        }
+      }
     }).catch(() => {
       if (ref.current) ref.current.innerHTML = '<div style="color:#d9534f;font-size:12px">图表渲染失败</div>'
     })
