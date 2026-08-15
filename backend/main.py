@@ -575,7 +575,18 @@ async def chat(req: ChatRequest):
                     break
                 elif msg[0] == "done":
                     result = msg[1]
-                    yield f"data: {json.dumps({'type': 'done', 'reply': result.get('final_reply', '处理完成'), 'steps': result.get('steps', []), 'mindchain': result.get('mindchain', []), 'task_stats': result.get('task_stats', {}), 'special_suggestions': result.get('special_suggestions', [])})}\n\n"
+                    # 跨模态检索命中的图片：随 done 回传前端渲染（图片本体已落盘 /uploads 静态目录）
+                    retrieved_images = []
+                    for _k in (result.get("knowledge") or []):
+                        if isinstance(_k, dict) and _k.get("kind") == "image":
+                            _meta = _k.get("metadata") or {}
+                            retrieved_images.append({
+                                "source": _meta.get("source", ""),
+                                "content": (_k.get("content") or "")[:240],
+                                "file_path": _meta.get("file_path", ""),
+                                "mime": _meta.get("mime", ""),
+                            })
+                    yield f"data: {json.dumps({'type': 'done', 'reply': result.get('final_reply', '处理完成'), 'steps': result.get('steps', []), 'mindchain': result.get('mindchain', []), 'task_stats': result.get('task_stats', {}), 'special_suggestions': result.get('special_suggestions', []), 'retrieved_images': retrieved_images})}\n\n"
                     break
                 elif msg[0] == "error":
                     yield f"data: {json.dumps({'type': 'error', 'message': msg[1]})}\n\n"

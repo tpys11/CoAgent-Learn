@@ -522,6 +522,8 @@ function App() {
       let finalReply = ''; const steps: any[] = []; let taskStats: any = null; let flowError = ''
       // 特殊形式输出建议（模型判断）：done 事件注入，随最终消息展示
       let special: Array<{ key: string; label: string }> = []
+      // 跨模态检索命中的图片（done 事件注入，随最终消息展示）
+      let retrievedImages: Array<{ source: string; content: string; file_path: string; mime: string }> = []
       await streamChatResponse(res, (data: ChatEvent) => {
         if (data.type === 'start') { requestIdRef.current = data.request_id || null; return }
         if (data.type === 'heartbeat') return
@@ -617,6 +619,7 @@ function App() {
           special = Array.isArray(data.special_suggestions)
             ? (data.special_suggestions as string[]).map(k => ({ key: k, label: SPECIAL_LABELS[k] || k })).filter(s => s.label)
             : []
+          retrievedImages = Array.isArray(data.retrieved_images) ? data.retrieved_images : []
           setFlowStatus('')
           setFlowActiveAgent(null)
           // 最终同步一次占位消息 think（降频期间可能滞后）
@@ -668,22 +671,22 @@ function App() {
         const typingOn = true  // 流式逐字输出固定开启
         if (typingOn && streamedRef.current) {
           // 回答已通过 answer_token 流式显示：直接替换为完整内容（markdown 渲染），不再二次打字机
-          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: finalContent, steps, think: thinkArr, special }) }))
+          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: finalContent, steps, think: thinkArr, special, retrievedImages }) }))
         } else if (typingOn) {
-          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: '', steps, think: thinkArr, special }) }))
+          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: '', steps, think: thinkArr, special, retrievedImages }) }))
           let i = 0
           const iv = setInterval(() => {
             i += 3
             const chunk = finalContent.slice(0, i)
             setAllMessages(prev => {
               const arr = [...(prev[did || ''] || [])]
-              if (arr.length) arr[arr.length - 1] = { role: 'assistant', content: chunk, steps, think: thinkArr, special }
+              if (arr.length) arr[arr.length - 1] = { role: 'assistant', content: chunk, steps, think: thinkArr, special, retrievedImages }
               return { ...prev, [did || '']: arr }
             })
             if (i >= finalContent.length) clearInterval(iv)
           }, 16)
         } else {
-          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: finalContent, steps, think: thinkArr, special }) }))
+          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: finalContent, steps, think: thinkArr, special, retrievedImages }) }))
         }
       }catch(_ex){}
     } catch (e: any) {

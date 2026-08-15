@@ -15,6 +15,7 @@ export type ChatEvent =
       mindchain?: MindchainItem[]
       task_stats?: Record<string, unknown>
       special_suggestions?: string[]
+      retrieved_images?: Array<{ source: string; content: string; file_path: string; mime: string }>
     }
   | { type: 'error'; message: string }
 

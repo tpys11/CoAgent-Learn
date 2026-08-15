@@ -437,6 +437,37 @@ const TEMPLATE_OPTIONS = [
                               </div>
                             </div>
                           )}
+                          {/* 跨模态检索命中的图片：知识库图片向量命中，回显缩略图 */}
+                          {msg.retrievedImages && msg.retrievedImages.length > 0 && (
+                            <div className="mt-2.5 border hairline rounded-xl px-3 py-2.5 bg-[var(--bg-panel)]">
+                              <p className="text-[10px] font-semibold text-dim mb-1.5 flex items-center gap-1">
+                                <ImageIcon size={11} /> 知识库图片命中
+                              </p>
+                              <div className="flex flex-wrap gap-2">
+                                {msg.retrievedImages.map((img, k) => (
+                                  <figure key={k} className="flex flex-col gap-1 max-w-[180px]">
+                                    {img.file_path ? (
+                                      <img
+                                        src={img.file_path}
+                                        alt={img.source || '检索图片'}
+                                        className="w-[180px] h-[120px] object-cover rounded-lg border hairline bg-white"
+                                        loading="lazy"
+                                      />
+                                    ) : (
+                                      <div className="w-[180px] h-[120px] rounded-lg border hairline bg-[var(--bg-input)] flex items-center justify-center text-[10px] text-dim">
+                                        图片不可用
+                                      </div>
+                                    )}
+                                    {img.source && (
+                                      <figcaption className="text-[9px] text-dim truncate" title={img.source}>
+                                        {img.source}
+                                      </figcaption>
+                                    )}
+                                  </figure>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                           {/* 新建课程引导消息：右下角「手动初始化」按钮（仅初次创建、未完成手动填写时显示） */}
                           {msg.content.includes('课程创建成功') && onManualSetup && !(currentProject && (() => {
                             return lsGetJSON<string[]>(LS.manualSetupDone, []).includes(currentProject.id)
