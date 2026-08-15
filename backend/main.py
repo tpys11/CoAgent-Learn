@@ -319,7 +319,7 @@ async def generate_special(req: GenerateSpecialReq):
         "quiz": {"label": "测验", "kind": "array", "desc": "3-5 道题，每道是 {question: 题目, options: [4个选项], answer: 正确选项字母} 的对象"},
         "mindmap": {"label": "思维导图", "kind": "text", "desc": "markdown 无序列表（- 根节点，子节点缩进2空格），用于思维导图渲染"},
         "table": {"label": "表格", "kind": "text", "desc": "markdown 表格"},
-        "timeline": {"label": "时间线", "kind": "array", "desc": "3-6 个事件，每个是 {time: 时间点, event: 事件描述} 的对象"},
+
     }
     supported = [k for k in req.forms if k in FORM_SPECS]
     if not supported:
@@ -344,18 +344,53 @@ async def generate_special(req: GenerateSpecialReq):
             schema["properties"][k] = {"type": "array", "description": FORM_SPECS[k]["desc"]}
         else:
             schema["properties"][k] = {"type": "string", "description": FORM_SPECS[k]["desc"]}
-    try:
-        from core.base_llm import DeepSeekLLM
-        llm = DeepSeekLLM(api_key=req.api_key or None, model=req.model, base_url=req.base_url, thinking=False)
-        data = llm.chat_with_json([{"role": "user", "content": prompt}], schema)
-        if not data:
-            return {"status": "error", "msg": "AI 返回内容无法解析"}
-        return {"status": "ok", "results": data}
-    except Exception as e:
-        return {"status": "error", "msg": str(e)[:200]}
+    import queue as _queue
+    import threading as _threading
+    import json as _json2
+    import re as _re2
+    from fastapi.responses import StreamingResponse
 
-    except Exception as e:
-        return {"status": "error", "msg": str(e)[:200]}
+    def _run():
+        try:
+            from core.base_llm import DeepSeekLLM
+            llm = DeepSeekLLM(api_key=req.api_key or None, model=req.model, base_url=req.base_url, thinking=False)
+            _collected = []
+            def _on_token(chunk):
+                _collected.append(chunk)
+                _q.put(("token", chunk))
+            llm.chat_stream([{"role": "user", "content": prompt}], _on_token, temperature=0.3, response_format={"type": "json_object"})
+            _raw = "".join(_collected)
+            _data = {}
+            try:
+                _data = _json2.loads(_raw)
+            except Exception:
+                _m = _re2.search(r"\{[\s\S]*\}", _raw)
+                if _m:
+                    try:
+                        _data = _json2.loads(_m.group())
+                    except Exception:
+                        pass
+            _q.put(("done", _data))
+        except Exception as _e:
+            _q.put(("error", str(_e)[:200]))
+
+    _q = _queue.Queue()
+    _threading.Thread(target=_run, daemon=True).start()
+
+    def _gen():
+        yield "data: " + _json2.dumps({"type": "start"}) + chr(10) + chr(10)
+        while True:
+            _msg = _q.get()
+            if _msg[0] == "token":
+                yield "data: " + _json2.dumps({"type": "token", "chunk": _msg[1]}) + chr(10) + chr(10)
+            elif _msg[0] == "done":
+                yield "data: " + _json2.dumps({"type": "done", "results": _msg[1]}) + chr(10) + chr(10)
+                break
+            elif _msg[0] == "error":
+                yield "data: " + _json2.dumps({"type": "error", "message": _msg[1]}) + chr(10) + chr(10)
+                break
+
+    return StreamingResponse(_gen(), media_type="text/event-stream")
 
 
 @app.get("/api/resources")

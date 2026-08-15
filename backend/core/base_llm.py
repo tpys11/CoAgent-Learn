@@ -129,7 +129,7 @@ class BaseLLM:
             )
 
 
-    def chat_stream(self, messages: list[dict], on_token, temperature: float = 0.7, on_content=None, cancel_event=None, on_reasoning=None):
+    def chat_stream(self, messages: list[dict], on_token, temperature: float = 0.7, on_content=None, cancel_event=None, on_reasoning=None, response_format=None):
         """流式对话，每收到一个token调用on_token(chunk_text)。
         同时消费 delta.reasoning_content（v4 思考模式的推理内容，作为思维链推送）与 delta.content（最终回答），
         推理阶段 content 为空时仍能持续推送推理文本，保证前端思维链实时可见。
@@ -143,6 +143,8 @@ class BaseLLM:
             # 思考强度：low=极短思考（简单问题保留思维链但秒级完成）
             if self.thinking and self.effort:
                 kwargs["reasoning_effort"] = self.effort
+        if response_format is not None:
+            kwargs["response_format"] = response_format
         for attempt in range(self.max_retries):
             if cancel_event and cancel_event.is_set():
                 return  # 用户手动停止：重试/等待间隙也立即退出

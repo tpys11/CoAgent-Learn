@@ -8,7 +8,7 @@ import type { Message } from '../types'
 const md = new MarkdownIt({ html: false, linkify: true, breaks: true })
 const renderMd = (text: string) => md.render(String(text || ''))
 
-type FormKey = 'summary' | 'flashcards' | 'quiz' | 'mindmap' | 'table' | 'timeline' | 'audio'
+type FormKey = 'summary' | 'flashcards' | 'quiz' | 'mindmap' | 'table' | 'simulator' | 'audio'
 
 const FORMS: Array<{ key: FormKey; label: string; icon: any; desc: string }> = [
   { key: 'summary', label: '总结', icon: FileText, desc: '汇总整个对话生成结构化总结' },
@@ -16,11 +16,11 @@ const FORMS: Array<{ key: FormKey; label: string; icon: any; desc: string }> = [
   { key: 'quiz', label: '测验', icon: ClipboardList, desc: '选择题，交互式作答' },
   { key: 'mindmap', label: '思维导图', icon: Network, desc: '知识层级思维导图' },
   { key: 'table', label: '表格', icon: TableIcon, desc: '知识点/维度对比表格' },
-  { key: 'timeline', label: '时间线', icon: History, desc: '事件时间线' },
+  { key: 'simulator', label: '模拟器', icon: History, desc: '交互式仿真场景（待实现）' },
   { key: 'audio', label: '音频', icon: Volume2, desc: '音频概览（朗读 / 播客）' },
 ]
 
-const SUPPORTED: FormKey[] = ['summary', 'flashcards', 'quiz', 'mindmap', 'table', 'timeline']
+const SUPPORTED: FormKey[] = ['summary', 'flashcards', 'quiz', 'mindmap', 'table']
 const SAVED_KEY = 'coagent-special-saved'
 
 type SavedItem = { id: number; form: FormKey; label: string; content: any; time: string }
@@ -160,11 +160,22 @@ export default function SpecialOutputPane({ messages, projectId }: { messages: M
         body: JSON.stringify({ content: convo, forms: [f], api_key: localStorage.getItem('coagent-apikey') || '' }),
         signal: ctrl.signal,
       })
-      const d = await r.json()
-      if (d.status === 'ok') {
-        setResult(d.results?.[f] ?? null)
-      } else {
-        alert('生成失败：' + (d.msg || '未知'))
+      if (!r.ok || !r.body) throw new Error('HTTP ' + r.status)
+      const reader = r.body.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const parts = buf.split('\n\n')
+        buf = parts.pop() || ''
+        for (const part of parts) {
+          if (!part.startsWith('data: ')) continue
+          const d = JSON.parse(part.slice(6))
+          if (d.type === 'done') setResult(d.results?.[f] ?? null)
+          else if (d.type === 'error') alert('生成失败：' + (d.message || '未知'))
+        }
       }
     } catch (e: any) {
       if (e && e.name === 'AbortError') { /* 停止 */ }
