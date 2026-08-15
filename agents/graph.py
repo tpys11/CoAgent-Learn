@@ -435,6 +435,40 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                     context += "【用户画像】" + NL + NL.join(_parts) + NL + "请结合画像与当前问题判断用户水平并调整内容深度。" + NL
             except Exception:
                 pass
+        # 课程画像 + 本次对话画像：普通（思考 / 研究）档同样注入，避免只在极速档使用项目记忆
+        if cfg.get("memoryEnabled") is not False:
+            try:
+                from core.postgres_client import pg_client as _pgm
+                from core.memory_analysis import _as_dict as _m_as_dict
+                _pid = state.get("project_id") or "default"
+                _did = state.get("dialogue_id") or "default"
+                _mem_parts = []
+                _prow = _pgm.execute("SELECT data FROM project_memories WHERE project_id=%s ORDER BY updated_at DESC LIMIT 1", (_pid,))
+                if _prow and _prow[0].get("data"):
+                    _pm = _m_as_dict(_prow[0]["data"])
+                    for _src, _label in [
+                        ("抽象目的", "目的"), ("目标", "目标"), ("当前水平", "当前水平"),
+                        ("起点", "起点"), ("偏好", "偏好"), ("知识点", "知识点"),
+                        ("难点", "难点"), ("薄弱点", "薄弱点"),
+                    ]:
+                        _v = _pm.get(_src)
+                        if _v:
+                            _text = "、".join(str(x) for x in _v) if isinstance(_v, list) else str(_v)
+                            _mem_parts.append(f"{_label}：{_text[:200]}")
+                _drow = _pgm.execute("SELECT profile_data FROM dialogue_memories WHERE dialogue_id=%s", (_did,))
+                if _drow and _drow[0].get("profile_data"):
+                    _dp = _m_as_dict(_drow[0]["profile_data"])
+                    _dparts = []
+                    for _k in ("topic", "selfLevel", "target", "questionType"):
+                        _v = _dp.get(_k)
+                        if _v:
+                            _dparts.append(f"{_k}: {str(_v)[:120]}")
+                    if _dparts:
+                        _mem_parts.append("本次对话：" + "；".join(_dparts))
+                if _mem_parts:
+                    context += "【课程与对话画像】" + NL + NL.join(_mem_parts) + NL + "请结合课程画像与本次对话目标调整讲解深度。" + NL
+            except Exception:
+                pass
         # 阅读偏好：用户对输出形式的偏好（初始化问卷/手动设置），注入生成约束（不阻塞主流程）
         try:
             from core.postgres_client import pg_client as _pg_gp
