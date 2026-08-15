@@ -135,21 +135,27 @@ async def save_settings(req: SettingsSave):
     _s.set_setting("VECTOR_MODEL", req.vector_model)
     _s.set_setting("EMBEDDING_BACKEND", req.embedding_backend)
     _s.set_setting("EMBEDDING_BASE_URL", req.embedding_base_url)
-    _s.set_setting("EMBEDDING_API_KEY", req.embedding_api_key)
+    # 前端不回显已存 Key，空输入 = 保持不变（不清除已保存的 Key）
+    if req.embedding_api_key:
+        _s.set_setting("EMBEDDING_API_KEY", req.embedding_api_key)
     _s.set_setting("EMBEDDING_MODEL", req.embedding_model)
     _s.set_setting("EMBEDDING_LOCAL_MODEL", req.embedding_local_model)
     _s.set_setting("EMBEDDING_DIM", str(req.embedding_dim))
     _s.set_setting("RERANK_BACKEND", req.rerank_backend)
     _s.set_setting("RERANK_BASE_URL", req.rerank_base_url)
-    _s.set_setting("RERANK_API_KEY", req.rerank_api_key)
+    if req.rerank_api_key:
+        _s.set_setting("RERANK_API_KEY", req.rerank_api_key)
     _s.set_setting("RERANK_MODEL", req.rerank_model)
     _s.set_setting("RERANK_LOCAL_MODEL", req.rerank_local_model)
     _s.set_setting("IMAGE_BACKEND", req.image_backend)
     _s.set_setting("IMAGE_BASE_URL", req.image_base_url)
-    _s.set_setting("IMAGE_API_KEY", req.image_api_key)
+    if req.image_api_key:
+        _s.set_setting("IMAGE_API_KEY", req.image_api_key)
     _s.set_setting("IMAGE_MODEL", req.image_model)
-    _s.set_setting("VL_API_KEY", req.vl_api_key)
-    _s.set_setting("ZHIPU_API_KEY", req.zhipu_api_key)
+    if req.vl_api_key:
+        _s.set_setting("VL_API_KEY", req.vl_api_key)
+    if req.zhipu_api_key:
+        _s.set_setting("ZHIPU_API_KEY", req.zhipu_api_key)
     _apply_dynamic_settings()
     return {"status": "ok", "msg": "配置已保存并即时生效"}
 
