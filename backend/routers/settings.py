@@ -57,6 +57,10 @@ class SettingsSave(BaseModel):
     image_model: str = "glm-4v-flash"
     vl_api_key: str = ""          # Qwen3-VL-Embedding 卡（视觉/跨模态，文本优先 BGE）
     zhipu_api_key: str = ""
+    image_desc_model: str = "Qwen/Qwen3.5-4B"   # 图片描述模型
+    review_api_key: str = ""      # 审核模型（独立于主模型，空则回退主模型快模型）
+    review_base_url: str = ""
+    review_model: str = ""
 
 
 @router.get("/api/settings")
@@ -64,6 +68,9 @@ async def get_settings():
     """返回当前生效配置（key 只回显是否已配置，不回显内容）"""
     from core.config import config as _cfg
     from core.sqlite_client import get_db as _db
+    _embed_key = getattr(_cfg, "EMBEDDING_API_KEY", "")
+    _vl_key = getattr(_cfg, "VL_API_KEY", "")
+    _image_eff = getattr(_cfg, "IMAGE_API_KEY", "") or _vl_key or _embed_key or getattr(_cfg, "ZHIPU_API_KEY", "")
     return {
         "vector_model": _db().get_setting("VECTOR_MODEL") or "bge",
         "embedding": {
@@ -72,31 +79,38 @@ async def get_settings():
             "model": _cfg.EMBEDDING_MODEL,
             "local_model": getattr(_cfg, "EMBEDDING_LOCAL_MODEL", "BAAI/bge-small-zh-v1.5"),
             "dim": int(getattr(_cfg, "EMBEDDING_DIM", 1024)),
-            "api_key_set": bool(getattr(_cfg, "EMBEDDING_API_KEY", "")),
-            "api_key_hint": _mask_key(getattr(_cfg, "EMBEDDING_API_KEY", "")),
+            "api_key_set": bool(_embed_key),
+            "api_key_hint": _mask_key(_embed_key),
         },
         "rerank": {
             "backend": _cfg.RERANK_BACKEND,
             "base_url": _cfg.RERANK_BASE_URL,
             "model": _cfg.RERANK_MODEL,
             "local_model": getattr(_cfg, "RERANK_LOCAL_MODEL", "BAAI/bge-reranker-base"),
-            "api_key_set": bool(getattr(_cfg, "RERANK_API_KEY", "")),
-            "api_key_hint": _mask_key(getattr(_cfg, "RERANK_API_KEY", "")),
+            "api_key_set": bool(getattr(_cfg, "RERANK_API_KEY", "") or _embed_key),
+            "api_key_hint": _mask_key(getattr(_cfg, "RERANK_API_KEY", "") or _embed_key),
         },
         "image": {
             "backend": getattr(_cfg, "IMAGE_BACKEND", "none"),
             "base_url": getattr(_cfg, "IMAGE_BASE_URL", ""),
-            "model": getattr(_cfg, "IMAGE_MODEL", "glm-4v-flash"),
-            "api_key_set": bool(getattr(_cfg, "IMAGE_API_KEY", "") or getattr(_cfg, "ZHIPU_API_KEY", "")),
-            "api_key_hint": _mask_key(getattr(_cfg, "IMAGE_API_KEY", "") or getattr(_cfg, "ZHIPU_API_KEY", "")),
+            "model": getattr(_cfg, "IMAGE_DESC_MODEL", "Qwen/Qwen3.5-4B"),
+            "api_key_set": bool(_image_eff),
+            "api_key_hint": _mask_key(_image_eff),
         },
         "vl": {
-            "api_key_set": bool(getattr(_cfg, "VL_API_KEY", "")),
-            "api_key_hint": _mask_key(getattr(_cfg, "VL_API_KEY", "")),
+            "model": getattr(_cfg, "VL_MODEL", "Qwen/Qwen3-VL-Embedding-8B"),
+            "api_key_set": bool(_vl_key or _embed_key),
+            "api_key_hint": _mask_key(_vl_key or _embed_key),
         },
         "zhipu": {
             "api_key_set": bool(getattr(_cfg, "ZHIPU_API_KEY", "")),
             "api_key_hint": _mask_key(getattr(_cfg, "ZHIPU_API_KEY", "")),
+        },
+        "review": {
+            "model": getattr(_cfg, "REVIEW_MODEL", ""),
+            "base_url": getattr(_cfg, "REVIEW_BASE_URL", ""),
+            "api_key_set": bool(getattr(_cfg, "REVIEW_API_KEY", "")),
+            "api_key_hint": _mask_key(getattr(_cfg, "REVIEW_API_KEY", "")),
         },
     }
 
@@ -126,92 +140,120 @@ async def save_settings(req: SettingsSave):
     if req.image_api_key:
         _s.set_setting("IMAGE_API_KEY", req.image_api_key)
     _s.set_setting("IMAGE_MODEL", req.image_model)
+    if req.image_desc_model:
+        _s.set_setting("IMAGE_DESC_MODEL", req.image_desc_model)
     if req.vl_api_key:
         _s.set_setting("VL_API_KEY", req.vl_api_key)
     if req.zhipu_api_key:
         _s.set_setting("ZHIPU_API_KEY", req.zhipu_api_key)
+    if req.review_api_key:
+        _s.set_setting("REVIEW_API_KEY", req.review_api_key)
+    _s.set_setting("REVIEW_BASE_URL", req.review_base_url)
+    _s.set_setting("REVIEW_MODEL", req.review_model)
     _apply_dynamic_settings()
     return {"status": "ok", "msg": "配置已保存并即时生效"}
 
 
 @router.post("/api/settings/test")
 async def test_settings(req: SettingsSave):
-    """用传入配置测试连接（不保存）：embedding/rerank/视觉 各一次最小调用；路由跟随所选模型 vector_model"""
+    """测试各能力连接（不保存）：文字向量 / 图片向量 / 重排 / 图片描述 / 审核模型。
+    只返回功能级结果（ok + 简短 msg），不暴露具体模型名。"""
     import requests as _req
     from core.config import config as _cfg
     results = {}
-    _vm = req.vector_model or "bge"
-    # 前端不回显已存 Key（刷新后输入框为空但后端已保存）：请求体 Key 为空时回退已保存配置
+    # Key 回退链与运行时一致（输入框留空时回退已保存配置）
     _embed_key = req.embedding_api_key or getattr(_cfg, "EMBEDDING_API_KEY", "")
-    _vl_key = req.vl_api_key or getattr(_cfg, "VL_API_KEY", "")
-    _rerank_key = req.rerank_api_key or getattr(_cfg, "RERANK_API_KEY", "")
-    _zhipu_key = req.zhipu_api_key or getattr(_cfg, "ZHIPU_API_KEY", "") or getattr(_cfg, "IMAGE_API_KEY", "")
-    # embedding（路由跟随所选模型：qwen → Qwen3-VL-Embedding-8B，bge → bge-m3）
+    _vl_key = req.vl_api_key or getattr(_cfg, "VL_API_KEY", "") or _embed_key
+    _rerank_key = req.rerank_api_key or getattr(_cfg, "RERANK_API_KEY", "") or _embed_key
+    _zhipu_key = req.image_api_key or getattr(_cfg, "IMAGE_API_KEY", "") or getattr(_cfg, "ZHIPU_API_KEY", "")
+
+    # 1. 文字向量化（独立于图片向量，始终用所选文字向量模型）
     if req.embedding_backend == "api":
-        _ek = (_vl_key or _embed_key) if _vm == "qwen" else _embed_key
-        _em = "Qwen/Qwen3-VL-Embedding-8B" if _vm == "qwen" else req.embedding_model
-        if not _ek:
-            results["embedding"] = {"ok": False, "msg": "未配置 API Key"}
+        if not _embed_key:
+            results["text_embedding"] = {"ok": False, "msg": "未配置 Key"}
         else:
             try:
-                _u = (req.embedding_base_url or "").rstrip("/") + "/embeddings"
-                _r = _req.post(_u, json={"model": _em, "input": ["测试"]},
-                               headers={"Authorization": "Bearer " + _ek}, timeout=20)
+                _u = (req.embedding_base_url or getattr(_cfg, "EMBEDDING_BASE_URL", "") or "").rstrip("/") + "/embeddings"
+                _r = _req.post(_u, json={"model": req.embedding_model or getattr(_cfg, "EMBEDDING_MODEL", ""), "input": ["测试"]},
+                               headers={"Authorization": "Bearer " + _embed_key}, timeout=20)
                 if _r.status_code == 200 and _r.json().get("data"):
-                    results["embedding"] = {"ok": True, "dim": len(_r.json()["data"][0]["embedding"])}
+                    results["text_embedding"] = {"ok": True}
                 else:
-                    results["embedding"] = {"ok": False, "msg": f"HTTP {_r.status_code}: {_r.text[:120]}"}
+                    results["text_embedding"] = {"ok": False, "msg": f"HTTP {_r.status_code}"}
             except Exception as e:
-                results["embedding"] = {"ok": False, "msg": str(e)[:120]}
+                results["text_embedding"] = {"ok": False, "msg": str(e)[:100]}
     else:
-        results["embedding"] = {"ok": True, "msg": "本地后端无需测试"}
-    # rerank（地址/Key 留空时复用向量化配置，与 _ApiReranker 逻辑一致）
+        results["text_embedding"] = {"ok": True, "msg": "本地后端"}
+
+    # 2. 图片向量 / 跨模态（独立于文字向量，始终用 VL 模型）
+    if not _vl_key:
+        results["image_embedding"] = {"ok": True, "msg": "未配置（跳过）"}
+    else:
+        try:
+            _u = (getattr(_cfg, "VL_BASE_URL", "https://api.siliconflow.cn/v1") or "").rstrip("/") + "/embeddings"
+            _r = _req.post(_u, json={"model": getattr(_cfg, "VL_MODEL", "Qwen/Qwen3-VL-Embedding-8B"), "input": ["测试"]},
+                           headers={"Authorization": "Bearer " + _vl_key}, timeout=20)
+            ok = _r.status_code == 200 and bool(_r.json().get("data"))
+            results["image_embedding"] = {"ok": ok, "msg": "" if ok else f"HTTP {_r.status_code}"}
+        except Exception as e:
+            results["image_embedding"] = {"ok": False, "msg": str(e)[:100]}
+
+    # 3. 重排
     if req.rerank_backend == "api":
-        _rk = _rerank_key or _embed_key
-        if not _rk:
-            results["rerank"] = {"ok": False, "msg": "未配置重排 Key（可在重排或向量化中填写）"}
+        if not _rerank_key:
+            results["rerank"] = {"ok": False, "msg": "未配置 Key"}
         else:
             try:
-                _u = ((req.rerank_base_url or req.embedding_base_url) or "").rstrip("/") + "/rerank"
-                _r = _req.post(_u, json={"model": req.rerank_model, "query": "测试", "documents": ["测试文档"]},
-                               headers={"Authorization": "Bearer " + _rk}, timeout=20)
+                _u = ((req.rerank_base_url or getattr(_cfg, "RERANK_BASE_URL", "") or req.embedding_base_url or getattr(_cfg, "EMBEDDING_BASE_URL", "")) or "").rstrip("/") + "/rerank"
+                _r = _req.post(_u, json={"model": req.rerank_model or getattr(_cfg, "RERANK_MODEL", ""), "query": "测试", "documents": ["测试文档"]},
+                               headers={"Authorization": "Bearer " + _rerank_key}, timeout=20)
                 if _r.status_code == 200:
                     results["rerank"] = {"ok": True}
                 else:
-                    results["rerank"] = {"ok": False, "msg": f"HTTP {_r.status_code}: {_r.text[:120]}"}
+                    results["rerank"] = {"ok": False, "msg": f"HTTP {_r.status_code}"}
             except Exception as e:
-                results["rerank"] = {"ok": False, "msg": str(e)[:120]}
+                results["rerank"] = {"ok": False, "msg": str(e)[:100]}
     else:
-        results["rerank"] = {"ok": True, "msg": "本地后端无需测试"}
-    # Qwen3-VL-Embedding（视觉/跨模态向量）：Qwen 模式下主模型即覆盖；BGE 模式独立测 vl key
-    if _vm == "qwen":
-        results["vl"] = {"ok": True, "msg": "当前主模型为 Qwen3-VL，视觉向量已覆盖"}
-    elif _vl_key:
-        try:
-            _u = "https://api.siliconflow.cn/v1/embeddings"
-            _r = _req.post(_u, json={"model": "Qwen/Qwen3-VL-Embedding-8B", "input": ["测试"]},
-                           headers={"Authorization": "Bearer " + _vl_key}, timeout=20)
-            if _r.status_code == 200 and _r.json().get("data"):
-                results["vl"] = {"ok": True, "dim": len(_r.json()["data"][0]["embedding"])}
-            else:
-                results["vl"] = {"ok": False, "msg": f"HTTP {_r.status_code}: {_r.text[:120]}"}
-        except Exception as e:
-            results["vl"] = {"ok": False, "msg": str(e)[:120]}
+        results["rerank"] = {"ok": True, "msg": "本地后端"}
+
+    # 4. 图片描述（与 vision_service.describe_image 同源：硅基流动优先，回退智谱）
+    if _vl_key:
+        _desc_url = "https://api.siliconflow.cn/v1/chat/completions"
+        _desc_model = req.image_desc_model or getattr(_cfg, "IMAGE_DESC_MODEL", "Qwen/Qwen3.5-4B")
+        _desc_key = _vl_key
+    elif _zhipu_key:
+        _desc_url = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+        _desc_model = "glm-4v-flash"
+        _desc_key = _zhipu_key
     else:
-        results["vl"] = {"ok": True, "msg": "未配置，跳过"}
-    # 图片描述（硅基流动视觉模型优先，复用硅基流动 Key；回退智谱）
-    _desc_key = _vl_key or _embed_key or _zhipu_key
-    if _desc_key:
-        _is_sf = bool(_vl_key or _embed_key)
+        _desc_url = ""
+    if not _desc_url:
+        results["image_description"] = {"ok": True, "msg": "未配置（跳过）"}
+    else:
         try:
-            _desc_url = "https://api.siliconflow.cn/v1/chat/completions" if _is_sf else "https://open.bigmodel.cn/api/paas/v4/chat/completions"
-            _desc_model = getattr(_cfg, "IMAGE_DESC_MODEL", "Qwen/Qwen2.5-VL-72B-Instruct") if _is_sf else "glm-4v-flash"
-            _r = _req.post(_desc_url,
-                           json={"model": _desc_model, "messages": [{"role": "user", "content": "ping"}]},
+            _r = _req.post(_desc_url, json={"model": _desc_model, "messages": [{"role": "user", "content": "ping"}]},
                            headers={"Authorization": "Bearer " + _desc_key}, timeout=20)
-            results["zhipu"] = {"ok": _r.status_code == 200, "msg": "" if _r.status_code == 200 else f"HTTP {_r.status_code}: {_r.text[:100]}"}
+            ok = _r.status_code == 200
+            results["image_description"] = {"ok": ok, "msg": "" if ok else f"HTTP {_r.status_code}"}
         except Exception as e:
-            results["zhipu"] = {"ok": False, "msg": str(e)[:120]}
+            results["image_description"] = {"ok": False, "msg": str(e)[:100]}
+
+    # 5. 审核模型
+    _review_model = req.review_model or getattr(_cfg, "REVIEW_MODEL", "")
+    _review_key = req.review_api_key or getattr(_cfg, "REVIEW_API_KEY", "")
+    _review_base = req.review_base_url or getattr(_cfg, "REVIEW_BASE_URL", "")
+    if not _review_model:
+        results["review"] = {"ok": True, "msg": "未配置（沿用主模型快模型）"}
+    elif not _review_key:
+        results["review"] = {"ok": False, "msg": "未配置 Key"}
     else:
-        results["zhipu"] = {"ok": True, "msg": "未配置，跳过"}
+        try:
+            _u = (_review_base or "https://api.deepseek.com/v1").rstrip("/") + "/chat/completions"
+            _r = _req.post(_u, json={"model": _review_model, "messages": [{"role": "user", "content": "ping"}]},
+                           headers={"Authorization": "Bearer " + _review_key}, timeout=20)
+            ok = _r.status_code == 200
+            results["review"] = {"ok": ok, "msg": "" if ok else f"HTTP {_r.status_code}"}
+        except Exception as e:
+            results["review"] = {"ok": False, "msg": str(e)[:100]}
+
     return {"status": "ok", "results": results}

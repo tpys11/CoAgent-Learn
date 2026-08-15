@@ -43,6 +43,10 @@ class Config:
     VL_EMBEDDING_DIM: int = int(os.getenv("VL_EMBEDDING_DIM", "4096"))
     # 图片描述（多模态对话）：走硅基流动视觉模型（复用硅基流动 key），模型可换
     IMAGE_DESC_MODEL: str = os.getenv("IMAGE_DESC_MODEL", "Qwen/Qwen3.5-4B")
+    # 审核模型（审核生成内容，独立于主对话模型；未配置时回退主模型快模型）
+    REVIEW_API_KEY: str = os.getenv("REVIEW_API_KEY", "")
+    REVIEW_BASE_URL: str = os.getenv("REVIEW_BASE_URL", "")
+    REVIEW_MODEL: str = os.getenv("REVIEW_MODEL", "")
 
     # ── 联网代理（可选）：容器访问国外站点（GitHub 等）失败时，配宿主梯子代理 ──
     # 例：PROXY_URL=http://host.docker.internal:7993（宿主梯子监听端口）

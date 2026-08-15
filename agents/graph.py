@@ -143,6 +143,12 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
     llm_main_no_think = DeepSeekLLM(api_key=api_key, model=model, base_url=base_url, thinking=False)
     # 简单问题主模型：保留思考模式（思维链展示）但 effort=low（极短思考，秒级完成）
     llm_main_low = DeepSeekLLM(api_key=api_key, model=model, base_url=base_url, thinking=True, effort='low')
+    # 审核模型：优先用设置里独立配置的审核模型（AI 服务→审核模型），未配置回退主快模型
+    from core.config import config as _cfg_review
+    _review_key = getattr(_cfg_review, "REVIEW_API_KEY", "") or api_key
+    _review_base = getattr(_cfg_review, "REVIEW_BASE_URL", "") or base_url
+    _review_model = getattr(_cfg_review, "REVIEW_MODEL", "") or fast_model or model
+    llm_review = DeepSeekLLM(api_key=_review_key, model=_review_model, base_url=_review_base, thinking=False)
 
     def _agent_cfg(aid: str) -> dict:
         """按 Agent id 取配置（缺失时返回空）"""
@@ -667,7 +673,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         if state.get("search_results"):
             kb_txt += "\n联网搜索结果：" + json.dumps(state["search_results"], ensure_ascii=False)[:2000]
         try:
-            thinking, result = think_then_json(_pick_llm(cfg, llm_fast), REVIEW_PROMPT,
+            thinking, result = think_then_json(_pick_llm(cfg, llm_review), REVIEW_PROMPT,
                 _append_example(cfg, generated + chr(10) + "学情画像：" + profile_txt + kb_txt), "审核")
             state["reviewed"] = result if isinstance(result, dict) else {"passed": True, "score": 80}
             if not state["reviewed"].get("passed", True):
