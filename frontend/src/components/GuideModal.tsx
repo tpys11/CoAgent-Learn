@@ -24,13 +24,13 @@ export default function GuideModal({ onClose }: { onClose: () => void }) {
           <section>
             <h3 className="font-semibold text-sm mb-1.5 flex items-center gap-1.5"><Wrench size={14} className="text-gray-500" /> 功能说明</h3>
             <ul className="flex flex-col gap-1.5">
-              <li className="flex gap-2"><BookOpen size={12} className="text-gray-400 mt-0.5 flex-shrink-0" /><span><b>知识库</b>：课程配置里上传 txt/md/PDF/Word/PPT，AI 回答基于知识库；切换"知识库模式"控制</span></li>
+              <li className="flex gap-2"><BookOpen size={12} className="text-gray-400 mt-0.5 flex-shrink-0" /><span><b>知识库</b>：课程配置里上传 txt/md/PDF/Word/PPT；AI 会在需要时自动检索知识库作答</span></li>
               <li className="flex gap-2"><Brain size={12} className="text-gray-400 mt-0.5 flex-shrink-0" /><span><b>记忆</b>：个人/课程/对话三级画像，刷新后保留</span></li>
-              <li className="flex gap-2"><Waypoints size={12} className="text-gray-400 mt-0.5 flex-shrink-0" /><span><b>知识图谱</b>：右侧图谱展示文档实体关系，点击节点看详情</span></li>
+              <li className="flex gap-2"><Waypoints size={12} className="text-gray-400 mt-0.5 flex-shrink-0" /><span><b>知识图谱</b>：右侧展示上传资料的标题层级树</span></li>
               <li className="flex gap-2"><MessagesSquare size={12} className="text-gray-400 mt-0.5 flex-shrink-0" /><span><b>第二对话窗口</b>：右侧独立对话，查不懂的名词，不影响主对话</span></li>
               <li className="flex gap-2"><Paperclip size={12} className="text-gray-400 mt-0.5 flex-shrink-0" /><span><b>上传文件</b>：对话输入框左侧上传按钮，支持文本/PDF/Word/PPT</span></li>
-              <li className="flex gap-2"><Plug size={12} className="text-gray-400 mt-0.5 flex-shrink-0" /><span><b>Skill</b>：设置里可上传/管理技能（可扩展能力）</span></li>
-              <li className="flex gap-2"><BarChart3 size={12} className="text-gray-400 mt-0.5 flex-shrink-0" /><span><b>评估</b>：课程配置 → 评估 tab，一键测幻觉率/适配/覆盖率</span></li>
+              <li className="flex gap-2"><Plug size={12} className="text-gray-400 mt-0.5 flex-shrink-0" /><span><b>Skill</b>：展示系统技能；上传/管理暂未开放</span></li>
+              <li className="flex gap-2"><BarChart3 size={12} className="text-gray-400 mt-0.5 flex-shrink-0" /><span><b>评估</b>：后端已支持幻觉率/适配/覆盖率计算，前端入口尚未开放</span></li>
             </ul>
           </section>
           <section>
@@ -41,7 +41,7 @@ export default function GuideModal({ onClose }: { onClose: () => void }) {
             <h3 className="font-semibold text-sm mb-1.5 flex items-center gap-1.5"><Lightbulb size={14} className="text-gray-500" /> 常见问题</h3>
             <ul className="list-disc pl-4 flex flex-col gap-1">
               <li><b>刷新后数据还在吗？</b>在——课程/对话/画像/知识库全部持久化</li>
-              <li><b>回答不基于知识库？</b>检查知识库模式开关，或该内容未上传到知识库</li>
+              <li><b>回答不基于知识库？</b>确认该内容已上传到当前课程的知识库，且问题与知识库内容相关</li>
               <li><b>需要 API key？</b>首次使用在设置里填写你的 DeepSeek key</li>
             </ul>
           </section>
