@@ -522,20 +522,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
                         {svc.image_key_set && <span className="text-[10px] text-green-600 flex-shrink-0">✓ Key 已配置</span>}
                       </div>
                       {svc.image_backend === 'api' && (
-                        <>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-dim w-20 flex-shrink-0">接口地址</span>
-                            <input value={svc.image_base_url} placeholder="OpenAI 兼容视觉接口，默认智谱 glm-4v" onChange={e => setSvc(s => ({ ...s, image_base_url: e.target.value }))} className={inputCls} />
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-dim w-20 flex-shrink-0">API Key</span>
-                            <input type="password" value={svcKeys.image_api_key} placeholder={svc.image_key_set ? '已配置，留空保持不变' : 'sk-...'} onChange={e => setSvcKeys(k => ({ ...k, image_api_key: e.target.value }))} className={inputCls} />
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-dim w-20 flex-shrink-0">模型名</span>
-                            <input value={svc.image_model} placeholder="glm-4v-flash" onChange={e => setSvc(s => ({ ...s, image_model: e.target.value }))} className={inputCls} />
-                          </div>
-                        </>
+                        <p className="text-[10px] text-dim">复用上方「知识库向量化服务」的硅基流动 API Key，模型自动使用 <span className="text-[var(--text)]">Qwen/Qwen2.5-VL-72B-Instruct</span>；图片上传时生成文字描述入库，无需单独填 Key。</p>
                       )}
                     </div>
                     </div>)}

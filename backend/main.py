@@ -529,6 +529,9 @@ async def knowledge_upload_file(
     # 多模态（照 DeepTutor 图片→描述→入库）：图片文件用 GLM-4V 生成描述入库，检索可命中图片内容
     _IMG_EXTS = {"png", "jpg", "jpeg", "gif", "webp", "bmp"}
     if fname.rsplit(".", 1)[-1].lower() in _IMG_EXTS:
+        from core.config import config as _cfg
+        if getattr(_cfg, "IMAGE_BACKEND", "none") != "api":
+            return {"status": "error", "msg": "图片处理未启用（设置→AI 服务→其他选择→图片处理 选择厂商 API）"}
         import base64 as _b64
         from core.vision_service import describe_image
         _b64str = _b64.b64encode(data).decode()
