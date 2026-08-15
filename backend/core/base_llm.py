@@ -68,12 +68,6 @@ class BaseLLM:
         else:
             messages.insert(0, {"role": "system", "content": json_instruction})
 
-        # thinking 开关（与 chat 一致）：DeepSeek v4 思考模式透传，避免默认开启导致内容被 _strip_thinking 删空
-        kwargs = {}
-        if getattr(self, "thinking", None) is not None:
-            kwargs["extra_body"] = {"thinking": {"type": "enabled" if self.thinking else "disabled"}}
-            if self.thinking and self.effort:
-                kwargs["reasoning_effort"] = self.effort
         for attempt in range(1, self.max_retries + 1):
             try:
                 resp = self.client.chat.completions.create(
@@ -83,7 +77,6 @@ class BaseLLM:
                     response_format={"type": "json_object"},
                     max_tokens=2000,
                     timeout=config.LLM_REQUEST_TIMEOUT,
-                    **kwargs,
                 )
                 content = resp.choices[0].message.content or "{}"
                 content = self._strip_thinking(content)
