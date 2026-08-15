@@ -3,11 +3,13 @@
 替换原 Chroma 实现；embedding 用 bge-small-zh-v1.5（中文，512维）。
 """
 import hashlib
+import logging
 import re
 
 from core.sqlite_client import get_db
 
 _db = get_db()
+logger = logging.getLogger("coagent.knowledge")
 
 # BM25 缓存：project_id -> (ids, tokenized_docs, bm25)
 _bm25_cache = {}
@@ -71,8 +73,8 @@ def _embed(texts: list[str]) -> list[list[float]]:
     if _cfg.EMBEDDING_BACKEND == "api" and _cfg.EMBEDDING_API_KEY:
         try:
             return _embed_api(texts)
-        except Exception as _e:
-            print("[embed-api] 失败，降级本地:", _e)
+        except Exception:
+            logger.warning("embedding API 失败，降级本地", exc_info=True)
     return _embed_local(texts)
 
 
@@ -192,7 +194,7 @@ def add_document(project_id: str, text: str, source: str = "", session_id: str =
         if source:
             _db.upsert_kb_tree(project_id, source, _extract_tree(text))
     except Exception:
-        pass
+        logger.warning("保存文档标题树失败 source=%s", source, exc_info=True)
     _invalidate_bm25(project_id)
     return len(chunks)
 
@@ -266,7 +268,7 @@ def search(project_id: str, query: str, top_k: int = 3) -> list:
             cands.sort(key=lambda x: -x.get("rerank", 0))
             return cands[:top_k]
         except Exception:
-            pass
+            logger.warning("重排失败，按 RRF 结果返回", exc_info=True)
     return cands[:top_k]
 
 
@@ -302,7 +304,7 @@ class _ApiReranker:
         resp.raise_for_status()
         scores = [0.0] * len(docs)
         for r in resp.json().get("results") or []:
-            scores[r["index"]] = r.get("score", 0.0)
+            scores[r["index"]] = r.get("relevance_score", r.get("score", 0.0))
         return scores
 
 

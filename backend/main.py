@@ -12,8 +12,11 @@ from pydantic import BaseModel
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
 import json
+import logging
 
 load_dotenv()
+
+logger = logging.getLogger("coagent")
 
 
 @asynccontextmanager
@@ -26,11 +29,11 @@ async def lifespan(app: FastAPI):
     try:
         _apply_dynamic_settings()
     except Exception:
-        pass
+        logger.exception("启动时应用动态设置失败")
     try:
         _ensure_default_project()
     except Exception:
-        pass
+        logger.exception("启动时确保默认项目失败")
     yield
 
 
@@ -45,9 +48,9 @@ def _apply_dynamic_settings():
                 try:
                     setattr(_cfg, _k, int(_v) if _k == "EMBEDDING_DIM" else _v)
                 except Exception:
-                    pass
+                    logger.warning("应用动态设置 %s 失败", _k)
     except Exception:
-        pass
+        logger.exception("读取 settings 表失败")
 
 
 app = FastAPI(
@@ -329,7 +332,7 @@ def _process_upload(project_id, text, source, session_id, api_key, skip_context:
         if content_hash and _db().has_file_hash(project_id, content_hash):
             return -1
     except Exception:
-        pass
+        logger.warning("查询内容去重表失败", exc_info=True)
     try:
         # 存原文到资源表（"我的上传/保存的资料"保留一份原文，与知识库独立）
         from core.postgres_client import pg_client as _pg0
@@ -341,19 +344,19 @@ def _process_upload(project_id, text, source, session_id, api_key, skip_context:
         else:
             _pg0.execute("INSERT INTO resources (id, name, content, project_id, type) VALUES (%s,%s,%s,%s,'text')", (_rid, source, text[:6000], project_id))
     except Exception:
-        pass
+        logger.warning("保存原文到资源表失败", exc_info=True)
     try:
         from core.knowledge_service import add_document
         n = add_document(project_id, text, source, session_id, api_key, skip_context=skip_context) or 0
-    except Exception as e:
-        print("[kb] 入库失败:", e)
+    except Exception:
+        logger.exception("知识库入库失败 source=%s", source)
     # 成功入库后记录内容 hash（供后续去重）
     if n > 0 and content_hash:
         try:
             from core.sqlite_client import get_db as _db
             _db().save_file_hash(project_id, content_hash, source)
         except Exception:
-            pass
+            logger.warning("记录内容去重 hash 失败", exc_info=True)
     return n
 
 
@@ -1285,18 +1288,18 @@ async def get_dialogue_profile(did: str):
 @app.post("/api/evaluate")
 async def run_evaluate(project_id: str = "default", api_key: str = ""):
     from core.evaluator import hallucination_rate, adaptation_accuracy, knowledge_coverage
-    from core.knowledge_service import list_docs
     from core.postgres_client import pg_client
     import json
     # 1. 读项目知识库作为"标准答案"
     kb_texts = []
     try:
-        docs = list_docs(project_id)
-        for d in docs:
-            for b in d.get("blocks", []):
-                kb_texts.append(b.get("content", ""))
+        from core.sqlite_client import get_db
+        for d in get_db().get_kb_docs(project_id):
+            c = (d.get("content") or "").strip()
+            if c:
+                kb_texts.append(c)
     except Exception:
-        pass
+        logger.exception("读取知识库内容失败")
     # 2. 预置测试题 + 3组画像 + 知识点（垂直领域可换）
     questions = [
         "什么是牛顿第二定律？",
@@ -1710,6 +1713,7 @@ async def memory_chat(req: ChatRequest):
     import json
     from core.postgres_client import pg_client
     from core.memory_analysis import _as_dict
+    from core.config import config as _cfg
     pid = (req.project_id or "").strip()
     if not pid or pid == "global":
         pid = "global"
@@ -1832,21 +1836,21 @@ async def chat(req: ChatRequest):
                         if not _exist:
                             _pg.execute("INSERT INTO dialogues(id,project_id,session_id,name) VALUES(%s,%s,%s,%s)",(_did,pid,req.session_id or "default","新对话"))
                         _pg.execute("INSERT INTO messages(dialogue_id,role,content) VALUES(%s,%s,%s)",(_did,"user",req.message))
-                    except Exception as _e:
-                        print("[存储]",_e)
+                    except Exception:
+                        logger.exception("保存用户消息失败 did=%s", _did)
                     # 记忆修改分支：[模块名] 引用 → 由 AI 分析修改记忆，不走多 Agent 流程
                     try:
                         _edit = _memory_edit(req.api_key, req.message, pid, req.session_id or "default")
-                    except Exception as _e:
+                    except Exception:
                         _edit = None
-                        print("[记忆修改]", _e)
+                        logger.exception("记忆修改分析失败")
                     if _edit:
                         _reply2 = _edit["reply"]
                         try:
                             from core.postgres_client import pg_client as _pg2
                             _pg2.execute("INSERT INTO messages(dialogue_id,role,content,think) VALUES(%s,%s,%s,%s)", (_did, "assistant", _reply2, ""))
-                        except Exception as _e:
-                            print("[存储]", _e)
+                        except Exception:
+                            logger.exception("保存记忆修改回复失败 did=%s", _did)
                         token_queue.put(("done", {"final_reply": _reply2, "steps": _edit["steps"], "mindchain": [], "task_stats": {}}))
                         return
                     import time as _time
@@ -1891,7 +1895,7 @@ async def chat(req: ChatRequest):
                             if _dur > 0:
                                 _pg4.execute("INSERT INTO focus_log(project_id, dialogue_id, duration_seconds) VALUES(%s,%s,%s)", (pid, _did, _dur))
                         except Exception as _e:
-                            print("[stats-duration]", _e)
+                            logger.exception("累计专注时长失败 did=%s", _did)
                         # 记录本次任务的运行统计（Agent 界面·运行监控）
                         try:
                             import json as _json2
@@ -1901,7 +1905,7 @@ async def chat(req: ChatRequest):
                                 _pg2.execute("INSERT INTO task_stats(project_id,dialogue_id,data) VALUES(%s,%s,%s)",
                                              (pid, _did, _json2.dumps(_ts, ensure_ascii=False)))
                         except Exception as _e:
-                            print("[task_stats]", _e)
+                            logger.exception("保存运行统计失败 did=%s", _did)
                         # invoke 后存 AI 回复（含思维链 mindchain 落库，刷新后保留）
                         try:
                             import json as _json3
@@ -1911,7 +1915,7 @@ async def chat(req: ChatRequest):
                                 _think = _json3.dumps(result.get("mindchain") or [], ensure_ascii=False)
                                 _pg.execute("INSERT INTO messages(dialogue_id,role,content,think) VALUES(%s,%s,%s,%s)",(_did,"assistant",_reply,_think))
                         except Exception as _e:
-                            print("[存储]",_e)
+                            logger.exception("保存 AI 回复失败 did=%s", _did)
                         # 自动保存生成物到"我的上传"（设置开关 autoSaveResource）
                         if req.settings and req.settings.get('autoSaveResource') and result.get("final_reply"):
                             try:
@@ -1926,7 +1930,7 @@ async def chat(req: ChatRequest):
                                 else:
                                     _pg3.execute("INSERT INTO resources (id, name, content, project_id) VALUES (%s,%s,%s,%s)", (_rid, _nm, _fr[:6000], pid))
                             except Exception as _e:
-                                print("[auto-save]", _e)
+                                logger.exception("自动保存生成物失败 did=%s", _did)
                     threading.Thread(target=_persist, daemon=True).start()
                     # 后台异步分析记忆 + 生成追问（开关可配）
                     try:
@@ -1946,10 +1950,10 @@ async def chat(req: ChatRequest):
                             if req.extra_followup_did:
                                 try:
                                     threading.Thread(target=generate_followups, args=(req.api_key, pid, req.extra_followup_did, pg_client, req.extra_followup_focus or "expand"), daemon=True).start()
-                                except Exception as _e:
-                                    print("[extra-followups]", _e)
-                    except Exception as e:
-                        print("[记忆] err:", e)
+                                except Exception:
+                                    logger.exception("启动第二对话追问失败 did=%s", req.extra_followup_did)
+                    except Exception:
+                        logger.exception("启动后台记忆/压缩/追问任务失败 did=%s", _did)
                 except Exception as e:
                     token_queue.put(("error", str(e)))
                 finally:

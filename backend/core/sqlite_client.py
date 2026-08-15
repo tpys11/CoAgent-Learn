@@ -53,7 +53,7 @@ class SQLiteClient:
         自动将 Postgres 风格 %s 占位符转为 SQLite 的 ?，保持旧调用兼容。
         线程锁串行化（单例连接被多线程并发使用）"""
         with self._lock:
-            if params:
+            if params is not None:
                 sql = sql.replace("%s", "?")
             try:
                 cur = self.conn.execute(sql, params or ())
