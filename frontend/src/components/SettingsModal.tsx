@@ -186,8 +186,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
         body: JSON.stringify({ ...svc, ...svcKeys }),
       })
       const d = await r.json()
-      flash(d.msg || (r.ok ? '配置已保存' : '保存失败'))
-      if (!r.ok) return
+      if (!r.ok) { flash(d.msg || '保存失败'); return }
       // 刷新已配置状态
       const g = await fetch('/api/settings').then(x => x.json())
       setSvc(s => ({ ...s,
