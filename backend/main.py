@@ -124,12 +124,20 @@ import threading as _threading
 _active_cancels: dict = {}
 
 
-def _process_upload(project_id, text, source, session_id, api_key, skip_context: bool = False, skip_graph: bool = False) -> int:
+def _process_upload(project_id, text, source, session_id, api_key, skip_context: bool = False, skip_graph: bool = False, content_hash: str = "") -> int:
     """处理上传：存原文到资源表 + 切块向量化入库，返回入库块数。
     后台线程调用时忽略返回值；同步模式（wait=1）用它拿到块数反馈给前端。
     skip_context：跳过每块 LLM 上下文前缀（大批量内容）。
+    content_hash：内容 sha256；命中 file_hashes 去重表时返回 -1（已存在，跳过）。
     已移除 Neo4j 知识图谱抽取（2026-08-15）。"""
     n = 0
+    # 内容级去重（照 DeepTutor file_hashes）：同项目同内容不重复入库，避免污染检索
+    try:
+        from core.sqlite_client import get_db as _db
+        if content_hash and _db().has_file_hash(project_id, content_hash):
+            return -1
+    except Exception:
+        pass
     try:
         # 存原文到资源表（"我的上传/保存的资料"保留一份原文，与知识库独立）
         from core.postgres_client import pg_client as _pg0
@@ -147,6 +155,13 @@ def _process_upload(project_id, text, source, session_id, api_key, skip_context:
         n = add_document(project_id, text, source, session_id, api_key, skip_context=skip_context) or 0
     except Exception as e:
         print("[kb] 入库失败:", e)
+    # 成功入库后记录内容 hash（供后续去重）
+    if n > 0 and content_hash:
+        try:
+            from core.sqlite_client import get_db as _db
+            _db().save_file_hash(project_id, content_hash, source)
+        except Exception:
+            pass
     return n
 
 
@@ -162,12 +177,16 @@ class KnowledgeUpload(BaseModel):
 
 @app.post("/api/knowledge/upload")
 async def knowledge_upload(req: KnowledgeUpload, wait: bool = False):
+    import hashlib as _hl
+    _ch = _hl.sha256((req.text or "").encode("utf-8")).hexdigest()
     if wait:
         # 同步模式：等待切块+向量化入库完成再返回（与 upload-file 的 wait 一致）
         from starlette.concurrency import run_in_threadpool
-        chunks = await run_in_threadpool(_process_upload, req.project_id, req.text, req.source, req.session_id, req.api_key)
+        chunks = await run_in_threadpool(_process_upload, req.project_id, req.text, req.source, req.session_id, req.api_key, False, False, _ch)
+        if chunks == -1:
+            return {"status": "ok", "chunks": 0, "duplicate": True, "source": req.source, "msg": "内容已存在，已跳过重复入库"}
         return {"status": "ok", "chunks": chunks, "source": req.source}
-    _threading.Thread(target=_process_upload, args=(req.project_id, req.text, req.source, req.session_id, req.api_key), daemon=True).start()
+    _threading.Thread(target=_process_upload, args=(req.project_id, req.text, req.source, req.session_id, req.api_key, False, False, _ch), daemon=True).start()
     return {"status": "processing", "msg": "正在处理，稍后刷新查看"}
 
 
@@ -312,9 +331,15 @@ def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
     if len(text.strip()) < 20:
         return {"status": "error", "msg": "链接内容过短或无法解析为文本"}
     if wait:
-        chunks = _process_upload(req.project_id, text, source, req.session_id, req.api_key, True, True)
+        import hashlib as _hl
+        _ch = _hl.sha256(text.encode("utf-8")).hexdigest()
+        chunks = _process_upload(req.project_id, text, source, req.session_id, req.api_key, True, True, _ch)
+        if chunks == -1:
+            return {"status": "ok", "chunks": 0, "duplicate": True, "source": source, "msg": "内容已存在，已跳过重复入库"}
         return {"status": "ok", "chunks": chunks, "source": source}
-    _threading.Thread(target=_process_upload, args=(req.project_id, text, source, req.session_id, req.api_key), kwargs={"skip_context": True, "skip_graph": True}, daemon=True).start()
+    import hashlib as _hl2
+    _ch2 = _hl2.sha256(text.encode("utf-8")).hexdigest()
+    _threading.Thread(target=_process_upload, args=(req.project_id, text, source, req.session_id, req.api_key, True, True, _ch2), daemon=True).start()
     return {"status": "processing", "msg": "正在处理，稍后刷新查看"}
 
 
@@ -328,16 +353,32 @@ async def knowledge_upload_file(
 ):
     from core.file_parser import parse_file
     data = await file.read()
-    text = parse_file(file.filename or "file", data)
+    fname = file.filename or "file"
+    # 多模态（照 DeepTutor 图片→描述→入库）：图片文件用 GLM-4V 生成描述入库，检索可命中图片内容
+    _IMG_EXTS = {"png", "jpg", "jpeg", "gif", "webp", "bmp"}
+    if fname.rsplit(".", 1)[-1].lower() in _IMG_EXTS:
+        import base64 as _b64
+        from core.vision_service import describe_image
+        _b64str = _b64.b64encode(data).decode()
+        desc = describe_image(_b64str, "请详细描述这张图片的内容，包括文字、图表、概念，用于知识库检索。")
+        if desc.startswith("[视觉服务]"):
+            return {"status": "error", "msg": desc}
+        text = "【图片内容】" + desc
+    else:
+        text = parse_file(fname, data)
     if not text.strip():
         return {"status": "error", "msg": "无法解析该文件内容（可能为空或格式不支持）"}
-    source = file.filename or "file"
+    source = fname
+    import hashlib as _hl
+    _ch = _hl.sha256(data).hexdigest()
     if wait:
         # 同步模式：等待切块+向量化入库完成再返回（前端据此反馈「已接入知识库 N 块」）
         from starlette.concurrency import run_in_threadpool
-        chunks = await run_in_threadpool(_process_upload, project_id, text, source, session_id, api_key)
+        chunks = await run_in_threadpool(_process_upload, project_id, text, source, session_id, api_key, False, False, _ch)
+        if chunks == -1:
+            return {"status": "ok", "chunks": 0, "duplicate": True, "source": source, "msg": "内容已存在，已跳过重复入库"}
         return {"status": "ok", "chunks": chunks, "source": source}
-    _threading.Thread(target=_process_upload, args=(project_id, text, source, session_id, api_key), daemon=True).start()
+    _threading.Thread(target=_process_upload, args=(project_id, text, source, session_id, api_key, False, False, _ch), daemon=True).start()
     return {"status": "processing", "msg": "正在处理，稍后刷新查看"}
 
 

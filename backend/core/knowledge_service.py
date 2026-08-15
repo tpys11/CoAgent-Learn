@@ -132,19 +132,39 @@ def _extract_tree(text: str) -> list:
     return tree
 
 
-def _chunk_text(text: str, size: int = 400) -> list:
-    """切块：每个段落独立成块（保留上下文粒度），超长段落按长度再切"""
+def _split_sentences(text: str) -> list:
+    """句子级切分：中文句号/问号/感叹号/分号 + 换行视为句界（对齐 DeepTutor 的句子级切块思想）"""
+    # 先按行拆，再按中文/英文句末标点拆
+    pieces = re.split(r"(?<=[。！？!?；;])\s*|\n", text)
+    return [p.strip() for p in pieces if p.strip()]
+
+
+def _chunk_text(text: str, size: int = 512, overlap: int = 50) -> list:
+    """切块：句子级 + 512 字符窗口 + 50 重叠（照 DeepTutor SentenceSplitter chunk_size=512, chunk_overlap=50）。
+    按句子累积成块，超过 size 则收束当前块并开新块；相邻块保留 overlap 的重叠尾巴避免语义被切断。"""
     text = (text or "").strip()
     if not text:
         return []
-    paras = [p.strip() for p in re.split(r"\n\s*\n|\n", text) if p.strip()]
-    chunks = []
-    for p in paras:
-        while len(p) > size:
-            chunks.append(p[:size])
-            p = p[size:]
-        if p:
-            chunks.append(p)
+    sentences = _split_sentences(text)
+    chunks: list = []
+    cur = ""
+    for s in sentences:
+        if len(s) > size:
+            # 超长单句：先收当前块，再硬切该句（带重叠）
+            if cur:
+                chunks.append(cur)
+            s = s[:size]  # 超长句截断，避免单块过大
+            cur = s
+            continue
+        if cur and len(cur) + 1 + len(s) > size:
+            # 当前块放不下：收束（保留尾部 overlap 作下块开头）
+            tail = cur[-overlap:] if overlap and len(cur) > overlap else ""
+            chunks.append(cur)
+            cur = (tail + " " + s).strip() if tail else s
+        else:
+            cur = (cur + " " + s).strip() if cur else s
+    if cur:
+        chunks.append(cur)
     return chunks
 
 

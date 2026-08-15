@@ -7,6 +7,9 @@ python-dotenv>=1.0.1
 pydantic>=2.10.4
 httpx>=0.28.1
 
+# 文件解析（markitdown 统一转 markdown，照 DeepTutor 解析引擎）
+markitdown[pdf,docx,pptx,xlsx]>=0.0.1a2
+
 # 数据库连接
 rank_bm25>=0.2.2
 jieba>=0.42.1

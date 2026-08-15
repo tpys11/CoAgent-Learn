@@ -104,6 +104,24 @@ class SQLiteClient:
             "CREATE TABLE IF NOT EXISTS preset_docs("
             "url TEXT PRIMARY KEY, title TEXT, content TEXT, updated_at TEXT DEFAULT (datetime('now')))"
         )
+        # 内容级去重（照 DeepTutor file_hashes）：上传前按内容 sha256 查重，重复则跳过避免污染检索
+        self.execute(
+            "CREATE TABLE IF NOT EXISTS file_hashes("
+            "project_id TEXT, sha256 TEXT, source TEXT, created_at TEXT DEFAULT (datetime('now')), "
+            "PRIMARY KEY (project_id, sha256))"
+        )
+
+    def has_file_hash(self, project_id: str, sha256: str) -> bool:
+        """内容级去重：该项目的 sha256 是否已入库"""
+        rows = self.execute("SELECT 1 FROM file_hashes WHERE project_id = ? AND sha256 = ?", (project_id, sha256))
+        return bool(rows)
+
+    def save_file_hash(self, project_id: str, sha256: str, source: str):
+        """记录已入库内容的 sha256（供后续去重）"""
+        self.execute(
+            "INSERT OR REPLACE INTO file_hashes(project_id, sha256, source) VALUES (?,?,?)",
+            (project_id, sha256, source),
+        )
 
     def get_preset_doc(self, url: str) -> dict | None:
         """按 url 取已缓存的内容（内部获取，不联网）"""
