@@ -205,13 +205,17 @@ async def test_settings(req: SettingsSave):
             results["vl"] = {"ok": False, "msg": str(e)[:120]}
     else:
         results["vl"] = {"ok": True, "msg": "未配置，跳过"}
-    # 视觉（智谱 GLM-4V）
-    if req.zhipu_api_key:
+    # 图片描述（硅基流动视觉模型优先，复用硅基流动 Key；回退智谱）
+    _desc_key = req.vl_api_key or req.embedding_api_key or req.zhipu_api_key
+    if _desc_key:
+        _is_sf = bool(req.vl_api_key or req.embedding_api_key)
         try:
-            _r = _req.post("https://open.bigmodel.cn/api/paas/v4/chat/completions",
-                           json={"model": "glm-4v-flash", "messages": [{"role": "user", "content": "ping"}]},
-                           headers={"Authorization": "Bearer " + req.zhipu_api_key}, timeout=20)
-            results["zhipu"] = {"ok": _r.status_code == 200, "msg": "" if _r.status_code == 200 else f"HTTP {_r.status_code}"}
+            _desc_url = "https://api.siliconflow.cn/v1/chat/completions" if _is_sf else "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+            _desc_model = "Qwen/Qwen2.5-VL-72B-Instruct" if _is_sf else "glm-4v-flash"
+            _r = _req.post(_desc_url,
+                           json={"model": _desc_model, "messages": [{"role": "user", "content": "ping"}]},
+                           headers={"Authorization": "Bearer " + _desc_key}, timeout=20)
+            results["zhipu"] = {"ok": _r.status_code == 200, "msg": "" if _r.status_code == 200 else f"HTTP {_r.status_code}: {_r.text[:100]}"}
         except Exception as e:
             results["zhipu"] = {"ok": False, "msg": str(e)[:120]}
     else:
