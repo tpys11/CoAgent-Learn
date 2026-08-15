@@ -361,25 +361,24 @@ async def generate_special(req: GenerateSpecialReq):
     if not supported:
         return {"status": "error", "msg": "没有支持的形式"}
     selected = chr(10).join("- " + k + "（" + FORM_SPECS[k]["label"] + "）：" + FORM_SPECS[k]["desc"] for k in supported)
-    prompt = chr(10).join([
-        "把下面的学习内容转换成指定形式，每种形式作为 JSON 一个字段：",
-        "内容：",
-        (req.content or "")[:6000],
-        "",
-        "需要的形式：",
-        selected,
-        "",
-        "要求：",
-        "1. text 类形式（summary/mindmap/table）的字段值是字符串。",
-        "2. array 类形式（flashcards/quiz/timeline）的字段值是对象数组。",
-        "3. 只输出 JSON 对象，字段名用英文 key，不要额外解释，不要提知识库检索。",
-    ])
-    schema = {"type": "object", "properties": {}}
-    for k in supported:
-        if FORM_SPECS[k]["kind"] == "array":
-            schema["properties"][k] = {"type": "array", "description": FORM_SPECS[k]["desc"]}
-        else:
-            schema["properties"][k] = {"type": "string", "description": FORM_SPECS[k]["desc"]}
+    _f = supported[0]
+    _spec = FORM_SPECS[_f]
+    if _spec["kind"] == "text":
+        prompt = chr(10).join([
+            "把下面的学习内容转换成「" + _spec["label"] + "」，直接输出内容本身（markdown 文本）：",
+            "内容：",
+            (req.content or "")[:6000],
+            "",
+            "要求：" + _spec["desc"] + "。不要 JSON 包装、不要代码块围栏、不要额外解释、不要提知识库检索。",
+        ])
+    else:
+        prompt = chr(10).join([
+            "把下面的学习内容转换成 JSON 数组，数组每一项是：" + _spec["desc"],
+            "内容：",
+            (req.content or "")[:6000],
+            "",
+            "只输出 JSON 数组，不要额外解释、不要提知识库检索。",
+        ])
     import queue as _queue
     import threading as _threading
     import json as _json2
@@ -394,19 +393,25 @@ async def generate_special(req: GenerateSpecialReq):
             def _on_token(chunk):
                 _collected.append(chunk)
                 _q.put(("token", chunk))
-            llm.chat_stream([{"role": "user", "content": prompt}], _on_token, temperature=0.3, response_format={"type": "json_object"})
-            _raw = "".join(_collected)
-            _data = {}
-            try:
-                _data = _json2.loads(_raw)
-            except Exception:
-                _m = _re2.search(r"\{[\s\S]*\}", _raw)
-                if _m:
-                    try:
-                        _data = _json2.loads(_m.group())
-                    except Exception:
-                        pass
-            _q.put(("done", _data))
+            if _spec["kind"] == "text":
+                # 文本形式：流式纯 markdown（不带 response_format），前端边收边显示
+                llm.chat_stream([{"role": "user", "content": prompt}], _on_token, temperature=0.3)
+                _q.put(("done", _f, "".join(_collected)))
+            else:
+                # 数组形式：流式 JSON，前端拼完解析渲染
+                llm.chat_stream([{"role": "user", "content": prompt}], _on_token, temperature=0.3, response_format={"type": "json_object"})
+                _raw = "".join(_collected)
+                _data = []
+                try:
+                    _data = _json2.loads(_raw)
+                except Exception:
+                    _m = _re2.search(r"\[[\s\S]*\]", _raw)
+                    if _m:
+                        try:
+                            _data = _json2.loads(_m.group())
+                        except Exception:
+                            pass
+                _q.put(("done", _f, _data))
         except Exception as _e:
             _q.put(("error", str(_e)[:200]))
 
@@ -420,13 +425,12 @@ async def generate_special(req: GenerateSpecialReq):
             if _msg[0] == "token":
                 yield "data: " + _json2.dumps({"type": "token", "chunk": _msg[1]}) + chr(10) + chr(10)
             elif _msg[0] == "done":
-                yield "data: " + _json2.dumps({"type": "done", "results": _msg[1]}) + chr(10) + chr(10)
+                yield "data: " + _json2.dumps({"type": "done", "form": _msg[1], "result": _msg[2]}) + chr(10) + chr(10)
                 break
             elif _msg[0] == "error":
                 yield "data: " + _json2.dumps({"type": "error", "message": _msg[1]}) + chr(10) + chr(10)
                 break
 
-    return StreamingResponse(_gen(), media_type="text/event-stream")
 
 
 @app.get("/api/resources")

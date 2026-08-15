@@ -21,6 +21,7 @@ const FORMS: Array<{ key: FormKey; label: string; icon: any; desc: string }> = [
 ]
 
 const SUPPORTED: FormKey[] = ['summary', 'flashcards', 'quiz', 'mindmap', 'table']
+const TEXT_FORMS: FormKey[] = ['summary', 'mindmap', 'table']  // 文本形式：可边收边显示
 const SAVED_KEY = 'coagent-special-saved'
 
 type SavedItem = { id: number; form: FormKey; label: string; content: any; time: string }
@@ -173,8 +174,17 @@ export default function SpecialOutputPane({ messages, projectId }: { messages: M
         for (const part of parts) {
           if (!part.startsWith('data: ')) continue
           const d = JSON.parse(part.slice(6))
-          if (d.type === 'done') setResult(d.results?.[f] ?? null)
-          else if (d.type === 'error') alert('生成失败：' + (d.message || '未知'))
+          if (d.type === 'token') {
+            // 文本形式：边收边显示（打字机效果）；数组形式不实时显示
+            if (TEXT_FORMS.includes(f)) {
+              setResult(prev => (typeof prev === 'string' ? prev : '') + d.chunk)
+            }
+          } else if (d.type === 'done') {
+            // done 带 form + result（text 是字符串，array 是数组）
+            setResult(d.result ?? null)
+          } else if (d.type === 'error') {
+            alert('生成失败：' + (d.message || '未知'))
+          }
         }
       }
     } catch (e: any) {
@@ -267,14 +277,18 @@ export default function SpecialOutputPane({ messages, projectId }: { messages: M
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto p-4">
               {generating ? (
-                <div className="flex flex-col items-center justify-center py-20 gap-3 text-dim">
-                  <span className="flex items-center gap-1.5">
-                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" />
-                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }} />
-                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }} />
-                  </span>
-                  <span className="text-xs">正在生成「{FORMS.find(f => f.key === modalForm)?.label}」…</span>
-                </div>
+                TEXT_FORMS.includes(modalForm) && typeof result === 'string' && result ? (
+                  <div className="text-sm md-answer-body" dangerouslySetInnerHTML={{ __html: renderMd(result) }} />
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-20 gap-3 text-dim">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" />
+                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }} />
+                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }} />
+                    </span>
+                    <span className="text-xs">正在生成「{FORMS.find(f => f.key === modalForm)?.label}」…</span>
+                  </div>
+                )
               ) : result != null ? renderResult(modalForm, result) : (
                 <div className="text-xs text-dim text-center py-16">生成结果为空</div>
               )}
