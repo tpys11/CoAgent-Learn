@@ -541,8 +541,9 @@ export default function SettingsModal({ onClose, projectId }: Props) {
                   <div className="flex items-center gap-3 border-t hairline pt-4">
                     <button onClick={saveService} className="px-4 py-1.5 text-[11px] bg-[#1a1a1a] text-white rounded-lg font-semibold">保存配置</button>
                     <button onClick={testService} className="px-4 py-1.5 text-[11px] border hairline rounded-lg font-semibold text-dim hover:text-[var(--text)] transition-colors">测试连接</button>
-                    {svcTest && <span className={`text-[11px] ${svcTest.includes('失败') ? 'text-red-500' : 'text-green-600'}`}>{svcTest}</span>}
                   </div>
+                  {/* 测试结果（按钮下方） */}
+                  {svcTest && <p className={`text-[11px] ${svcTest.includes('失败') ? 'text-red-500' : 'text-green-600'}`}>{svcTest}</p>}
                 </div>
               </Section>
             )}
