@@ -410,8 +410,8 @@ export default function SettingsModal({ onClose, projectId }: Props) {
                     <p className="text-sm font-semibold">知识库向量化服务</p>
                     <div className="flex flex-col gap-2">
                       {[
-                        { v: 'bge', name: 'BGE（bge-m3）', desc: '实现文字向量化与重排，无图片向量化能力，模型小、快、便宜。' },
-                        { v: 'qwen', name: 'Qwen/Qwen3-VL-Embedding-8B', desc: '视觉向量已选型，但图片向量/跨模态检索尚未接入；当前提供文字向量化 + 重排，模型大、语义更强，成本/延迟更高。' },
+                        { v: 'bge', name: 'BGE（bge-m3）', desc: '文字向量化 + 重排，无图片向量能力；模型小、快、便宜。' },
+                        { v: 'qwen', name: 'Qwen/Qwen3-VL-Embedding-8B', desc: '文字向量化 + 重排 + 图片向量/跨模态检索（4096 维）；模型大、语义更强，成本/延迟更高。' },
                       ].map(o => (
                         <button key={o.v} onClick={() => setSvc(s => ({ ...s, vectorModel: o.v }))}
                           className={`flex flex-col gap-0.5 text-left px-3 py-2.5 rounded-xl transition-colors ${svc.vectorModel === o.v ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] hover:bg-[var(--bg-panel)]'}`}>

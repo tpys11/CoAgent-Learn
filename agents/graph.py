@@ -32,17 +32,17 @@ AGENT_NODE = {'main': 'main', 'study': 'study', 'kb': 'kb', 'review': 'review'}
 
 def _resolve_plan_targets(tpl: str, plan: list) -> list[str]:
     """规划路由的目标节点判定（纯函数，可单测）：
-    - 极速档：做知识库检索（固定降幻觉·全局设定；检索为纯工具调用不耗 LLM，
-      秒级完成），跳过联网搜索/子Agent整理 → 直接生成
-    - 思考档：仅当学习助手规划含"知识库管理/搜索增强"才调 kb 节点
-    - 研究档：无论规划结果如何，强制并入"搜索增强"（保证一轮联网搜索，体现档位差异；
-      多轮搜索(1-5轮)与其他模型厂商独立检测留作后续增强）
+    - 极速档：生成前默认做一次基础文字检索（kb_node 内关闭图片跨模态），
+      跳过联网搜索/子Agent整理 → 直接生成
+    - 思考档：生成前默认做知识库检索（文字 + 图片跨模态各一次）
+    - 研究档：生成前默认做知识库检索（文字 + 图片跨模态）+ 强制联网搜索；
+      多轮搜索(1-5轮)与其他模型厂商独立检测留作后续增强
     """
-    if tpl == "极速":
-        return ["kb"]
     plan = list(plan or [])
     if tpl == "研究" and "搜索增强" not in plan and "联网搜索" not in plan:
         plan.append("搜索增强")
+    if tpl in ("极速", "思考", "研究"):
+        return ["kb"]
     if "知识库管理" in plan or "搜索增强" in plan or "联网搜索" in plan:
         return ["kb"]
     return ["generate"]
@@ -323,7 +323,14 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         from concurrent.futures import ThreadPoolExecutor
 
         def _do_retrieve():
-            return registry.execute("knowledge_retrieval", query=query, project_id=state.get("project_id", "default"))
+            # 极速档只做基础文字检索；思考/研究档额外做一次图片跨模态检索
+            include_images = tpl != "极速"
+            return registry.execute(
+                "knowledge_retrieval",
+                query=query,
+                project_id=state.get("project_id", "default"),
+                include_images=include_images,
+            )
 
         def _do_search():
             return registry.execute("web_search", query=query)

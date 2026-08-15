@@ -293,16 +293,18 @@ def _search_images(project_id: str, query: str, top_k: int = 3) -> list:
     } for r in rows]
 
 
-def search(project_id: str, query: str, top_k: int = 3) -> list:
-    """混合检索：向量语义检索 + BM25 关键词检索 → RRF 融合 → P3 重排"""
+def search(project_id: str, query: str, top_k: int = 3, include_images: bool = True) -> list:
+    """混合检索：向量语义检索 + BM25 关键词检索 → RRF 融合 → P3 重排。
+    include_images=False 时跳过图片跨模态检索（极速档只做基础文字检索）。"""
     docs = _db.get_kb_docs(project_id)
     # 图片跨模态检索（仅项目有图片向量时触发，避免无谓调用 VL 接口）
     image_hits: list = []
-    try:
-        if _db.get_image_docs(project_id):
-            image_hits = _search_images(project_id, query, top_k)
-    except Exception:
-        logger.warning("图片跨模态检索失败 project_id=%s", project_id, exc_info=True)
+    if include_images:
+        try:
+            if _db.get_image_docs(project_id):
+                image_hits = _search_images(project_id, query, top_k)
+        except Exception:
+            logger.warning("图片跨模态检索失败 project_id=%s", project_id, exc_info=True)
     if not docs:
         return image_hits
     # 1. 向量检索（取 3 倍候选）

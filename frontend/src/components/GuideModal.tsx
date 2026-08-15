@@ -24,11 +24,11 @@ export default function GuideModal({ onClose }: { onClose: () => void }) {
           <section>
             <h3 className="font-semibold text-sm mb-1.5 flex items-center gap-1.5"><Wrench size={14} className="text-gray-500" /> 功能说明</h3>
             <ul className="flex flex-col gap-1.5">
-              <li className="flex gap-2"><BookOpen size={12} className="text-gray-400 mt-0.5 flex-shrink-0" /><span><b>知识库</b>：课程配置里上传 txt/md/PDF/Word/PPT；AI 会在需要时自动检索知识库作答</span></li>
+              <li className="flex gap-2"><BookOpen size={12} className="text-gray-400 mt-0.5 flex-shrink-0" /><span><b>知识库</b>：课程配置里上传 txt/md/PDF/Word/PPT/图片；AI 在生成前默认检索（极速仅文字，思考/研究含图片跨模态）</span></li>
               <li className="flex gap-2"><Brain size={12} className="text-gray-400 mt-0.5 flex-shrink-0" /><span><b>记忆</b>：个人/课程/对话三级画像，刷新后保留</span></li>
               <li className="flex gap-2"><Waypoints size={12} className="text-gray-400 mt-0.5 flex-shrink-0" /><span><b>知识图谱</b>：右侧展示上传资料的标题层级树</span></li>
               <li className="flex gap-2"><MessagesSquare size={12} className="text-gray-400 mt-0.5 flex-shrink-0" /><span><b>第二对话窗口</b>：右侧独立对话，查不懂的名词，不影响主对话</span></li>
-              <li className="flex gap-2"><Paperclip size={12} className="text-gray-400 mt-0.5 flex-shrink-0" /><span><b>上传文件</b>：对话输入框左侧上传按钮，支持文本/PDF/Word/PPT</span></li>
+              <li className="flex gap-2"><Paperclip size={12} className="text-gray-400 mt-0.5 flex-shrink-0" /><span><b>上传文件</b>：对话输入框左侧上传按钮，支持文本/PDF/Word/PPT/图片</span></li>
               <li className="flex gap-2"><Plug size={12} className="text-gray-400 mt-0.5 flex-shrink-0" /><span><b>Skill</b>：展示系统技能；上传/管理暂未开放</span></li>
               <li className="flex gap-2"><BarChart3 size={12} className="text-gray-400 mt-0.5 flex-shrink-0" /><span><b>评估</b>：后端已支持幻觉率/适配/覆盖率计算，前端入口尚未开放</span></li>
             </ul>
