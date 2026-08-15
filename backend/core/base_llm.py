@@ -42,6 +42,7 @@ class BaseLLM:
                     model=self.model_name,
                     messages=messages,
                     temperature=temperature,
+                    max_tokens=2000,
                     timeout=config.LLM_REQUEST_TIMEOUT,
                     **kwargs,
                 )
@@ -74,6 +75,7 @@ class BaseLLM:
                     messages=messages,
                     temperature=temperature,
                     response_format={"type": "json_object"},
+                    max_tokens=2000,
                     timeout=config.LLM_REQUEST_TIMEOUT,
                 )
                 content = resp.choices[0].message.content or "{}"

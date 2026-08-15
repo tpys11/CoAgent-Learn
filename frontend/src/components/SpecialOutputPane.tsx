@@ -35,7 +35,11 @@ function Mermaid({ code }: { code: string }) {
         ref.current.innerHTML = svg
         const svgEl = ref.current.querySelector('svg')
         if (svgEl) {
-          // 实测：svg 默认 width=100%，只需移除内联 max-width 即可占满容器
+          // 根因：svg 默认 width=100% 把大图缩到容器宽，节点文字过小
+          // 改为 width = viewBox 自然宽度，容器横向滚动，图不缩小
+          const vb = svgEl.getAttribute('viewBox')
+          const vbW = vb ? parseFloat(vb.split(/\s+/)[2]) : 0
+          if (vbW) svgEl.setAttribute('width', String(vbW))
           svgEl.style.setProperty('max-width', 'none', 'important')
         }
       }
