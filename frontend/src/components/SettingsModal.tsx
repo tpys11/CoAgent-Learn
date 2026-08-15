@@ -189,11 +189,14 @@ export default function SettingsModal({ onClose, projectId }: Props) {
       })
       const d = await r.json()
       flash(d.msg || (r.ok ? '配置已保存' : '保存失败'))
+      if (!r.ok) return
       // 刷新已配置状态
       const g = await fetch('/api/settings').then(x => x.json())
       setSvc(s => ({ ...s,
         embedding_key_set: !!g.embedding?.api_key_set, rerank_key_set: !!g.rerank?.api_key_set,
         image_key_set: !!g.image?.api_key_set, vl_key_set: !!g.vl?.api_key_set }))
+      // 保存成功后同步测试连接并返回结果
+      await testService()
     } catch { flash('保存失败（后端不可达）') }
   }
 
@@ -537,10 +540,9 @@ export default function SettingsModal({ onClose, projectId }: Props) {
                     </div>
                     </div>)}
                   </div>
-                  {/* 操作按钮 */}
+                  {/* 操作按钮：保存并测试 */}
                   <div className="flex items-center gap-3 border-t hairline pt-4">
-                    <button onClick={saveService} className="px-4 py-1.5 text-[11px] bg-[#1a1a1a] text-white rounded-lg font-semibold">保存配置</button>
-                    <button onClick={testService} className="px-4 py-1.5 text-[11px] border hairline rounded-lg font-semibold text-dim hover:text-[var(--text)] transition-colors">测试连接</button>
+                    <button onClick={saveService} className="px-4 py-1.5 text-[11px] bg-[#1a1a1a] text-white rounded-lg font-semibold">保存并测试</button>
                   </div>
                   {/* 测试结果（按钮下方） */}
                   {svcTest && <p className={`text-[11px] ${svcTest.includes('失败') ? 'text-red-500' : 'text-green-600'}`}>{svcTest}</p>}
