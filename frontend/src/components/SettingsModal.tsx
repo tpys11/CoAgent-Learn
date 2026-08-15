@@ -10,11 +10,7 @@ interface Props {
 /** 多厂家 API Key 管理 */
 const PROVIDERS = [
   { id: 'deepseek', name: 'DeepSeek' },
-  { id: 'openai', name: 'OpenAI' },
-  { id: 'qwen', name: '通义千问' },
   { id: 'zhipu', name: '智谱 GLM' },
-  { id: 'moonshot', name: '月之暗面' },
-  { id: 'doubao', name: '豆包' },
 ]
 
 interface McpServer { id: string; name: string; type: 'stdio' | 'http' | 'sse'; target: string }
