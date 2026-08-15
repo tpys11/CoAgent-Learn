@@ -142,10 +142,10 @@ export default function SettingsModal({ onClose, projectId }: Props) {
   // ---- AI 服务配置（后端动态生效，存 SQLite settings 表）----
   const [svc, setSvc] = useState({
     vectorModel: 'bge',
-    embedding_backend: 'api', embedding_base_url: '', embedding_model: 'BAAI/bge-m3', embedding_local_model: 'BAAI/bge-small-zh-v1.5', embedding_dim: 1024, embedding_key_set: false,
-    rerank_backend: 'api', rerank_base_url: '', rerank_model: 'BAAI/bge-reranker-v2-m3', rerank_local_model: 'BAAI/bge-reranker-base', rerank_key_set: false,
-    image_backend: 'none', image_base_url: 'https://open.bigmodel.cn/api/paas/v4/chat/completions', image_model: 'glm-4v-flash', image_key_set: false,
-    vl_key_set: false,
+    embedding_backend: 'api', embedding_base_url: '', embedding_model: 'BAAI/bge-m3', embedding_local_model: 'BAAI/bge-small-zh-v1.5', embedding_dim: 1024, embedding_key_set: false, embedding_key_hint: '',
+    rerank_backend: 'api', rerank_base_url: '', rerank_model: 'BAAI/bge-reranker-v2-m3', rerank_local_model: 'BAAI/bge-reranker-base', rerank_key_set: false, rerank_key_hint: '',
+    image_backend: 'none', image_base_url: 'https://open.bigmodel.cn/api/paas/v4/chat/completions', image_model: 'glm-4v-flash', image_key_set: false, image_key_hint: '',
+    vl_key_set: false, vl_key_hint: '',
   })
   // key 输入框（不回显已存 key，只显示"已配置"状态）
   const [svcKeys, setSvcKeys] = useState({ embedding_api_key: '', rerank_api_key: '', image_api_key: '', vl_api_key: '', zhipu_api_key: '' })
@@ -163,15 +163,19 @@ export default function SettingsModal({ onClose, projectId }: Props) {
         embedding_local_model: d.embedding?.local_model ?? 'BAAI/bge-small-zh-v1.5',
         embedding_dim: d.embedding?.dim ?? 1024,
         embedding_key_set: !!d.embedding?.api_key_set,
+        embedding_key_hint: d.embedding?.api_key_hint || '',
         rerank_backend: d.rerank?.backend ?? 'api', rerank_base_url: d.rerank?.base_url ?? '',
         rerank_model: d.rerank?.model ?? 'BAAI/bge-reranker-v2-m3',
         rerank_local_model: d.rerank?.local_model ?? 'BAAI/bge-reranker-base',
         rerank_key_set: !!d.rerank?.api_key_set,
+        rerank_key_hint: d.rerank?.api_key_hint || '',
         image_backend: img,
         image_base_url: d.image?.base_url ?? 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
         image_model: d.image?.model ?? 'glm-4v-flash',
         image_key_set: !!d.image?.api_key_set,
+        image_key_hint: d.image?.api_key_hint || '',
         vl_key_set: !!d.vl?.api_key_set,
+        vl_key_hint: d.vl?.api_key_hint || '',
       })
     }).catch(() => {})
   }, [])
@@ -205,7 +209,9 @@ export default function SettingsModal({ onClose, projectId }: Props) {
       const g = await api.getSettings()
       setSvc(s => ({ ...s,
         embedding_key_set: !!g.embedding?.api_key_set, rerank_key_set: !!g.rerank?.api_key_set,
-        image_key_set: !!g.image?.api_key_set, vl_key_set: !!g.vl?.api_key_set }))
+        image_key_set: !!g.image?.api_key_set, vl_key_set: !!g.vl?.api_key_set,
+        embedding_key_hint: g.embedding?.api_key_hint || '', rerank_key_hint: g.rerank?.api_key_hint || '',
+        image_key_hint: g.image?.api_key_hint || '', vl_key_hint: g.vl?.api_key_hint || '' }))
     } catch { flash('保存失败（后端不可达）') }
   }
 
@@ -392,7 +398,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
                       <span className="text-[11px] text-dim w-20 flex-shrink-0">API Key</span>
                       <input type="password" value={svcKeys.embedding_api_key} placeholder={svc.embedding_key_set ? '已配置，留空保持不变' : 'sk-...（硅基流动）'}
                         onChange={e => setSvcKeys(k => ({ ...k, embedding_api_key: e.target.value }))} className={inputCls} />
-                      {svc.embedding_key_set && <span className="text-[10px] text-green-600 flex-shrink-0">✓ 已配置</span>}
+                      {svc.embedding_key_set && <span className="text-[10px] text-green-600 flex-shrink-0">✓ 已配置{svc.embedding_key_hint ? '（' + svc.embedding_key_hint + '）' : ''}</span>}
                     </div>
                     <div className="flex justify-end">
                       <button onClick={saveService} className="px-4 py-1.5 text-[11px] bg-[#1a1a1a] text-white rounded-lg font-semibold">保存</button>

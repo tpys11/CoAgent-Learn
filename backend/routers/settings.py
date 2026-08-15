@@ -8,6 +8,15 @@ logger = logging.getLogger("coagent.settings")
 router = APIRouter()
 
 
+def _mask_key(key: str) -> str:
+    """返回可展示的 key 提示：不泄露完整 key，只显示结尾 4 位。"""
+    if not key:
+        return ""
+    if len(key) <= 4:
+        return "****"
+    return "sk-****" + key[-4:]
+
+
 def _apply_dynamic_settings():
     """把 settings 表（前端设置界面写入）的动态配置应用到 config 单例：
     embedding/rerank/视觉 key 等，优先于 .env 环境变量，无需重启即时生效。"""
@@ -64,6 +73,7 @@ async def get_settings():
             "local_model": getattr(_cfg, "EMBEDDING_LOCAL_MODEL", "BAAI/bge-small-zh-v1.5"),
             "dim": int(getattr(_cfg, "EMBEDDING_DIM", 1024)),
             "api_key_set": bool(getattr(_cfg, "EMBEDDING_API_KEY", "")),
+            "api_key_hint": _mask_key(getattr(_cfg, "EMBEDDING_API_KEY", "")),
         },
         "rerank": {
             "backend": _cfg.RERANK_BACKEND,
@@ -71,15 +81,23 @@ async def get_settings():
             "model": _cfg.RERANK_MODEL,
             "local_model": getattr(_cfg, "RERANK_LOCAL_MODEL", "BAAI/bge-reranker-base"),
             "api_key_set": bool(getattr(_cfg, "RERANK_API_KEY", "")),
+            "api_key_hint": _mask_key(getattr(_cfg, "RERANK_API_KEY", "")),
         },
         "image": {
             "backend": getattr(_cfg, "IMAGE_BACKEND", "none"),
             "base_url": getattr(_cfg, "IMAGE_BASE_URL", ""),
             "model": getattr(_cfg, "IMAGE_MODEL", "glm-4v-flash"),
             "api_key_set": bool(getattr(_cfg, "IMAGE_API_KEY", "") or getattr(_cfg, "ZHIPU_API_KEY", "")),
+            "api_key_hint": _mask_key(getattr(_cfg, "IMAGE_API_KEY", "") or getattr(_cfg, "ZHIPU_API_KEY", "")),
         },
-        "vl": {"api_key_set": bool(getattr(_cfg, "VL_API_KEY", ""))},
-        "zhipu": {"api_key_set": bool(getattr(_cfg, "ZHIPU_API_KEY", ""))},
+        "vl": {
+            "api_key_set": bool(getattr(_cfg, "VL_API_KEY", "")),
+            "api_key_hint": _mask_key(getattr(_cfg, "VL_API_KEY", "")),
+        },
+        "zhipu": {
+            "api_key_set": bool(getattr(_cfg, "ZHIPU_API_KEY", "")),
+            "api_key_hint": _mask_key(getattr(_cfg, "ZHIPU_API_KEY", "")),
+        },
     }
 
 
