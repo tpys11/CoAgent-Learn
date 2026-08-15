@@ -313,21 +313,24 @@ async def generate_special(req: GenerateSpecialReq):
     if not (req.content or "").strip() or not req.forms:
         return {"status": "error", "msg": "参数不完整"}
     forms_desc = {
-        "table": "markdown 表格（列清晰、适合对比/维度）",
-        "flow": "mermaid 流程图代码（flowchart TD 语法，不要代码块围栏）",
-        "tree": "树状层级结构（纯文本，用缩进表示层级：根节点顶格，子节点缩进2个空格，孙节点缩进4个空格，依此类推；不要用 markdown 列表符号、不要编号）",
-        "report": "markdown 结构化报告（分小节）",
-        "quiz": "3-5 道测试题（每题含 题目/选项/答案）",
+        "table": "markdown 表格",
+        "flow": "mermaid 流程图代码（flowchart TD 语法）",
+        "tree": "树状层级纯文本，根节点顶格，子节点行首缩进2个空格，孙节点缩进4个空格",
+        "report": "markdown 结构化报告",
+        "quiz": "测试题纯文本，每题依次为：题目、A/B/C/D四个选项、答案一行",
     }
     supported = [k for k in req.forms if k in forms_desc]
     if not supported:
         return {"status": "error", "msg": "没有支持的形式"}
     selected = "、".join(forms_desc[k] for k in supported)
     prompt = (
-        "把下面的学习内容转换成指定形式，每种形式作为 JSON 一个字段：\n"
+        "把下面的学习内容转换成指定形式，每种形式作为 JSON 一个字段（字段值是字符串）：\n"
         "内容：\n" + (req.content or "")[:6000] + "\n\n"
-        "需要的形式（每种一个字段，值就是该形式的内容）：\n" + selected + "\n\n"
-        "只输出 JSON 对象，字段名用英文 key；每个字段的值就是该形式的内容本身，不要额外解释，不要提知识库检索。"
+        "需要的形式：\n" + selected + "\n\n"
+        "要求：\n"
+        "1. 每个字段的值是纯文本字符串（tree 是缩进文本、quiz 是题目文本），不要输出 JSON 数组、不要输出嵌套对象、不要输出大括号。\n"
+        "2. quiz 每题格式：'1. 题目'、'A. xxx'、'B. xxx'、'C. xxx'、'D. xxx'、'答案：A'。\n"
+        "3. 只输出 JSON 对象，字段名用英文 key，不要额外解释，不要提知识库检索。"
     )
     schema = {"type": "object", "properties": {k: {"type": "string", "description": forms_desc[k]} for k in supported}}
     try:
