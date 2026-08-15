@@ -252,6 +252,9 @@ def add_image(project_id: str, source: str, image_data_uri: str, description: st
     """图片入库：用 Qwen3-VL-Embedding 生成图片向量并写入 image_vectors。
     与文字描述入库（add_document）并行，不替代文字链路；
     未配置 VL key 时跳过图片向量化，返回 0（仍可走文字描述检索）。"""
+    from core.config import config as _cfg
+    if getattr(_cfg, "KB_MODE", "full") == "light":
+        return 0
     if not _vl_key():
         logger.warning("未配置 VL key，跳过图片向量化 source=%s", source)
         return 0
@@ -296,6 +299,9 @@ def _search_images(project_id: str, query: str, top_k: int = 3) -> list:
 def search(project_id: str, query: str, top_k: int = 3, include_images: bool = True) -> list:
     """混合检索：向量语义检索 + BM25 关键词检索 → RRF 融合 → P3 重排。
     include_images=False 时跳过图片跨模态检索（极速档只做基础文字检索）。"""
+    from core.config import config as _cfg
+    if getattr(_cfg, "KB_MODE", "full") == "light":
+        include_images = False
     docs = _db.get_kb_docs(project_id)
     # 图片跨模态检索（仅项目有图片向量时触发，避免无谓调用 VL 接口）
     image_hits: list = []

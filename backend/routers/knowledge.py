@@ -256,9 +256,6 @@ async def knowledge_upload_file(
     _IMG_EXTS = {"png", "jpg", "jpeg", "gif", "webp", "bmp"}
     _ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
     if _ext in _IMG_EXTS:
-        from core.config import config as _cfg
-        if getattr(_cfg, "IMAGE_BACKEND", "none") != "api":
-            return {"status": "error", "msg": "图片处理未启用（设置→AI 服务→其他选择→图片处理 选择厂商 API）"}
         import base64 as _b64
         from core.vision_service import describe_image
         _b64str = _b64.b64encode(data).decode()

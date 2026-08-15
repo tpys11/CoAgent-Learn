@@ -141,90 +141,67 @@ export default function SettingsModal({ onClose, projectId }: Props) {
 
   // ---- AI 服务配置（后端动态生效，存 SQLite settings 表）----
   const [svc, setSvc] = useState({
-    vectorModel: 'bge',
-    embedding_backend: 'api', embedding_base_url: '', embedding_model: 'BAAI/bge-m3', embedding_local_model: 'BAAI/bge-small-zh-v1.5', embedding_dim: 1024, embedding_key_set: false, embedding_key_hint: '',
-    rerank_backend: 'api', rerank_base_url: '', rerank_model: 'BAAI/bge-reranker-v2-m3', rerank_local_model: 'BAAI/bge-reranker-base', rerank_key_set: false, rerank_key_hint: '',
-    image_backend: 'none', image_base_url: 'https://api.siliconflow.cn/v1', image_model: 'glm-4v-flash', image_desc_model: 'Qwen/Qwen3.5-4B', image_key_set: false, image_key_hint: '',
-    vl_model: 'Qwen/Qwen3-VL-Embedding-8B', vl_key_set: false, vl_key_hint: '',
-    review_model: '', review_base_url: '', review_key_set: false, review_key_hint: '',
+    kb_mode: 'full',
+    embedding_key_set: false, embedding_key_hint: '',
+    review_enabled: false,
+    review_model: 'Qwen/Qwen2.5-72B-Instruct',
   })
   // key 输入框（不回显已存 key，只显示"已配置"状态）
-  const [svcKeys, setSvcKeys] = useState({ embedding_api_key: '', rerank_api_key: '', image_api_key: '', vl_api_key: '', zhipu_api_key: '', review_api_key: '' })
+  const [svcKeys, setSvcKeys] = useState({ embedding_api_key: '' })
+  const [svcSaved, setSvcSaved] = useState(false)
   const [svcTest, setSvcTest] = useState('')
 
   useEffect(() => {
     api.getSettings().then(d => {
-      // 旧值兼容：zhipu/siliconflow → api（通用视觉接口）
-      const img = d.image?.backend === 'zhipu' || d.image?.backend === 'siliconflow' ? 'api' : (d.image?.backend ?? 'none')
       setSvc({
-        vectorModel: d.vector_model === 'qwen' ? 'qwen' : 'bge',
-        embedding_backend: d.embedding?.backend ?? 'api',
-        embedding_base_url: d.embedding?.base_url || 'https://api.siliconflow.cn/v1',
-        embedding_model: d.embedding?.model ?? 'BAAI/bge-m3',
-        embedding_local_model: d.embedding?.local_model ?? 'BAAI/bge-small-zh-v1.5',
-        embedding_dim: d.embedding?.dim ?? 1024,
+        kb_mode: d.kb_mode === 'light' ? 'light' : 'full',
         embedding_key_set: !!d.embedding?.api_key_set,
         embedding_key_hint: d.embedding?.api_key_hint || '',
-        rerank_backend: d.rerank?.backend ?? 'api', rerank_base_url: d.rerank?.base_url ?? '',
-        rerank_model: d.rerank?.model ?? 'BAAI/bge-reranker-v2-m3',
-        rerank_local_model: d.rerank?.local_model ?? 'BAAI/bge-reranker-base',
-        rerank_key_set: !!d.rerank?.api_key_set,
-        rerank_key_hint: d.rerank?.api_key_hint || '',
-        image_backend: img,
-        image_base_url: d.image?.base_url ?? 'https://api.siliconflow.cn/v1',
-        image_model: d.image?.model ?? 'glm-4v-flash',
-        image_desc_model: d.image?.model ?? 'Qwen/Qwen3.5-4B',
-        image_key_set: !!d.image?.api_key_set,
-        image_key_hint: d.image?.api_key_hint || '',
-        vl_model: d.vl?.model ?? 'Qwen/Qwen3-VL-Embedding-8B',
-        vl_key_set: !!d.vl?.api_key_set,
-        vl_key_hint: d.vl?.api_key_hint || '',
-        review_model: d.review?.model ?? '',
-        review_base_url: d.review?.base_url ?? '',
-        review_key_set: !!d.review?.api_key_set,
-        review_key_hint: d.review?.api_key_hint || '',
+        review_enabled: !!d.review?.enabled,
+        review_model: d.review?.model || 'Qwen/Qwen2.5-72B-Instruct',
       })
     }).catch(() => {})
   }, [])
 
   // 构造后端 SettingsSave 提交体（显式下划线字段，避免 spread 驼峰/多余字段不匹配）
   const buildSvcBody = () => ({
-    vector_model: svc.vectorModel,
-    embedding_backend: svc.embedding_backend,
-    embedding_base_url: svc.embedding_base_url,
+    vector_model: 'bge',
+    embedding_backend: 'api',
+    embedding_base_url: 'https://api.siliconflow.cn/v1',
     embedding_api_key: svcKeys.embedding_api_key,
-    embedding_model: svc.embedding_model,
-    embedding_local_model: svc.embedding_local_model,
-    embedding_dim: svc.embedding_dim,
-    rerank_backend: svc.rerank_backend,
-    rerank_base_url: svc.rerank_base_url,
-    rerank_api_key: svcKeys.rerank_api_key,
-    rerank_model: svc.rerank_model,
-    rerank_local_model: svc.rerank_local_model,
-    image_backend: svc.image_backend,
-    image_base_url: svc.image_base_url,
-    image_api_key: svcKeys.image_api_key,
-    image_model: svc.image_model,
-    image_desc_model: svc.image_desc_model,
-    vl_api_key: svcKeys.vl_api_key,
-    zhipu_api_key: svcKeys.zhipu_api_key,
-    review_api_key: svcKeys.review_api_key,
-    review_base_url: svc.review_base_url,
+    embedding_model: 'BAAI/bge-m3',
+    embedding_local_model: 'BAAI/bge-small-zh-v1.5',
+    embedding_dim: 1024,
+    rerank_backend: 'api',
+    rerank_base_url: '',
+    rerank_api_key: '',
+    rerank_model: 'BAAI/bge-reranker-v2-m3',
+    rerank_local_model: 'BAAI/bge-reranker-base',
+    image_backend: 'api',
+    image_base_url: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+    image_api_key: '',
+    image_model: 'glm-4v-flash',
+    vl_api_key: '',
+    zhipu_api_key: '',
+    image_desc_model: 'Qwen/Qwen3.5-4B',
+    kb_mode: svc.kb_mode,
+    review_enabled: svc.review_enabled,
     review_model: svc.review_model,
   })
 
   const saveService = async () => {
     try {
-      const d = await api.saveSettings(buildSvcBody())
-      // 刷新已配置状态
+      await api.saveSettings(buildSvcBody())
       const g = await api.getSettings()
       setSvc(s => ({ ...s,
-        embedding_key_set: !!g.embedding?.api_key_set, rerank_key_set: !!g.rerank?.api_key_set,
-        image_key_set: !!g.image?.api_key_set, vl_key_set: !!g.vl?.api_key_set, review_key_set: !!g.review?.api_key_set,
-        embedding_key_hint: g.embedding?.api_key_hint || '', rerank_key_hint: g.rerank?.api_key_hint || '',
-        image_key_hint: g.image?.api_key_hint || '', vl_key_hint: g.vl?.api_key_hint || '',
-        review_key_hint: g.review?.api_key_hint || '' }))
-    } catch { flash('保存失败（后端不可达）') }
+        embedding_key_set: !!g.embedding?.api_key_set,
+        embedding_key_hint: g.embedding?.api_key_hint || '',
+        review_enabled: !!g.review?.enabled }))
+      setSvcSaved(true)
+    } catch {
+      setSvcSaved(false)
+      flash('保存失败（后端不可达）')
+    }
   }
 
   const testService = async () => {
@@ -235,10 +212,8 @@ export default function SettingsModal({ onClose, projectId }: Props) {
       const fmt = (r: any) => (r.ok ? (r.msg || 'OK') : ('失败 ' + (r.msg || '')))
       const lines = [
         rs.text_embedding ? `文字向量化：${fmt(rs.text_embedding)}` : '',
-        rs.image_embedding ? `图片向量：${fmt(rs.image_embedding)}` : '',
         rs.rerank ? `重排：${fmt(rs.rerank)}` : '',
-        rs.image_description ? `图片描述：${fmt(rs.image_description)}` : '',
-        rs.review ? `审核模型：${fmt(rs.review)}` : '',
+        rs.image_embedding ? `图片向量/跨模态：${fmt(rs.image_embedding)}` : '',
       ].filter(Boolean).join(' ｜ ')
       setSvcTest(lines || '无测试项')
     } catch { setSvcTest('测试失败（后端不可达）') }
@@ -402,99 +377,70 @@ export default function SettingsModal({ onClose, projectId }: Props) {
               </Section>
             )}
 
-            {/* AI 服务配置（各能力独立配置，后端即时生效） */}
+            {/* AI 服务配置（后端即时生效） */}
             {show('service') && (
               <Section icon={Database} title="AI 服务配置" desc="各能力独立配置，保存后即时生效，无需重启">
                 <div className="flex flex-col gap-4">
-                  {/* 文字向量化 */}
+                  {/* 硅基流动 API Key */}
                   <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2.5">
-                    <p className="text-sm font-semibold">文字向量化</p>
+                    <p className="text-sm font-semibold">硅基流动 API Key</p>
                     <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-dim w-16 flex-shrink-0">模型</span>
-                      <span className="text-xs font-medium">{svc.embedding_model || 'BAAI/bge-m3'}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-dim w-16 flex-shrink-0">API Key</span>
                       <input type="password" value={svcKeys.embedding_api_key} placeholder={svc.embedding_key_set ? '已配置，留空保持不变' : 'sk-...（硅基流动）'}
-                        onChange={e => setSvcKeys(k => ({ ...k, embedding_api_key: e.target.value }))} className={inputCls} />
+                        onChange={e => { setSvcKeys({ embedding_api_key: e.target.value }); setSvcSaved(false) }} className={inputCls} />
                       {svc.embedding_key_set && <span className="text-[10px] text-green-600 flex-shrink-0">✓ {svc.embedding_key_hint}</span>}
+                      <button onClick={saveService}
+                        className={`px-4 py-1.5 text-[11px] rounded-lg font-semibold flex-shrink-0 ${svcSaved ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#1a1a1a] text-white'}`}>保存</button>
                     </div>
+                    <p className="text-[10px] text-dim">该 key 可实现多种模型调用</p>
                   </div>
-                  {/* 图片向量 / 跨模态 */}
-                  <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2.5">
-                    <p className="text-sm font-semibold">图片向量（跨模态检索）</p>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-dim w-16 flex-shrink-0">模型</span>
-                      <span className="text-xs font-medium">{svc.vl_model || 'Qwen/Qwen3-VL-Embedding-8B'}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-dim w-16 flex-shrink-0">API Key</span>
-                      <input type="password" value={svcKeys.vl_api_key} placeholder={svc.vl_key_set ? '已配置，留空保持不变' : '留空复用文字向量化 Key'}
-                        onChange={e => setSvcKeys(k => ({ ...k, vl_api_key: e.target.value }))} className={inputCls} />
-                      {svc.vl_key_set && <span className="text-[10px] text-green-600 flex-shrink-0">✓ {svc.vl_key_hint}</span>}
-                    </div>
-                  </div>
-                  {/* 重排 */}
-                  <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2.5">
-                    <p className="text-sm font-semibold">重排</p>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-dim w-16 flex-shrink-0">模型</span>
-                      <span className="text-xs font-medium">{svc.rerank_model || 'BAAI/bge-reranker-v2-m3'}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-dim w-16 flex-shrink-0">API Key</span>
-                      <input type="password" value={svcKeys.rerank_api_key} placeholder={svc.rerank_key_set ? '已配置，留空保持不变' : '留空复用文字向量化 Key'}
-                        onChange={e => setSvcKeys(k => ({ ...k, rerank_api_key: e.target.value }))} className={inputCls} />
-                      {svc.rerank_key_set && <span className="text-[10px] text-green-600 flex-shrink-0">✓ {svc.rerank_key_hint}</span>}
-                    </div>
-                  </div>
-                  {/* 图片描述 */}
+
+                  {/* 知识库服务 */}
                   <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2.5">
                     <div className="flex items-center justify-between">
-                      <p className="text-sm font-semibold">图片描述</p>
-                      <select value={svc.image_backend === 'api' ? 'api' : 'none'}
-                        onChange={e => setSvc(s => ({ ...s, image_backend: e.target.value }))} className={inputCls + ' !w-auto'}>
-                        <option value="api">启用</option>
-                        <option value="none">关闭</option>
-                      </select>
+                      <p className="text-sm font-semibold">知识库服务</p>
+                      <button onClick={testService} className="px-4 py-1.5 text-[11px] border hairline rounded-lg font-semibold text-dim hover:text-[var(--text)] transition-colors">测试</button>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-dim w-16 flex-shrink-0">模型</span>
-                      <input value={svc.image_desc_model} onChange={e => setSvc(s => ({ ...s, image_desc_model: e.target.value }))} className={inputCls} />
+                    <div className="flex flex-col gap-2">
+                      {[
+                        { mode: 'light', name: 'Qwen3-VL-Embedding-8B', desc: '知识库上传时实现文字向量化、重排，模型轻、高效' },
+                        { mode: 'full', name: 'bge-reranker-v2-m3', desc: '知识库上传时实现文字向量化、重排、图片向量化、跨模态检索，模型中、全面' },
+                      ].map(o => (
+                        <button key={o.mode} onClick={() => { setSvc(s => ({ ...s, kb_mode: o.mode })); setSvcSaved(false) }}
+                          className={`flex flex-col gap-0.5 text-left px-3 py-2.5 rounded-xl transition-colors ${svc.kb_mode === o.mode ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] hover:bg-[var(--bg-panel)]'}`}>
+                          <span className="text-[12px] font-semibold flex items-center gap-1.5">
+                            <span className={`w-3 h-3 rounded-full border flex items-center justify-center flex-shrink-0 ${svc.kb_mode === o.mode ? 'border-white' : 'border-[var(--text)]/40'}`}>
+                              {svc.kb_mode === o.mode && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                            </span>
+                            {o.name}
+                          </span>
+                          <span className={`text-[10px] pl-[18px] ${svc.kb_mode === o.mode ? 'text-white/70' : 'text-dim'}`}>{o.desc}</span>
+                        </button>
+                      ))}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-dim w-16 flex-shrink-0">API Key</span>
-                      <input type="password" value={svcKeys.image_api_key} placeholder={svc.image_key_set ? '已配置，留空保持不变' : '留空复用硅基流动 Key'}
-                        onChange={e => setSvcKeys(k => ({ ...k, image_api_key: e.target.value }))} className={inputCls} />
-                      {svc.image_key_set && <span className="text-[10px] text-green-600 flex-shrink-0">✓ {svc.image_key_hint}</span>}
+                    {svcTest && <p className={`text-[11px] ${svcTest.includes('失败') ? 'text-red-500' : 'text-green-600'}`}>{svcTest}</p>}
+                  </div>
+
+                  {/* 图片描述 */}
+                  <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2">
+                    <p className="text-sm font-semibold">图片描述</p>
+                    <div className="flex flex-col gap-0.5 px-3 py-2.5 rounded-xl bg-[var(--bg-hover)]">
+                      <span className="text-[12px] font-semibold">Qwen3.5-4B</span>
+                      <span className="text-[10px] text-dim">主模型缺乏多模态能力时自动调用</span>
                     </div>
                   </div>
-                  {/* 审核模型 */}
+
+                  {/* 独立审核模型 */}
                   <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2.5">
-                    <p className="text-sm font-semibold">审核模型</p>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-dim w-16 flex-shrink-0">模型</span>
-                      <input value={svc.review_model} placeholder="留空沿用主模型快模型"
-                        onChange={e => setSvc(s => ({ ...s, review_model: e.target.value }))} className={inputCls} />
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold">独立审核模型</p>
+                      <Toggle checked={svc.review_enabled} onChange={v => { setSvc(s => ({ ...s, review_enabled: v })); setSvcSaved(false) }} />
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-dim w-16 flex-shrink-0">Base URL</span>
-                      <input value={svc.review_base_url} placeholder="留空沿用主模型地址"
-                        onChange={e => setSvc(s => ({ ...s, review_base_url: e.target.value }))} className={inputCls} />
+                    <div className="flex flex-col gap-0.5 px-3 py-2.5 rounded-xl bg-[var(--bg-hover)]">
+                      <span className="text-[12px] font-semibold">Qwen/Qwen2.5-72B-Instruct</span>
+                      <span className="text-[10px] text-dim">全学科知识点校验、概念辨析、主观论述正误判断</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-dim w-16 flex-shrink-0">API Key</span>
-                      <input type="password" value={svcKeys.review_api_key} placeholder={svc.review_key_set ? '已配置，留空保持不变' : '留空沿用主模型 Key'}
-                        onChange={e => setSvcKeys(k => ({ ...k, review_api_key: e.target.value }))} className={inputCls} />
-                      {svc.review_key_set && <span className="text-[10px] text-green-600 flex-shrink-0">✓ {svc.review_key_hint}</span>}
-                    </div>
+                    <p className="text-[10px] text-dim">不开启时审核默认调用 deepseek v4 flash</p>
                   </div>
-                  {/* 保存 + 测试 */}
-                  <div className="flex items-center justify-end gap-2">
-                    <button onClick={testService} className="px-4 py-1.5 text-[11px] border hairline rounded-lg font-semibold text-dim hover:text-[var(--text)] transition-colors">测试</button>
-                    <button onClick={saveService} className="px-4 py-1.5 text-[11px] bg-[#1a1a1a] text-white rounded-lg font-semibold">保存</button>
-                  </div>
-                  {svcTest && <p className={`text-[11px] ${svcTest.includes('失败') ? 'text-red-500' : 'text-green-600'}`}>{svcTest}</p>}
                 </div>
               </Section>
             )}

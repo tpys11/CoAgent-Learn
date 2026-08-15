@@ -143,12 +143,15 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
     llm_main_no_think = DeepSeekLLM(api_key=api_key, model=model, base_url=base_url, thinking=False)
     # 简单问题主模型：保留思考模式（思维链展示）但 effort=low（极短思考，秒级完成）
     llm_main_low = DeepSeekLLM(api_key=api_key, model=model, base_url=base_url, thinking=True, effort='low')
-    # 审核模型：优先用设置里独立配置的审核模型（AI 服务→审核模型），未配置回退主快模型
+    # 审核模型：开启独立审核模型时走硅基流动（复用硅基流动 key），否则回退主快模型（deepseek v4 flash）
     from core.config import config as _cfg_review
-    _review_key = getattr(_cfg_review, "REVIEW_API_KEY", "") or api_key
-    _review_base = getattr(_cfg_review, "REVIEW_BASE_URL", "") or base_url
-    _review_model = getattr(_cfg_review, "REVIEW_MODEL", "") or fast_model or model
-    llm_review = DeepSeekLLM(api_key=_review_key, model=_review_model, base_url=_review_base, thinking=False)
+    if str(getattr(_cfg_review, "REVIEW_ENABLED", "0")) == "1":
+        _review_key = getattr(_cfg_review, "EMBEDDING_API_KEY", "") or api_key
+        _review_base = getattr(_cfg_review, "VL_BASE_URL", "https://api.siliconflow.cn/v1")
+        _review_model = getattr(_cfg_review, "REVIEW_MODEL", "Qwen/Qwen2.5-72B-Instruct")
+        llm_review = DeepSeekLLM(api_key=_review_key, model=_review_model, base_url=_review_base, thinking=False)
+    else:
+        llm_review = llm_fast
 
     def _agent_cfg(aid: str) -> dict:
         """按 Agent id 取配置（缺失时返回空）"""
