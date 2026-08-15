@@ -82,6 +82,10 @@ export default function SpecialOutputPane({ messages }: { messages: Message[] })
     if (!convo.trim()) { alert('当前对话还没有内容'); return }
     const ctrl = new AbortController()
     abortRef.current = ctrl
+    // 点击立即弹窗，弹窗里等待生成
+    setModalForm(f)
+    setResult('')
+    setShowModal(true)
     setGenerating(true)
     try {
       const r = await fetch('/api/generate-special', {
@@ -92,8 +96,6 @@ export default function SpecialOutputPane({ messages }: { messages: Message[] })
       const d = await r.json()
       if (d.status === 'ok') {
         setResult(d.results?.[f] || '')
-        setModalForm(f)
-        setShowModal(true)
       } else {
         alert('生成失败：' + (d.msg || '未知'))
       }
@@ -170,15 +172,29 @@ export default function SpecialOutputPane({ messages }: { messages: Message[] })
                 {FORMS.find(f => f.key === modalForm)?.label}
               </span>
               <div className="flex items-center gap-2">
-                {generating && <span className="text-[11px] text-dim">生成中…</span>}
-                <button onClick={saveResult} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#1a1a1a] text-white text-xs font-semibold hover:bg-[#333333] transition-colors">
-                  <Save size={13} /> 保存
-                </button>
+                {generating ? (
+                  <button onClick={stopGenerate} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-500 text-white text-xs font-semibold hover:bg-red-600 transition-colors">
+                    停止
+                  </button>
+                ) : result ? (
+                  <button onClick={saveResult} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#1a1a1a] text-white text-xs font-semibold hover:bg-[#333333] transition-colors">
+                    <Save size={13} /> 保存
+                  </button>
+                ) : null}
                 <button onClick={() => setShowModal(false)} className="p-1.5 rounded-lg text-dim hover:bg-[var(--bg-hover)]"><X size={16} /></button>
               </div>
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto p-4">
-              {result ? renderResult(modalForm, result) : (
+              {generating ? (
+                <div className="flex flex-col items-center justify-center py-20 gap-3 text-dim">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" />
+                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }} />
+                    <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }} />
+                  </span>
+                  <span className="text-xs">正在生成「{FORMS.find(f => f.key === modalForm)?.label}」…</span>
+                </div>
+              ) : result ? renderResult(modalForm, result) : (
                 <div className="text-xs text-dim text-center py-16">生成结果为空</div>
               )}
             </div>
