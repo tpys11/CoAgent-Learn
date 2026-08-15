@@ -19,6 +19,8 @@ load_dotenv()
 logger = logging.getLogger("coagent")
 
 from routers.settings import router as settings_router, _apply_dynamic_settings
+from routers.projects import router as projects_router, _ensure_default_project
+from core.helpers import _as_dict
 
 
 @asynccontextmanager
@@ -55,19 +57,7 @@ app.add_middleware(
 )
 
 app.include_router(settings_router)
-
-
-def _as_dict(data):
-    """SQLite 存的 JSON 字符串转 dict"""
-    import json as _json
-    if isinstance(data, dict):
-        return data
-    if isinstance(data, str):
-        try:
-            return _json.loads(data)
-        except Exception:
-            return {}
-    return {}
+app.include_router(projects_router)
 
 
 def _mindchain_display_name(name):
@@ -1143,152 +1133,6 @@ async def run_evaluate(project_id: str = "default", api_key: str = ""):
 
 
 # ---------- 项目/对话持久化 API ----------
-
-class ProjectCreate(BaseModel):
-    name: str = "新项目"
-    domain: str = ""
-    simple: bool = False
-
-
-@app.get("/api/projects")
-async def list_projects():
-    from core.postgres_client import pg_client
-    rows = pg_client.execute("SELECT id, name, is_default, simple, domain, created_at FROM projects WHERE archived = FALSE ORDER BY created_at")
-    return {"projects": rows}
-
-
-@app.post("/api/projects")
-async def create_project(req: ProjectCreate):
-    import time
-    from core.postgres_client import pg_client
-    pid = time.strftime("%Y%m%d%H%M%S") + str(int(time.time() * 1000))[-4:]
-    pg_client.execute("INSERT INTO projects (id, name, is_default, simple, domain) VALUES (%s,%s,%s,%s,%s)",
-                      (pid, req.name, False, req.simple, req.domain))
-    return {"id": pid, "name": req.name, "is_default": False, "simple": req.simple, "domain": req.domain}
-
-
-@app.patch("/api/projects/{pid}")
-async def update_project(pid: str, req: ProjectCreate):
-    from core.postgres_client import pg_client
-    pg_client.execute("UPDATE projects SET name=%s, domain=%s, simple=%s WHERE id=%s", (req.name, req.domain, req.simple, pid))
-    return {"status": "ok"}
-
-
-@app.delete("/api/projects/{pid}")
-async def delete_project(pid: str):
-    """级联删除项目：对话+消息+画像+知识库+图谱"""
-    from core.postgres_client import pg_client
-    # 查该项目对话
-    dialogs = pg_client.execute("SELECT id FROM dialogues WHERE project_id=%s", (pid,))
-    d_ids = [d["id"] for d in dialogs]
-    try:
-        # 删消息
-        for d in d_ids:
-            pg_client.execute("DELETE FROM messages WHERE dialogue_id=%s", (d,))
-        # 删对话画像
-        for d in d_ids:
-            pg_client.execute("DELETE FROM dialogue_memories WHERE dialogue_id=%s", (d,))
-        # 删对话
-        pg_client.execute("DELETE FROM dialogues WHERE project_id=%s", (pid,))
-        # 删项目画像
-        pg_client.execute("DELETE FROM project_memories WHERE project_id=%s", (pid,))
-        # 删反馈
-        pg_client.execute("DELETE FROM feedback WHERE project_id=%s", (pid,))
-        # 删项目行
-        pg_client.execute("DELETE FROM projects WHERE id=%s", (pid,))
-    except Exception as e:
-        return {"status": "error", "msg": str(e)}
-    # 删知识库（SQLite 向量表）
-    kb_deleted = 0
-    try:
-        from core.knowledge_service import delete_project_kb
-        kb_deleted = delete_project_kb(pid)
-    except Exception:
-        pass
-    return {"status": "ok", "dialogues": len(d_ids), "kb": kb_deleted}
-
-
-@app.get("/api/projects/{pid}/dialogues")
-async def list_dialogues(pid: str):
-    from core.postgres_client import pg_client
-    rows = pg_client.execute("SELECT id, name, created_at FROM dialogues WHERE project_id=%s AND archived=FALSE ORDER BY created_at", (pid,))
-    return {"dialogues": rows}
-
-
-@app.post("/api/dialogues")
-async def create_dialogue(req: dict):
-    """创建对话（落库，前端本地 id 与后端一致：用前端生成 id 或后端生成）"""
-    from core.postgres_client import pg_client
-    pid = req.get("project_id") or "default"
-    name = req.get("name") or "对话"
-    did = req.get("id") or ("dlg-" + str(int(time.time() * 1000)) + "-" + str(abs(hash(name)) % 10000))
-    pg_client.execute("INSERT OR IGNORE INTO dialogues (id, name, project_id) VALUES (%s,%s,%s)", (did, name, pid))
-    return {"id": did, "name": name}
-
-
-@app.get("/api/dialogues/{did}/messages")
-async def get_dialogue_messages(did: str):
-    import json as _json
-    from core.sqlite_client import get_db
-    rows = get_db().execute("SELECT role, content, think, created_at FROM messages WHERE dialogue_id=%s ORDER BY created_at ASC", (did,))
-    for r in rows or []:
-        t = r.get("think") or ""
-        r["think"] = _json.loads(t) if t else []
-    return {"messages": rows or []}
-
-
-@app.post("/api/dialogues/{did}/messages")
-async def post_dialogue_message(did: str, req: dict):
-    """写入一条对话消息（静态引导等），保证 dialogue 存在"""
-    from core.postgres_client import pg_client
-    from core.sqlite_client import get_db
-    role = req.get("role") if req.get("role") in ("user", "assistant", "thinking") else "assistant"
-    content = str(req.get("content") or "")
-    if not content:
-        return {"status": "ok"}
-    pg_client.execute("INSERT OR IGNORE INTO dialogues (id, name, project_id) VALUES (%s,%s,%s)", (did, "对话", "default"))
-    get_db().execute("INSERT INTO messages (dialogue_id, role, content) VALUES (%s,%s,%s)", (did, role, content))
-    return {"status": "ok"}
-
-
-@app.delete("/api/dialogues/{did}")
-async def delete_dialogue(did: str):
-    """级联删除对话：消息+对话画像；并作为一次事件更新项目记忆（移除该对话概要）"""
-    import json as _json
-    from core.postgres_client import pg_client
-    # 先查对话所属项目
-    rows = pg_client.execute("SELECT project_id FROM dialogues WHERE id=%s", (did,))
-    pid = rows[0]["project_id"] if rows else None
-    pg_client.execute("DELETE FROM messages WHERE dialogue_id=%s", (did,))
-    pg_client.execute("DELETE FROM dialogue_memories WHERE dialogue_id=%s", (did,))
-    pg_client.execute("DELETE FROM dialogues WHERE id=%s", (did,))
-    # 更新项目记忆：从"对话概要"移除该对话（把删除当作一次事件）
-    if pid:
-        try:
-            proj_rows = pg_client.execute("SELECT data FROM project_memories WHERE project_id=%s", (pid,))
-            if proj_rows and proj_rows[0]["data"]:
-                proj = _as_dict(proj_rows[0]["data"])
-                dlist = proj.get("对话概要", [])
-                proj["对话概要"] = [d for d in dlist if d.get("dialogue_id") != did]
-                pg_client.execute("UPDATE project_memories SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE project_id=%s",
-                                  (_json.dumps(proj, ensure_ascii=False), pid))
-        except Exception:
-            pass
-    return {"status": "ok", "project_id": pid}
-
-
-# 启动时确保有默认项目
-import time as _time
-
-def _ensure_default_project():
-    from core.postgres_client import pg_client
-    rows = pg_client.execute("SELECT id FROM projects WHERE is_default=TRUE")
-    if rows:
-        return rows[0]["id"]
-    pid = _time.strftime("%Y%m%d%H%M%S") + "default"
-    pg_client.execute("INSERT INTO projects (id, name, is_default) VALUES (%s,%s,%s)", (pid, "默认项目", True))
-    return pid
-
 
 # ---------- Skill 管理 API ----------
 
