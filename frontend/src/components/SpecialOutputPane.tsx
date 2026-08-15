@@ -56,6 +56,7 @@ export default function SpecialOutputPane({ messages }: { messages: Message[] })
   const [form, setForm] = useState<FormKey>('report')
   const [results, setResults] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
+  const abortRef = useRef<AbortController | null>(null)
   const cur = FORMS.find(f => f.key === form) || FORMS[0]
   const isSupported = SUPPORTED.includes(form)
   const curResult = results[form] || ''
@@ -65,12 +66,16 @@ export default function SpecialOutputPane({ messages }: { messages: Message[] })
       .filter(m => m.role !== 'thinking' && m.content && String(m.content).trim())
       .map(m => (m.role === 'user' ? '用户：' : 'AI：') + m.content)
       .join('\n')
+      .slice(-4000)  // 只取最近 4000 字，控制生成长度、加快速度
     if (!convo.trim()) { alert('当前对话还没有内容'); return }
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
     setLoading(true)
     try {
       const r = await fetch('/api/generate-special', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: convo, forms: [form], api_key: localStorage.getItem('coagent-apikey') || '' }),
+        signal: ctrl.signal,
       })
       const d = await r.json()
       if (d.status === 'ok') {
@@ -79,11 +84,17 @@ export default function SpecialOutputPane({ messages }: { messages: Message[] })
       } else {
         alert('生成失败：' + (d.msg || '未知'))
       }
-    } catch (e) {
-      alert('生成失败：' + e)
+    } catch (e: any) {
+      if (e && e.name === 'AbortError') { /* 用户主动停止，静默 */ }
+      else alert('生成失败：' + e)
     } finally {
       setLoading(false)
+      abortRef.current = null
     }
+  }
+
+  const stopGenerate = () => {
+    if (abortRef.current) abortRef.current.abort()
   }
 
   return (
@@ -102,10 +113,12 @@ export default function SpecialOutputPane({ messages }: { messages: Message[] })
       <div className="flex-1 min-h-0 p-3 flex flex-col gap-2 overflow-hidden">
         {isSupported ? (
           <>
-            <button onClick={doGenerate} disabled={loading}
-              className="flex items-center justify-center gap-1.5 py-2 rounded-xl bg-[#1a1a1a] text-white text-xs font-semibold hover:bg-[#333333] transition-colors disabled:opacity-50 flex-shrink-0">
-              <Sparkles size={13} /> {loading ? '生成中…' : (curResult ? '重新生成「' + cur.label + '」' : '基于整个对话生成「' + cur.label + '」')}
-            </button>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button onClick={loading ? stopGenerate : doGenerate}
+                className="flex items-center justify-center gap-1.5 flex-1 py-2 rounded-xl bg-[#1a1a1a] text-white text-xs font-semibold hover:bg-[#333333] transition-colors">
+                <Sparkles size={13} /> {loading ? '停止生成' : (curResult ? '重新生成「' + cur.label + '」' : '基于整个对话生成「' + cur.label + '」')}
+              </button>
+            </div>
             <div className="flex-1 min-h-0 overflow-y-auto">
               {curResult ? (
                 form === 'flow'
