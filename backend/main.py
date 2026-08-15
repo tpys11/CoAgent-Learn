@@ -315,7 +315,7 @@ async def generate_special(req: GenerateSpecialReq):
     forms_desc = {
         "table": "markdown 表格",
         "flow": "mermaid 流程图代码（flowchart TD 语法）",
-        "tree": "树状层级纯文本，根节点顶格，子节点行首缩进2个空格，孙节点缩进4个空格",
+        "tree": "树状层级，用缩进表示父子关系（父节点顶格，子节点缩进几个空格）",
         "report": "markdown 结构化报告",
         "quiz": "测试题纯文本，每题依次为：题目、A/B/C/D四个选项、答案一行",
     }
@@ -337,6 +337,7 @@ async def generate_special(req: GenerateSpecialReq):
         from core.base_llm import DeepSeekLLM
         llm = DeepSeekLLM(api_key=req.api_key or None, model=req.model, base_url=req.base_url, thinking=False)
         data = llm.chat_with_json([{"role": "user", "content": prompt}], schema)
+        print("[gen-special] forms=", str(req.forms), " data_keys=", str(list(data.keys()) if data else "空"), flush=True)
         if not data:
             return {"status": "error", "msg": "AI 返回内容无法解析"}
         # 防御：LLM 可能把 quiz 等字段输出成数组/对象，统一转成字符串，避免前端渲染崩溃
