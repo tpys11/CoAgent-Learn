@@ -417,18 +417,27 @@ export default function SettingsModal({ onClose, projectId }: Props) {
                     </div>
                     {svc.rerank_backend === 'api' && (
                       <>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-dim w-20 flex-shrink-0">接口地址</span>
-                          <input value={svc.rerank_base_url} placeholder="https://api.siliconflow.cn/v1" onChange={e => setSvc(s => ({ ...s, rerank_base_url: e.target.value }))} className={inputCls} />
-                        </div>
+                        {svc.embedding_backend === 'api' ? (
+                          <p className="text-[10px] text-dim">复用上方「向量化」的硅基流动 API Key 与接口地址（同一 Key 全搞定），仅需选择重排模型。</p>
+                        ) : (
+                          <p className="text-[10px] text-dim">向量化当前为本地（无 API Key 可复用），需单独填写硅基流动 Key 与接口地址。</p>
+                        )}
                         <div className="flex items-center gap-2">
                           <span className="text-[11px] text-dim w-20 flex-shrink-0">模型</span>
                           <input value={svc.rerank_model} placeholder="BAAI/bge-reranker-v2-m3" onChange={e => setSvc(s => ({ ...s, rerank_model: e.target.value }))} className={inputCls} />
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-dim w-20 flex-shrink-0">API Key</span>
-                          <input type="password" value={svcKeys.rerank_api_key} placeholder={svc.rerank_key_set ? '已配置，留空保持不变' : 'sk-...'} onChange={e => setSvcKeys(k => ({ ...k, rerank_api_key: e.target.value }))} className={inputCls} />
-                        </div>
+                        {svc.embedding_backend !== 'api' && (
+                          <>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] text-dim w-20 flex-shrink-0">接口地址</span>
+                              <input value={svc.rerank_base_url} placeholder="https://api.siliconflow.cn/v1" onChange={e => setSvc(s => ({ ...s, rerank_base_url: e.target.value }))} className={inputCls} />
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] text-dim w-20 flex-shrink-0">API Key</span>
+                              <input type="password" value={svcKeys.rerank_api_key} placeholder={svc.rerank_key_set ? '已配置，留空保持不变' : 'sk-...'} onChange={e => setSvcKeys(k => ({ ...k, rerank_api_key: e.target.value }))} className={inputCls} />
+                            </div>
+                          </>
+                        )}
                       </>
                     )}
                   </div>

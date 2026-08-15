@@ -283,8 +283,9 @@ class _ApiReranker:
 
     def __init__(self):
         from core.config import config as _cfg
-        self._url = (_cfg.RERANK_BASE_URL or "").rstrip("/") + "/rerank"
-        self._key = _cfg.RERANK_API_KEY
+        # 同一硅基流动 Key 同时驱动 embedding 与 rerank：rerank 未单独配置时复用向量化配置
+        self._url = ((_cfg.RERANK_BASE_URL or _cfg.EMBEDDING_BASE_URL) or "").rstrip("/") + "/rerank"
+        self._key = _cfg.RERANK_API_KEY or _cfg.EMBEDDING_API_KEY
         self._model = _cfg.RERANK_MODEL
 
     def predict(self, pairs):
@@ -312,7 +313,8 @@ def _get_reranker():
     from core.config import config as _cfg
     if _cfg.RERANK_BACKEND == "none":
         return None
-    if _cfg.RERANK_BACKEND == "api" and _cfg.RERANK_API_KEY:
+    # api 后端：rerank key 未单独配置时复用向量化 key（同一硅基流动 Key 全搞定）
+    if _cfg.RERANK_BACKEND == "api" and (_cfg.RERANK_API_KEY or _cfg.EMBEDDING_API_KEY):
         if _reranker_api is None:
             _reranker_api = _ApiReranker()
         return _reranker_api
