@@ -35,12 +35,11 @@ function Mermaid({ code }: { code: string }) {
         ref.current.innerHTML = svg
         const svgEl = ref.current.querySelector('svg')
         if (svgEl) {
-          svgEl.removeAttribute('style')          // 移除 mermaid 内联 max-width
-          svgEl.setAttribute('width', '100%')
-          svgEl.style.maxWidth = 'none'
-          svgEl.style.width = '100%'
-          svgEl.style.height = 'auto'
-          svgEl.style.display = 'block'
+          // 用 !important 强制覆盖 mermaid 内联的 max-width
+          svgEl.style.setProperty('max-width', 'none', 'important')
+          svgEl.style.setProperty('width', '100%', 'important')
+          svgEl.style.setProperty('height', 'auto', 'important')
+          svgEl.style.setProperty('display', 'block', 'important')
         }
       }
     }).catch(() => {
