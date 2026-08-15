@@ -378,10 +378,6 @@ export default function SettingsModal({ onClose, projectId }: Props) {
                       <input type="password" value={svcKeys.embedding_api_key} placeholder={svc.embedding_key_set ? '已配置，留空保持不变' : 'sk-...'} onChange={e => setSvcKeys(k => ({ ...k, embedding_api_key: e.target.value }))} className={inputCls} />
                       {svc.embedding_key_set && <span className="text-[10px] text-green-600 flex-shrink-0">✓ 已配置</span>}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-dim w-20 flex-shrink-0">维度</span>
-                      <input type="number" value={svc.embedding_dim} onChange={e => setSvc(s => ({ ...s, embedding_dim: Number(e.target.value) }))} className={`${inputCls} w-20 flex-shrink-0`} />
-                    </div>
                     <p className="text-[10px] text-dim">BAAI 多语言向量模型：把文档/文本转为向量，供知识库语义检索（BM25 混合 + 重排精排）。同一个硅基流动 Key 自动驱动重排与图片向量，无需重复配置。</p>
                   </div>
                   {/* 其他选择：向量化 / 重排 / 图片 分开自由配置 */}
@@ -411,8 +407,6 @@ export default function SettingsModal({ onClose, projectId }: Props) {
                           <div className="flex items-center gap-2">
                             <span className="text-[11px] text-dim w-20 flex-shrink-0">模型</span>
                             <input value={svc.embedding_model} placeholder="BAAI/bge-m3" onChange={e => setSvc(s => ({ ...s, embedding_model: e.target.value }))} className={inputCls} />
-                            <span className="text-[11px] text-dim flex-shrink-0">维度</span>
-                            <input type="number" value={svc.embedding_dim} onChange={e => setSvc(s => ({ ...s, embedding_dim: Number(e.target.value) }))} className={`${inputCls} w-20 flex-shrink-0`} />
                           </div>
                           <div className="flex items-center gap-2">
                             <span className="text-[11px] text-dim w-20 flex-shrink-0">API Key</span>
