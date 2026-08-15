@@ -149,6 +149,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
   // key 输入框（不回显已存 key，只显示"已配置"状态）
   const [svcKeys, setSvcKeys] = useState({ embedding_api_key: '' })
   const [svcSaved, setSvcSaved] = useState(false)
+  const [keyEditing, setKeyEditing] = useState(false)
 
   useEffect(() => {
     api.getSettings().then(d => {
@@ -197,6 +198,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
         embedding_key_hint: g.embedding?.api_key_hint || '',
         review_enabled: !!g.review?.enabled }))
       setSvcSaved(true)
+      setKeyEditing(false)
     } catch {
       setSvcSaved(false)
       flash('保存失败（后端不可达）')
@@ -369,11 +371,20 @@ export default function SettingsModal({ onClose, projectId }: Props) {
                   <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2.5">
                     <p className="text-sm font-semibold">硅基流动 API Key</p>
                     <div className="flex items-center gap-2">
-                      <input type="password" name="siliconflow-api-key" autoComplete="new-password" value={svcKeys.embedding_api_key} placeholder={svc.embedding_key_set ? '已配置，留空保持不变' : 'sk-...（硅基流动）'}
-                        onChange={e => { setSvcKeys({ embedding_api_key: e.target.value }); setSvcSaved(false) }} className={inputCls} />
-                      {svc.embedding_key_set && <span className="text-[10px] text-green-600 flex-shrink-0">✓ {svc.embedding_key_hint}</span>}
-                      <button onClick={saveService}
-                        className={`px-4 py-1.5 text-[11px] rounded-lg font-semibold flex-shrink-0 ${svcSaved ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#1a1a1a] text-white'}`}>保存</button>
+                      {svc.embedding_key_set && !keyEditing ? (
+                        <>
+                          <span className="flex-1 text-xs font-medium text-green-700">✓ 已配置：{svc.embedding_key_hint}</span>
+                          <button onClick={() => { setKeyEditing(true); setSvcKeys({ embedding_api_key: '' }); setSvcSaved(false) }}
+                            className="text-[10px] text-dim hover:text-[var(--text)] flex-shrink-0">修改</button>
+                        </>
+                      ) : (
+                        <input type="password" name="siliconflow-api-key" autoComplete="new-password" value={svcKeys.embedding_api_key} placeholder="sk-...（硅基流动）"
+                          onChange={e => { setSvcKeys({ embedding_api_key: e.target.value }); setSvcSaved(false) }} className={inputCls} />
+                      )}
+                      {(!svc.embedding_key_set || keyEditing) && (
+                        <button onClick={saveService}
+                          className={`px-4 py-1.5 text-[11px] rounded-lg font-semibold flex-shrink-0 ${svcSaved ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#1a1a1a] text-white'}`}>保存</button>
+                      )}
                     </div>
                     <p className="text-[10px] text-dim">该 key 可实现多种模型调用</p>
                   </div>
