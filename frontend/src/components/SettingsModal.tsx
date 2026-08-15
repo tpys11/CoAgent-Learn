@@ -143,6 +143,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
 
   // ---- AI 服务配置（后端动态生效，存 SQLite settings 表）----
   const [svc, setSvc] = useState({
+    vectorModel: 'bge',
     embedding_backend: 'api', embedding_base_url: '', embedding_model: 'BAAI/bge-m3', embedding_local_model: 'BAAI/bge-small-zh-v1.5', embedding_dim: 1024, embedding_key_set: false,
     rerank_backend: 'api', rerank_base_url: '', rerank_model: 'BAAI/bge-reranker-v2-m3', rerank_local_model: 'BAAI/bge-reranker-base', rerank_key_set: false,
     image_backend: 'none', image_base_url: 'https://open.bigmodel.cn/api/paas/v4/chat/completions', image_model: 'glm-4v-flash', image_key_set: false,
@@ -159,6 +160,7 @@ export default function SettingsModal({ onClose, projectId }: Props) {
       // 旧值兼容：zhipu/siliconflow → api（通用视觉接口）
       const img = d.image?.backend === 'zhipu' || d.image?.backend === 'siliconflow' ? 'api' : (d.image?.backend ?? 'none')
       setSvc({
+        vectorModel: d.vector_model === 'qwen' ? 'qwen' : 'bge',
         embedding_backend: d.embedding?.backend ?? 'api',
         embedding_base_url: d.embedding?.base_url || 'https://api.siliconflow.cn/v1',
         embedding_model: d.embedding?.model ?? 'BAAI/bge-m3',
@@ -376,27 +378,37 @@ export default function SettingsModal({ onClose, projectId }: Props) {
 
             {/* AI 服务配置（embedding / rerank / 视觉，后端即时生效） */}
             {show('service') && (
-              <Section icon={Database} title="AI 服务配置" desc="知识库向量化服务（bge-m3），保存后即时生效，无需重启">
+              <Section icon={Database} title="AI 服务配置" desc="知识库向量化服务，保存后即时生效，无需重启">
                 <div className="flex flex-col gap-5">
-                  {/* bge-m3 配置块（BGE 卡） */}
-                  <div className="flex flex-col gap-2">
-                    <p className="text-sm font-semibold">BGE（bge-m3）<span className="text-[10px] text-dim font-normal">（接口统一 https://api.siliconflow.cn/v1）</span></p>
+                  {/* 知识库向量化服务：一个 Key + 模型单选 */}
+                  <div className="flex flex-col gap-3">
+                    <p className="text-sm font-semibold">知识库向量化服务</p>
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] text-dim w-20 flex-shrink-0">API Key</span>
-                      <input type="password" value={svcKeys.embedding_api_key} placeholder={svc.embedding_key_set ? '已配置，留空保持不变' : 'sk-...'} onChange={e => setSvcKeys(k => ({ ...k, embedding_api_key: e.target.value }))} className={inputCls} />
-                      {svc.embedding_key_set && <span className="text-[10px] text-green-600 flex-shrink-0">✓ 已配置</span>}
+                      <input type="password" value={svc.vectorModel === 'bge' ? svcKeys.embedding_api_key : svcKeys.vl_api_key}
+                        placeholder={(svc.vectorModel === 'bge' ? svc.embedding_key_set : svc.vl_key_set) ? '已配置，留空保持不变' : 'sk-...（硅基流动）'}
+                        onChange={e => setSvcKeys(k => svc.vectorModel === 'bge' ? { ...k, embedding_api_key: e.target.value } : { ...k, vl_api_key: e.target.value })}
+                        className={inputCls} />
+                      {(svc.vectorModel === 'bge' ? svc.embedding_key_set : svc.vl_key_set) && <span className="text-[10px] text-green-600 flex-shrink-0">✓ 已配置</span>}
                     </div>
-                    <p className="text-[10px] text-dim">实现文字向量化与重排，无图片向量化能力。模型小、快、便宜（推荐日常使用）。</p>
-                  </div>
-                  {/* Qwen3-VL-Embedding 卡（与 BGE 同级） */}
-                  <div className="flex flex-col gap-2 border-t hairline pt-4">
-                    <p className="text-sm font-semibold">Qwen/Qwen3-VL-Embedding-8B <span className="text-[10px] text-dim font-normal">（接口统一 https://api.siliconflow.cn/v1）</span></p>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-dim w-20 flex-shrink-0">API Key</span>
-                      <input type="password" value={svcKeys.vl_api_key} placeholder={svc.vl_key_set ? '已配置，留空保持不变' : 'sk-...'} onChange={e => setSvcKeys(k => ({ ...k, vl_api_key: e.target.value }))} className={inputCls} />
-                      {svc.vl_key_set && <span className="text-[10px] text-green-600 flex-shrink-0">✓ 已配置</span>}
+                    <div className="flex flex-col gap-2">
+                      {[
+                        { v: 'bge', name: 'BGE（bge-m3）', desc: '实现文字向量化与重排，无图片向量化能力，模型小、快、便宜。' },
+                        { v: 'qwen', name: 'Qwen/Qwen3-VL-Embedding-8B', desc: '实现文字向量化 + 重排 + 视觉能力（图片向量化、跨模态检索），模型大、语义更强，但 API 成本/延迟更高。' },
+                      ].map(o => (
+                        <button key={o.v} onClick={() => setSvc(s => ({ ...s, vectorModel: o.v }))}
+                          className={`flex flex-col gap-0.5 text-left px-3 py-2.5 rounded-xl transition-colors ${svc.vectorModel === o.v ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] hover:bg-[var(--bg-panel)]'}`}>
+                          <span className="text-[12px] font-semibold flex items-center gap-1.5">
+                            <span className={`w-3 h-3 rounded-full border flex items-center justify-center flex-shrink-0 ${svc.vectorModel === o.v ? 'border-white' : 'border-[var(--text)]/40'}`}>
+                              {svc.vectorModel === o.v && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                            </span>
+                            {o.name}
+                          </span>
+                          <span className={`text-[10px] pl-[18px] ${svc.vectorModel === o.v ? 'text-white/70' : 'text-dim'}`}>{o.desc}</span>
+                        </button>
+                      ))}
                     </div>
-                    <p className="text-[10px] text-dim">实现文字向量化 + 重排 + 视觉能力（图片向量化、跨模态检索）。模型大、语义更强，但 API 成本/延迟更高。二者同时配置时优先使用 BGE。</p>
+                    <p className="text-[10px] text-dim">两个模型共用同一个硅基流动 API Key（接口统一 https://api.siliconflow.cn/v1），按所选模型计费。</p>
                   </div>
                   {/* 其他选择：向量化 / 重排 / 图片 分开自由配置（厂商 API 或本地部署，模型名自填），可折叠 */}
                   <div className="flex flex-col gap-4 border-t hairline pt-4">

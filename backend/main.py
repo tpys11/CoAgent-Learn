@@ -74,6 +74,7 @@ async def health_check():
 # ---------- 动态服务配置（前端设置界面读写，即时生效无需重启） ----------
 
 class SettingsSave(BaseModel):
+    vector_model: str = "bge"   # bge | qwen（知识库向量化服务模型选择）
     embedding_backend: str = "api"
     embedding_base_url: str = ""
     embedding_api_key: str = ""
@@ -97,7 +98,9 @@ class SettingsSave(BaseModel):
 async def get_settings():
     """返回当前生效配置（key 只回显是否已配置，不回显内容）"""
     from core.config import config as _cfg
+    from core.sqlite_client import get_db as _db
     return {
+        "vector_model": _db().get_setting("VECTOR_MODEL") or "bge",
         "embedding": {
             "backend": _cfg.EMBEDDING_BACKEND,
             "base_url": _cfg.EMBEDDING_BASE_URL,
@@ -129,6 +132,7 @@ async def save_settings(req: SettingsSave):
     """保存配置到 settings 表并即时应用到 config 单例；空 key 表示清除（恢复 .env）"""
     from core.sqlite_client import get_db as _db
     _s = _db()
+    _s.set_setting("VECTOR_MODEL", req.vector_model)
     _s.set_setting("EMBEDDING_BACKEND", req.embedding_backend)
     _s.set_setting("EMBEDDING_BASE_URL", req.embedding_base_url)
     _s.set_setting("EMBEDDING_API_KEY", req.embedding_api_key)
