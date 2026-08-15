@@ -336,7 +336,17 @@ async def generate_special(req: GenerateSpecialReq):
         data = llm.chat_with_json([{"role": "user", "content": prompt}], schema)
         if not data:
             return {"status": "error", "msg": "AI 返回内容无法解析"}
-        return {"status": "ok", "results": data}
+        # 防御：LLM 可能把 quiz 等字段输出成数组/对象，统一转成字符串，避免前端渲染崩溃
+        import json as _json
+        cleaned = {}
+        for _k, _v in data.items():
+            if isinstance(_v, str):
+                cleaned[_k] = _v
+            elif isinstance(_v, (list, dict)):
+                cleaned[_k] = _json.dumps(_v, ensure_ascii=False, indent=2)
+            else:
+                cleaned[_k] = str(_v)
+        return {"status": "ok", "results": cleaned}
     except Exception as e:
         return {"status": "error", "msg": str(e)[:200]}
 

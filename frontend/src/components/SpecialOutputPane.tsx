@@ -118,10 +118,10 @@ export default function SpecialOutputPane({ messages }: { messages: Message[] })
             <div className="flex-1 min-h-0 overflow-y-auto">
               {curResult ? (
                 form === 'flow'
-                  ? <Mermaid code={curResult} />
+                  ? <Mermaid code={String(curResult)} />
                   : form === 'tree'
-                    ? <div className="text-xs whitespace-pre-wrap leading-relaxed font-mono">{curResult}</div>
-                    : <div className="text-xs md-answer-body" dangerouslySetInnerHTML={{ __html: renderMd(curResult) }} />
+                    ? <div className="text-xs whitespace-pre-wrap leading-relaxed font-mono">{String(curResult)}</div>
+                    : <div className="text-xs md-answer-body" dangerouslySetInnerHTML={{ __html: renderMd(String(curResult)) }} />
               ) : (
                 <div className="text-xs text-dim text-center pt-10 leading-relaxed">选择上方形式，点「生成」基于整个对话生成{cur.label}</div>
               )}
