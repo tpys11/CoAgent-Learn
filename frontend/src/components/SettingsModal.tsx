@@ -381,17 +381,19 @@ export default function SettingsModal({ onClose, projectId }: Props) {
             {show('service') && (
               <Section icon={Database} title="AI 服务配置" desc="知识库向量化服务，保存后即时生效，无需重启">
                 <div className="flex flex-col gap-5">
-                  {/* 知识库向量化服务：一个 Key + 模型单选 */}
-                  <div className="flex flex-col gap-3">
-                    <p className="text-sm font-semibold">知识库向量化服务</p>
+                  {/* 顶部：硅基流动 API Key（两个卡共用） */}
+                  <div className="flex flex-col gap-2">
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] text-dim w-20 flex-shrink-0">API Key</span>
-                      <input type="password" value={svc.vectorModel === 'bge' ? svcKeys.embedding_api_key : svcKeys.vl_api_key}
-                        placeholder={(svc.vectorModel === 'bge' ? svc.embedding_key_set : svc.vl_key_set) ? '已配置，留空保持不变' : 'sk-...（硅基流动）'}
-                        onChange={e => setSvcKeys(k => svc.vectorModel === 'bge' ? { ...k, embedding_api_key: e.target.value } : { ...k, vl_api_key: e.target.value })}
-                        className={inputCls} />
-                      {(svc.vectorModel === 'bge' ? svc.embedding_key_set : svc.vl_key_set) && <span className="text-[10px] text-green-600 flex-shrink-0">✓ 已配置</span>}
+                      <input type="password" value={svcKeys.embedding_api_key} placeholder={svc.embedding_key_set ? '已配置，留空保持不变' : 'sk-...（硅基流动）'}
+                        onChange={e => setSvcKeys(k => ({ ...k, embedding_api_key: e.target.value }))} className={inputCls} />
+                      {svc.embedding_key_set && <span className="text-[10px] text-green-600 flex-shrink-0">✓ 已配置</span>}
                     </div>
+                    <p className="text-[10px] text-dim">填写硅基流动 API，下方模型直接选用即可。</p>
+                  </div>
+                  {/* 知识库向量化服务：模型单选 */}
+                  <div className="flex flex-col gap-2 border-t hairline pt-4">
+                    <p className="text-sm font-semibold">知识库向量化服务</p>
                     <div className="flex flex-col gap-2">
                       {[
                         { v: 'bge', name: 'BGE（bge-m3）', desc: '实现文字向量化与重排，无图片向量化能力，模型小、快、便宜。' },
@@ -409,28 +411,27 @@ export default function SettingsModal({ onClose, projectId }: Props) {
                         </button>
                       ))}
                     </div>
-                    <p className="text-[10px] text-dim">两个模型共用同一个硅基流动 API Key（接口统一 https://api.siliconflow.cn/v1），按所选模型计费。</p>
                   </div>
-                  {/* 图片处理（与知识库向量化服务同级） */}
+                  {/* 图片处理：模型单选 */}
                   <div className="flex flex-col gap-2 border-t hairline pt-4">
                     <p className="text-sm font-semibold">图片处理</p>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[11px] text-dim w-20 flex-shrink-0">方式</span>
-                      <div className="flex gap-1.5">
-                        {[
-                          { v: 'api', l: '厂商 API（视觉识别）' },
-                          { v: 'none', l: '关闭' },
-                        ].map(o => (
-                          <button key={o.v} onClick={() => setSvc(s => ({ ...s, image_backend: o.v }))}
-                            className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-colors ${svc.image_backend === o.v ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-hover)] text-dim'}`}>
-                            {o.l}
-                          </button>
-                        ))}
-                      </div>
+                    <div className="flex flex-col gap-2">
+                      {[
+                        { v: 'api', name: 'Qwen/Qwen2.5-VL-72B-Instruct', desc: '图片 → 文字描述入库（复用上方硅基流动 API Key），检索可命中图片内容。' },
+                        { v: 'none', name: '关闭', desc: '不处理图片，图片上传将被拒绝。' },
+                      ].map(o => (
+                        <button key={o.v} onClick={() => setSvc(s => ({ ...s, image_backend: o.v }))}
+                          className={`flex flex-col gap-0.5 text-left px-3 py-2.5 rounded-xl transition-colors ${svc.image_backend === o.v ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] hover:bg-[var(--bg-panel)]'}`}>
+                          <span className="text-[12px] font-semibold flex items-center gap-1.5">
+                            <span className={`w-3 h-3 rounded-full border flex items-center justify-center flex-shrink-0 ${svc.image_backend === o.v ? 'border-white' : 'border-[var(--text)]/40'}`}>
+                              {svc.image_backend === o.v && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                            </span>
+                            {o.name}
+                          </span>
+                          <span className={`text-[10px] pl-[18px] ${svc.image_backend === o.v ? 'text-white/70' : 'text-dim'}`}>{o.desc}</span>
+                        </button>
+                      ))}
                     </div>
-                    {svc.image_backend === 'api' && (
-                      <p className="text-[10px] text-dim">复用上方「知识库向量化服务」的硅基流动 API Key，模型自动使用 <span className="text-[var(--text)]">Qwen/Qwen2.5-VL-72B-Instruct</span>；图片上传时生成文字描述入库，无需单独填 Key。</p>
-                    )}
                   </div>
                   {/* 操作按钮：保存并测试 */}
                   <div className="flex items-center gap-3 border-t hairline pt-4">
