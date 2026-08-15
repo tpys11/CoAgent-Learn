@@ -82,16 +82,16 @@ class SQLiteClient:
         self.execute(
             "CREATE VIRTUAL TABLE IF NOT EXISTS kb_vectors USING vec0("
             "doc_id TEXT, project_id TEXT, source TEXT, chunk INTEGER, session_id TEXT,"
-            "has_context INTEGER, content TEXT, embedding float[512])"
+            "has_context INTEGER, content TEXT, embedding float[1024])"
         )
         self.execute(
             "CREATE VIRTUAL TABLE IF NOT EXISTS memory_vectors USING vec0("
-            "scope TEXT, content TEXT, embedding float[512])"
+            "scope TEXT, content TEXT, embedding float[1024])"
         )
         # 会话消息向量表（上下文压缩后的历史召回：压缩不物理删除，细节可检索找回）
         self.execute(
             "CREATE VIRTUAL TABLE IF NOT EXISTS message_vectors USING vec0("
-            "dialogue_id TEXT, role TEXT, content TEXT, embedding float[512])"
+            "dialogue_id TEXT, role TEXT, content TEXT, embedding float[1024])"
         )
         # 知识库文档标题树（上传时提取 markdown 标题层级，供项目记忆知识图谱使用）
         self.execute(
