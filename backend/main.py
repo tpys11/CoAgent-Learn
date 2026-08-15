@@ -315,7 +315,7 @@ async def generate_special(req: GenerateSpecialReq):
     forms_desc = {
         "table": "markdown 表格（列清晰、适合对比/维度）",
         "flow": "mermaid 流程图代码（flowchart TD 语法，不要代码块围栏）",
-        "tree": "树状层级文本（用缩进空格表示层级）",
+        "tree": "树状层级结构（用 markdown 无序列表表示，每层缩进两个空格，如 '- 根节点'、'  - 子节点'、'    - 孙节点'）",
         "report": "markdown 结构化报告（分小节）",
         "quiz": "3-5 道测试题（每题含 题目/选项/答案）",
     }
@@ -327,7 +327,7 @@ async def generate_special(req: GenerateSpecialReq):
         "把下面的学习内容转换成指定形式，每种形式作为 JSON 一个字段：\n"
         "内容：\n" + (req.content or "")[:6000] + "\n\n"
         "需要的形式（每种一个字段，值就是该形式的内容）：\n" + selected + "\n\n"
-        "只输出 JSON 对象，字段名用英文 key。"
+        "只输出 JSON 对象，字段名用英文 key；每个字段的值就是该形式的内容本身，不要额外解释，不要提知识库检索。"
     )
     schema = {"type": "object", "properties": {k: {"type": "string", "description": forms_desc[k]} for k in supported}}
     try:

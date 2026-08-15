@@ -35,9 +35,12 @@ function Mermaid({ code }: { code: string }) {
         ref.current.innerHTML = svg
         const svgEl = ref.current.querySelector('svg')
         if (svgEl) {
-          svgEl.style.maxWidth = '100%'
+          svgEl.removeAttribute('style')          // 移除 mermaid 内联 max-width
+          svgEl.setAttribute('width', '100%')
+          svgEl.style.maxWidth = 'none'
           svgEl.style.width = '100%'
           svgEl.style.height = 'auto'
+          svgEl.style.display = 'block'
         }
       }
     }).catch(() => {
@@ -45,7 +48,7 @@ function Mermaid({ code }: { code: string }) {
     })
     return () => { cancelled = true }
   }, [code])
-  return <div ref={ref} className="overflow-x-auto flex justify-center" />
+  return <div ref={ref} className="overflow-x-auto" />
 }
 
 /** 特殊形式输出：基于整个对话生成（报告/流程图/树状图/表格/测试题），结果按形式缓存 */
