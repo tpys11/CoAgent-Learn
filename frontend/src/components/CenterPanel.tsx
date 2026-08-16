@@ -475,6 +475,30 @@ const TEMPLATE_OPTIONS = [
                               </div>
                             </div>
                           )}
+                          {/* 审核报告（三维度审查结果） */}
+                          {msg.review && (
+                            <div className="mt-2.5 border hairline rounded-xl px-3 py-2.5 bg-[var(--bg-panel)]">
+                              <div className="flex items-center gap-2 mb-1.5">
+                                <p className="text-[10px] font-semibold text-dim flex items-center gap-1">
+                                  <CheckCircle2 size={11} /> 审核报告
+                                </p>
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${msg.review.passed ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                                  {msg.review.passed ? '通过' : '未通过'} · {msg.review.score} 分
+                                </span>
+                              </div>
+                              {msg.review.issues && msg.review.issues.length > 0 && (
+                                <div className="flex flex-col gap-1 mb-1">
+                                  {msg.review.issues.map((it, i) => (
+                                    <p key={i} className="text-[10px] text-dim">
+                                      <span className="text-red-500">✗</span> {it.problem}
+                                      {it.fix ? <span className="text-green-600"> → {it.fix}</span> : ''}
+                                    </p>
+                                  ))}
+                                </div>
+                              )}
+                              {msg.review.suggestion && <p className="text-[10px] text-dim">💡 {msg.review.suggestion}</p>}
+                            </div>
+                          )}
                           {/* 新建课程引导消息：右下角「手动初始化」按钮（仅初次创建、未完成手动填写时显示） */}
                           {msg.content.includes('课程创建成功') && onManualSetup && !(currentProject && (() => {
                             return lsGetJSON<string[]>(LS.manualSetupDone, []).includes(currentProject.id)

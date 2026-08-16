@@ -1,4 +1,4 @@
-import type { ChatStep, MindchainItem } from './types'
+import type { ChatStep, MindchainItem, ReviewResult } from './types'
 
 /** 后端 /api/chat SSE 事件的完整类型（7 类 + start/heartbeat）。 */
 export type ChatEvent =
@@ -15,6 +15,7 @@ export type ChatEvent =
       task_stats?: Record<string, unknown>
       special_suggestions?: string[]
       retrieved_images?: Array<{ source: string; content: string; file_path: string; mime: string }>
+      review?: ReviewResult
     }
   | { type: 'error'; message: string }
 

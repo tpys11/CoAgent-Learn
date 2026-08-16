@@ -24,7 +24,7 @@ import KnowledgeView from './components/KnowledgeView'
 import AgentsView from './components/AgentsView'
 import IntroPanel from './components/IntroPanel'
 import { initTheme } from './theme'
-import type { Project, Dialogue, AgentConfig, Message } from './types'
+import type { Project, Dialogue, AgentConfig, Message, ReviewResult } from './types'
 import { DEFAULT_AGENTS } from './types'
 import { streamChatResponse, type ChatEvent } from './sse'
 import { LS, lsGet, lsSet, lsGetJSON, lsSetJSON } from './storage'
@@ -517,6 +517,8 @@ function App() {
       let special: Array<{ key: string; label: string }> = []
       // 跨模态检索命中的图片（done 事件注入，随最终消息展示）
       let retrievedImages: Array<{ source: string; content: string; file_path: string; mime: string }> = []
+      // 审核报告（三维度审查结果，done 事件注入）
+      let review: ReviewResult | undefined
       await streamChatResponse(res, (data: ChatEvent) => {
         if (data.type === 'start') { requestIdRef.current = data.request_id || null; return }
         if (data.type === 'heartbeat') return
@@ -597,6 +599,7 @@ function App() {
             ? (data.special_suggestions as string[]).map(k => ({ key: k, label: SPECIAL_LABELS[k] || k })).filter(s => s.label)
             : []
           retrievedImages = Array.isArray(data.retrieved_images) ? data.retrieved_images : []
+          review = data.review
           setFlowStatus('')
           setFlowActiveAgent(null)
           // 最终同步一次占位消息 think（降频期间可能滞后）
@@ -635,22 +638,22 @@ function App() {
         const typingOn = true  // 流式逐字输出固定开启
         if (typingOn && streamedRef.current) {
           // 回答已通过 answer_token 流式显示：直接替换为完整内容（markdown 渲染），不再二次打字机
-          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: finalContent, steps, think: thinkArr, special, retrievedImages }) }))
+          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: finalContent, steps, think: thinkArr, special, retrievedImages, review }) }))
         } else if (typingOn) {
-          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: '', steps, think: thinkArr, special, retrievedImages }) }))
+          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: '', steps, think: thinkArr, special, retrievedImages, review }) }))
           let i = 0
           const iv = setInterval(() => {
             i += 3
             const chunk = finalContent.slice(0, i)
             setAllMessages(prev => {
               const arr = [...(prev[did || ''] || [])]
-              if (arr.length) arr[arr.length - 1] = { role: 'assistant', content: chunk, steps, think: thinkArr, special, retrievedImages }
+              if (arr.length) arr[arr.length - 1] = { role: 'assistant', content: chunk, steps, think: thinkArr, special, retrievedImages, review }
               return { ...prev, [did || '']: arr }
             })
             if (i >= finalContent.length) clearInterval(iv)
           }, 16)
         } else {
-          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: finalContent, steps, think: thinkArr, special, retrievedImages }) }))
+          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: finalContent, steps, think: thinkArr, special, retrievedImages, review }) }))
         }
       }catch(_ex){}
     } catch (e: any) {

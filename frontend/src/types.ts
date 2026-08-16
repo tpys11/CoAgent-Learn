@@ -51,6 +51,19 @@ export interface MindchainItem {
   content: string
 }
 
+export interface ReviewIssue {
+  problem: string
+  fix?: string
+}
+
+export interface ReviewResult {
+  passed: boolean
+  score: number
+  issues?: ReviewIssue[]
+  suggestion?: string
+  verdict?: string
+}
+
 export interface Message {
   role: 'user' | 'assistant' | 'thinking'
   content: string
@@ -60,6 +73,8 @@ export interface Message {
   special?: Array<{ key: string; label: string }>
   /** 跨模态检索命中的图片（知识库图片向量命中）：随 done 事件注入 */
   retrievedImages?: Array<{ source: string; content: string; file_path: string; mime: string }>
+  /** 审核报告（三维度审查结果）：随 done 事件注入 */
+  review?: ReviewResult
 }
 
 export interface ChatStep {
