@@ -145,10 +145,6 @@ function App() {
   const [flowActiveAgent, setFlowActiveAgent] = useState<string | null>(null)
   // 当前对话状态文案（等待模型响应/正在规划/正在阅读/正在思考/正在审核…）
   const [flowStatus, setFlowStatus] = useState('')
-  // 需求澄清（reasonix 式）：澄清条目直接写进思维链（"学习助手·规划"下弹选项），选择后同一轮流程内继续
-  const clarifyContinueRef = useRef(false)
-  // 最近一次发送的用户消息（澄清选项点击后拼回原问题继续）
-  const lastUserMsgRef = useRef('')
   const [flowMindchain, setFlowMindchain] = useState<Array<{agent: string; content: string}>>([])
   const mindchainRef = useRef<Array<{agent: string; content: string}>>([])
   const activeDidRef = useRef<string | null>(null)
@@ -166,8 +162,6 @@ function App() {
   // 围栏状态机（后端拆字推送后，``` 围栏逐字到达）：围栏内内容丢弃
   const fenceBufRef = useRef('')
   const fenceInRef = useRef(false)
-  // 本轮是否被需求澄清中断（后端 clarify 事件后直接结束 SSE，无 done）——流结束后保留占位消息等待用户选择
-  const clarifyRef = useRef(false)
   const sessionId = useRef(SESSION_ID)
   // 第二对话 id：App 持有（主对话完成后为它生成横向拓展追问），传给 RightPanel 使用
   const secondDialogueIdRef = useRef('sd-' + Math.random().toString(36).slice(2) + Date.now().toString(36))
@@ -395,10 +389,7 @@ function App() {
 
   const handleSendMessage = useCallback(async (text: string, settings?: Record<string, any>) => {
     let did = currentDialogueId
-    // 澄清继续模式：复用当前占位消息继续（不新建消息、不清空思维链），流程在同一轮内衔接
-    const continuing = clarifyContinueRef.current
-    clarifyContinueRef.current = false
-    lastUserMsgRef.current = text.trim()
+    const continuing = false
     // key 检查：没填主模型 key 直接阻止发送并弹框，不回退 .env
     const _prov = lsGet(LS.provider, 'deepseek')
     const _keys = lsGetJSON<Record<string, string>>(LS.providerKeys, {})
@@ -441,7 +432,6 @@ function App() {
     setFlowActiveAgent(null)
     streamedRef.current = false
     userStoppedRef.current = false
-    clarifyRef.current = false
     requestIdRef.current = null
     fenceBufRef.current = ''
     fenceInRef.current = false
@@ -505,7 +495,7 @@ function App() {
         try {
           const r = await fetch('/api/chat', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text.trim(), session_id: sessionId.current, dialogue_id: did, project_id: currentProjectId, api_key: apiKey, model: model, base_url: providerBaseUrls[provider], settings: mergedSettings, image: (mergedSettings && mergedSettings.image) || undefined, agents: agents, extra_followup_did: secondDialogueIdRef.current, extra_followup_focus: 'expand', clarified: continuing }),
+            body: JSON.stringify({ message: text.trim(), session_id: sessionId.current, dialogue_id: did, project_id: currentProjectId, api_key: apiKey, model: model, base_url: providerBaseUrls[provider], settings: mergedSettings, image: (mergedSettings && mergedSettings.image) || undefined, agents: agents, extra_followup_did: secondDialogueIdRef.current, extra_followup_focus: 'expand' }),
             signal: ctrl.signal,
           })
           if (r.ok && r.body) { res = r; break }
@@ -530,22 +520,6 @@ function App() {
       await streamChatResponse(res, (data: ChatEvent) => {
         if (data.type === 'start') { requestIdRef.current = data.request_id || null; return }
         if (data.type === 'heartbeat') return
-        if (data.type === 'clarify') {
-          // 需求澄清（reasonix 式）：后端发 clarify 后中断流程（无 done）；把澄清问题+选项写进思维链"学习助手·规划"条目；
-          // 用户点选项后作为新消息重发。标记 clarifyRef——流结束后保留占位消息等待选择（不显示"处理完成"）
-          clarifyRef.current = true
-          const item: any = { agent: '学习助手·规划', content: '', clarify: { question: data.question || '请明确你的需求', options: Array.isArray(data.options) ? data.options : [] } }
-          setFlowMindchain(prev => { const next = [...prev, item]; mindchainRef.current = next; return next })
-          setAllMessages(prev => {
-            const arr = [...(prev[did || ''] || [])]
-            const last = arr[arr.length - 1]
-            if (last && last.role === 'assistant' && last.content === '') {
-              arr[arr.length - 1] = { ...last, think: mindchainRef.current }
-            }
-            return { ...prev, [did || '']: arr }
-          })
-          return
-        }
         if (data.type === 'error') {
           flowError = data.message || '请求出错'
           return
@@ -656,19 +630,6 @@ function App() {
         }
         const thinkArr = mindchainRef.current
         if (debugLine) thinkArr.push({ agent: "运行统计", content: debugLine })
-        // 需求澄清中断（后端 clarify 后无 done）：保留占位消息（content 空、think 含澄清选项），
-        // 等待用户点击选项重新发消息——不显示"处理完成"、不跑打字机
-        if (clarifyRef.current && !finalReply && !userStoppedRef.current && !flowError) {
-          setAllMessages(prev => {
-            const arr = prev[activeDidRef.current || ''] || []
-            const lastMsg = arr[arr.length - 1]
-            if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content === '') {
-              return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, think: thinkArr }] }
-            }
-            return prev
-          })
-          return
-        }
         const finalContent = finalReply || (flowError ? '⚠️ ' + flowError : '处理完成')
         // 打字机效果（设置开关）
         const typingOn = true  // 流式逐字输出固定开启
@@ -741,22 +702,6 @@ function App() {
       api.stopChat(requestIdRef.current).catch(() => {})
     }
   }, [])
-  // 需求澄清选项点击（reasonix 式）：清理上一轮澄清占位消息，以"原问题+选择"作为新消息重新发送（走完整流程）
-  const handleClarifyPick = useCallback((option: string | null) => {
-    const original = lastUserMsgRef.current || ''
-    if (!original) return
-    // 移除被澄清中断的占位消息（content 空 + think 含 clarify），避免遗留空消息
-    setAllMessages(prev => {
-      const arr = prev[activeDidRef.current || ''] || []
-      const lastMsg = arr[arr.length - 1]
-      if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content === '' && Array.isArray(lastMsg.think) && lastMsg.think.some((t: any) => t && t.clarify)) {
-        return { ...prev, [activeDidRef.current || '']: arr.slice(0, -1) }
-      }
-      return prev
-    })
-    clarifyContinueRef.current = true
-    handleSendMessage(option ? `${original}\n（我选择：${option}）` : original, { clarified: true })
-  }, [handleSendMessage])
   const handleSaveAgent = useCallback((updated: AgentConfig) => {
     setAgents(prev => {
       const next = prev.map(a => a.id === updated.id ? updated : a)
@@ -822,7 +767,6 @@ function App() {
         onSendMessage={handleSendMessage}
         onStop={handleStopGeneration}
         onRequestKey={() => setShowApiKeyPrompt(true)}
-        onClarifyPick={handleClarifyPick}
         statsCollapsed={statsCollapsed} onToggleStats={() => setStatsCollapsed(!statsCollapsed)}
           onOpenGuide={() => setShowGuide(true)}
           onOpenSettings={() => setShowSettings(true)}

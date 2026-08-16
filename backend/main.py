@@ -99,17 +99,15 @@ def _merge_mindchain(mc):
             continue
         name = it.get("agent", "")
         content = it.get("content", "") or ""
-        if not content.strip() and not it.get("clarify"):
+        if not content.strip():
             continue  # 空内容（无实际产出）条目不展示
         dn = _mindchain_display_name(name)
         if out and _mindchain_display_name(out[-1].get("agent", "")) == dn and dn:
-            # 连续同名：内容拼接进上一条（保留 clarify 优先）
-            if it.get("clarify"):
-                out[-1]["clarify"] = it["clarify"]
+            # 连续同名：内容拼接进上一条
             if content:
                 out[-1]["content"] = (out[-1].get("content", "") + "\n" + content).strip()
         else:
-            out.append({"agent": name, "content": content, **({"clarify": it["clarify"]} if it.get("clarify") else {})})
+            out.append({"agent": name, "content": content})
     return out
 
 
@@ -132,8 +130,6 @@ class ChatRequest(BaseModel):
     followup_focus: str | None = None  # 追问风格：purpose=目的推进（默认）/ expand=横向拓展闲聊
     extra_followup_did: str | None = None  # 额外生成追问的目标对话（主对话完成后同步给第二对话）
     extra_followup_focus: str | None = None  # 额外追问风格（默认 expand）
-    clarified: bool = False  # 需求澄清后继续：用户已在思维链内选择，跳过再次澄清（同一轮流程内继续）
-
 class StopRequest(BaseModel):
     request_id: str  # /api/chat 的 start 事件返回的生成请求 id（用户手动停止时置位取消）
 
@@ -404,9 +400,6 @@ async def chat(req: ChatRequest):
                 try:
                     # Auto / 模型 Auto：AI 读取输入自动推断设置（模型 Auto 同时推断模型）
                     _settings = dict(req.settings or {})
-                    # 需求澄清后继续：用户已在思维链内选择，plan 跳过再次澄清（同一轮流程内继续）
-                    if req.clarified:
-                        _settings["clarified"] = True
                     _model = req.model
                     _tpl0 = _settings.get("template") or "思考"
                     if _settings.get("modelAuto") or _settings.get("auto"):
@@ -454,12 +447,6 @@ async def chat(req: ChatRequest):
                     # 必须发一个带空 reply 的 done 让 SSE 主循环 break，否则主循环无限心跳、前端永久卡"正在输出回答…"
                     if cancel_evt.is_set():
                         token_queue.put(("done", {"final_reply": "", "steps": [], "mindchain": [], "task_stats": {}}))
-                        return
-                    # 需求澄清（reasonix 式）：plan 判定用户需求不明确 → 发 clarify 事件中断流程，前端弹选项；
-                    # 不落库、不后处理（用户选择后作为新消息重发，走完整流程）
-                    _clarify = result.get("clarify") if isinstance(result, dict) else None
-                    if _clarify and _clarify.get("options"):
-                        token_queue.put(("clarify", {"question": _clarify.get("question", ""), "options": _clarify.get("options", [])}))
                         return
                     # 特殊形式输出建议（M10 触发条件-模型判断）：normal 未取消时 flash 判断回答适合哪些形式；simple/失败返回 []
                     if result.get("complexity") != "simple":
@@ -570,9 +557,6 @@ async def chat(req: ChatRequest):
                     yield f"data: {json.dumps({'type': 'thought_token', 'agent': agent, 'chunk': chunk})}\n\n"
                 elif msg[0] == "answer":
                     yield f"data: {json.dumps({'type': 'answer_token', 'chunk': msg[1]})}\n\n"
-                elif msg[0] == "clarify":
-                    yield f"data: {json.dumps({'type': 'clarify', 'question': msg[1].get('question', ''), 'options': msg[1].get('options', [])})}\n\n"
-                    break
                 elif msg[0] == "done":
                     result = msg[1]
                     # 跨模态检索命中的图片：随 done 回传前端渲染（图片本体已落盘 /uploads 静态目录）

@@ -49,8 +49,6 @@ export interface AgentConfig {
 export interface MindchainItem {
   agent: string
   content: string
-  /** 需求澄清条目（reasonix 式）：在思维链内直接提问，用户选择后同一轮流程内继续 */
-  clarify?: { question: string; options: string[] }
 }
 
 export interface Message {

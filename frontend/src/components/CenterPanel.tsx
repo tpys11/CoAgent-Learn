@@ -50,8 +50,6 @@ interface CenterPanelProps {
   onStop?: () => void
   /** 未填写主模型 key 时触发（由 App 弹出 key 输入框） */
   onRequestKey?: () => void
-  /** 需求澄清（reasonix 式）：思维链内选项点击回调；option=null 表示直接生成 */
-  onClarifyPick?: (option: string | null) => void
   statsCollapsed: boolean
   onToggleStats: () => void
   onOpenGuide?: () => void
@@ -65,7 +63,7 @@ interface CenterPanelProps {
   flowActiveAgent?: string | null
 }
 
-export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, onStop, onRequestKey, onClarifyPick, statsCollapsed, onToggleStats, onOpenGuide, onOpenSettings, projectInitialized, draft, analyzeHint, onClearAnalyzeHint, onManualSetup, flowStatus, flowActiveAgent }: CenterPanelProps) {
+export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, onStop, onRequestKey, statsCollapsed, onToggleStats, onOpenGuide, onOpenSettings, projectInitialized, draft, analyzeHint, onClearAnalyzeHint, onManualSetup, flowStatus, flowActiveAgent }: CenterPanelProps) {
   const [input, setInput] = useState('')
   // 记忆修改预填：draft 变化时写入输入框（从记忆界面跳转）
   useEffect(() => { if (draft) setInput(draft) }, [draft])
@@ -384,7 +382,7 @@ const TEMPLATE_OPTIONS = [
                       {/* 思考过程区块（DeepSeek 式：流式展开逐字 / 完成自动折叠为一行，统一组件消除跳变） */}
                       {msg.think && msg.think.length > 0 && (
                         <div className="mb-3">
-                          <ReasoningBlock items={msg.think} streaming={streaming} activeAgent={flowActiveAgent} activeStatus={flowStatus} onClarifyPick={onClarifyPick} />
+                          <ReasoningBlock items={msg.think} streaming={streaming} activeAgent={flowActiveAgent} activeStatus={flowStatus} />
                         </div>
                       )}
                       {/* 回答正文：流式逐字纯文本（绝不 markdown）/ 完成一次性 markdown 渲染 */}
@@ -681,31 +679,28 @@ function StreamingMd({ text, streaming }: { text: string; streaming?: boolean })
  * - 完成/历史（streaming=false）：自动折叠为一行「▸ 思考过程 · 已完成」，点击展开看 markdown
  * - 流式→完成不卸载组件，仅 open state 从展开切到折叠，消除「一次性出现又消失」跳变
  * - 同名 Agent（规划→生成）合并为一个「学习助手」分段；多段时才显示分段小标题 */
-function ReasoningBlock({ items, streaming, activeAgent, activeStatus, onClarifyPick }: { items: Array<{ agent: string; content: string; clarify?: { question: string; options: string[] } }> | string[]; streaming?: boolean; activeAgent?: string | null; activeStatus?: string; onClarifyPick?: (option: string | null) => void }) {
+function ReasoningBlock({ items, streaming, activeAgent, activeStatus }: { items: Array<{ agent: string; content: string }> | string[]; streaming?: boolean; activeAgent?: string | null; activeStatus?: string }) {
   // 合并连续同名 agent（规划→生成→学习助手）+ 过滤运行统计（独立显示在回答下方）
   const merged = useMemo(() => {
     const list = (items || []).map(it => typeof it === 'string' ? { agent: '', content: it } : it)
       .filter(it => it.agent !== '运行统计')
-    return list.reduce<Array<{ agent: string; content: string; clarify?: { question: string; options: string[] } }>>((acc, it) => {
+    return list.reduce<Array<{ agent: string; content: string }>>((acc, it) => {
       const dn = displayAgent(it.agent)
       const last = acc[acc.length - 1]
       if (last && dn && displayAgent(last.agent) === dn) {
-        if (it.clarify) last.clarify = it.clarify
         if (it.content) last.content = (last.content ? last.content + '\n' : '') + it.content
         return acc
       }
-      acc.push({ agent: it.agent, content: it.content, ...(it.clarify ? { clarify: it.clarify } : {}) })
+      acc.push({ agent: it.agent, content: it.content })
       return acc
     }, [])
   }, [items])
   // 展开/折叠：流式中强制展开；完成（streaming true→false）自动折叠为一行；用户可手动切换
   const [open, setOpen] = useState(true)
   const prevStreaming = useRef(streaming)
-  // 含澄清选项的条目：完成态也必须展开（用户必须能看到并点击选项）——除非用户手动折叠
-  const hasClarify = merged.some(it => !!(it as any).clarify)
   useEffect(() => {
     if (streaming) { setOpen(true); return }
-    if (prevStreaming.current && !streaming) setOpen(hasClarify)  // 完成：默认折叠；含澄清则展开
+    if (prevStreaming.current && !streaming) setOpen(false)  // 完成：默认折叠
     prevStreaming.current = streaming
   }, [streaming])
   if (merged.length === 0) return null
@@ -727,22 +722,7 @@ function ReasoningBlock({ items, streaming, activeAgent, activeStatus, onClarify
                 <div className="text-[11px] font-semibold mb-0.5 text-[var(--text)]">{displayAgent(it.agent)}</div>
               )}
               <div className="text-[11px] leading-relaxed text-dim">
-                {/* 需求澄清（reasonix 式）：思维链内直接提问，选项点击后同一轮流程内继续 */}
-                {(it as any).clarify ? (
-                  <div className="flex flex-col gap-1.5 py-1">
-                    <p className="text-[11px] font-medium text-[var(--text)]">🤔 {(it as any).clarify.question}</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {((it as any).clarify.options as string[]).map(o => (
-                        <button key={o} onClick={() => onClarifyPick && onClarifyPick(o)}
-                          className="chip text-left text-[11px] px-2.5 py-1 transition-all hover:opacity-80">
-                          {o}
-                        </button>
-                      ))}
-                    </div>
-                    <button onClick={() => onClarifyPick && onClarifyPick(null)}
-                      className="text-[10px] text-dim hover:text-[var(--text)] w-fit">直接生成（跳过澄清）</button>
-                  </div>
-                ) : streaming ? (
+                {streaming ? (
                   <div className="whitespace-pre-wrap break-words">{it.content}</div>
                 ) : (
                   <div className="md-think-body" dangerouslySetInnerHTML={{ __html: renderMdCached(it.content) }} />

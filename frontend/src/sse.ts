@@ -7,7 +7,6 @@ export type ChatEvent =
   | { type: 'step'; agent: string }
   | { type: 'thought_token'; agent: string; chunk: string }
   | { type: 'answer_token'; chunk: string }
-  | { type: 'clarify'; question: string; options: string[] }
   | {
       type: 'done'
       reply: string

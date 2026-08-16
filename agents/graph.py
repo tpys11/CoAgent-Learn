@@ -13,7 +13,7 @@ from typing import TypedDict, Annotated
 from langgraph.graph import StateGraph, END
 from core.base_llm import DeepSeekLLM
 from agents.prompts import (
-    MAIN_PLAN_PROMPT, MAIN_GENERATE_PROMPT, CLARIFY_GEN_PROMPT,
+    MAIN_PLAN_PROMPT, MAIN_GENERATE_PROMPT,
     REVIEW_PROMPT, GENERATE_RULES, TIER_TIME_EXPECT,
 )
 
@@ -105,7 +105,6 @@ class AgentState(TypedDict):
     mindchain: Annotated[list, operator.add]  # 并行节点各自追加思维链条目，按序合并
     task_stats: Annotated[dict, _merge_stats]  # 并行节点各写各的统计
     sub_outputs: dict  # 子Agent产出：{kb: str}
-    clarify: dict  # 需求澄清（reasonix 式）：{question, options}，非空时中断流程，前端弹选项让用户明确需求
 
 
 # 检索增强模板的内置默认子 Agent（知识库与搜索 Agent 强制调用；用户配置了 subAgents 则用自定义）
@@ -175,34 +174,6 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
     def _stats(node: str, ms: int, llm_calls: int = 0, tokens: int = 0) -> dict:
         """运行统计（返回局部 dict，不就地改 state）：节点随 partial 返回，_merge_stats reducer 合并各节点统计"""
         return {node: {"ms": ms, "llm_calls": llm_calls}, "token_estimate": tokens}
-
-    # 澄清触发信号：思考文本中明确表达"需要澄清"的关键词（JSON 漏输出 clarify 字段时的兜底判定）
-    # 注意：必须排除否定语境（"无需澄清/不需要澄清"）与弱语境词（"信息不足"在"信息不足则联网"里很常见）——过宽曾导致意图明确的问题也弹澄清
-    _CLARIFY_SIGNALS = ["需要澄清", "请求澄清", "请用户澄清", "向用户澄清", "需求不明确", "意图不明确",
-                        "无法判断用户意图", "无法判断用户需求", "需要用户明确", "需要用户确认", "请用户选择"]
-    _CLARIFY_NEG = ["无需澄清", "不需要澄清", "不必澄清", "无需确认", "不需要确认", "无需明确", "不需要明确", "不澄清"]
-
-    def _need_clarify(text: str) -> bool:
-        t = text or ""
-        if any(n in t for n in _CLARIFY_NEG):
-            return False
-        return any(k in t for k in _CLARIFY_SIGNALS)
-
-    def _gen_clarify_options(llm, user_input: str) -> dict:
-        """兜底生成澄清选项：模型思考说了需要澄清但 JSON 漏输出 clarify 时调用（保证触发）"""
-        try:
-            res = llm.chat_with_json(
-                [{"role": "user", "content": CLARIFY_GEN_PROMPT.format(input=(user_input or "")[:300])}],
-                {"question": "string", "options": ["string"]},
-            )
-            if isinstance(res, dict) and res.get("options"):
-                return {
-                    "question": str(res.get("question", "")).strip() or "请明确你的需求",
-                    "options": [str(o).strip() for o in res["options"] if str(o).strip()][:4],
-                }
-        except Exception:
-            pass
-        return {}
 
     def think_then_json(llm, system_prompt: str, user_prompt: str, agent_name: str, silent: bool = False) -> tuple[str, dict]:
         """流式思考：用chat_stream逐token推送，收集完整文本后提取JSON。
@@ -280,21 +251,6 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             state["processed_input"] = result.get("processed", state["user_input"])
             state["_plan"] = result.get("plan", []) or []
             state["complexity"] = result.get("complexity", "normal")
-            # 需求澄清（reasonix 式）：learn 类且需求不明确 → 中断流程，前端弹选项让用户明确需求（不继续规划）
-            _clarify = result.get("clarify") if isinstance(result, dict) else None
-            # 双保险：JSON 未带 clarify 但思考文本明确表达了"需要澄清"（模型说了却没输出字段）→ 兜底生成选项，保证触发
-            if not (isinstance(_clarify, dict) and _clarify.get("options")) and _need_clarify(thinking):
-                _clarify = _gen_clarify_options(llm_fast, state["user_input"])
-            if isinstance(_clarify, dict) and _clarify.get("options"):
-                state["clarify"] = {
-                    "question": str(_clarify.get("question", "")).strip() or "请明确你的需求",
-                    "options": [str(o).strip() for o in _clarify["options"] if str(o).strip()][:4],
-                }
-            else:
-                state["clarify"] = {}
-            # 需求澄清后继续（同一轮流程内）：用户已在思维链内选择，忽略模型再次输出的澄清
-            if settings.get("clarified"):
-                state["clarify"] = {}
             # 轻量分类兜底（flash 三分类：chat/qa/learn）：判为 chat 且无需子 Agent → 降级 simple 极速路径，
             # 覆盖程序规则（_is_rule_simple）暂无覆盖的闲聊/寒暄场景（替代部分关键词规则）
             if result.get("category") == "chat" and not state["_plan"]:
@@ -311,7 +267,6 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             "processed_input": state.get("processed_input", state["user_input"]),
             "_plan": state.get("_plan", []),
             "complexity": state.get("complexity", "normal"),
-            "clarify": state.get("clarify", {}),
             "mindchain": new_mc,
             "steps": new_steps,
             "task_stats": _stats("plan", int((time.time() - t0) * 1000), 1, len(thinking) // 2),
@@ -710,8 +665,6 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         极速档：快速路径——做知识库检索（纯工具调用，秒级），跳过联网搜索/子Agent整理
         思考/研究档：知识库管理按学习助手规划按需调用（用户指出库内有未检索到 / 研究档详细查阅 / 明确要求基于资料）
         需求澄清：plan 判定需求不明确 → 中断流程（返回 end，前端弹选项，选择后作为新消息重发）"""
-        if state.get("clarify"):
-            return ["end"]
         _cur_tpl = settings.get("template") or "思考"
         # 目标判定（极速/思考/研究差异、研究档强制搜索）由纯函数 _resolve_plan_targets 负责
         targets = _resolve_plan_targets(_cur_tpl, state.get("_plan") or [])
