@@ -9,13 +9,18 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 import json
 import logging
 
 load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
 
 logger = logging.getLogger("coagent")
 
@@ -25,9 +30,9 @@ from routers.knowledge import router as knowledge_router
 from routers.resources import router as resources_router
 from routers.memory import router as memory_router
 from routers.skills import router as skills_router
-from core.helpers import _as_dict
+from core.helpers import _as_dict, extract_json_obj
 from services.special_forms import suggest_special_forms
-from services.memory_edit import memory_edit
+from services.memory_edit import memory_edit, memory_chat as _memory_chat_service
 
 
 @asynccontextmanager
@@ -62,6 +67,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request, exc):
+    """全局兜底：任何未捕获异常都记录完整堆栈并返回统一 500，避免静默失败。"""
+    logger.exception("未处理异常: %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500, content={"detail": "服务器内部错误"})
+
 
 # 图片等上传文件静态回显（跨模态检索命中图片后前端可直接取图）
 _UPLOADS_DIR = "/app/data/uploads"
@@ -142,25 +155,6 @@ class ChatStep(BaseModel):
 
 
 
-# ---------- 记忆修改（AI 分析修改记忆：[模块名] 引用） ----------
-
-def _extract_json_obj(text: str) -> dict:
-    """提取文本中的 JSON 对象（容错：裸 JSON 或花括号片段）"""
-    try:
-        d = json.loads(text)
-        return d if isinstance(d, dict) else {}
-    except Exception:
-        pass
-    m = re.search(r"\{[\s\S]*\}", text)
-    if m:
-        try:
-            d = json.loads(m.group(0))
-            return d if isinstance(d, dict) else {}
-        except Exception:
-            pass
-    return {}
-
-
 def _auto_settings(api_key: str, message: str, template: str = "思考", infer_model: bool = False) -> dict:
     """Auto 模式：让 AI 读取用户输入，基于用户所选模板自动推断其余设置；infer_model=True 时同时推断模型；失败时返回空 dict（保持默认）"""
     from core.config import config as _cfg
@@ -184,7 +178,7 @@ def _auto_settings(api_key: str, message: str, template: str = "思考", infer_m
         if resp.status_code != 200:
             return {}
         raw = resp.json()["choices"][0]["message"]["content"] or ""
-        d = _extract_json_obj(raw)
+        d = extract_json_obj(raw)
         if not d:
             return {}
         # 只接受合法取值，非法字段丢弃（template 由用户选择，不参与推断）
@@ -222,77 +216,8 @@ def _apply_template(agents, tpl: str):
 async def memory_chat(req: ChatRequest):
     """记忆对话：根据用户输入直接更新记忆（只更新明确提到的字段），返回一句话确认。
     project_id 为 'global'（或空）时操作个人全局性记忆，否则操作课程记忆。"""
-    import json
-    from core.postgres_client import pg_client
-    from core.memory_analysis import _as_dict
-    from core.config import config as _cfg
-    pid = (req.project_id or "").strip()
-    if not pid or pid == "global":
-        pid = "global"
-        rows = pg_client.execute("SELECT id, data FROM global_profile ORDER BY updated_at DESC LIMIT 1")
-        mem = _as_dict(rows[0]["data"]) if rows and rows[0].get("data") else {}
-        ALLOW = ["身份", "学习目标", "擅长领域", "学习方式", "兴趣方向", "补充信息"]
-    else:
-        rows = pg_client.execute("SELECT session_id, data FROM project_memories WHERE project_id=%s", (pid,))
-        mem = _as_dict(rows[0]["data"]) if rows and rows[0].get("data") else {}
-        ALLOW = ["抽象目的", "抽象项目情况", "起点", "当前水平", "目标", "偏好", "知识点", "难点", "薄弱点", "兴趣"]
-    prompt = (
-        "你是记忆更新助手。以下是当前记忆字段，以及用户想要修改的内容。"
-        "请只输出 JSON：{\"update\": {字段名: 新值}, \"reply\": \"一句话确认（说明更新了哪些字段；若无变更则说明原因）\"}\n"
-        "规则：字段名只能是：" + "、".join(ALLOW) + "。数组字段（偏好/知识点/难点/薄弱点/兴趣）给字符串数组，其余给字符串。"
-        "用户没有提到的字段不要出现在 update 中；若用户只是询问，update 可为空对象。\n"
-        f"当前记忆：{json.dumps(mem, ensure_ascii=False)}\n"
-        f"用户输入：{req.message[:1500]}"
-    )
-    h = {"Authorization": "Bearer " + (req.api_key or _cfg.DEEPSEEK_API_KEY), "Content-Type": "application/json"}
-    try:
-        import requests as _req
-        from starlette.concurrency import run_in_threadpool
-
-        def _llm_call():
-            return _req.post(_cfg.DEEPSEEK_BASE_URL + "/chat/completions",
-                             json={"model": "deepseek-v4-flash", "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]},
-                             headers=h, timeout=90)
-        resp = await run_in_threadpool(_llm_call)
-        if resp.status_code != 200:
-            return {"reply": "⚠️ 记忆更新失败：模型调用出错（检查 API Key 是否有效）。"}
-        raw = resp.json()["choices"][0]["message"]["content"] or ""
-        d = _extract_json_obj(raw)
-        if not d:
-            return {"reply": "⚠️ 没有理解你的输入，请换一种说法，例如：「学习目标改为掌握 RAG 原理」。"}
-        update = d.get("update") if isinstance(d.get("update"), dict) else {}
-        reply = str(d.get("reply") or "已处理。")
-        changed = []
-        if update:
-            merged = dict(mem)
-            for k, v in update.items():
-                if k in ALLOW and v not in (None, ""):
-                    merged[k] = v
-                    changed.append(k)
-            if changed:
-                if pid == "global":
-                    rows = pg_client.execute("SELECT id FROM global_profile LIMIT 1")
-                    if rows:
-                        pg_client.execute("UPDATE global_profile SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE id=%s",
-                                          (json.dumps(merged, ensure_ascii=False), rows[0]["id"]))
-                    else:
-                        pg_client.execute("INSERT INTO global_profile (session_id, data) VALUES (%s,%s)",
-                                          ("default", json.dumps(merged, ensure_ascii=False)))
-                else:
-                    _rows = pg_client.execute("SELECT session_id FROM project_memories WHERE project_id=%s", (pid,))
-                    if _rows:
-                        pg_client.execute(
-                            "UPDATE project_memories SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE project_id=%s",
-                            (json.dumps(merged, ensure_ascii=False), pid))
-                    else:
-                        pg_client.execute(
-                            "INSERT INTO project_memories (session_id, project_id, data) VALUES (%s,%s,%s)",
-                            ("project", pid, json.dumps(merged, ensure_ascii=False)))
-        if not changed and not reply.strip():
-            reply = "⚠️ 没有需要更新的字段。"
-        return {"reply": reply, "changed": changed}
-    except Exception as e:
-        return {"reply": f"⚠️ 记忆更新失败：{str(e)[:120]}"}
+    from starlette.concurrency import run_in_threadpool
+    return await run_in_threadpool(_memory_chat_service, req.api_key, req.message, req.project_id)
 
 
 @app.post("/api/chat")
