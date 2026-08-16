@@ -22,6 +22,14 @@ class GenerateDomainReq(BaseModel):
     model: str = "deepseek-v4-flash"
 
 
+class ResourceGenReq(BaseModel):
+    key: str
+    content: str = ""
+    api_key: str = ""
+    base_url: str = "https://api.deepseek.com/v1"
+    model: str = "deepseek-v4-flash"
+
+
 def _generate_domain_sync(req) -> dict:
     """新建领域：AI 生成该领域的系统学习教程 + 百科词条（同步实现，线程池调用，避免阻塞事件循环）"""
     import requests as _req
@@ -63,6 +71,21 @@ def _generate_domain_sync(req) -> dict:
 async def generate_domain(req: GenerateDomainReq):
     from starlette.concurrency import run_in_threadpool
     return await run_in_threadpool(_generate_domain_sync, req)
+
+
+@router.get("/api/resources/capabilities")
+async def list_capabilities():
+    """资源生成能力注册表：返回当前支持的资源形式（单一事实来源）。"""
+    from services.resource_gen import list_capabilities as _list
+    return {"capabilities": _list()}
+
+
+@router.post("/api/resources/generate")
+async def generate_resource(req: ResourceGenReq):
+    """按能力 key 生成资源内容（同步实现放线程池，避免阻塞事件循环）。"""
+    from starlette.concurrency import run_in_threadpool
+    from services.resource_gen import generate_resource as _gen
+    return await run_in_threadpool(_gen, req.api_key, req.key, req.content, req.base_url, req.model)
 
 
 @router.get("/api/resources")

@@ -113,6 +113,10 @@ export const api = {
   deleteResource: (rid: string) =>
     apiFetch<any>('/api/resources/' + encodeURIComponent(rid), jsonInit('DELETE')),
   generateDomain: (body: unknown) => apiFetch<any>('/api/generate-domain', jsonInit('POST', body)),
+  listCapabilities: () =>
+    apiFetch<any>('/api/resources/capabilities', { cache: 'no-store' }),
+  generateResource: (body: unknown) =>
+    apiFetch<any>('/api/resources/generate', jsonInit('POST', body)),
   listArtifacts: (projectId: string) =>
     apiFetch<any>('/api/artifacts?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' }),
 

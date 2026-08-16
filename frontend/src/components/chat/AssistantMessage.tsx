@@ -48,13 +48,14 @@ interface AssistantMessageProps {
   onSendFollowup: (q: string) => void
   onManualSetup?: () => void
   currentProject: Project | null
+  onGenerateSpecial?: (keys: string[], content: string) => void
 }
 
 /** AI 回复消息气泡：思考过程 + 回答正文 + 运行统计 + 资源生成建议 + 图片命中 + 审核报告 + 追问。 */
 export default function AssistantMessage({
   msg, isLoading, isLast, flowActiveAgent, flowStatus,
   specialSelectedKeys, onToggleSpecial, specialDismissed, onDismissSpecial,
-  followups, onSendFollowup, onManualSetup, currentProject,
+  followups, onSendFollowup, onManualSetup, currentProject, onGenerateSpecial,
 }: AssistantMessageProps) {
   const streaming = isLoading && isLast
   return (
@@ -109,8 +110,7 @@ export default function AssistantMessage({
               </div>
               <div className="flex items-center justify-end gap-3">
                 <button onClick={() => {
-                  const names = msg.special!.filter(x => specialSelectedKeys.includes(x.key)).map(x => x.label)
-                  if (names.length) alert(`「${names.join('」「')}」生成功能待实现（下一步开发）`)
+                  if (specialSelectedKeys.length) onGenerateSpecial?.(specialSelectedKeys, msg.content)
                   onDismissSpecial()
                 }}
                   className="text-[10px] font-semibold text-[var(--accent)] hover:underline">生成所选</button>

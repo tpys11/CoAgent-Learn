@@ -261,6 +261,29 @@ const TEMPLATE_OPTIONS = [
     })
   }
 
+  /** 资源生成：按能力注册表逐项生成，并保存到「我的上传」 */
+  const handleGenerateSpecial = async (keys: string[], content: string) => {
+    if (!keys.length || !currentProject) return
+    const prov = lsGet(LS.provider, 'deepseek')
+    const keysMap = lsGetJSON<Record<string, string>>(LS.providerKeys, {})
+    const apiKey = keysMap[prov] || lsGet(LS.apiKey, '')
+    if (!apiKey) { onRequestKey?.(); return }
+    const baseUrl = prov === 'zhipu' ? 'https://open.bigmodel.cn/api/paas/v4' : 'https://api.deepseek.com/v1'
+    const model = prov === 'zhipu' ? 'glm-4-flash' : 'deepseek-v4-flash'
+    const done: string[] = []
+    for (const key of keys) {
+      try {
+        const r = await api.generateResource({ key, content, api_key: apiKey, base_url: baseUrl, model })
+        if (r?.status === 'ok' && r.content) {
+          await api.saveResource({ name: `生成·${r.label}`, content: r.content, project_id: currentProject.id })
+          done.push(r.label)
+        }
+      } catch {}
+    }
+    if (done.length) alert(`已生成：${done.join('、')}，已保存到「我的上传」`)
+    else alert('资源生成失败，请检查 API Key')
+  }
+
   return (
     <main className="flex-1 h-full min-w-0 flex flex-col panel rounded-3xl overflow-hidden">
       {/* 面板顶条：统计与入口（无盒子，细字号一行） */}
@@ -357,6 +380,7 @@ const TEMPLATE_OPTIONS = [
                   onSendFollowup={sendFollowup}
                   onManualSetup={onManualSetup}
                   currentProject={currentProject}
+                  onGenerateSpecial={handleGenerateSpecial}
                 />
               </div>
             )
