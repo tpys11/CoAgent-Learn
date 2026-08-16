@@ -30,7 +30,6 @@ export default function GuideModal({ onClose }: { onClose: () => void }) {
               <li className="flex gap-2"><MessagesSquare size={12} className="text-gray-400 mt-0.5 flex-shrink-0" /><span><b>第二对话窗口</b>：右侧独立对话，查不懂的名词，不影响主对话</span></li>
               <li className="flex gap-2"><Paperclip size={12} className="text-gray-400 mt-0.5 flex-shrink-0" /><span><b>上传文件</b>：对话输入框左侧上传按钮，支持文本/PDF/Word/PPT/图片</span></li>
               <li className="flex gap-2"><Plug size={12} className="text-gray-400 mt-0.5 flex-shrink-0" /><span><b>Skill</b>：展示系统技能；上传/管理暂未开放</span></li>
-              <li className="flex gap-2"><BarChart3 size={12} className="text-gray-400 mt-0.5 flex-shrink-0" /><span><b>评估</b>：后端已支持幻觉率/适配/覆盖率计算，前端入口尚未开放</span></li>
             </ul>
           </section>
           <section>

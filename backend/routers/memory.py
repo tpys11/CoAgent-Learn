@@ -1,4 +1,4 @@
-"""记忆、画像、统计、评估与学习时间线路由。"""
+"""记忆、画像、统计与学习时间线路由。"""
 import json
 import logging
 
@@ -491,43 +491,3 @@ async def get_dialogue_profile(did: str):
     rows = pg_client.execute("SELECT profile_data FROM dialogue_memories WHERE dialogue_id=%s", (did,))
     return {"profile": rows[0]["profile_data"] if rows else {}}
 
-
-@router.post("/api/evaluate")
-async def run_evaluate(project_id: str = "default", api_key: str = ""):
-    from core.evaluator import hallucination_rate, adaptation_accuracy, knowledge_coverage
-    from core.postgres_client import pg_client
-    kb_texts = []
-    try:
-        from core.sqlite_client import get_db
-        for d in get_db().get_kb_docs(project_id):
-            c = (d.get("content") or "").strip()
-            if c:
-                kb_texts.append(c)
-    except Exception:
-        logger.exception("读取知识库内容失败")
-    questions = [
-        "什么是牛顿第二定律？",
-        "欧姆定律的公式是什么？",
-        "简述能量守恒定律。",
-        "什么是动量守恒？",
-        "热力学第二定律讲了什么？",
-    ]
-    profiles = [
-        {"level": "beginner", "topic": "牛顿第一定律"},
-        {"level": "beginner", "topic": "电路基础"},
-        {"level": "intermediate", "topic": "牛顿第二定律的应用"},
-        {"level": "advanced", "topic": "麦克斯韦方程组"},
-        {"level": "advanced", "topic": "相对论质能方程"},
-    ]
-    knowledge_points = ["牛顿第一定律", "牛顿第二定律", "牛顿第三定律", "万有引力", "动量守恒", "能量守恒", "欧姆定律", "楞次定律", "热力学第二定律"]
-    h = hallucination_rate(questions, kb_texts, api_key)
-    a = adaptation_accuracy(profiles, api_key)
-    k = knowledge_coverage(knowledge_points, "经典力学", api_key)
-    result = {"hallucination": h, "adaptation": a, "coverage": k}
-    try:
-        pg_client.execute(
-            "INSERT INTO stats (project_id, metrics) VALUES (%s,%s) ON CONFLICT DO NOTHING",
-            (project_id, json.dumps(result, ensure_ascii=False)))
-    except Exception:
-        logger.exception("写入评估统计失败")
-    return result
