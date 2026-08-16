@@ -3,6 +3,9 @@ import { Brain, User, FolderTree, Check, Loader2, PenLine, ChevronRight, Chevron
 import { KnowledgeTree } from './KbTree'
 import { LS, lsGet } from '../storage'
 import { api } from '../api'
+import { MiniMD } from './memoryView/MiniMD'
+import { PrefSummary } from './memoryView/PrefSummary'
+import { NewMilestoneForm } from './memoryView/MilestoneForm'
 
 /** 个人全局性记忆：基础信息字段（固定，纵向表单） */
 const BASIC_FIELDS = [
@@ -84,140 +87,6 @@ const nodeBorder = (m: Milestone, mastery: number | null) => {
 /** 记忆系统：两级（个人全局性记忆 / 课程记忆）完整界面 */
 
 /** 迷你 Markdown 渲染：段落 / 有序/无序列表 / **加粗**（行级，够用即可） */
-const renderInline = (s: string) => {
-  const parts = s.split(/\*\*([^*]+)\*\*/g)
-  return parts.map((p, i) => i % 2 === 1 ? <b key={i}>{p}</b> : p)
-}
-function MiniMD({ text }: { text: string }) {
-  const lines = text.split('\n')
-  const nodes: React.ReactNode[] = []
-  let listBuf: { ordered: boolean; items: string[] } | null = null
-  const flush = (key: string) => {
-    if (listBuf) {
-      nodes.push(listBuf.ordered
-        ? <ol key={key} className="list-decimal pl-4 flex flex-col gap-0.5">{listBuf.items.map((it, j) => <li key={j}>{renderInline(it)}</li>)}</ol>
-        : <ul key={key} className="list-disc pl-4 flex flex-col gap-0.5">{listBuf.items.map((it, j) => <li key={j}>{renderInline(it)}</li>)}</ul>)
-      listBuf = null
-    }
-  }
-  lines.forEach((ln, i) => {
-    const ul = ln.match(/^[-*]\s+(.+)/)
-    const ol = ln.match(/^\d+[.、]\s*(.+)/)
-    if (ul || ol) {
-      if (!listBuf || listBuf.ordered !== !!ol) { flush('l' + i); listBuf = { ordered: !!ol, items: [] } }
-      listBuf.items.push((ul || ol)![1])
-    } else if (ln.trim()) {
-      flush('l' + i)
-      nodes.push(<p key={'p' + i} className="leading-relaxed">{renderInline(ln)}</p>)
-    } else flush('l' + i)
-  })
-  flush('end')
-  return <div className="flex flex-col gap-1.5">{nodes}</div>
-}
-
-/** 阅读偏好：结构化程度展示（列表/表格），未设置项留空 */
-function PrefSummary({ pref }: { pref: Record<string, any> | null }) {
-  const jc = pref?.结构化程度 || {}
-  const list = jc?.列表
-  const table = jc?.表格
-  return (
-    <div className="flex flex-col gap-1.5 text-xs leading-relaxed">
-      <p><span className="font-semibold text-[var(--text)]">列表</span>　{list ? (list.喜欢 ? `喜欢 · ${list.有序 ? '有序' : '无序'}` : '不喜欢') : ''}</p>
-      <p><span className="font-semibold text-[var(--text)]">表格</span>　{table ? (table.喜欢 ? '喜欢' : '不喜欢') : ''}</p>
-    </div>
-  )
-}
-
-/** 特殊需求：特殊格式展示（latex / md 文档 / 复制到笔记），未设置项留空 */
-function SpecialPref({ pref }: { pref: Record<string, any> | null }) {
-  const sp = pref?.特殊格式 || {}
-  return (
-    <div className="flex flex-col gap-1.5 text-xs leading-relaxed">
-      <p><span className="font-semibold text-[var(--text)]">latex 格式</span>　{sp?.latex !== undefined ? (sp.latex ? '需要' : '不需要') : ''}</p>
-      <p><span className="font-semibold text-[var(--text)]">md 文档格式</span>　{sp?.['md文档'] !== undefined ? (sp['md文档'] ? '喜欢' : '不喜欢') : ''}</p>
-      <p><span className="font-semibold text-[var(--text)]">复制内容到笔记</span>　{sp?.['喜欢复制到笔记'] !== undefined ? (sp['喜欢复制到笔记'] ? '是' : '否') : ''}</p>
-    </div>
-  )
-}
-
-/** 阅读偏好问卷：首次设置 / 修改（用户手动选择，系统不自动猜测） */
-function PrefDialog({ initial, onCancel, onSave }: { initial: Record<string, any> | null; onCancel: () => void; onSave: (p: Record<string, any>) => void }) {
-  const jc = initial?.结构化程度 || {}
-  const sp = initial?.特殊格式 || {}
-  const [listLike, setListLike] = useState<'y' | 'n' | ''>(jc?.列表?.喜欢 === false ? 'n' : jc?.列表?.喜欢 ? 'y' : '')
-  const [listOrdered, setListOrdered] = useState(jc?.列表?.有序 !== false)
-  const [tableLike, setTableLike] = useState<'y' | 'n' | ''>(jc?.表格?.喜欢 === false ? 'n' : jc?.表格?.喜欢 ? 'y' : '')
-  const [latex, setLatex] = useState(!!sp?.latex)
-  const [mdLike, setMdLike] = useState<'y' | 'n' | ''>(sp?.['md文档'] === false ? 'n' : sp?.['md文档'] ? 'y' : '')
-  const [copyLike, setCopyLike] = useState<'y' | 'n' | ''>(sp?.['喜欢复制到笔记'] === false ? 'n' : sp?.['喜欢复制到笔记'] ? 'y' : '')
-
-  const Row = ({ label, children }: { label: string; children: React.ReactNode }) => (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-xs font-medium">{label}</span>
-      <div className="flex items-center gap-1.5">{children}</div>
-    </div>
-  )
-  const YN = ({ cur, onChange }: { cur: 'y' | 'n' | ''; onChange: (v: 'y' | 'n') => void }) => (
-    <>
-      {[['y', '喜欢'], ['n', '不用']].map(([v, t]) => (
-        <button key={v} onClick={() => onChange(v as 'y' | 'n')}
-          className={`px-3 py-1 rounded-lg text-[11px] font-medium border hairline transition-colors ${cur === v ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-input)] hover:bg-[var(--bg-hover)]'}`}>{t}</button>
-      ))}
-    </>
-  )
-  const YN2 = ({ label, cur, onChange }: { label: string; cur: 'y' | 'n' | ''; onChange: (v: 'y' | 'n') => void }) => (
-    <Row label={label}><YN cur={cur} onChange={onChange} /></Row>
-  )
-  const save = () => {
-    onSave({
-      结构化程度: {
-        列表: { 喜欢: listLike !== 'n', 有序: listOrdered },
-        表格: { 喜欢: tableLike !== 'n' },
-      },
-      特殊格式: {
-        latex: !!latex,
-        'md文档': mdLike !== 'n',
-        '喜欢复制到笔记': copyLike === 'y',
-      },
-    })
-  }
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-6" onClick={onCancel}>
-      <div className="w-[420px] max-h-[80vh] overflow-y-auto panel rounded-3xl p-6 flex flex-col gap-4" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <span className="text-base font-bold">阅读偏好</span>
-          <button onClick={onCancel} className="text-xs text-dim hover:text-[var(--text)]">关闭 ✕</button>
-        </div>
-        <p className="text-[11px] text-dim leading-relaxed">告诉系统你希望回答以怎样的形式呈现（可随时修改）</p>
-        <div className="flex flex-col gap-3">
-          <p className="text-[11px] font-bold uppercase tracking-widest text-[var(--accent)]">结构化程度</p>
-          <YN2 label="列表" cur={listLike} onChange={setListLike} />
-          {listLike !== 'n' && (
-            <div className="flex items-center justify-between gap-3 pl-2">
-              <span className="text-[11px] text-dim">列表形式</span>
-              <div className="flex items-center gap-1.5">
-                {([['有序', true], ['无序', false]] as [string, boolean][]).map(([t, v]) => (
-                  <button key={t} onClick={() => setListOrdered(v)}
-                    className={`px-3 py-1 rounded-lg text-[11px] font-medium border hairline transition-colors ${listOrdered === v ? 'bg-[#1a1a1a] text-white' : 'bg-[var(--bg-input)] hover:bg-[var(--bg-hover)]'}`}>{t}</button>
-                ))}
-              </div>
-            </div>
-          )}
-          <YN2 label="表格" cur={tableLike} onChange={setTableLike} />
-          <p className="text-[11px] font-bold uppercase tracking-widest text-[var(--accent)] mt-1">特殊格式</p>
-          <YN2 label="latex 公式" cur={latex ? 'y' : ''} onChange={v => setLatex(v === 'y')} />
-          <YN2 label="md 文档格式" cur={mdLike} onChange={setMdLike} />
-          <YN2 label="喜欢复制内容到笔记" cur={copyLike} onChange={setCopyLike} />
-        </div>
-        <button onClick={save}
-          className="py-2.5 rounded-xl bg-[#1a1a1a] text-white text-xs font-medium hover:bg-[#333333] transition-colors">
-          保存偏好
-        </button>
-      </div>
-    </div>
-  )
-}
-
 export default function MemoryView({ projectId, onRequestModify, onRequestAnalyze, projectOnly, initialEdit, onEditChange }: {
   projectId: string | null
   onRequestModify?: (label: string, pid?: string) => void
@@ -914,31 +783,5 @@ scheduleSave(() => api.saveProjectMemory(activeProject || 'default', { 里程碑
         </div>
       )}
     </div>
-  )
-}
-
-/** 新增里程碑节点表单 */
-function NewMilestoneForm({ onCancel, onAdd }: { onCancel: () => void; onAdd: (label: string, detail: string, pos: number) => void }) {
-  const [label, setLabel] = useState('')
-  const [detail, setDetail] = useState('')
-  const [pos, setPos] = useState(50)
-  return (
-    <>
-      <p className="text-sm font-bold">新增节点</p>
-      <input value={label} onChange={e => setLabel(e.target.value)} placeholder="节点名称"
-        className="w-full px-3 py-2 border hairline rounded-xl text-xs outline-none bg-[var(--bg-input)]" autoFocus />
-      <textarea value={detail} onChange={e => setDetail(e.target.value)} placeholder="节点内容（点击节点时查看）" rows={3}
-        className="w-full px-3 py-2 border hairline rounded-xl text-xs outline-none resize-none bg-[var(--bg-input)]" />
-      <div className="flex items-center gap-2 text-[11px] text-dim">
-        <span className="flex-shrink-0">位置</span>
-        <input type="range" min="0" max="100" value={pos} onChange={e => setPos(Number(e.target.value))} className="flex-1 accent-[var(--accent)]" />
-        <span className="w-8 text-right font-semibold">{pos}%</span>
-      </div>
-      <div className="flex gap-2">
-        <button onClick={onCancel} className="flex-1 py-2 rounded-xl border hairline text-[11px] text-dim hover:bg-[var(--bg-hover)]">取消</button>
-        <button onClick={() => label.trim() && onAdd(label.trim(), detail.trim(), pos)}
-          className="flex-1 py-2 rounded-xl bg-[#1a1a1a] text-white text-[11px] font-medium">添加</button>
-      </div>
-    </>
   )
 }
