@@ -24,11 +24,11 @@ import KnowledgeView from './components/KnowledgeView'
 import AgentsView from './components/AgentsView'
 import IntroPanel from './components/IntroPanel'
 import { initTheme } from './theme'
-import type { Project, Dialogue, AgentConfig, Message, ReviewResult } from './types'
+import type { Project, Dialogue, AgentConfig, Message } from './types'
 import { DEFAULT_AGENTS } from './types'
-import { streamChatResponse, type ChatEvent } from './sse'
 import { LS, lsGet, lsSet, lsGetJSON, lsSetJSON } from './storage'
 import { api } from './api'
+import { useChatStream } from './hooks/useChatStream'
 
 function generateId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }
 // 项目 ID 固定：首次生成后存 localStorage，刷新复用（保证知识库/图谱数据不因刷新丢失）
@@ -141,32 +141,26 @@ function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [statsCollapsed, setStatsCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
-  const [flowAgents, setFlowAgents] = useState<string[]>([])
-  const [flowActiveAgent, setFlowActiveAgent] = useState<string | null>(null)
-  // 当前对话状态文案（等待模型响应/正在规划/正在阅读/正在思考/正在审核…）
-  const [flowStatus, setFlowStatus] = useState('')
-  const [flowMindchain, setFlowMindchain] = useState<Array<{agent: string; content: string}>>([])
-  const mindchainRef = useRef<Array<{agent: string; content: string}>>([])
-  const activeDidRef = useRef<string | null>(null)
-  // 本次回答是否已通过 answer_token 流式显示（是则 done 后直接替换，不二次打字机）
-  const streamedRef = useRef(false)
-  // 流式渲染节奏（rAF 帧循环）：token 到达只累积，每帧 flush 一次——渲染固定在帧边界，
-  // 消除"网络批量到达 + React 自动批处理"导致的回答一段一段出现
-  const pendingAnswerRef = useRef('')
-  const pendingMindRef = useRef<{ agent: string; text: string } | null>(null)
-  const rafScheduledRef = useRef(false)
-  // 手动停止：abort 控制器 + 用户停止标记 + 生成请求 id（POST /api/chat/stop 通知后端取消生成）
-  const abortCtrlRef = useRef<AbortController | null>(null)
-  const userStoppedRef = useRef(false)
-  const requestIdRef = useRef<string | null>(null)
-  // 围栏状态机（后端拆字推送后，``` 围栏逐字到达）：围栏内内容丢弃
-  const fenceBufRef = useRef('')
-  const fenceInRef = useRef(false)
   const sessionId = useRef(SESSION_ID)
   // 第二对话 id：App 持有（主对话完成后为它生成横向拓展追问），传给 RightPanel 使用
   const secondDialogueIdRef = useRef('sd-' + Math.random().toString(36).slice(2) + Date.now().toString(36))
   const dragging = useRef<'left' | 'right' | 'flow' | null>(null)
   const appRef = useRef<HTMLDivElement>(null)
+
+  // 主对话聊天流（发送 + SSE 解析 + 流式渲染节奏 + 停止/断线取回）已抽到 useChatStream
+  const { sendMessage, stop, resetFlow, flowStatus, flowActiveAgent } = useChatStream({
+    agents,
+    currentProjectId,
+    dialogues,
+    currentDialogueId,
+    setDialogues,
+    setCurrentDialogueId,
+    setAllMessages,
+    setIsLoading,
+    setShowApiKeyPrompt,
+    sessionId,
+    secondDialogueId: secondDialogueIdRef,
+  })
 
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
@@ -254,9 +248,10 @@ function App() {
       }).catch(() => {})
   }, [])
   const handleSelectDialogue = useCallback((id: string) => {
-    setCurrentDialogueId(id); setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = []
+    setCurrentDialogueId(id)
+    resetFlow()
     loadDialogueMessages(id)
-  }, [loadDialogueMessages])
+  }, [loadDialogueMessages, resetFlow])
   const handleArchiveDialogue = useCallback((id: string) => {
     if (!window.confirm('确定归档该对话？')) return
     // 软归档（与自动清理一致），侧栏不再显示
@@ -315,396 +310,6 @@ function App() {
     if (v === 'chat') setChatOpen(false) // 点「主页」回到主页
   }
 
-  /** 替换最后一条 assistant 消息：发送时插入的空占位（content=''）被结果替换，避免重复气泡。
-   * 极速档的 answer_token 会先流式把占位 content 填满，done 时仍是同一条 → 必须原地替换而非 push */
-  const upsertLastAssistant = (prev: Message[], msg: Message) => {
-    const arr = [...prev]
-    const last = arr[arr.length - 1]
-    if (last && last.role === 'assistant') {
-      arr[arr.length - 1] = msg
-    } else {
-      arr.push(msg)
-    }
-    return arr
-  }
-  // 每帧 flush 一次累积的流式字符（回答正文 + 思维链），渲染节奏固定在 rAF 帧边界
-  // 持续 reveal 循环：不管 token 何时到达（只进队列），每帧从队列吐出固定节奏的字（2-4 字/帧）。
-  // 显示节奏 = 帧率（16ms 均匀），与网络批量到达节奏完全解耦——消除"每批到达就整批蹦出"的一段一段。
-  const revealRunningRef = useRef(false)
-  const revealTick = () => {
-    const pa = pendingAnswerRef.current
-    if (pa) {
-      // 每帧吐：积压少吐 2 字（匀速），积压多吐 4 字（防越积越多跟不上模型）
-      const take = Math.min(pa.length, pa.length > 40 ? 4 : 2)
-      const out = pa.slice(0, take)
-      pendingAnswerRef.current = pa.slice(take)
-      setAllMessages(prev => {
-        const arr = prev[activeDidRef.current || ''] || []
-        const lastMsg = arr[arr.length - 1]
-        if (lastMsg && lastMsg.role === 'assistant') {
-          return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, content: (lastMsg.content || '') + out }] }
-        }
-        return prev
-      })
-    }
-    const pm = pendingMindRef.current
-    if (pm) {
-      const take = Math.min(pm.text.length, 3)
-      const out = pm.text.slice(0, take)
-      pm.text = pm.text.slice(take)
-      if (pm.text.length === 0) pendingMindRef.current = null
-      setFlowMindchain(prev => {
-        const idx = prev.map(x => x.agent).lastIndexOf(pm.agent)
-        let next: Array<{ agent: string; content: string }>
-        if (idx >= 0) {
-          next = prev.slice()
-          next[idx] = { agent: pm.agent, content: next[idx].content + out }
-        } else {
-          next = [...prev, { agent: pm.agent, content: out }]
-        }
-        mindchainRef.current = next
-        return next
-      })
-      setAllMessages(prev => {
-        const arr = prev[activeDidRef.current || ''] || []
-        const lastMsg = arr[arr.length - 1]
-        if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content === '') {
-          return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, think: mindchainRef.current }] }
-        }
-        return prev
-      })
-    }
-    if (!pendingAnswerRef.current && !pendingMindRef.current) {
-      // 队列空：停循环，等下一个 token 到达再启动
-      revealRunningRef.current = false
-      return
-    }
-    requestAnimationFrame(revealTick)
-  }
-  const ensureRevealLoop = () => {
-    if (revealRunningRef.current) return
-    revealRunningRef.current = true
-    requestAnimationFrame(revealTick)
-  }
-
-  const handleSendMessage = useCallback(async (text: string, settings?: Record<string, any>) => {
-    let did = currentDialogueId
-    const continuing = false
-    // key 检查：没填主模型 key 直接阻止发送并弹框，不回退 .env
-    const _prov = lsGet(LS.provider, 'deepseek')
-    const _keys = lsGetJSON<Record<string, string>>(LS.providerKeys, {})
-    if (!(_keys[_prov] || lsGet(LS.apiKey, ''))) {
-      setShowApiKeyPrompt(true)
-      return
-    }
-    if (!did && currentProjectId) {
-      // 自动创建对话
-      const count = dialogues.filter(d => d.projectId === currentProjectId && !d.archived).length
-      const d: Dialogue = { id: generateId(), name: `对话 ${count + 1}`, projectId: currentProjectId, createdAt: new Date().toISOString(), archived: false }
-      setDialogues(prev => [...prev, d])
-      did = d.id
-      setCurrentDialogueId(d.id)
-      // 对话自动清理：保留最近 N 条未归档对话（设置里可配，0=关闭）
-      try {
-        const lim = parseInt(lsGet(LS.dialogueLimit, '0'), 10)
-        if (lim > 0) {
-          const active = dialogues.filter(x => x.projectId === currentProjectId && !x.archived)
-          const excess = active.length - (lim - 1)
-          if (excess > 0) {
-            const sorted = [...active].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''))
-            sorted.slice(0, excess).forEach(x => {
-              api.updateDialogue(x.id, { archived: true }).catch(() => {})
-              setDialogues(prev => prev.map(y => y.id === x.id ? { ...y, archived: true } : y))
-            })
-          }
-        }
-      } catch {}
-    }
-    if (!did) return
-    if (!continuing) {
-      setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'user', content: text }] }))
-      // 立即插入空 assistant 占位：界面马上显示"思考中…"，结果到达后替换（思维链实时展示于底部卡片）
-      setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'assistant', content: '' }] }))
-    }
-    setIsLoading(true)
-    if (!continuing) { setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = [] }
-    setFlowStatus('正在等待模型响应…')
-    setFlowActiveAgent(null)
-    streamedRef.current = false
-    userStoppedRef.current = false
-    requestIdRef.current = null
-    fenceBufRef.current = ''
-    fenceInRef.current = false
-    pendingAnswerRef.current = ''
-    pendingMindRef.current = null
-    activeDidRef.current = did || null
-    // 自动命名：对话名为「对话 N」时，按首条消息内容改名
-    const curDlg = dialogues.find(d => d.id === did)
-    if (curDlg && /^对话 \d+$/.test(curDlg.name)) {
-      const nm = text.trim().slice(0, 14) || curDlg.name
-      api.updateDialogue(did, { name: nm }).catch(() => {})
-      setDialogues(prev => prev.map(x => x.id === did ? { ...x, name: nm } : x))
-    }
-    let timeoutTimer: any = null
-    try {
-      // 读取所选模型厂家配置
-      const provKeys = lsGetJSON<Record<string, string>>(LS.providerKeys, {})
-      const provider = lsGet(LS.provider, 'deepseek')
-      const model = (() => {
-        // DeepSeek 官方模型名已升级 v4：兼容 localStorage 里的旧值（deepseek-chat/reasoner/pro/flash）
-        const m = lsGet(LS.model, 'deepseek-v4-flash')
-        const alias: Record<string, string> = {
-          'deepseek-chat': 'deepseek-v4-pro',
-          'deepseek-reasoner': 'deepseek-v4-pro',
-          'deepseek-pro': 'deepseek-v4-pro',
-          'deepseek-flash': 'deepseek-v4-flash',
-        }
-        return alias[m] || m
-      })()
-      const providerBaseUrls: Record<string, string> = {
-        deepseek: 'https://api.deepseek.com/v1',
-        zhipu: 'https://open.bigmodel.cn/api/paas/v4',
-      }
-      const apiKey = provKeys[provider] || lsGet(LS.apiKey, '') || undefined
-      // 合并设置：上下文(历史条数/记忆层级/打字机) + 对话后动作(自动保存/追问) + 上次设置 + 本次设置
-      const ctxSettings = lsGetJSON<Record<string, any>>(LS.contextSettings, {})
-      // 上下文策略固定：流式逐字输出 / 历史 10 条 / 记忆 L2（不随 localStorage 旧值变化）
-      ctxSettings.typing = true
-      ctxSettings.historyLimit = 10
-      ctxSettings.memoryLayer = 'L2'
-      const postActions = lsGetJSON<Record<string, any>>(LS.postActions, {})
-      const lastSettings = lsGetJSON<Record<string, any>>(LS.lastSettings, {})
-      const mergedSettings = { ...ctxSettings, ...postActions, ...lastSettings, ...(settings || {}) }
-      lsSetJSON(LS.lastSettings, mergedSettings)
-      // 超时：首字节超时（无任何数据到达 timeoutMs 则中止）+ 流中空闲超时（每收到数据重置，60s 无数据才断）
-      const timeoutMs = (Math.min(120, Math.max(1, parseInt(lsGet(LS.timeout, '30'), 10) || 30))) * 1000
-      // 请求 + 瞬时断连自动重试一次（浏览器网络层偶发中断，重试可自愈；连续失败才报"网络中断"）
-      let res: Response | null = null
-      let firstByte = true
-      const resetTimer = () => {
-        clearTimeout(timeoutTimer)
-        // 首字节超时给 15s 下限：用户把"请求超时"设成 1-5s 时，首字节（后端初始化/代理转发）
-        // 偶发超时会导致「一瞬间就报网络中断」；流中空闲仍 60s
-        timeoutTimer = setTimeout(() => abortCtrlRef.current?.abort(), firstByte ? Math.max(15000, timeoutMs) : 60000)
-      }
-      for (let _try = 0; _try < 2; _try++) {
-        const ctrl = new AbortController()
-        abortCtrlRef.current = ctrl
-        firstByte = true
-        resetTimer()
-        try {
-          const r = await fetch('/api/chat', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text.trim(), session_id: sessionId.current, dialogue_id: did, project_id: currentProjectId, api_key: apiKey, model: model, base_url: providerBaseUrls[provider], settings: mergedSettings, image: (mergedSettings && mergedSettings.image) || undefined, agents: agents, extra_followup_did: secondDialogueIdRef.current, extra_followup_focus: 'expand' }),
-            signal: ctrl.signal,
-          })
-          if (r.ok && r.body) { res = r; break }
-          if (r.status >= 500 && _try === 0) { console.error('[chat] HTTP', r.status, '重试一次'); clearTimeout(timeoutTimer); continue }
-          res = r; break
-        } catch (e) {
-          console.error('[chat] fetch 失败，重试一次：', e)
-          clearTimeout(timeoutTimer)
-          if (_try === 0) continue
-          throw e
-        }
-      }
-      if (!res || !res.ok || !res.body) {
-        setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'assistant', content: '⚠️ 请求失败（HTTP ' + (res ? res.status : '网络错误') + '），请检查后端服务与 API Key。' }] }))
-        return
-      }
-      let finalReply = ''; const steps: any[] = []; let taskStats: any = null; let flowError = ''
-      // 资源生成建议（模型判断）：done 事件注入，随最终消息展示
-      let special: Array<{ key: string; label: string }> = []
-      // 跨模态检索命中的图片（done 事件注入，随最终消息展示）
-      let retrievedImages: Array<{ source: string; content: string; file_path: string; mime: string }> = []
-      // 审核报告（三维度审查结果，done 事件注入）
-      let review: ReviewResult | undefined
-      await streamChatResponse(res, (data: ChatEvent) => {
-        if (data.type === 'start') { requestIdRef.current = data.request_id || null; return }
-        if (data.type === 'heartbeat') return
-        if (data.type === 'error') {
-          flowError = data.message || '请求出错'
-          return
-        }
-        if (data.type === 'step') {
-          setFlowAgents(prev => prev.includes(data.agent) ? prev : [...prev, data.agent])
-          setFlowActiveAgent(data.agent)
-          // 状态文案（纯动作，显示在思维链中该 Agent 标题后面）
-          if (data.agent === '学习助手·规划') {
-            setFlowStatus('正在规划…')
-          } else if (data.agent === '学习助手·生成') {
-            setFlowStatus('正在思考生成…')
-          } else if (data.agent === '学情与记忆管理') {
-            setFlowStatus('正在阅读记忆…')
-          } else if (data.agent === '知识库管理') {
-            setFlowStatus('正在检索知识库…')
-          } else if (data.agent === '审核') {
-            setFlowStatus('正在审核…')
-          } else {
-            setFlowStatus('处理中…')
-          }
-          // Agent 标题立即出现在思维链（内容由后续 thought_token 逐字填充）
-          setFlowMindchain(prev => {
-            const last = prev[prev.length - 1]
-            if (last && last.agent === data.agent) return prev
-            const next = [...prev, { agent: data.agent, content: '' }]
-            mindchainRef.current = next
-            return next
-          })
-          return
-        }
-        if (data.type === 'thought_token') {
-          setFlowAgents(prev => prev.includes(data.agent) ? prev : [...prev, data.agent])
-          setFlowActiveAgent(data.agent)
-          // 后端已拆字推送（每事件 1 字）：空白字符（换行等）必须保留；``` 围栏段用状态机丢弃（防 json 围栏显示）
-          const c = data.chunk || ''
-          if (c === '`') {
-            fenceBufRef.current += '`'
-            if (fenceBufRef.current.length >= 3) { fenceInRef.current = !fenceInRef.current; fenceBufRef.current = '' }
-            return
-          }
-          fenceBufRef.current = ''
-          if (fenceInRef.current) return  // 围栏内内容丢弃
-          if (!c) return  // 空串跳过，绝不能中断 SSE 解析循环
-          // 累积到 rAF 帧循环（累积式，非覆盖式——同帧多个 token 不丢失）；每帧 flush 一次
-          const cur = pendingMindRef.current
-          if (cur && cur.agent === data.agent) {
-            cur.text += c
-          } else {
-            pendingMindRef.current = { agent: data.agent, text: c }
-          }
-          ensureRevealLoop()
-          return
-        }
-        if (data.type === 'answer_token') {
-          const ch = data.chunk || ''
-          if (ch) {
-            streamedRef.current = true
-            // simple 流程无 step 事件：回答开始流式即更新状态（避免一直显示"等待模型响应"）
-            setFlowStatus('正在输出回答…')
-            // 累积到 rAF 帧循环：每帧 flush 一次（同上）
-            pendingAnswerRef.current += ch
-            ensureRevealLoop()
-          }
-          return
-        }
-        if (data.type === 'done') {
-          // 竞态防护：清空 rAF 待 flush 的流式残字（done 用完整 finalReply 替换，不能再追加）
-          pendingAnswerRef.current = ''
-          pendingMindRef.current = null
-          finalReply = data.reply; steps.push(...(data.steps || [])); taskStats = data.task_stats || null
-          // 资源生成建议（模型判断）：key → label 映射，随最终消息展示
-          const SPECIAL_LABELS: Record<string, string> = { report: '报告', flow: '流程图', tree: '树状图', table: '表格', chart: '统计图', quiz: '测试题' }
-          special = Array.isArray(data.special_suggestions)
-            ? (data.special_suggestions as string[]).map(k => ({ key: k, label: SPECIAL_LABELS[k] || k })).filter(s => s.label)
-            : []
-          retrievedImages = Array.isArray(data.retrieved_images) ? data.retrieved_images : []
-          review = data.review
-          setFlowStatus('')
-          setFlowActiveAgent(null)
-          // 最终同步一次占位消息 think（降频期间可能滞后）
-          setAllMessages(prev => {
-            const arr = prev[activeDidRef.current || ''] || []
-            const lastMsg = arr[arr.length - 1]
-            if (lastMsg && lastMsg.role === 'assistant' && lastMsg.content === '') {
-              return { ...prev, [activeDidRef.current || '']: [...arr.slice(0, -1), { ...lastMsg, think: mindchainRef.current }] }
-            }
-            return prev
-          })
-          // 通知第二对话：主对话已完成，可拉取同步生成的横向拓展追问
-          try { window.dispatchEvent(new Event('side-followups-ready')) } catch (e) {}
-          // 思维链兜底：后端返回完整 mindchain（各节点思考），流式片段缺失/不完整时覆盖
-          const mc: Array<{ agent: string; content: string }> = data.mindchain || []
-          if (mc.length > 0 && mc.length >= mindchainRef.current.length) {
-            mindchainRef.current = mc
-            setFlowMindchain(mc)
-          }
-          return
-        }
-      }, { signal: abortCtrlRef.current?.signal, onProgress: () => { resetTimer(); firstByte = false } })
-      try{
-        // 运行统计：各 Agent 耗时/token 摘要（回答下方展示）
-        let debugLine = ''
-        if (taskStats && Object.keys(taskStats).length) {
-          const NODE_CN: Record<string, string> = { plan: '规划', study_memory: '学情', kb: '知识库', generate: '生成', review: '审核' }
-          const nodes = Object.entries(taskStats).filter(([k]) => k !== 'token_estimate')
-          const total = nodes.reduce((s, [, v]: any) => s + (v.ms || 0), 0)
-          debugLine = '⏱ ' + nodes.map(([k, v]: any) => `${NODE_CN[k] || k} ${v.ms}ms×${v.llm_calls || 1}`).join(' · ') + ` · 总计 ${total}ms · ~${taskStats.token_estimate || 0} tokens`
-        }
-        const thinkArr = mindchainRef.current
-        if (debugLine) thinkArr.push({ agent: "运行统计", content: debugLine })
-        const finalContent = finalReply || (flowError ? '⚠️ ' + flowError : '处理完成')
-        // 打字机效果（设置开关）
-        const typingOn = true  // 流式逐字输出固定开启
-        if (typingOn && streamedRef.current) {
-          // 回答已通过 answer_token 流式显示：直接替换为完整内容（markdown 渲染），不再二次打字机
-          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: finalContent, steps, think: thinkArr, special, retrievedImages, review }) }))
-        } else if (typingOn) {
-          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: '', steps, think: thinkArr, special, retrievedImages, review }) }))
-          let i = 0
-          const iv = setInterval(() => {
-            i += 3
-            const chunk = finalContent.slice(0, i)
-            setAllMessages(prev => {
-              const arr = [...(prev[did || ''] || [])]
-              if (arr.length) arr[arr.length - 1] = { role: 'assistant', content: chunk, steps, think: thinkArr, special, retrievedImages, review }
-              return { ...prev, [did || '']: arr }
-            })
-            if (i >= finalContent.length) clearInterval(iv)
-          }, 16)
-        } else {
-          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: finalContent, steps, think: thinkArr, special, retrievedImages, review }) }))
-        }
-      }catch(_ex){}
-    } catch (e: any) {
-      console.error('[chat] 网络中断：', e)  // 诊断：浏览器端具体错误（超时/网络/abort）
-      if (userStoppedRef.current) {
-        // 用户手动停止：保留已流式显示的内容为最终消息 + 标记（后端已取消且不落库，仅前端展示；输入框立即可继续提问）
-        setAllMessages(prev => {
-          const arr = [...(prev[did || ''] || [])]
-          if (arr.length) {
-            const last = arr[arr.length - 1]
-            if (last.role === 'assistant') {
-              arr[arr.length - 1] = { ...last, content: ((last.content || '').trim() ? last.content + '\n\n' : '') + '⏹ 已停止生成', think: mindchainRef.current }
-            }
-          }
-          return { ...prev, [did || '']: arr }
-        })
-      } else {
-        // 非用户意愿断线（超时/网络中断）：后端线程继续跑完并落库，前端重连轮询取回结果（文档：客户端重连可取结果）
-        setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: '⚠️ 网络中断，正在后台继续生成并自动取回结果…' }) }))
-        let polled = false
-        const poll = async () => {
-          if (polled) return
-          try {
-            const d = await api.getDialogueMessages(did || '')
-            const msgs = (d.messages || []).map((m: any) => ({ role: m.role, content: m.content || '', steps: m.steps, think: m.think }))
-            const last = msgs[msgs.length - 1]
-            // 后端已把最终 assistant 消息落库（非占位、非"（系统未生成内容）"）→ 取回替换
-            if (last && last.role === 'assistant' && last.content && last.content !== '（系统未生成内容）') {
-              polled = true
-              setAllMessages(prev => ({ ...prev, [did || '']: msgs }))
-              return
-            }
-          } catch (e) {}
-          // 未就绪：继续轮询（共约 90s，覆盖复杂生成）
-          if (!polled) setTimeout(poll, 3000)
-        }
-        setTimeout(poll, 4000)  // 后端落库需要时间，先等 4s 再开始轮询
-      }
-    } finally { clearTimeout(timeoutTimer); setIsLoading(false); abortCtrlRef.current = null }
-  }, [currentDialogueId, agents, dialogues, currentProjectId])
-  // 手动停止生成：前端中断 SSE 流 + 通知后端取消（后端置位 cancel_event 后中断 LLM、不落库不后处理；已流式内容保留展示）
-  const handleStopGeneration = useCallback(() => {
-    userStoppedRef.current = true
-    // 停止时清空 rAF 待 flush 的流式残字（已显示的保留，未 flush 的丢弃——停止语义）
-    pendingAnswerRef.current = ''
-    pendingMindRef.current = null
-    try { if (abortCtrlRef.current) abortCtrlRef.current.abort() } catch (e) {}
-    if (requestIdRef.current) {
-      api.stopChat(requestIdRef.current).catch(() => {})
-    }
-  }, [])
   const handleSaveAgent = useCallback((updated: AgentConfig) => {
     setAgents(prev => {
       const next = prev.map(a => a.id === updated.id ? updated : a)
@@ -767,8 +372,8 @@ function App() {
       <CenterPanel
         messages={currentMessages} isLoading={isLoading} currentProject={currentProject}
         dialogueId={currentDialogueId}
-        onSendMessage={handleSendMessage}
-        onStop={handleStopGeneration}
+        onSendMessage={sendMessage}
+        onStop={stop}
         onRequestKey={() => setShowApiKeyPrompt(true)}
         statsCollapsed={statsCollapsed} onToggleStats={() => setStatsCollapsed(!statsCollapsed)}
           onOpenGuide={() => setShowGuide(true)}
