@@ -482,11 +482,12 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         # 可用 Skill：让学习助手知道自己可调用的技能（来自 Agent 配置的 skill 字段）
         if cfg.get("skill"):
             context += NL + "【可用 Skill】" + NL + str(cfg["skill"]) + NL
-        # 读最近对话历史（历史条数可配置）+ 会话摘要（压缩产物）+ 历史向量召回
+        # 读最近对话历史（token 预算制）+ 会话摘要（压缩产物）+ 历史向量召回
         try:
             from core.sqlite_client import get_db
+            from core.helpers import estimate_tokens
+            from core.compress import HISTORY_TOKEN_BUDGET
             _dbx = get_db()
-            _limit = int(settings.get('historyLimit') or 10)
             _did = state.get("dialogue_id", "default")
             # 会话摘要（自动压缩产物；游标之后的原文不重复注入）
             _drow = _dbx.execute("SELECT summary, compressed_upto FROM dialogues WHERE id=%s", (_did,))
@@ -494,14 +495,27 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             _upto = int((_drow[0].get("compressed_upto") or 0) if _drow else 0)
             if _summary:
                 context += NL + "【会话摘要】" + NL + str(_summary)[:1500] + NL
-            _rows = _dbx.execute("SELECT role,content FROM messages WHERE dialogue_id=%s AND id > %s ORDER BY created_at DESC LIMIT %s", (_did, _upto, _limit))
-            _rows.reverse()
-            if _rows:
+            _rows = _dbx.execute(
+                "SELECT role, content FROM messages WHERE dialogue_id=%s AND id > %s ORDER BY created_at DESC LIMIT 200",
+                (_did, _upto))
+            # 从最新往回累加，保留到预算为止
+            _recent = []
+            _used = 0
+            for _r in _rows:
+                _c = str(_r.get("content") or "")
+                if not _c or _c == "（系统未生成内容）":
+                    continue
+                _t = estimate_tokens(_c)
+                if _recent and _used + _t > HISTORY_TOKEN_BUDGET:
+                    break
+                _recent.append(_r)
+                _used += _t
+            _recent.reverse()
+            if _recent:
                 context += NL + "【历史对话】" + NL
-                for _r in _rows[:-1]:
-                    _c = str(_r.get("content")) if _r.get("content") else ""
-                    if _c and _c != "（系统未生成内容）":
-                        context += ("user: " if _r.get("role") == "user" else "assistant: ") + _c[:150] + NL
+                for _r in _recent[:-1]:
+                    _c = str(_r.get("content")) or ""
+                    context += ("user: " if _r.get("role") == "user" else "assistant: ") + _c[:150] + NL
             # 历史向量召回：问题与已压缩历史相关时，捞回原文细节（压缩不丢信息）
             if _upto > 0:
                 try:
