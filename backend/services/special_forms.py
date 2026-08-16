@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
-"""资源生成建议（原特殊形式输出）：模型判断回答适合哪些形式。"""
-
-_SPECIAL_FORM_KEYS = {"report": "报告", "flow": "流程图", "tree": "树状图", "table": "表格", "chart": "统计图", "quiz": "测试题"}
+"""资源生成建议：模型判断回答适合哪些资源生成形式（能力 key 来自能力注册表）。"""
+from services.resource_gen import CAPABILITIES
 
 _SPECIAL_SUGGEST_PROMPT = """你是内容形式分析师。分析下面的学习内容，判断它适合转换/补充为哪些资源生成形式（可多选，最多 3 个，选最合适的）：
 - report=报告（汇总讲解内容）
@@ -24,7 +23,10 @@ def suggest_special_forms(api_key, content, base_url=None):
             {"keys": ["string"]},
         )
         arr = (res or {}).get("keys") or []
-        return [k for k in arr if k in _SPECIAL_FORM_KEYS][:3]
+        return [
+            {"key": k, "label": CAPABILITIES[k]["label"]}
+            for k in arr if k in CAPABILITIES
+        ][:3]
     except Exception as e:
         print("[special-suggest]", e)
         return []

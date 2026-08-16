@@ -13,7 +13,7 @@ export type ChatEvent =
       steps?: ChatStep[]
       mindchain?: MindchainItem[]
       task_stats?: Record<string, unknown>
-      special_suggestions?: string[]
+      special_suggestions?: Array<{ key: string; label: string }>
       retrieved_images?: Array<{ source: string; content: string; file_path: string; mime: string }>
       review?: ReviewResult
     }

@@ -295,9 +295,8 @@ export function useChatStream(args: UseChatStreamArgs) {
           pendingAnswerRef.current = ''
           pendingMindRef.current = null
           finalReply = data.reply; steps.push(...(data.steps || [])); taskStats = data.task_stats || null
-          const SPECIAL_LABELS: Record<string, string> = { report: '报告', flow: '流程图', tree: '树状图', table: '表格', chart: '统计图', quiz: '测试题' }
           special = Array.isArray(data.special_suggestions)
-            ? (data.special_suggestions as string[]).map(k => ({ key: k, label: SPECIAL_LABELS[k] || k })).filter(s => s.label)
+            ? data.special_suggestions.map(s => ({ key: s.key, label: s.label })).filter(s => s.key)
             : []
           retrievedImages = Array.isArray(data.retrieved_images) ? data.retrieved_images : []
           review = data.review
