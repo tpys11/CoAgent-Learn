@@ -62,7 +62,7 @@ export default function SpecialOutputPane({ projectId }: { projectId?: string | 
   useEffect(() => {
     if (!projectId) { setHistory([]); return }
     api.listResources(projectId).then(d => {
-      const rows = (d.resources || []).filter((r: any) => (r.type || '') === ('gen:' + form))
+      const rows: GenItem[] = (d.resources || []).filter(r => (r.type || '') === ('gen:' + form)).map(r => ({ id: r.id, name: r.name, content: r.content || '', created_at: r.created_at }))
       setHistory(rows)
     }).catch(() => setHistory([]))
   }, [form, projectId])
@@ -84,7 +84,7 @@ export default function SpecialOutputPane({ projectId }: { projectId?: string | 
           try {
             await api.saveResource({ name: `生成·${r.label}`, content: r.content, project_id: projectId, type: 'gen:' + form, append: true })
             api.listResources(projectId).then(d => {
-              const rows = (d.resources || []).filter((x: any) => (x.type || '') === ('gen:' + form))
+              const rows: GenItem[] = (d.resources || []).filter(x => (x.type || '') === ('gen:' + form)).map(x => ({ id: x.id, name: x.name, content: x.content || '', created_at: x.created_at }))
               setHistory(rows)
             }).catch(() => {})
           } catch {}

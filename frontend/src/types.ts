@@ -83,6 +83,63 @@ export interface ChatStep {
   detail?: string
 }
 
+// ===== 后端响应包装类型（api.ts 返回类型用） =====
+
+export interface ProjectList {
+  projects: Project[]
+}
+
+export interface DialogueList {
+  dialogues: Dialogue[]
+}
+
+export interface MessagesData {
+  messages: Message[]
+}
+
+/** 画像类接口（个人全局 / 项目记忆 / 对话画像）返回的松散结构。 */
+export type ProfileData = Record<string, any>
+
+export interface ResourceItem {
+  id: string
+  name: string
+  content?: string
+  type?: string
+  file_ext?: string
+  file_size?: number
+  file_path?: string
+  project_id?: string
+  project_name?: string
+  created_at?: string
+}
+
+export interface ResourceList {
+  resources: ResourceItem[]
+}
+
+export interface StatsData {
+  dialogue_count: number
+  tokens_estimate: number
+  total_duration_seconds: number
+  metrics: any
+  [key: string]: any
+}
+
+export interface SettingsData {
+  kb_mode?: string
+  embedding?: { api_key_set?: boolean; api_key_hint?: string }
+  review?: { enabled?: boolean; model?: string }
+  [key: string]: any
+}
+
+export interface CapabilityList {
+  capabilities: Array<{ key: string; label: string; desc: string; output: string }>
+}
+
+export interface SkillList {
+  skills: Array<{ name: string; description: string; folder: string }>
+}
+
 /** 预设 Agent 配置（4-Agent 结构） */
 export const DEFAULT_AGENTS: AgentConfig[] = [
   {

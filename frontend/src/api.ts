@@ -2,6 +2,7 @@
  * 极薄 API 封装：统一 fetch 错误处理，避免 12 个组件各自裸 fetch 且错误处理不一致。
  * SSE 长连接不在这里封装（见 sse.ts）。
  */
+import type { ProjectList, DialogueList, MessagesData, ProfileData, ResourceList, StatsData, SettingsData, CapabilityList, SkillList } from './types'
 
 export interface ApiError extends Error {
   status?: number
@@ -37,23 +38,23 @@ function jsonInit(method: string, body?: unknown, init?: RequestInit): RequestIn
 }
 
 export const api = {
-  getSettings: () => apiFetch<any>('/api/settings', { cache: 'no-store' }),
+  getSettings: () => apiFetch<SettingsData>('/api/settings', { cache: 'no-store' }),
   saveSettings: (body: unknown) => apiFetch<any>('/api/settings', jsonInit('PUT', body)),
   testSettings: (body: unknown) => apiFetch<any>('/api/settings/test', jsonInit('POST', body)),
 
-  listProjects: () => apiFetch<any>('/api/projects'),
+  listProjects: () => apiFetch<ProjectList>('/api/projects'),
   createProject: (body: { name: string; domain?: string; simple?: boolean }) =>
-    apiFetch<any>('/api/projects', jsonInit('POST', body)),
+    apiFetch<{ id: string }>('/api/projects', jsonInit('POST', body)),
   updateProject: (id: string, body: unknown) =>
     apiFetch<any>('/api/projects/' + encodeURIComponent(id), jsonInit('PATCH', body)),
   deleteProject: (id: string) =>
     apiFetch<any>('/api/projects/' + encodeURIComponent(id), jsonInit('DELETE')),
 
   listProjectDialogues: (pid: string) =>
-    apiFetch<any>('/api/projects/' + encodeURIComponent(pid) + '/dialogues'),
+    apiFetch<DialogueList>('/api/projects/' + encodeURIComponent(pid) + '/dialogues'),
   createDialogue: (body: unknown) => apiFetch<any>('/api/dialogues', jsonInit('POST', body)),
   getDialogueMessages: (did: string) =>
-    apiFetch<any>('/api/dialogues/' + encodeURIComponent(did) + '/messages', { cache: 'no-store' }),
+    apiFetch<MessagesData>('/api/dialogues/' + encodeURIComponent(did) + '/messages', { cache: 'no-store' }),
   postDialogueMessage: (did: string, body: unknown) =>
     apiFetch<any>('/api/dialogues/' + encodeURIComponent(did) + '/messages', jsonInit('POST', body)),
   updateDialogue: (did: string, body: unknown) =>
@@ -88,14 +89,14 @@ export const api = {
   fileToText: (form: FormData) =>
     apiFetch<any>('/api/file-to-text', { method: 'POST', body: form }),
 
-  getGlobalProfile: () => apiFetch<any>('/api/global-profile', { cache: 'no-store' }),
+  getGlobalProfile: () => apiFetch<ProfileData>('/api/global-profile', { cache: 'no-store' }),
   saveGlobalProfile: (profile: unknown) => apiFetch<any>('/api/global-profile', jsonInit('POST', { profile })),
   getProjectMemory: (pid: string) =>
-    apiFetch<any>('/api/project-memory/' + encodeURIComponent(pid), { cache: 'no-store' }),
+    apiFetch<ProfileData>('/api/project-memory/' + encodeURIComponent(pid), { cache: 'no-store' }),
   saveProjectMemory: (pid: string, profile: unknown) =>
     apiFetch<any>('/api/project-memory/' + encodeURIComponent(pid), jsonInit('POST', { profile })),
   getDialogueProfile: (did: string) =>
-    apiFetch<any>('/api/dialogues/' + encodeURIComponent(did) + '/profile'),
+    apiFetch<ProfileData>('/api/dialogues/' + encodeURIComponent(did) + '/profile'),
   getDialogueFollowups: (did: string) =>
     apiFetch<any>('/api/dialogues/' + encodeURIComponent(did) + '/followups', { cache: 'no-store' }),
   getLearningLog: (pid?: string) =>
@@ -105,8 +106,8 @@ export const api = {
   memoryChat: (body: unknown) => apiFetch<any>('/api/memory-chat', jsonInit('POST', body)),
 
   listResources: (projectId: string) =>
-    apiFetch<any>('/api/resources?project_id=' + encodeURIComponent(projectId)),
-  listResourcesAll: () => apiFetch<any>('/api/resources/all'),
+    apiFetch<ResourceList>('/api/resources?project_id=' + encodeURIComponent(projectId)),
+  listResourcesAll: () => apiFetch<ResourceList>('/api/resources/all'),
   saveResource: (body: unknown) => apiFetch<any>('/api/resources', jsonInit('POST', body)),
   uploadResource: (form: FormData) =>
     apiFetch<any>('/api/resources/upload', { method: 'POST', body: form }),
@@ -114,15 +115,15 @@ export const api = {
     apiFetch<any>('/api/resources/' + encodeURIComponent(rid), jsonInit('DELETE')),
   generateDomain: (body: unknown) => apiFetch<any>('/api/generate-domain', jsonInit('POST', body)),
   listCapabilities: () =>
-    apiFetch<any>('/api/resources/capabilities', { cache: 'no-store' }),
+    apiFetch<CapabilityList>('/api/resources/capabilities', { cache: 'no-store' }),
   generateResource: (body: unknown) =>
     apiFetch<any>('/api/resources/generate', jsonInit('POST', body)),
   listArtifacts: (projectId: string) =>
     apiFetch<any>('/api/artifacts?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' }),
 
   getStats: (projectId: string) =>
-    apiFetch<any>('/api/stats?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' }),
-  listSkills: () => apiFetch<any>('/api/skills'),
+    apiFetch<StatsData>('/api/stats?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' }),
+  listSkills: () => apiFetch<SkillList>('/api/skills'),
   getSkillSource: (name: string) =>
     apiFetch<any>('/api/skills/' + encodeURIComponent(name) + '/source', { cache: 'no-store' }),
 
