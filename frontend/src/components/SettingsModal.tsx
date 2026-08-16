@@ -573,11 +573,15 @@ export default function SettingsModal({ onClose, projectId }: Props) {
   )
 }
 
-export function ApiKeyPrompt({ onClose }: { onClose: () => void }) {
+export function ApiKeyPrompt({ onClose, provider = 'deepseek' }: { onClose: () => void; provider?: string }) {
   const [key, setKey] = useState('')
+  const label = provider === 'zhipu' ? '智谱 GLM' : 'DeepSeek'
 
   const handleSave = () => {
     if (key.trim()) {
+      const keys = lsGetJSON<Record<string, string>>(LS.providerKeys, {})
+      keys[provider] = key.trim()
+      lsSetJSON(LS.providerKeys, keys)
       lsSet(LS.apiKey, key.trim())
     }
     onClose()
@@ -587,7 +591,7 @@ export function ApiKeyPrompt({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
       <div className="card-lift w-full max-w-md mx-4 p-6">
         <h2 className="font-display text-lg mb-2">配置 API Key</h2>
-        <p className="text-sm text-dim mb-4">请输入 DeepSeek API Key 以启用 Agent 功能。后续可在设置中修改。</p>
+        <p className="text-sm text-dim mb-4">请输入 {label} API Key 以启用 Agent 功能。后续可在设置中修改。</p>
         <input
           autoFocus
           type="password"

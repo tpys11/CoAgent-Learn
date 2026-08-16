@@ -48,6 +48,8 @@ interface CenterPanelProps {
   dialogueId?: string | null
   onSendMessage: (text: string, settings?: Record<string, any>) => void
   onStop?: () => void
+  /** 未填写主模型 key 时触发（由 App 弹出 key 输入框） */
+  onRequestKey?: () => void
   /** 需求澄清（reasonix 式）：思维链内选项点击回调；option=null 表示直接生成 */
   onClarifyPick?: (option: string | null) => void
   statsCollapsed: boolean
@@ -63,7 +65,7 @@ interface CenterPanelProps {
   flowActiveAgent?: string | null
 }
 
-export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, onStop, onClarifyPick, statsCollapsed, onToggleStats, onOpenGuide, onOpenSettings, projectInitialized, draft, analyzeHint, onClearAnalyzeHint, onManualSetup, flowStatus, flowActiveAgent }: CenterPanelProps) {
+export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, onStop, onRequestKey, onClarifyPick, statsCollapsed, onToggleStats, onOpenGuide, onOpenSettings, projectInitialized, draft, analyzeHint, onClearAnalyzeHint, onManualSetup, flowStatus, flowActiveAgent }: CenterPanelProps) {
   const [input, setInput] = useState('')
   // 记忆修改预填：draft 变化时写入输入框（从记忆界面跳转）
   useEffect(() => { if (draft) setInput(draft) }, [draft])
@@ -193,7 +195,7 @@ const TEMPLATE_OPTIONS = [
   ]
   const [selectedProvider, setSelectedProvider] = useState(() => lsGet(LS.provider, 'deepseek'))
   const [selectedModel, setSelectedModel] = useState(() => {
-    const m = lsGet(LS.model, 'deepseek-v4-pro')
+    const m = lsGet(LS.model, 'deepseek-v4-flash')
     const alias: Record<string, string> = {
       'deepseek-chat': 'deepseek-v4-pro',
       'deepseek-reasoner': 'deepseek-v4-pro',
@@ -259,6 +261,10 @@ const TEMPLATE_OPTIONS = [
     if (isLoading) return  // 生成中：发送按钮已变为"停止"，Enter 等途径不触发新消息（避免并行流）
     const text = input.trim()
     if (!text && attachments.length === 0) return
+    // 未填主模型 key：弹框提醒，保留输入不发送
+    const prov = lsGet(LS.provider, 'deepseek')
+    const keys = lsGetJSON<Record<string, string>>(LS.providerKeys, {})
+    if (!(keys[prov] || lsGet(LS.apiKey, ''))) { onRequestKey?.(); return }
     let full = text
     let image: string | undefined
     if (attachments.length > 0) {
@@ -282,6 +288,9 @@ const TEMPLATE_OPTIONS = [
   }
 
   const sendFollowup = (q: string) => {
+    const prov = lsGet(LS.provider, 'deepseek')
+    const keys = lsGetJSON<Record<string, string>>(LS.providerKeys, {})
+    if (!(keys[prov] || lsGet(LS.apiKey, ''))) { onRequestKey?.(); return }
     onSendMessage(q, {
       template: templateMode,
       auto: autoMode,

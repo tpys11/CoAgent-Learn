@@ -399,6 +399,13 @@ function App() {
     const continuing = clarifyContinueRef.current
     clarifyContinueRef.current = false
     lastUserMsgRef.current = text.trim()
+    // key 检查：没填主模型 key 直接阻止发送并弹框，不回退 .env
+    const _prov = lsGet(LS.provider, 'deepseek')
+    const _keys = lsGetJSON<Record<string, string>>(LS.providerKeys, {})
+    if (!(_keys[_prov] || lsGet(LS.apiKey, ''))) {
+      setShowApiKeyPrompt(true)
+      return
+    }
     if (!did && currentProjectId) {
       // 自动创建对话
       const count = dialogues.filter(d => d.projectId === currentProjectId && !d.archived).length
@@ -455,7 +462,7 @@ function App() {
       const provider = lsGet(LS.provider, 'deepseek')
       const model = (() => {
         // DeepSeek 官方模型名已升级 v4：兼容 localStorage 里的旧值（deepseek-chat/reasoner/pro/flash）
-        const m = lsGet(LS.model, 'deepseek-v4-pro')
+        const m = lsGet(LS.model, 'deepseek-v4-flash')
         const alias: Record<string, string> = {
           'deepseek-chat': 'deepseek-v4-pro',
           'deepseek-reasoner': 'deepseek-v4-pro',
@@ -466,11 +473,7 @@ function App() {
       })()
       const providerBaseUrls: Record<string, string> = {
         deepseek: 'https://api.deepseek.com/v1',
-        openai: 'https://api.openai.com/v1',
-        qwen: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
         zhipu: 'https://open.bigmodel.cn/api/paas/v4',
-        moonshot: 'https://api.moonshot.cn/v1',
-        doubao: 'https://ark.cn-beijing.volces.com/api/v3',
       }
       const apiKey = provKeys[provider] || lsGet(LS.apiKey, '') || undefined
       // 合并设置：上下文(历史条数/记忆层级/打字机) + 对话后动作(自动保存/追问) + 上次设置 + 本次设置
@@ -772,7 +775,7 @@ function App() {
   return (
     <div ref={appRef} className="flex flex-col h-screen w-screen bg-[#ffffff] text-[#1a1a1a] overflow-hidden">
       <div className="flex-1 flex min-h-0 pt-3 pb-3 pr-3">
-      {/* 最左侧细轨：主页时展开加宽，点开课程/离开主页自动收起（变窄留图标） */}
+      {/* 最左侧细轨：主页时展开加宽，点开课程/离开主页自动折叠为仅图标 */}
       <ActivityBar view={view} onChange={handleViewChange} expanded={view === 'chat' && !chatOpen}
         onSettings={() => setShowSettings(true)} />
       {sidebarCollapsed && (
@@ -818,6 +821,7 @@ function App() {
         dialogueId={currentDialogueId}
         onSendMessage={handleSendMessage}
         onStop={handleStopGeneration}
+        onRequestKey={() => setShowApiKeyPrompt(true)}
         onClarifyPick={handleClarifyPick}
         statsCollapsed={statsCollapsed} onToggleStats={() => setStatsCollapsed(!statsCollapsed)}
           onOpenGuide={() => setShowGuide(true)}
@@ -894,7 +898,7 @@ function App() {
           else api.saveDialogueProfile(wizard.id, profile)
           setWizard(null)
         }} />}
-      {showApiKeyPrompt && <ApiKeyPrompt onClose={() => { setShowApiKeyPrompt(false); lsSet(LS.apiKeySkipped, '1') }} />}
+      {showApiKeyPrompt && <ApiKeyPrompt provider={lsGet(LS.provider, 'deepseek')} onClose={() => { setShowApiKeyPrompt(false); lsSet(LS.apiKeySkipped, '1') }} />}
       {showIntro && <IntroPanel onClose={() => { setShowIntro(false); lsSet(LS.introSeen, '1') }} />}
       {/* 删除对话确认弹窗 */}
       {deleteDialogueTarget && (

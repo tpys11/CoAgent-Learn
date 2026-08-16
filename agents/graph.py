@@ -19,11 +19,7 @@ from agents.prompts import (
 
 # 决策类节点（规划/审核）使用的快模型：按 base_url 域名自动映射，映射不到则与主模型一致
 FAST_MODEL_BY_BASE = {    'api.deepseek.com': 'deepseek-v4-flash',
-    'api.openai.com': 'gpt-4o-mini',
-    'dashscope.aliyuncs.com': 'qwen-turbo',
     'open.bigmodel.cn': 'glm-4-flash',
-    'api.moonshot.cn': 'moonshot-v1-8k',
-    'ark.cn-beijing.volces.com': 'doubao-lite-32k',
 }
 
 # Agent 配置 id → 节点名

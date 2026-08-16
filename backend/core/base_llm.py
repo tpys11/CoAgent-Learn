@@ -186,8 +186,10 @@ class DeepSeekLLM(BaseLLM):
         super().__init__()
 
     def _create_client(self) -> OpenAI:
+        if not self._api_key:
+            raise RuntimeError("未配置 API Key（请在设置→基础→模型与 API Key 中填写）")
         return OpenAI(
-            api_key=self._api_key or config.DEEPSEEK_API_KEY,
+            api_key=self._api_key,
             base_url=self._base_url or config.DEEPSEEK_BASE_URL,
             timeout=120,
         )
