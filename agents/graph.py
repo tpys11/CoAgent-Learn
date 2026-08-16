@@ -12,15 +12,11 @@ import operator
 from typing import TypedDict, Annotated
 from langgraph.graph import StateGraph, END
 from core.base_llm import DeepSeekLLM
+from core.model_provider import FAST_MODEL_BY_BASE
 from agents.prompts import (
     MAIN_PLAN_PROMPT, MAIN_GENERATE_PROMPT,
     REVIEW_PROMPT, GENERATE_RULES, TIER_TIME_EXPECT,
 )
-
-# 决策类节点（规划/审核）使用的快模型：按 base_url 域名自动映射，映射不到则与主模型一致
-FAST_MODEL_BY_BASE = {    'api.deepseek.com': 'deepseek-v4-flash',
-    'open.bigmodel.cn': 'glm-4-flash',
-}
 
 # Agent 配置 id → 节点名
 AGENT_NODE = {'main': 'main', 'study': 'study', 'kb': 'kb', 'review': 'review'}
