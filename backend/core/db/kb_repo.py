@@ -64,6 +64,10 @@ class KbRepo:
     def get_kb_docs(self, project_id):
         return self._db.get_kb_docs(project_id)
 
+    def list_project_ids(self):
+        rows = self._db.execute("SELECT DISTINCT project_id FROM kb_vectors")
+        return [r["project_id"] for r in rows]
+
     def delete_kb_by_source(self, project_id, source):
         return self._db.delete_kb_by_source(project_id, source)
 

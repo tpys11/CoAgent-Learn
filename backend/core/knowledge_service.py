@@ -6,9 +6,9 @@ import hashlib
 import logging
 import re
 
-from core.sqlite_client import get_db
+from core.db import get_kb_repo
 
-_db = get_db()
+_db = get_kb_repo()
 logger = logging.getLogger("coagent.knowledge")
 
 # BM25 缓存：project_id -> (ids, tokenized_docs, bm25)

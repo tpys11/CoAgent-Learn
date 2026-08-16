@@ -27,8 +27,8 @@ def _process_upload(project_id, text, source, session_id, api_key, skip_context:
     已移除 Neo4j 知识图谱抽取（2026-08-15）。"""
     n = 0
     try:
-        from core.sqlite_client import get_db as _db
-        if content_hash and _db().has_file_hash(project_id, content_hash):
+        from core.db import get_kb_repo
+        if content_hash and get_kb_repo().has_file_hash(project_id, content_hash):
             return -1
     except Exception:
         logger.warning("查询内容去重表失败", exc_info=True)
@@ -49,8 +49,8 @@ def _process_upload(project_id, text, source, session_id, api_key, skip_context:
         logger.exception("知识库入库失败 source=%s", source)
     if n > 0 and content_hash:
         try:
-            from core.sqlite_client import get_db as _db
-            _db().save_file_hash(project_id, content_hash, source)
+            from core.db import get_kb_repo
+            get_kb_repo().save_file_hash(project_id, content_hash, source)
         except Exception:
             logger.warning("记录内容去重 hash 失败", exc_info=True)
     return n
@@ -212,8 +212,8 @@ def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
     source = (req.source or "").strip() or url
     text = ""
     try:
-        from core.sqlite_client import get_db as _getdb
-        _cached = _getdb().get_preset_doc(url)
+        from core.db import get_kb_repo
+        _cached = get_kb_repo().get_preset_doc(url)
         if _cached and (_cached.get("content") or "").strip():
             text = _cached["content"]
     except Exception:
@@ -223,7 +223,7 @@ def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
             text = _fetch_site_text(url)
             if len(text.strip()) >= 20:
                 try:
-                    _getdb().save_preset_doc(url, source, text[:_MAX_LINK_CHARS])
+                    get_kb_repo().save_preset_doc(url, source, text[:_MAX_LINK_CHARS])
                 except Exception:
                     pass
         except Exception as e:
@@ -293,8 +293,9 @@ async def knowledge_list(project_id: str = "default"):
 async def knowledge_list_all():
     from core.knowledge_service import list_docs
     from core.postgres_client import pg_client
+    from core.db import get_kb_repo
     proj_names = {r["id"]: r["name"] for r in pg_client.execute("SELECT id, name FROM projects")}
-    pids = pg_client.execute("SELECT DISTINCT project_id FROM kb_vectors")
+    pids = [{"project_id": p} for p in get_kb_repo().list_project_ids()]
     all_docs = []
     for p in pids:
         pid = p["project_id"]
