@@ -121,7 +121,7 @@ async def add_feedback(req: FeedbackReq):
                 pg_client.execute("UPDATE dialogue_memories SET profile_data=%s WHERE dialogue_id=%s",
                                   (json.dumps(p, ensure_ascii=False), req.dialogue_id))
         except Exception:
-            pass
+            logger.exception("保存反馈失败 dialogue_id=%s", req.dialogue_id)
     return {"status": "ok"}
 
 
@@ -145,7 +145,7 @@ async def get_stats(project_id: str = "default"):
                 (project_id,))
         daily_focus = [{"date": r["d"], "seconds": int(r["s"] or 0)} for r in (rows or [])]
     except Exception:
-        pass
+        logger.exception("读取专注日志失败 project_id=%s", project_id)
     return {
         "dialogue_count": d[0]["c"] if d else 0,
         "message_count": m[0]["c"] if m else 0,
@@ -315,7 +315,7 @@ async def memory_progress(project_id: str = "default"):
                 if n and n in c:
                     seen_days[n].add(d)
     except Exception:
-        pass
+        logger.exception("扫描消息出现日期失败 project_id=%s", project_id)
     today = datetime.date.today()
     items = compute_mastery_items(names, kind_map, seen_days, today)
     day_counts: dict = defaultdict(int)

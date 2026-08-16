@@ -7,8 +7,10 @@
 - 保留：压缩不物理删消息，被压消息向量化存入 message_vectors，生成时可检索召回
 """
 import sys as _s
+import logging
 
 NL = "\n"
+logger = logging.getLogger("coagent.compress")
 
 # 近期原文保留预算：未压缩消息估算 token 超过此值才触发压缩
 HISTORY_TOKEN_BUDGET = 12000
@@ -95,7 +97,7 @@ def compress_dialogue(api_key: str, dialogue_id: str, db) -> bool:
                 for t, e in zip(texts, embs):
                     db.insert_message_vector(dialogue_id, "user", t, e)
         except Exception:
-            pass
+            logger.exception("压缩消息向量化失败 dialogue_id=%s", dialogue_id)
         last_compressed_id = to_compress[-1].get("id", upto)
         db.execute("UPDATE dialogues SET summary=%s, compressed_upto=%s WHERE id=%s",
                    (new_summary.strip()[:3000], last_compressed_id, dialogue_id))
