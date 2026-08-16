@@ -92,7 +92,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   const stickToBottomRef = useRef(true)
   // 上滑超过阈值时显示"回到底部"悬浮按钮
   const [showJumpBottom, setShowJumpBottom] = useState(false)
-  // 特殊形式输出建议卡片：各消息选中的形式 key（默认全选）+ 已忽略的消息 idx
+  // 资源生成建议卡片：各消息选中的形式 key（默认全选）+ 已忽略的消息 idx
   const [specialSel, setSpecialSel] = useState<Record<number, string[]>>({})
   const [dismissedSpecial, setDismissedSpecial] = useState<Set<number>>(new Set())
   useEffect(() => {
@@ -411,7 +411,7 @@ const TEMPLATE_OPTIONS = [
                               </div>
                             )
                           })()}
-                          {/* 特殊形式输出建议（模型判断）：弹出选项——是否生成 / 生成哪些 */}
+                          {/* 资源生成建议（模型判断）：弹出选项——是否生成 / 生成哪些 */}
                           {msg.special && msg.special.length > 0 && !dismissedSpecial.has(idx) && (
                             <div className="mt-2.5 border hairline rounded-xl px-3 py-2.5 bg-[var(--bg-panel)]">
                               <p className="text-[10px] font-semibold text-dim mb-1.5">模型建议：内容可生成以下形式</p>

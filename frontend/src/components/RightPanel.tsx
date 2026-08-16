@@ -24,7 +24,7 @@ type WinKey = 'flow' | 'graph' | 'chat' | 'special' | 'monitor'
 const WINDOWS: Array<{ key: WinKey; title: string; icon: any }> = [
   { key: 'graph', title: '知识图谱', icon: Map },
   { key: 'chat', title: '第二对话', icon: MessagesSquare },
-  { key: 'special', title: '特殊形式输出', icon: FileText },
+  { key: 'special', title: '资源生成', icon: FileText },
   { key: 'monitor', title: '运行监控', icon: Activity },
 ]
 

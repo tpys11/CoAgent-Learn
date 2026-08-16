@@ -448,7 +448,7 @@ async def chat(req: ChatRequest):
                     if cancel_evt.is_set():
                         token_queue.put(("done", {"final_reply": "", "steps": [], "mindchain": [], "task_stats": {}}))
                         return
-                    # 特殊形式输出建议（M10 触发条件-模型判断）：normal 未取消时 flash 判断回答适合哪些形式；simple/失败返回 []
+                    # 资源生成建议（M10 触发条件-模型判断）：normal 未取消时 flash 判断回答适合哪些形式；simple/失败返回 []
                     if result.get("complexity") != "simple":
                         result["special_suggestions"] = _suggest_special_forms(req.api_key, result.get("final_reply", ""), req.base_url)
                     else:
@@ -591,24 +591,23 @@ async def chat_stop(req: StopRequest):
     return {"status": "ok"}
 
 
-# ---------- 特殊形式输出建议（M10 触发条件：模型判断） ----------
+# ---------- 资源生成建议（M10 触发条件：模型判断） ----------
 
-_SPECIAL_FORM_KEYS = {"report": "报告", "flow": "流程图", "tree": "树状图", "table": "表格", "chart": "统计图", "audio": "音频", "quiz": "测试题"}
+_SPECIAL_FORM_KEYS = {"report": "报告", "flow": "流程图", "tree": "树状图", "table": "表格", "chart": "统计图", "quiz": "测试题"}
 
-_SPECIAL_SUGGEST_PROMPT = """你是内容形式分析师。分析下面的学习内容，判断它适合转换/补充为哪些特殊输出形式（可多选，最多 3 个，选最合适的）：
+_SPECIAL_SUGGEST_PROMPT = """你是内容形式分析师。分析下面的学习内容，判断它适合转换/补充为哪些资源生成形式（可多选，最多 3 个，选最合适的）：
 - report=报告（汇总讲解内容）
 - flow=流程图（内容含步骤/流程/时序）
 - tree=树状图（内容有层级/分类结构）
 - table=表格（内容含多对象对比/数据维度）
 - chart=统计图（内容含数据/趋势）
-- audio=音频（播客/朗读，讲解类内容均可）
 - quiz=测试题（适合检验理解的知识点）
 
 按 JSON Schema 输出 {"keys": ["形式key数组"]}；没有合适的输出 {"keys": []}。"""
 
 
 def _suggest_special_forms(api_key, content, base_url=None):
-    """模型判断回答适合哪些特殊输出形式（flash 一次调用；失败返回 []）"""
+    """模型判断回答适合哪些资源生成形式（flash 一次调用；失败返回 []）"""
     try:
         from core.base_llm import DeepSeekLLM
         llm = DeepSeekLLM(api_key=api_key, model="deepseek-v4-flash", base_url=base_url, thinking=False)

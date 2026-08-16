@@ -56,7 +56,7 @@ export interface Message {
   content: string
   steps?: ChatStep[]
   think?: MindchainItem[] | string[]
-  /** 特殊形式输出建议（模型判断）：{key, label} 列表，消息完成时由 done 事件注入 */
+  /** 资源生成建议（模型判断）：{key, label} 列表，消息完成时由 done 事件注入 */
   special?: Array<{ key: string; label: string }>
   /** 跨模态检索命中的图片（知识库图片向量命中）：随 done 事件注入 */
   retrievedImages?: Array<{ source: string; content: string; file_path: string; mime: string }>

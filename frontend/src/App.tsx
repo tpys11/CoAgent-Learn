@@ -513,7 +513,7 @@ function App() {
         return
       }
       let finalReply = ''; const steps: any[] = []; let taskStats: any = null; let flowError = ''
-      // 特殊形式输出建议（模型判断）：done 事件注入，随最终消息展示
+      // 资源生成建议（模型判断）：done 事件注入，随最终消息展示
       let special: Array<{ key: string; label: string }> = []
       // 跨模态检索命中的图片（done 事件注入，随最终消息展示）
       let retrievedImages: Array<{ source: string; content: string; file_path: string; mime: string }> = []
@@ -591,8 +591,8 @@ function App() {
           pendingAnswerRef.current = ''
           pendingMindRef.current = null
           finalReply = data.reply; steps.push(...(data.steps || [])); taskStats = data.task_stats || null
-          // 特殊形式输出建议（模型判断）：key → label 映射，随最终消息展示
-          const SPECIAL_LABELS: Record<string, string> = { report: '报告', flow: '流程图', tree: '树状图', table: '表格', chart: '统计图', audio: '音频', quiz: '测试题' }
+          // 资源生成建议（模型判断）：key → label 映射，随最终消息展示
+          const SPECIAL_LABELS: Record<string, string> = { report: '报告', flow: '流程图', tree: '树状图', table: '表格', chart: '统计图', quiz: '测试题' }
           special = Array.isArray(data.special_suggestions)
             ? (data.special_suggestions as string[]).map(k => ({ key: k, label: SPECIAL_LABELS[k] || k })).filter(s => s.label)
             : []
