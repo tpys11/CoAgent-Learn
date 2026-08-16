@@ -109,6 +109,65 @@ _DEFAULT_KB_SUBS = [
 ]
 
 
+_RESEARCH_MAX_ROUNDS = 3  # 研究档联网搜索最多轮数（1-5 可配，先保守取 3）
+
+
+def _judge_search_sufficient(llm, query: str, results: list) -> bool:
+    """用快模型判断现有联网搜索结果是否已足以回答用户问题。失败默认视为足够。"""
+    try:
+        res = llm.chat_with_json(
+            [{"role": "user", "content": (
+                "判断以下联网搜索结果是否已经足以回答用户问题。只输出 JSON："
+                "{\"sufficient\": true|false, \"reason\": \"简短理由\"}\n\n"
+                "用户问题：{q}\n\n搜索结果摘要：\n{s}"
+            ).format(q=query, s=json.dumps(results[:10], ensure_ascii=False)[:2000])}],
+            {"sufficient": "boolean", "reason": "string"},
+        )
+        return bool((res or {}).get("sufficient", True))
+    except Exception:
+        return True
+
+
+def _gen_followup_query(llm, query: str, results: list) -> str:
+    """生成更聚焦的补充搜索查询。失败返回空串。"""
+    try:
+        res = llm.chat_with_json(
+            [{"role": "user", "content": (
+                "现有搜索结果不足以回答用户问题。请生成一个更聚焦的补充搜索查询，只输出 JSON："
+                "{\"query\": \"补充搜索词\"}\n\n"
+                "用户问题：{q}\n\n已有结果摘要：\n{s}"
+            ).format(q=query, s=json.dumps(results[:8], ensure_ascii=False)[:1500])}],
+            {"query": "string"},
+        )
+        return str((res or {}).get("query") or "").strip()[:80]
+    except Exception:
+        return ""
+
+
+def _research_multi_search(registry, llm, query: str) -> dict:
+    """研究档多轮联网搜索：每轮搜索 → 判断是否足够 → 不足则生成补充查询续搜。"""
+    all_results = []
+    seen = set()
+    cur = query
+    for _ in range(_RESEARCH_MAX_ROUNDS):
+        res = registry.execute("web_search", query=cur)
+        results = (res or {}).get("results") or []
+        for r in results:
+            key = (r.get("url") or r.get("title") or "").strip()
+            if key and key not in seen:
+                seen.add(key)
+                all_results.append(r)
+        if _judge_search_sufficient(llm, query, all_results):
+            break
+        follow = _gen_followup_query(llm, query, all_results)
+        if not follow:
+            break
+        cur = follow
+    # 优质源置顶（quality 降序，web_search 已算好），再截断到 20
+    all_results.sort(key=lambda r: -(r.get("quality") or 0))
+    return {"results": all_results[:20], "total": len(all_results[:20])}
+
+
 def create_workflow(api_key: str | None = None, settings: dict | None = None, on_token=None,
                     model: str | None = None, base_url: str | None = None, agents: list | None = None,
                     on_answer=None, cancel_event=None):
@@ -117,8 +176,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
     settings = settings or {}
     agents = agents or []
     tpl = settings.get("template") or "思考"  # 思考 / 研究 / 极速
-    # TODO(研究档): 需实现多轮搜索（1-5 轮，每轮总结、信息不足续搜）与其他模型厂商独立检测；
-    # 当前研究档≈思考档完整流程（规划→学情∥知识库与搜索→生成→单审），搜索仅一轮、检测为 flash 单审。
+    # 研究档已实现多轮搜索（_research_multi_search，最多 3 轮）；其他模型厂商独立检测仍待后续。
     # 主模型：生成节点使用（用户所选模型）
     llm_main = DeepSeekLLM(api_key=api_key, model=model, base_url=base_url)
     # 快模型：决策类节点（规划/学情/审核）使用
@@ -290,6 +348,8 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             )
 
         def _do_search():
+            if tpl == "研究":
+                return _research_multi_search(registry, llm_fast, query)
             return registry.execute("web_search", query=query)
 
         with ThreadPoolExecutor(max_workers=2) as _ex:
