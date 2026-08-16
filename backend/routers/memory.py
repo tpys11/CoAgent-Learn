@@ -6,6 +6,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from core.helpers import _as_dict
+from services.memory_progress import compute_mastery_items, compute_pace
 
 logger = logging.getLogger("coagent.memory")
 router = APIRouter()
@@ -276,7 +277,7 @@ async def get_learning_log(project_id: str = ""):
 
 @router.get("/api/memory/progress")
 async def memory_progress(project_id: str = "default"):
-    import math, datetime
+    import datetime
     from collections import defaultdict
     from core.postgres_client import pg_client as _pg
     rows = _pg.execute("SELECT data FROM project_memories WHERE project_id=%s", (project_id,))
@@ -316,32 +317,7 @@ async def memory_progress(project_id: str = "default"):
     except Exception:
         pass
     today = datetime.date.today()
-    items = []
-    for n in names:
-        days = sorted(seen_days.get(n, set()))
-        last = days[-1] if days else None
-        dt = 999
-        if last:
-            try:
-                dt = (today - datetime.date.fromisoformat(last)).days
-            except Exception:
-                dt = 999
-        mentions = len(days)
-        stability = min(30, mentions * 2 + 3)
-        R = 0.0 if dt >= 999 else math.exp(-dt / max(stability, 1))
-        mastery = int(min(95, 20 + mentions * 10) * R)
-        items.append({
-            "name": n,
-            "kind": kind_map.get(n, "知识点"),
-            "mastery": mastery,
-            "retrievability": round(R, 2),
-            "lastSeen": last,
-            "daysSince": 999 if dt >= 999 else dt,
-            "mentions": mentions,
-            "stability": stability,
-            "forgotten": dt >= 999 or R < 0.7,
-        })
-    items.sort(key=lambda x: -x["mastery"])
+    items = compute_mastery_items(names, kind_map, seen_days, today)
     day_counts: dict = defaultdict(int)
     for dlg in dialogs:
         d = str(dlg.get("created_at") or "")[:10]
@@ -351,12 +327,7 @@ async def memory_progress(project_id: str = "default"):
     for i in range(13, -1, -1):
         d = (today - datetime.timedelta(days=i)).isoformat()
         daily.append({"date": d, "count": day_counts.get(d, 0)})
-    def _sum(arr, start, end):
-        return sum(x["count"] for x in arr[start:end])
-    w7 = _sum(daily, 7, 14)
-    prev7 = max(1, _sum(daily, 0, 7))
-    ratio = w7 / prev7
-    pace = "↗ 变快" if ratio > 1.3 else ("↘ 变慢" if ratio < 0.7 else "→ 平稳")
+    pace = compute_pace(daily)
     return {"items": items, "daily": daily, "pace": pace, "total_dialogues": len(dialogs)}
 
 
