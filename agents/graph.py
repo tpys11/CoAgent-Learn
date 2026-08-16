@@ -24,8 +24,7 @@ AGENT_NODE = {'main': 'main', 'study': 'study', 'kb': 'kb', 'review': 'review'}
 
 def _resolve_plan_targets(tpl: str, plan: list) -> list[str]:
     """规划路由的目标节点判定（纯函数，可单测）：
-    - 极速档：生成前默认做一次基础文字检索（kb_node 内关闭图片跨模态），
-      跳过联网搜索/子Agent整理 → 直接生成
+    - 极速档：跳过实时知识库检索，直接生成（用已保存的综合概述性记忆），保首字 <3s
     - 思考档：生成前默认做知识库检索（文字 + 图片跨模态各一次）
     - 研究档：生成前默认做知识库检索（文字 + 图片跨模态）+ 强制联网搜索；
       多轮搜索(1-5轮)与其他模型厂商独立检测留作后续增强
@@ -33,7 +32,9 @@ def _resolve_plan_targets(tpl: str, plan: list) -> list[str]:
     plan = list(plan or [])
     if tpl == "研究" and "搜索增强" not in plan and "联网搜索" not in plan:
         plan.append("搜索增强")
-    if tpl in ("极速", "思考", "研究"):
+    if tpl == "极速":
+        return ["generate"]
+    if tpl in ("思考", "研究"):
         return ["kb"]
     if "知识库管理" in plan or "搜索增强" in plan or "联网搜索" in plan:
         return ["kb"]
