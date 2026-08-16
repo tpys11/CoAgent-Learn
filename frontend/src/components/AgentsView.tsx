@@ -335,6 +335,10 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   })
   const [saveTplName, setSaveTplName] = useState('')
   const [showNewTplModal, setShowNewTplModal] = useState(false)
+  const [showSkillUpload, setShowSkillUpload] = useState(false)
+  const [skillUploadName, setSkillUploadName] = useState('')
+  const [skillUploadCode, setSkillUploadCode] = useState('')
+  const [skillUploadMsg, setSkillUploadMsg] = useState('')
   // 子 Agent 添加弹窗
   const [showSubAdd, setShowSubAdd] = useState(false)
   const [subName, setSubName] = useState('')
@@ -358,6 +362,30 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
 
   useEffect(() => {
     setMode(agent?.mode || '均衡')
+  const uploadSkill = async () => {
+    const name = skillUploadName.trim()
+    if (!name || !skillUploadCode.trim()) { setSkillUploadMsg('请填写名称和代码'); return }
+    setSkillUploadMsg('上传中…')
+    try {
+      const r = await fetch('/api/skills', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, code: skillUploadCode }) })
+      const d = await r.json()
+      if (d.status === 'ok') {
+        setSkillUploadMsg('上传成功：' + d.name)
+        setSkillUploadName(''); setSkillUploadCode('')
+        fetch('/api/skills').then(r => r.json()).then(dd => setAllSkills(dd.skills || []))
+        setTimeout(() => { setShowSkillUpload(false); setSkillUploadMsg('') }, 800)
+      } else {
+        setSkillUploadMsg('失败：' + (d.msg || '未知'))
+      }
+    } catch (e) {
+      setSkillUploadMsg('失败：' + e)
+    }
+  }
+
+  const loadSkills = () => {
+    fetch('/api/skills').then(r => r.json()).then(d => setAllSkills(d.skills || []))
+  }
+
     setPrompt(agent?.systemPrompt || '')
     setSubIntroOpen(false)
     fetch('/api/skills').then(r => r.json()).then(d => {
@@ -541,9 +569,8 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold text-dim uppercase tracking-wider flex items-center gap-1"><Folder size={13} /> Skill 模块</label>
-                <button onClick={() => document.getElementById('agent-skill-upload')?.click()}
+                <button onClick={() => { setSkillUploadMsg(''); setShowSkillUpload(true) }}
                   className="text-[10px] px-2 py-1 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">上传 Skill</button>
-                <input id="agent-skill-upload" type="file" className="hidden" {...({ webkitdirectory: '', directory: '' } as any)} />
               </div>
               <div className="grid grid-cols-3 gap-3">
                 {allSkills.map(s => {
@@ -1009,6 +1036,27 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
         </div>
       )}
       {/* 新建模板弹窗 */}
+      {showSkillUpload && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setShowSkillUpload(false)}>
+          <div className="bg-[var(--bg-panel)] rounded-2xl p-5 w-[520px] max-h-[80vh] flex flex-col gap-3 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold">上传 Skill</p>
+              <button onClick={() => setShowSkillUpload(false)} className="p-1 rounded-lg text-dim hover:bg-[var(--bg-hover)]"><X size={16} /></button>
+            </div>
+            <input autoFocus value={skillUploadName} onChange={e => setSkillUploadName(e.target.value)}
+              placeholder="Skill 名称（小写字母/数字/下划线，如 my_skill）"
+              className="px-3 py-2 text-xs input-surface rounded-xl outline-none" />
+            <textarea value={skillUploadCode} onChange={e => setSkillUploadCode(e.target.value)}
+              placeholder="粘贴 Skill 代码（继承 Skill 类，含 name/description/execute）"
+              rows={12} className="px-3 py-2 text-xs input-surface rounded-xl outline-none resize-none font-mono" />
+            <p className="text-[11px] text-dim leading-relaxed">代码示例见「开发者」tab 的 Skill 开发模板。上传后自动注册，Agent 即可调用。</p>
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] text-dim">{skillUploadMsg}</span>
+              <button onClick={uploadSkill} className="px-4 py-2 text-xs bg-[#1a1a1a] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors">上传</button>
+            </div>
+          </div>
+        </div>
+      )}
       {showNewTplModal && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setShowNewTplModal(false)}>
           <div className="bg-[var(--bg-panel)] rounded-2xl shadow-xl w-full max-w-sm p-6 mx-4" onClick={e => e.stopPropagation()}>

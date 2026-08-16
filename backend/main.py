@@ -1293,14 +1293,38 @@ class SkillUpload(BaseModel):
 
 @app.post("/api/skills")
 async def upload_skill(req: SkillUpload):
-    """上传新 Skill（占位——后续实现文件写入）"""
-    return {"status": "ok", "name": req.name, "message": "Skill 上传功能即将实现"}
+    """上传新 Skill：代码写入 skills/ 目录 + 动态加载"""
+    import os as _os
+    import re as _re
+    name = (req.name or "").strip()
+    code = req.code or ""
+    if not name or not _re.fullmatch(r"[a-z_][a-z0-9_]*", name):
+        return {"status": "error", "msg": "skill 名称需为小写字母/数字/下划线（如 my_skill）"}
+    if not code.strip():
+        return {"status": "error", "msg": "代码不能为空"}
+    skill_dir = "/app/skills"
+    folder = _os.path.join(skill_dir, name)
+    _os.makedirs(folder, exist_ok=True)
+    with open(_os.path.join(folder, "__init__.py"), "w", encoding="utf-8") as f:
+        f.write(code)
+    from skills.registry import registry
+    result = registry.reload_skill(name)
+    if result.get("status") == "error":
+        return {"status": "error", "msg": "加载失败：" + result.get("msg", "")}
+    return {"status": "ok", "name": result.get("name", name)}
 
 
 @app.delete("/api/skills/{name}")
 async def delete_skill(name: str):
-    """删除 Skill（占位）"""
-    return {"status": "ok", "name": name, "message": "Skill 删除功能即将实现"}
+    """删除 Skill：删 skills/ 目录 + 移除注册"""
+    import os as _os
+    import shutil as _sh
+    from skills.registry import registry
+    folder = _os.path.join("/app/skills", name)
+    if _os.path.isdir(folder):
+        _sh.rmtree(folder)
+    registry.remove_skill(name)
+    return {"status": "ok", "name": name}
 
 
 # ---------- API 接口 ----------
