@@ -296,9 +296,9 @@ def _search_images(project_id: str, query: str, top_k: int = 3) -> list:
     } for r in rows]
 
 
-def search(project_id: str, query: str, top_k: int = 3, include_images: bool = True) -> list:
+def search(project_id: str, query: str, top_k: int = 3, include_images: bool = True, rerank: bool = True) -> list:
     """混合检索：向量语义检索 + BM25 关键词检索 → RRF 融合 → P3 重排。
-    include_images=False 时跳过图片跨模态检索（极速档只做基础文字检索）。"""
+    include_images=False 时跳过图片跨模态检索；rerank=False 时跳过重排（极速档轻检索）。"""
     from core.config import config as _cfg
     if getattr(_cfg, "KB_MODE", "full") == "light":
         include_images = False
@@ -366,8 +366,8 @@ def search(project_id: str, query: str, top_k: int = 3, include_images: bool = T
             item = dict(all_hits[h])
             item["rrf"] = round(rrf.get(h, 0), 4)
             cands.append(item)
-    # 6. P3：CrossEncoder 重排序
-    reranker = _get_reranker()
+    # 6. P3：CrossEncoder 重排序（极速档可跳过，省一次 API 调用）
+    reranker = _get_reranker() if rerank else None
     if reranker and len(cands) > 1:
         try:
             pairs = [(query, it["content"][:500]) for it in cands]
