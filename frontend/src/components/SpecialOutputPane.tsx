@@ -40,14 +40,16 @@ const ICONS: Record<string, any> = {
 
 interface Capability { key: string; label: string; desc: string; output: string }
 interface GenResult { key: string; label: string; output: string; content: string }
+interface GenItem { id: string; name: string; content: string; created_at?: string }
 
 /** 资源生成：能力注册表驱动的生成器（从后端 /api/resources/capabilities 拉取能力清单） */
-export default function SpecialOutputPane() {
+export default function SpecialOutputPane({ projectId }: { projectId?: string | null }) {
   const [caps, setCaps] = useState<Capability[]>([])
   const [form, setForm] = useState('report')
   const [source, setSource] = useState('')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<GenResult | null>(null)
+  const [history, setHistory] = useState<GenItem[]>([])
 
   useEffect(() => {
     api.listCapabilities().then(d => {
@@ -56,6 +58,14 @@ export default function SpecialOutputPane() {
       if (list.length && !list.some(c => c.key === form)) setForm(list[0].key)
     }).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!projectId) { setHistory([]); return }
+    api.listResources(projectId).then(d => {
+      const rows = (d.resources || []).filter((r: any) => (r.type || '') === ('gen:' + form))
+      setHistory(rows)
+    }).catch(() => setHistory([]))
+  }, [form, projectId])
 
   const generate = async () => {
     if (!source.trim()) { alert('请先粘贴或输入源内容'); return }
@@ -68,8 +78,20 @@ export default function SpecialOutputPane() {
     setLoading(true)
     try {
       const r = await api.generateResource({ key: form, content: source, api_key: apiKey, base_url: baseUrl, model })
-      if (r?.status === 'ok') setResult(r)
-      else alert('生成失败：' + (r?.msg || '未知'))
+      if (r?.status === 'ok') {
+        setResult(r)
+        if (projectId) {
+          try {
+            await api.saveResource({ name: `生成·${r.label}`, content: r.content, project_id: projectId, type: 'gen:' + form, append: true })
+            api.listResources(projectId).then(d => {
+              const rows = (d.resources || []).filter((x: any) => (x.type || '') === ('gen:' + form))
+              setHistory(rows)
+            }).catch(() => {})
+          } catch {}
+        }
+      } else {
+        alert('生成失败：' + (r?.msg || '未知'))
+      }
     } catch {
       alert('生成失败，请检查后端服务')
     } finally {
@@ -108,6 +130,20 @@ export default function SpecialOutputPane() {
           {loading ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
           生成 {cur?.label || ''}
         </button>
+
+        {history.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <p className="text-[10px] font-semibold text-dim">已生成 · {cur?.label || ''}（{history.length}）</p>
+            {history.map(h => (
+              <button key={h.id}
+                onClick={() => setResult({ key: form, label: cur?.label || form, output: cur?.output || 'markdown', content: h.content })}
+                className="text-left px-2.5 py-1.5 rounded-lg border hairline text-[11px] hover:bg-[var(--bg-hover)] truncate">
+                {h.name}
+                {h.created_at ? <span className="text-[9px] text-dim ml-1.5">{(h.created_at || '').slice(0, 10)}</span> : null}
+              </button>
+            ))}
+          </div>
+        )}
 
         {result ? (
           <div className="mt-1 border hairline rounded-xl p-3 bg-[var(--bg-panel)]">

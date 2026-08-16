@@ -13,6 +13,8 @@ class ResourceSave(BaseModel):
     name: str
     content: str = ""
     project_id: str = "default"
+    type: str = ""
+    append: bool = False
 
 
 class GenerateDomainReq(BaseModel):
@@ -110,13 +112,23 @@ async def list_resources_all():
 async def save_resource(req: ResourceSave):
     import time, hashlib
     from core.postgres_client import pg_client
+    if req.append:
+        # 追加模式：每次生成都存一条新记录（资源生成历史），不复用同名 id
+        rid = hashlib.md5((req.name + req.project_id + str(time.time())).encode()).hexdigest()[:16]
+        pg_client.execute(
+            "INSERT INTO resources (id, name, content, type, project_id) VALUES (%s,%s,%s,%s,%s)",
+            (rid, req.name, req.content, req.type, req.project_id),
+        )
+        return {"status": "ok", "id": rid}
     rid = hashlib.md5((req.name + req.project_id).encode()).hexdigest()[:16]
     has = pg_client.execute("SELECT id FROM resources WHERE id=%s", (rid,))
     if has:
-        pg_client.execute("UPDATE resources SET content=%s WHERE id=%s", (req.content, rid))
+        pg_client.execute("UPDATE resources SET content=%s, type=%s WHERE id=%s", (req.content, req.type, rid))
     else:
-        pg_client.execute("INSERT INTO resources (id, name, content, project_id) VALUES (%s,%s,%s,%s)",
-                          (rid, req.name, req.content, req.project_id))
+        pg_client.execute(
+            "INSERT INTO resources (id, name, content, type, project_id) VALUES (%s,%s,%s,%s,%s)",
+            (rid, req.name, req.content, req.type, req.project_id),
+        )
     return {"status": "ok", "id": rid}
 
 

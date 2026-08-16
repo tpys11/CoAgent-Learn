@@ -279,7 +279,7 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
                 </div>
               </div>
             )}
-            {w.key === 'special' && <SpecialOutputPane />}
+            {w.key === 'special' && <SpecialOutputPane projectId={projectId} />}
             {w.key === 'monitor' && (
               <div className="w-full h-full overflow-y-auto px-3 py-2">
                 <p className="text-[11px] text-dim">运行监控（待接入：节点耗时 / LLM 调用次数 / token 估算）</p>

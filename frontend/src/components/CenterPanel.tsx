@@ -275,7 +275,7 @@ const TEMPLATE_OPTIONS = [
       try {
         const r = await api.generateResource({ key, content, api_key: apiKey, base_url: baseUrl, model })
         if (r?.status === 'ok' && r.content) {
-          await api.saveResource({ name: `生成·${r.label}`, content: r.content, project_id: currentProject.id })
+          await api.saveResource({ name: `生成·${r.label}`, content: r.content, project_id: currentProject.id, type: 'gen:' + key, append: true })
           done.push(r.label)
         }
       } catch {}
