@@ -18,16 +18,13 @@ class SQLiteClient:
     def __init__(self, db_path: str = _DB_PATH):
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         self.db_path = db_path
-        self.conn = None
-        # 单例连接会被事件循环线程 + 线程池线程（run_in_threadpool/后台线程）并发使用，
-        # sqlite3 连接非线程安全 → 偶发 IndexError/锁冲突/接口卡顿。用可重入锁串行化所有 DB 操作。
+        # 每操作短命连接 + 单锁串行（对齐 DeepTutor）：不再持有常驻共享连接，
+        # 避免被事件循环线程 + 线程池线程 + 后台线程并发使用时偶发锁冲突/连接失效。
         self._lock = threading.RLock()
-        self._connect()
 
-    def _connect(self):
-        # Windows 挂载卷（Docker Desktop gRPC-FUSE）上 SQLite WAL 的 -shm/-wal 共享
-        # 内存文件操作不稳定（unable to open database file），故不使用 WAL，用默认
-        # rollback journal；单用户场景并发足够，换取挂载卷上的读写可靠性。
+    def _new_conn(self):
+        """新建一个短命连接（每次操作独立连接，用完即关）。
+        Windows 挂载卷上不使用 WAL（-shm/-wal 不稳定），用默认 rollback journal + busy_timeout。"""
         last_err = None
         for _attempt in range(5):
             try:
@@ -37,8 +34,7 @@ class SQLiteClient:
                 sqlite_vec.load(conn)
                 conn.execute("PRAGMA busy_timeout=5000")
                 conn.execute("PRAGMA foreign_keys=ON")
-                self.conn = conn
-                return
+                return conn
             except sqlite3.Error as e:
                 last_err = e
                 try:
@@ -52,29 +48,31 @@ class SQLiteClient:
     def execute(self, sql: str, params: tuple | list | None = None, fetch: bool = True):
         """执行 SQL，返回 list[dict]（SELECT）或空列表。
         自动将 Postgres 风格 %s 占位符转为 SQLite 的 ?，保持旧调用兼容。
-        线程锁串行化（单例连接被多线程并发使用）"""
+        每次操作新建短命连接，单锁串行化多线程并发。"""
         with self._lock:
             if params is not None:
                 sql = sql.replace("%s", "?")
-            try:
-                cur = self.conn.execute(sql, params or ())
-                if sql.strip().upper().startswith(("SELECT", "PRAGMA")):
-                    rows = cur.fetchall()
-                    return [dict(r) for r in rows]
-                self.conn.commit()
-                return []
-            except sqlite3.Error:
-                # 连接可能失效，重连一次再试
+            for attempt in range(2):
+                conn = None
                 try:
-                    self._connect()
-                    cur = self.conn.execute(sql, params or ())
+                    conn = self._new_conn()
+                    cur = conn.execute(sql, params or ())
                     if sql.strip().upper().startswith(("SELECT", "PRAGMA")):
                         rows = cur.fetchall()
                         return [dict(r) for r in rows]
-                    self.conn.commit()
+                    conn.commit()
                     return []
-                except Exception:
+                except sqlite3.Error:
+                    if attempt == 0:
+                        time.sleep(0.1)
+                        continue
                     raise
+                finally:
+                    if conn:
+                        try:
+                            conn.close()
+                        except Exception:
+                            pass
 
     # ── 向量操作（sqlite-vec）──
 
@@ -197,14 +195,18 @@ class SQLiteClient:
                          session_id: str, has_context: bool, content: str, embedding: list):
         # vec0 表不支持 UPDATE，用 DELETE+INSERT 实现 upsert
         with self._lock:
-            self.execute("DELETE FROM kb_vectors WHERE doc_id = ?", (doc_id,))
-            self.conn.execute(
-                "INSERT INTO kb_vectors(rowid, doc_id, project_id, source, chunk, session_id, has_context, content, embedding) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (None, doc_id, project_id, source, chunk, session_id, int(has_context), content,
-                 sqlite_vec.serialize_float32(embedding)),
-            )
-            self.conn.commit()
+            conn = self._new_conn()
+            try:
+                conn.execute("DELETE FROM kb_vectors WHERE doc_id = ?", (doc_id,))
+                conn.execute(
+                    "INSERT INTO kb_vectors(rowid, doc_id, project_id, source, chunk, session_id, has_context, content, embedding) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (None, doc_id, project_id, source, chunk, session_id, int(has_context), content,
+                     sqlite_vec.serialize_float32(embedding)),
+                )
+                conn.commit()
+            finally:
+                conn.close()
 
     def upsert_kb_vectors_bulk(self, items: list):
         """批量 upsert：vec0 表不支持 UPDATE，先批量 DELETE 已存在 doc_id，再批量 INSERT。
@@ -216,17 +218,21 @@ class SQLiteClient:
         import sqlite_vec as _sv
         _BATCH = 500
         with self._lock:
-            for start in range(0, len(items), _BATCH):
-                batch = items[start:start + _BATCH]
-                ids = [it[0] for it in batch]
-                ph = ",".join("?" * len(ids))
-                self.conn.execute(f"DELETE FROM kb_vectors WHERE doc_id IN ({ph})", ids)
-                self.conn.executemany(
-                    "INSERT INTO kb_vectors(rowid, doc_id, project_id, source, chunk, session_id, has_context, content, embedding) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    [(None, it[0], it[1], it[2], it[3], it[4], int(it[5]), it[6], _sv.serialize_float32(it[7])) for it in batch],
-                )
-                self.conn.commit()
+            conn = self._new_conn()
+            try:
+                for start in range(0, len(items), _BATCH):
+                    batch = items[start:start + _BATCH]
+                    ids = [it[0] for it in batch]
+                    ph = ",".join("?" * len(ids))
+                    conn.execute(f"DELETE FROM kb_vectors WHERE doc_id IN ({ph})", ids)
+                    conn.executemany(
+                        "INSERT INTO kb_vectors(rowid, doc_id, project_id, source, chunk, session_id, has_context, content, embedding) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        [(None, it[0], it[1], it[2], it[3], it[4], int(it[5]), it[6], _sv.serialize_float32(it[7])) for it in batch],
+                    )
+                    conn.commit()
+            finally:
+                conn.close()
 
     def upsert_image_vectors_bulk(self, items: list):
         """批量 upsert 图片向量：vec0 不支持 UPDATE，先 DELETE 再 INSERT。
@@ -235,24 +241,32 @@ class SQLiteClient:
             return
         import sqlite_vec as _sv
         with self._lock:
-            for it in items:
-                self.conn.execute("DELETE FROM image_vectors WHERE doc_id = ?", (it[0],))
-                self.conn.execute(
-                    "INSERT INTO image_vectors(rowid, doc_id, project_id, source, content, file_path, mime, embedding) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                    (None, it[0], it[1], it[2], it[3], it[4], it[5], _sv.serialize_float32(it[6])),
-                )
-            self.conn.commit()
+            conn = self._new_conn()
+            try:
+                for it in items:
+                    conn.execute("DELETE FROM image_vectors WHERE doc_id = ?", (it[0],))
+                    conn.execute(
+                        "INSERT INTO image_vectors(rowid, doc_id, project_id, source, content, file_path, mime, embedding) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                        (None, it[0], it[1], it[2], it[3], it[4], it[5], _sv.serialize_float32(it[6])),
+                    )
+                conn.commit()
+            finally:
+                conn.close()
 
     def search_image_vectors(self, project_id: str, query_embedding: list, k: int = 3) -> list[dict]:
         import sqlite_vec as _sv
         with self._lock:
-            rows = self.conn.execute(
-                "SELECT rowid, distance, doc_id, source, content, file_path, mime "
-                "FROM image_vectors WHERE project_id = ? AND embedding MATCH ? AND k = ? "
-                "ORDER BY distance",
-                (project_id, _sv.serialize_float32(query_embedding), k),
-            ).fetchall()
+            conn = self._new_conn()
+            try:
+                rows = conn.execute(
+                    "SELECT rowid, distance, doc_id, source, content, file_path, mime "
+                    "FROM image_vectors WHERE project_id = ? AND embedding MATCH ? AND k = ? "
+                    "ORDER BY distance",
+                    (project_id, _sv.serialize_float32(query_embedding), k),
+                ).fetchall()
+            finally:
+                conn.close()
         return [dict(r) for r in rows]
 
     def get_image_docs(self, project_id: str) -> list[dict]:
@@ -294,21 +308,29 @@ class SQLiteClient:
         """会话消息向量（上下文压缩的历史召回）"""
         import sqlite_vec as _sv
         with self._lock:
-            self.conn.execute(
-                "INSERT INTO message_vectors(rowid, dialogue_id, role, content, embedding) VALUES (?,?,?,?,?)",
-                (None, dialogue_id, role, content, _sv.serialize_float32(embedding)),
-            )
-            self.conn.commit()
+            conn = self._new_conn()
+            try:
+                conn.execute(
+                    "INSERT INTO message_vectors(rowid, dialogue_id, role, content, embedding) VALUES (?,?,?,?,?)",
+                    (None, dialogue_id, role, content, _sv.serialize_float32(embedding)),
+                )
+                conn.commit()
+            finally:
+                conn.close()
 
     def search_message_vectors(self, dialogue_id: str, vec: list, k: int = 3) -> list:
         """按对话检索历史消息向量（余弦距离排序）"""
         import sqlite_vec as _sv
         with self._lock:
-            rows = self.conn.execute(
-                "SELECT role, content, vec_distance_cosine(embedding, ?) AS d FROM message_vectors "
-                "WHERE dialogue_id=? ORDER BY d LIMIT ?",
-                (_sv.serialize_float32(vec), dialogue_id, k),
-            ).fetchall()
+            conn = self._new_conn()
+            try:
+                rows = conn.execute(
+                    "SELECT role, content, vec_distance_cosine(embedding, ?) AS d FROM message_vectors "
+                    "WHERE dialogue_id=? ORDER BY d LIMIT ?",
+                    (_sv.serialize_float32(vec), dialogue_id, k),
+                ).fetchall()
+            finally:
+                conn.close()
         return [{"role": r[0], "content": r[1], "distance": r[2]} for r in rows]
 
     def get_kb_tree(self, project_id: str, source: str) -> list:
@@ -329,12 +351,16 @@ class SQLiteClient:
 
     def search_kb_vectors(self, project_id: str, query_embedding: list, k: int = 12) -> list[dict]:
         with self._lock:
-            rows = self.conn.execute(
-                "SELECT rowid, distance, doc_id, source, chunk, session_id, has_context, content "
-                "FROM kb_vectors WHERE project_id = ? AND embedding MATCH ? AND k = ? "
-                "ORDER BY distance",
-                (project_id, sqlite_vec.serialize_float32(query_embedding), k),
-            ).fetchall()
+            conn = self._new_conn()
+            try:
+                rows = conn.execute(
+                    "SELECT rowid, distance, doc_id, source, chunk, session_id, has_context, content "
+                    "FROM kb_vectors WHERE project_id = ? AND embedding MATCH ? AND k = ? "
+                    "ORDER BY distance",
+                    (project_id, sqlite_vec.serialize_float32(query_embedding), k),
+                ).fetchall()
+            finally:
+                conn.close()
         return [dict(r) for r in rows]
 
     def get_kb_docs(self, project_id: str) -> list[dict]:
