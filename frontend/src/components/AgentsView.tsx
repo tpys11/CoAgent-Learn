@@ -569,8 +569,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold text-dim uppercase tracking-wider flex items-center gap-1"><Folder size={13} /> Skill 模块</label>
-                <button onClick={() => { setSkillUploadMsg(''); setShowSkillUpload(true) }}
-                  className="text-[10px] px-2 py-1 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">上传 Skill</button>
               </div>
               <div className="grid grid-cols-3 gap-3">
                 {allSkills.map(s => {
@@ -830,13 +828,19 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                 <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] text-xs text-dim leading-relaxed">
                   <p className="font-semibold text-[var(--text)] mb-1.5">开发自己的 Skill</p>
                   <p className="mb-1">1. 下载下方模板，按示例实现 <span className="font-mono">execute</span> 方法</p>
-                  <p className="mb-1">2. 将文件夹放入后端 <span className="font-mono">skills/</span> 目录（或上传目录）</p>
-                  <p className="mb-1">3. 重启后端容器，Skill 自动注册，即可在「已安装」中查看并启用</p>
+                  <p className="mb-1">2. 点下方「上传 Skill」，粘贴代码（或手动放入后端 <span className="font-mono">skills/</span> 目录）</p>
+                  <p className="mb-1">3. 上传后自动注册，即可在「已安装」中查看并启用（无需重启）</p>
                 </div>
-                <button onClick={downloadTemplate}
-                  className="flex items-center gap-1.5 px-3 py-2 text-[11px] border hairline rounded-xl text-dim hover:bg-[var(--bg-hover)] self-start transition-colors">
-                  <Download size={12} /> 下载 Skill 开发模板
-                </button>
+                <div className="flex items-center gap-2">
+                  <button onClick={downloadTemplate}
+                    className="flex items-center gap-1.5 px-3 py-2 text-[11px] border hairline rounded-xl text-dim hover:bg-[var(--bg-hover)] transition-colors">
+                    <Download size={12} /> 下载 Skill 开发模板
+                  </button>
+                  <button onClick={() => { setSkillUploadMsg(''); setShowSkillUpload(true) }}
+                    className="flex items-center gap-1.5 px-3 py-2 text-[11px] bg-[#1a1a1a] text-white rounded-xl hover:bg-[#333333] transition-colors">
+                    <Upload size={12} /> 上传 Skill
+                  </button>
+                </div>
               </div>
             )}
           </div>
