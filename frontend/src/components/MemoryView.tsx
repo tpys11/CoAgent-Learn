@@ -3,7 +3,6 @@ import { Brain, User, FolderTree, Check, Loader2, PenLine, ChevronRight, Chevron
 import { KnowledgeTree } from './KbTree'
 import { LS, lsGet } from '../storage'
 import { api } from '../api'
-import { CalendarHeatmap, TimeLineChart } from './memoryView/charts'
 
 /** 个人全局性记忆：基础信息字段（固定，纵向表单） */
 const BASIC_FIELDS = [
