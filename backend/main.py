@@ -1327,6 +1327,38 @@ async def delete_skill(name: str):
     return {"status": "ok", "name": name}
 
 
+@app.post("/api/mcp/tools")
+async def mcp_list_tools(req: dict):
+    """连接 MCP Server，返回其工具列表"""
+    from core.mcp_client import list_tools
+    stype = req.get("type", "stdio")
+    target = req.get("target", "")
+    if not target:
+        return {"status": "error", "msg": "连接目标不能为空"}
+    try:
+        tools = await list_tools(stype, target)
+        return {"status": "ok", "tools": tools}
+    except Exception as e:
+        return {"status": "error", "msg": str(e)[:300]}
+
+
+@app.post("/api/mcp/call")
+async def mcp_call_tool(req: dict):
+    """调用 MCP Server 的某个工具"""
+    from core.mcp_client import call_tool
+    stype = req.get("type", "stdio")
+    target = req.get("target", "")
+    tool = req.get("tool", "")
+    args = req.get("args", {})
+    if not target or not tool:
+        return {"status": "error", "msg": "参数不完整"}
+    try:
+        result = await call_tool(stype, target, tool, args)
+        return {"status": "ok", "result": result}
+    except Exception as e:
+        return {"status": "error", "msg": str(e)[:300]}
+
+
 # ---------- API 接口 ----------
 
 class ChatRequest(BaseModel):

@@ -359,6 +359,8 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   const [mcpList, setMcpList] = useState<Array<{ id: string; name: string; type: string; target: string }>>(() => {
     try { return JSON.parse(localStorage.getItem('coagent-mcp-servers') || '[]') } catch { return [] }
   })
+  const [mcpTools, setMcpTools] = useState<Record<string, Array<{ name: string; description: string }>>>({})
+  const [mcpTesting, setMcpTesting] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     setMode(agent?.mode || '均衡')
@@ -434,6 +436,25 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
     const next = mcpList.filter(s => s.id !== id)
     setMcpList(next)
     localStorage.setItem('coagent-mcp-servers', JSON.stringify(next))
+    setMcpTools(prev => { const n = { ...prev }; delete n[id]; return n })
+  }
+
+  const testMcpServer = async (s: { id: string; type: string; target: string }) => {
+    setMcpTesting(prev => ({ ...prev, [s.id]: true }))
+    setMcpTools(prev => ({ ...prev, [s.id]: [] }))
+    try {
+      const r = await fetch('/api/mcp/tools', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: s.type, target: s.target }) })
+      const d = await r.json()
+      if (d.status === 'ok') {
+        setMcpTools(prev => ({ ...prev, [s.id]: d.tools || [] }))
+      } else {
+        alert('连接失败：' + (d.msg || '未知'))
+      }
+    } catch (e) {
+      alert('连接失败：' + e)
+    } finally {
+      setMcpTesting(prev => ({ ...prev, [s.id]: false }))
+    }
   }
   const downloadTemplate = () => {
     const blob = new Blob([SKILL_TEMPLATE], { type: 'text/markdown' })
@@ -770,7 +791,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                   <p className="font-semibold text-[var(--text)] mb-1.5">三步接入外部 Skill（MCP 标准协议）</p>
                   <p className="mb-1">1. 在聚合平台搜索所需 MCP Server（如 filesystem / github / fetch）</p>
                   <p className="mb-1">2. 复制其安装命令（stdio：npx xxx）或连接地址（http/sse：URL）</p>
-                  <p className="mb-1">3. 粘贴到下方「我的 MCP Server」完成登记（后端连接与调用能力开发中）</p>
+                  <p className="mb-1">3. 粘贴到下方「我的 MCP Server」完成登记，点「测试连接」验证并查看工具列表</p>
                 </div>
                 {/* 平台链接 */}
                 <div className="flex flex-wrap gap-2">
@@ -786,11 +807,27 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                 {mcpList.length > 0 && (
                   <div className="flex flex-col gap-1.5">
                     {mcpList.map(s => (
-                      <div key={s.id} className="flex items-center gap-2 border hairline rounded-lg px-3 py-2 bg-[var(--bg-panel)]">
-                        <span className="text-[11px] font-semibold flex-shrink-0">{s.name}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-dim flex-shrink-0">{s.type}</span>
-                        <span className="text-[10px] text-dim truncate flex-1 font-mono">{s.target}</span>
-                        <button onClick={() => removeMcpServer(s.id)} className="p-1 text-gray-300 hover:text-red-500"><Trash2 size={12} /></button>
+                      <div key={s.id} className="flex flex-col gap-1.5">
+                        <div className="flex items-center gap-2 border hairline rounded-lg px-3 py-2 bg-[var(--bg-panel)]">
+                          <span className="text-[11px] font-semibold flex-shrink-0">{s.name}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-dim flex-shrink-0">{s.type}</span>
+                          <span className="text-[10px] text-dim truncate flex-1 font-mono">{s.target}</span>
+                          <button onClick={() => testMcpServer(s)} disabled={mcpTesting[s.id]}
+                            className="px-2 py-1 text-[10px] rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors flex-shrink-0">
+                            {mcpTesting[s.id] ? '连接中…' : '测试连接'}
+                          </button>
+                          <button onClick={() => removeMcpServer(s.id)} className="p-1 text-gray-300 hover:text-red-500"><Trash2 size={12} /></button>
+                        </div>
+                        {mcpTools[s.id] && mcpTools[s.id].length > 0 && (
+                          <div className="ml-4 flex flex-col gap-1 border-l-2 border-[var(--border-strong)] pl-3">
+                            {mcpTools[s.id].map((t, i) => (
+                              <div key={i} className="text-[10px]">
+                                <span className="font-semibold font-mono">{t.name}</span>
+                                <span className="text-dim"> — {t.description || '无描述'}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
