@@ -1,10 +1,12 @@
 """Skill 列表与占位的上传/删除接口。"""
 import os
+import logging
 
 from fastapi import APIRouter
 from pydantic import BaseModel
 
 router = APIRouter()
+logger = logging.getLogger("coagent.skills")
 
 
 @router.get("/api/skills")
@@ -25,7 +27,7 @@ async def skill_source(name: str):
                     src = open(p, encoding="utf-8").read()
                     return {"name": name, "source": src[:6000], "path": f"skills/{s['folder']}/__init__.py"}
     except Exception:
-        pass
+        logger.exception("读取 Skill 源码失败 name=%s", name)
     return {"name": name, "source": "", "path": ""}
 
 

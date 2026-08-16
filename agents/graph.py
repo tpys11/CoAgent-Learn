@@ -9,6 +9,7 @@ import json
 import re
 import time
 import operator
+import logging
 from typing import TypedDict, Annotated
 from langgraph.graph import StateGraph, END
 from core.base_llm import DeepSeekLLM
@@ -17,6 +18,8 @@ from agents.prompts import (
     MAIN_PLAN_PROMPT, MAIN_GENERATE_PROMPT,
     REVIEW_PROMPT, GENERATE_RULES, TIER_TIME_EXPECT,
 )
+
+logger = logging.getLogger("coagent.agents")
 
 # Agent 配置 id → 节点名
 AGENT_NODE = {'main': 'main', 'study': 'study', 'kb': 'kb', 'review': 'review'}
@@ -590,9 +593,9 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                             for _h in _useful:
                                 context += str(_h.get("content"))[:300] + NL
                 except Exception:
-                    pass
+                    logger.exception("生成节点：历史消息向量召回失败")
         except Exception:
-            pass
+            logger.exception("生成节点：历史/画像注入失败")
         # 输出增强能力已融入学习助手（见 MAIN_GENERATE_PROMPT 输出形式指令），不再按模板调用输出子 Agent
         try:
             # 简单问题/极速档：非思考模式直接生成回答（无说明文字，规划后马上流式输出，不再显示生成阶段）；
