@@ -184,17 +184,17 @@ async def clear_memories():
 
 @router.post("/api/memory/rebuild")
 async def memory_rebuild(req: dict):
-    import threading
+    from core.background import submit
     from core.memory_analysis import update_memories
     from core.postgres_client import pg_client
     api_key = (req or {}).get("api_key") or ""
     project_id = (req or {}).get("project_id") or ""
     if project_id:
-        threading.Thread(target=update_memories, args=(api_key, project_id, None, pg_client, "default"), daemon=True).start()
+        submit(update_memories, api_key, project_id, None, pg_client, "default")
     else:
         rows = pg_client.execute("SELECT id FROM projects WHERE archived = FALSE")
         for r in rows or []:
-            threading.Thread(target=update_memories, args=(api_key, r["id"], None, pg_client, "default"), daemon=True).start()
+            submit(update_memories, api_key, r["id"], None, pg_client, "default")
     return {"status": "ok", "message": "记忆分析已启动，稍后刷新查看"}
 
 
@@ -490,4 +490,3 @@ async def get_dialogue_profile(did: str):
     from core.postgres_client import pg_client
     rows = pg_client.execute("SELECT profile_data FROM dialogue_memories WHERE dialogue_id=%s", (did,))
     return {"profile": rows[0]["profile_data"] if rows else {}}
-

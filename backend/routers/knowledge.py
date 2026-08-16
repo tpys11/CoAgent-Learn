@@ -1,7 +1,8 @@
 """知识库上传、抓取、检索与文件解析路由。"""
 import hashlib
 import logging
-import threading as _threading
+
+from core.background import submit
 
 from fastapi import APIRouter, File, Form, UploadFile
 from pydantic import BaseModel
@@ -100,7 +101,7 @@ async def knowledge_upload(req: KnowledgeUpload, wait: bool = False):
         if chunks == -1:
             return {"status": "ok", "chunks": 0, "duplicate": True, "source": req.source, "msg": "内容已存在，已跳过重复入库"}
         return {"status": "ok", "chunks": chunks, "source": req.source}
-    _threading.Thread(target=_process_upload, args=(req.project_id, req.text, req.source, req.session_id, req.api_key, False, False, _ch), daemon=True).start()
+    submit(_process_upload, req.project_id, req.text, req.source, req.session_id, req.api_key, False, False, _ch)
     return {"status": "processing", "msg": "正在处理，稍后刷新查看"}
 
 
@@ -238,7 +239,7 @@ def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
             return {"status": "ok", "chunks": 0, "duplicate": True, "source": source, "msg": "内容已存在，已跳过重复入库"}
         return {"status": "ok", "chunks": chunks, "source": source}
     _ch2 = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    _threading.Thread(target=_process_upload, args=(req.project_id, text, source, req.session_id, req.api_key, True, True, _ch2), daemon=True).start()
+    submit(_process_upload, req.project_id, text, source, req.session_id, req.api_key, True, True, _ch2)
     return {"status": "processing", "msg": "正在处理，稍后刷新查看"}
 
 
@@ -277,9 +278,9 @@ async def knowledge_upload_file(
         if chunks == -1:
             return {"status": "ok", "chunks": 0, "duplicate": True, "source": source, "msg": "内容已存在，已跳过重复入库"}
         return {"status": "ok", "chunks": chunks, "source": source}
-    _threading.Thread(target=_process_upload, args=(project_id, text, source, session_id, api_key, False, False, _ch), daemon=True).start()
+    submit(_process_upload, project_id, text, source, session_id, api_key, False, False, _ch)
     if _ext in _IMG_EXTS:
-        _threading.Thread(target=_store_image_vector, args=(project_id, source, data, desc, _ext), daemon=True).start()
+        submit(_store_image_vector, project_id, source, data, desc, _ext)
     return {"status": "processing", "msg": "正在处理，稍后刷新查看"}
 
 

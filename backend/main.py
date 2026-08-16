@@ -379,6 +379,7 @@ async def chat(req: ChatRequest):
         try:
             from agents.graph import create_workflow
             import queue, threading, asyncio
+            from core.background import submit
             token_queue = queue.Queue()
             # 生成请求 id + 取消事件：前端点"停止"时 POST /api/chat/stop 置位，run_workflow 各 LLM 调用尽早中断
             import uuid as _uuid
@@ -512,7 +513,7 @@ async def chat(req: ChatRequest):
                                     _pg3.execute("INSERT INTO resources (id, name, content, project_id) VALUES (%s,%s,%s,%s)", (_rid, _nm, _fr[:6000], pid))
                             except Exception as _e:
                                 logger.exception("自动保存生成物失败 did=%s", _did)
-                    threading.Thread(target=_persist, daemon=True).start()
+                    submit(_persist)
                     # 后台异步分析记忆 + 生成追问（开关可配）
                     try:
                         reply = result.get("final_reply", "")
@@ -520,17 +521,16 @@ async def chat(req: ChatRequest):
                             from core.memory_analysis import update_memories
                             from core.compress import compress_dialogue
                             from core.postgres_client import pg_client
-                            import threading
-                            threading.Thread(target=update_memories, args=(req.api_key, pid, _did, pg_client, req.session_id or "default"), daemon=True).start()
-                            # 上下文自动压缩：每满 30 条压缩最早 30%（后台，用户无感知；未满 30 条直接返回）
-                            threading.Thread(target=compress_dialogue, args=(req.api_key, _did, pg_client), daemon=True).start()
+                            submit(update_memories, req.api_key, pid, _did, pg_client, req.session_id or "default")
+                            # 上下文自动压缩：token 预算制（后台，用户无感知）
+                            submit(compress_dialogue, req.api_key, _did, pg_client)
                             if not (req.settings and req.settings.get('autoFollowups') is False):
                                 from core.followups import generate_followups
-                                threading.Thread(target=generate_followups, args=(req.api_key, pid, _did, pg_client, req.followup_focus or "purpose"), daemon=True).start()
+                                submit(generate_followups, req.api_key, pid, _did, pg_client, req.followup_focus or "purpose")
                             # 主对话完成后同步为第二对话生成横向拓展/闲聊追问（第二对话发送时不会带 extra 字段，互不影响）
                             if req.extra_followup_did:
                                 try:
-                                    threading.Thread(target=generate_followups, args=(req.api_key, pid, req.extra_followup_did, pg_client, req.extra_followup_focus or "expand"), daemon=True).start()
+                                    submit(generate_followups, req.api_key, pid, req.extra_followup_did, pg_client, req.extra_followup_focus or "expand")
                                 except Exception:
                                     logger.exception("启动第二对话追问失败 did=%s", req.extra_followup_did)
                     except Exception:
