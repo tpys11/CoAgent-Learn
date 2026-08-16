@@ -21,9 +21,9 @@ def _apply_dynamic_settings():
     """把 settings 表（前端设置界面写入）的动态配置应用到 config 单例：
     embedding/rerank/视觉 key 等，优先于 .env 环境变量，无需重启即时生效。"""
     try:
-        from core.sqlite_client import get_db
+        from core.db import get_settings_repo
         from core.config import config as _cfg
-        for _k, _v in get_db().get_all_settings().items():
+        for _k, _v in get_settings_repo().get_all_settings().items():
             if hasattr(_cfg, _k):
                 try:
                     setattr(_cfg, _k, int(_v) if _k == "EMBEDDING_DIM" else _v)
@@ -67,12 +67,12 @@ class SettingsSave(BaseModel):
 async def get_settings():
     """返回当前生效配置（key 只回显是否已配置，不回显内容）"""
     from core.config import config as _cfg
-    from core.sqlite_client import get_db as _db
+    from core.db import get_settings_repo
     _embed_key = getattr(_cfg, "EMBEDDING_API_KEY", "")
     _vl_key = getattr(_cfg, "VL_API_KEY", "")
     _image_eff = getattr(_cfg, "IMAGE_API_KEY", "") or _vl_key or _embed_key or getattr(_cfg, "ZHIPU_API_KEY", "")
     return {
-        "vector_model": _db().get_setting("VECTOR_MODEL") or "bge",
+        "vector_model": get_settings_repo().get_setting("VECTOR_MODEL") or "bge",
         "kb_mode": getattr(_cfg, "KB_MODE", "full"),
         "embedding": {
             "backend": _cfg.EMBEDDING_BACKEND,
@@ -117,8 +117,8 @@ async def get_settings():
 @router.put("/api/settings")
 async def save_settings(req: SettingsSave):
     """保存配置到 settings 表并即时应用到 config 单例；空 key 表示清除（恢复 .env）"""
-    from core.sqlite_client import get_db as _db
-    _s = _db()
+    from core.db import get_settings_repo
+    _s = get_settings_repo()
     _s.set_setting("VECTOR_MODEL", req.vector_model)
     _s.set_setting("EMBEDDING_BACKEND", req.embedding_backend)
     _s.set_setting("EMBEDDING_BASE_URL", req.embedding_base_url)
