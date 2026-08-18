@@ -46,6 +46,29 @@ def _save_project(pid, mem):
     get_memory_repo().save_project_memory(pid, json.dumps(mem, ensure_ascii=False))
 
 
+def _cursor_rounds(mem, did):
+    """last_transferred 游标读取：map 格式 {did: 已传用户轮数}；旧格式 {"dialogue_id": did}（1.4 遗留，无轮数）视为 0。"""
+    lt = mem.get("last_transferred")
+    if not isinstance(lt, dict):
+        return 0
+    if "dialogue_id" in lt:
+        return 0
+    try:
+        return int(lt.get(did) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _set_cursor(pid, did, rounds):
+    """推进 last_transferred 游标（map 格式，多窗口并存；剔除旧格式遗留的 dialogue_id 键）。"""
+    mem = _load_project(pid)
+    lt = mem.get("last_transferred")
+    _map = {k: v for k, v in (lt.items() if isinstance(lt, dict) else {}) if k != "dialogue_id"}
+    _map[did] = rounds
+    mem["last_transferred"] = _map
+    _save_project(pid, mem)
+
+
 def upsert_dialogue_summary(pid, did, name, summary):
     """把对话概要 upsert 进课程记忆（按 dialogue_id 覆盖，不重复）。"""
     mem = _load_project(pid)
@@ -59,7 +82,6 @@ def upsert_dialogue_summary(pid, did, name, summary):
     if not updated:
         dlist.append({"dialogue_id": did, "name": name, "概要": summary})
     mem["对话概要"] = dlist
-    mem["last_transferred"] = {"dialogue_id": did}
     _save_project(pid, mem)
     return mem
 
@@ -107,7 +129,11 @@ def update_progress(pid):
 
 
 def transfer_dialogue_to_project(pid, did, bump=True):
-    """单窗口每五轮：对话综合记忆→课程记忆 + 进度条更新 + 课程画像变更计数。"""
+    """单窗口每五轮：对话综合记忆→课程记忆 + 进度条更新 + 课程画像变更计数。
+    按 last_transferred 游标幂等：该窗口无新用户轮数（COUNT(user) 未超过游标）直接跳过（钩子重复调用 / 补传均安全）。"""
+    cur = get_project_repo().count_user_messages(did)
+    if cur <= _cursor_rounds(_load_project(pid), did):
+        return
     name = get_project_repo().get_dialogue_name(did) or "对话"
     pd = get_memory_repo().get_dialogue_profile_data(did)
     p = _as_dict(pd)
@@ -120,23 +146,21 @@ def transfer_dialogue_to_project(pid, did, bump=True):
     update_progress(pid)
     if bump:
         bump_change_count(pid)
+    _set_cursor(pid, did, cur)
 
 
 def catch_up_transfers(pid):
-    """新开窗口：把未传递的对话概要补传进课程记忆（补传不触发变更计数）。"""
+    """新开窗口：补传有增量的窗口概要进课程记忆（补传不触发变更计数）。
+    幂等由 transfer_dialogue_to_project 内游标判定兜底；此处只做"无学情窗口跳过"防御。"""
     dialogs = get_project_repo().list_dialogues(pid) or []
-    mem = _load_project(pid)
-    dlist = mem.get("对话概要") if isinstance(mem.get("对话概要"), list) else []
-    existing = {d.get("dialogue_id") for d in dlist if isinstance(d, dict)}
     for d in dialogs:
-        if d.get("id") not in existing:
-            try:
-                # 只补传有学情信息的窗口（无 profile_data = 无对话内容/画像未合成，跳过避免空概要）
-                if not get_memory_repo().get_dialogue_profile_data(d["id"]):
-                    continue
-                transfer_dialogue_to_project(pid, d["id"], bump=False)
-            except Exception:
-                logger.exception("补传失败 pid=%s did=%s", pid, d.get("id"))
+        try:
+            # 只补传有学情信息的窗口（无 profile_data = 无对话内容/画像未合成，跳过避免空概要）
+            if not get_memory_repo().get_dialogue_profile_data(d["id"]):
+                continue
+            transfer_dialogue_to_project(pid, d["id"], bump=False)
+        except Exception:
+            logger.exception("补传失败 pid=%s did=%s", pid, d.get("id"))
 
 
 # ---------------- 画像（新开课程 / 新开对话） ----------------

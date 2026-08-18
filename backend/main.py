@@ -325,7 +325,8 @@ def _parse_special_inputs(message: str) -> str:
 
 def _five_round_hook(pid: str, did: str):
     """单窗口每五轮对话 → 课程记忆 + 进度条（4.2）：轮数按 messages 表 COUNT(role='user') 计（不加列），
-    %5==0 时调 transfer_dialogue_to_project（内含概要入课程记忆 + update_progress + 变更计数）。幂等：计数不会重复触发。"""
+    %5==0 时调 transfer_dialogue_to_project（内含概要入课程记忆 + update_progress + 变更计数）。
+    幂等：transfer 内部按 last_transferred 游标判定（COUNT 未超过游标直接跳过），钩子重复调用安全。"""
     try:
         from core.postgres_client import pg_client as _pg5
         _n = _pg5.execute("SELECT COUNT(*) AS n FROM messages WHERE dialogue_id=%s AND role='user'", (did,))

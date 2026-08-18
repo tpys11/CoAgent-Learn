@@ -45,6 +45,10 @@ class ProjectRepo:
     def list_dialogue_dates(self, pid):
         return self._db.execute("SELECT id, created_at FROM dialogues WHERE project_id=%s ORDER BY created_at", (pid,))
 
+    def count_user_messages(self, did):
+        rows = self._db.execute("SELECT COUNT(*) AS n FROM messages WHERE dialogue_id=%s AND role='user'", (did,))
+        return int(rows[0]["n"]) if rows else 0
+
     def list_learning_dialogues(self, pid=None):
         if pid:
             return self._db.execute(
