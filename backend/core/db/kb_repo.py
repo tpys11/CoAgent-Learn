@@ -74,6 +74,16 @@ class KbRepo:
     def delete_kb_tree_by_source(self, project_id, source):
         return self._db.delete_kb_tree_by_source(project_id, source)
 
+    def find_chunk_index(self, project_id, source, probe):
+        """在 kb_vectors 找 content 含 probe 的最小 chunk 序号（节点正文起始块定位）。"""
+        if not probe:
+            return None
+        rows = self._db.execute(
+            "SELECT MIN(chunk) c FROM kb_vectors WHERE project_id=? AND source=? AND content LIKE ?",
+            (project_id, source, "%" + probe + "%"),
+        )
+        return rows[0]["c"] if rows and rows[0]["c"] is not None else None
+
     def search_kb_vectors(self, *args, **kwargs):
         return self._db.search_kb_vectors(*args, **kwargs)
 

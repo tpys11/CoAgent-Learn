@@ -93,6 +93,46 @@ class KnowledgeUpload(BaseModel):
     api_key: str = ""
 
 
+@router.get("/api/kb/{project_id}/content")
+def kb_node_content(project_id: str, source: str, path: str):
+    """章节节点正文：path 为节点标题路径（/ 分隔，从根到节点），返回节点正文预览 + 起始 chunk 序号。
+    节点无 content（旧数据）时按 source+标题在 kb_vectors 兜底取首块（见 2.3）。"""
+    import json as _json
+    from core.db import get_kb_repo
+    repo = get_kb_repo()
+    node = None
+    parts = [p.strip() for p in (path or "").split("/") if p.strip()]
+    if parts:
+        trees = [t for t in repo.get_all_kb_trees(project_id) if t.get("source") == source]
+        if trees:
+            cur = None
+            for p in parts:
+                cur = next((n for n in (cur.get("children") or []) if n.get("name") == p), None) if cur is not None else \
+                      next((n for n in trees[0]["tree"] if n.get("name") == p), None)
+                if cur is None:
+                    break
+            node = cur
+    if node is None:
+        return {"status": "not_found", "source": source, "path": path}
+    content = node.get("content", "") or ""
+    first_line = ""
+    for line in content.splitlines():
+        if line.strip():
+            first_line = line.strip()
+            break
+    # 起始 chunk：候选依次匹配（标题最稳；正文首行可能被硬切跨块，先用短前缀再整行）
+    chunk_index = None
+    cands = [node.get("name", ""), first_line[:10], first_line]
+    for c in cands:
+        if not c:
+            continue
+        chunk_index = repo.find_chunk_index(project_id, source, c)
+        if chunk_index is not None:
+            break
+    return {"status": "ok", "source": source, "path": path, "name": node.get("name", ""),
+            "content": content, "chunk_index": chunk_index}
+
+
 @router.post("/api/knowledge/upload")
 async def knowledge_upload(req: KnowledgeUpload, wait: bool = False):
     _ch = hashlib.sha256((req.text or "").encode("utf-8")).hexdigest()
