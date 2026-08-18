@@ -131,6 +131,9 @@ def catch_up_transfers(pid):
     for d in dialogs:
         if d.get("id") not in existing:
             try:
+                # 只补传有学情信息的窗口（无 profile_data = 无对话内容/画像未合成，跳过避免空概要）
+                if not get_memory_repo().get_dialogue_profile_data(d["id"]):
+                    continue
                 transfer_dialogue_to_project(pid, d["id"], bump=False)
             except Exception:
                 logger.exception("补传失败 pid=%s did=%s", pid, d.get("id"))

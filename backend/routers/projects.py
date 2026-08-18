@@ -88,6 +88,14 @@ async def create_dialogue(req: dict):
     did = req.get("id") or ("dlg-" + str(int(time.time() * 1000)) + "-" + str(abs(hash(name)) % 10000))
     repo = get_project_repo()
     exist = repo.get_dialogue_status(did)
+    if exist is None:
+        # 新窗口补传（4.3）：建对话前把旧窗口未传递的对话概要补进课程记忆（幂等：已传递的不重复；
+        # 不触发课程→个人变更计数），再建新对话 + 画像合成 pending
+        try:
+            from core.memory_service import catch_up_transfers
+            catch_up_transfers(pid)
+        except Exception:
+            logger.exception("新窗口补传失败 pid=%s", pid)
     repo.insert_or_ignore_dialogue(did, name, pid)
     if exist is None:
         # 新对话：画像后台异步合成（pending 期间 chat 接口守卫禁发，前端禁发送）
