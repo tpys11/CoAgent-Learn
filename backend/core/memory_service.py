@@ -134,3 +134,73 @@ def catch_up_transfers(pid):
                 transfer_dialogue_to_project(pid, d["id"], bump=False)
             except Exception:
                 logger.exception("补传失败 pid=%s did=%s", pid, d.get("id"))
+
+
+# ---------------- 画像（新开课程 / 新开对话） ----------------
+
+def init_course_profile(pid, name="", domain=""):
+    """新开课程：个人画像 + 课程初始化信息 → 组合初始课程画像（克制，只并入稳定字段）。"""
+    gp = _as_dict(get_memory_repo().get_global_profile())
+    data = {}
+    if domain:
+        data["抽象项目情况"] = domain
+    for k in ["偏好提问方式", "偏好学习方式", "偏好_输出"]:
+        v = gp.get(k)
+        if v:
+            data[k] = v
+    if not data:
+        return
+    _save_project(pid, data)
+
+
+def _synthesize_profile(api_key, gp, mem):
+    """flash 合成对话学情画像（个人画像 + 课程画像 → 对话画像 JSON）。"""
+    import sys as _s
+    import requests as _req
+    from core.config import config as _cfg
+    NL = chr(10)
+    g_src = json.dumps(gp, ensure_ascii=False)[:1500]
+    m_src = json.dumps(mem, ensure_ascii=False)[:1500]
+    prompt = (
+        "你是学情画像合成器。把个人画像与课程画像合并为一份面向本次对话的学情画像，只输出 JSON：\n"
+        "{\"用户背景\":\"...\",\"偏好提问方式\":[\"...\"],\"偏好学习方式\":[\"...\"],\"偏好_输出\":[\"...\"]}\n"
+        "要求：用户背景不超过 200 字；偏好数组每项一句话；个人画像优先，课程画像补充；无信息的小节省略。\n\n"
+        "个人画像：\n" + g_src + NL + NL + "课程画像：\n" + m_src
+    )
+    h = {"Authorization": "Bearer " + (api_key or _cfg.DEEPSEEK_API_KEY), "Content-Type": "application/json"}
+    resp = _req.post(_cfg.DEEPSEEK_BASE_URL + "/chat/completions",
+                     json={"model": "deepseek-v4-flash", "thinking": {"type": "disabled"},
+                           "messages": [{"role": "user", "content": prompt}]},
+                     headers=h, timeout=60)
+    if resp.status_code != 200:
+        raise RuntimeError("synthesize status=" + str(resp.status_code))
+    return resp.json()["choices"][0]["message"]["content"] or ""
+
+
+def generate_dialogue_profile(did, api_key=""):
+    """新开对话：后台异步合成对话画像 → dialogues.profile + ready；失败置 failed（不禁发，可重试）。"""
+    try:
+        from core.db.base import get_db
+        db = get_db()
+        rows = db.execute("SELECT project_id FROM dialogues WHERE id=%s", (did,))
+        if not rows:
+            return False
+        pid = rows[0]["project_id"] or "default"
+        gp = _as_dict(get_memory_repo().get_global_profile())
+        mem = _load_project(pid)
+        text = _synthesize_profile(api_key, gp, mem)
+        profile = _as_dict(text)
+        if not profile:
+            db.execute("UPDATE dialogues SET profile_status='failed' WHERE id=%s", (did,))
+            return False
+        db.execute("UPDATE dialogues SET profile=%s, profile_status='ready' WHERE id=%s",
+                   (json.dumps(profile, ensure_ascii=False), did))
+        return True
+    except Exception as e:
+        try:
+            from core.db.base import get_db
+            get_db().execute("UPDATE dialogues SET profile_status='failed' WHERE id=%s", (did,))
+        except Exception:
+            pass
+        logger.exception("画像合成失败 did=%s err=%s", did, str(e)[:120])
+        return False

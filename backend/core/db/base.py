@@ -498,6 +498,12 @@ class SQLiteClient:
                 self.execute("ALTER TABLE dialogues ADD COLUMN " + _col + " " + _ddl)
             except Exception:
                 pass
+        # 兼容旧库：对话级学情画像缓存（合成后注入，未完成禁发）
+        for _col, _ddl in [("profile", "TEXT DEFAULT ''"), ("profile_status", "TEXT DEFAULT 'ready'")]:
+            try:
+                self.execute("ALTER TABLE dialogues ADD COLUMN " + _col + " " + _ddl)
+            except Exception:
+                pass
         self.execute("CREATE INDEX IF NOT EXISTS idx_dialogues_project ON dialogues (project_id, created_at)")
         self.execute("""
             CREATE TABLE IF NOT EXISTS messages (

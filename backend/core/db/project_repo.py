@@ -55,6 +55,17 @@ class ProjectRepo:
         rows = self._db.execute("SELECT project_id FROM dialogues WHERE id=%s", (did,))
         return rows[0]["project_id"] if rows else None
 
+    def get_dialogue_status(self, did):
+        rows = self._db.execute("SELECT profile_status FROM dialogues WHERE id=%s", (did,))
+        return rows[0]["profile_status"] if rows else None
+
+    def mark_dialogue_status(self, did, status):
+        self._db.execute("UPDATE dialogues SET profile_status=%s WHERE id=%s", (status, did))
+
+    def get_dialogue_profile(self, did):
+        rows = self._db.execute("SELECT profile FROM dialogues WHERE id=%s", (did,))
+        return rows[0]["profile"] if rows else None
+
     def get_dialogue_name(self, did):
         rows = self._db.execute("SELECT name FROM dialogues WHERE id=%s", (did,))
         return rows[0].get("name") if rows else None

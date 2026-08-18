@@ -222,6 +222,13 @@ async def memory_chat(req: ChatRequest):
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
+    # 画像守卫：新对话画像未合成完成时禁发（前端同步禁用发送按钮）——必须在 SSE 流开始前检查
+    if req.dialogue_id:
+        from core.db.project_repo import get_project_repo
+        _pst = get_project_repo().get_dialogue_status(req.dialogue_id)
+        if _pst == "pending":
+            from fastapi import HTTPException
+            raise HTTPException(status_code=409, detail="profile_pending")
     async def stream():
         try:
             from agents.graph import create_workflow

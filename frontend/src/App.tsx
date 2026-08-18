@@ -81,6 +81,25 @@ function App() {
   const [projectConfigTab, setProjectConfigTab] = useState<'memory' | 'resource'>('memory')
   const [projectKBId, setProjectKBId] = useState<string | null>(null)
   const [wizard, setWizard] = useState<{mode: 'project'|'dialogue'; id: string; name?: string} | null>(null)
+  // 新对话学情画像合成状态：pending 期间禁发（后端 409 + 前端禁用发送按钮）
+  const [profilePendingDialogue, setProfilePendingDialogue] = useState<string | null>(null)
+  const profilePollTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  const pollProfileStatus = useCallback((did: string) => {
+    if (profilePollTimer.current) clearInterval(profilePollTimer.current)
+    setProfilePendingDialogue(did)
+    const check = () => {
+      api.getDialogueProfileStatus(did).then(d => {
+        if (d.status === 'pending') return
+        if (profilePollTimer.current) { clearInterval(profilePollTimer.current); profilePollTimer.current = null }
+        setProfilePendingDialogue(prev => (prev === did ? null : prev))
+      }).catch(() => {
+        if (profilePollTimer.current) { clearInterval(profilePollTimer.current); profilePollTimer.current = null }
+        setProfilePendingDialogue(prev => (prev === did ? null : prev))
+      })
+    }
+    check()
+    profilePollTimer.current = setInterval(check, 1500)
+  }, [])
   const [showGuide, setShowGuide] = useState(false)
   const [view, setView] = useState<ViewKey>('chat')
   // 主页模式：view=chat 时默认显示主页（按项目展开），进入项目后才显示对话界面
@@ -193,6 +212,7 @@ function App() {
         setAllMessages(prev => ({ ...prev, [did]: [{ role: 'assistant' as const, content: PROJECT_GUIDE(name) }] }))
         // 落库：对话 + 静态引导消息（刷新后保留）
         api.createDialogue({ project_id: id, name: dia.name, id: did }).catch(() => {})
+        pollProfileStatus(did)
         api.postDialogueMessage(did, { role: 'assistant', content: PROJECT_GUIDE(name) }).catch(() => {})
         setChatOpen(true)
       } catch (e) {
@@ -234,6 +254,7 @@ function App() {
     setAllMessages(prev => ({ ...prev, [d.id]: [] }))
     // 落库：后端创建对话（刷新后保留）
     api.createDialogue({ project_id: projectId, name: d.name, id: d.id }).catch(() => {})
+    pollProfileStatus(d.id)
     // 无画像（[简]）项目：不弹对话画像向导
     const proj = projects.find(p => p.id === projectId)
     if (!(proj && proj.simple)) {
@@ -372,6 +393,7 @@ function App() {
       <CenterPanel
         messages={currentMessages} isLoading={isLoading} currentProject={currentProject}
         dialogueId={currentDialogueId}
+        profilePending={profilePendingDialogue === currentDialogueId}
         onSendMessage={sendMessage}
         onStop={stop}
         onRequestKey={() => setShowApiKeyPrompt(true)}

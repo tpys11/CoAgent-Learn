@@ -26,9 +26,11 @@ interface CenterPanelProps {
   onManualSetup?: () => void
   flowStatus?: string
   flowActiveAgent?: string | null
+  /** 新对话学情画像合成中：禁用发送（后端 409 兜底） */
+  profilePending?: boolean
 }
 
-export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, onStop, onRequestKey, statsCollapsed, onToggleStats, onOpenGuide, onOpenSettings, projectInitialized, draft, analyzeHint, onClearAnalyzeHint, onManualSetup, flowStatus, flowActiveAgent }: CenterPanelProps) {
+export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, onStop, onRequestKey, statsCollapsed, onToggleStats, onOpenGuide, onOpenSettings, projectInitialized, draft, analyzeHint, onClearAnalyzeHint, onManualSetup, flowStatus, flowActiveAgent, profilePending }: CenterPanelProps) {
   const [input, setInput] = useState('')
   // 记忆修改预填：draft 变化时写入输入框（从记忆界面跳转）
   useEffect(() => { if (draft) setInput(draft) }, [draft])
@@ -222,6 +224,7 @@ const TEMPLATE_OPTIONS = [
 
   const handleSend = () => {
     if (isLoading) return  // 生成中：发送按钮已变为"停止"，Enter 等途径不触发新消息（避免并行流）
+    if (profilePending) return  // 新对话学情画像合成中：禁发（后端 409 兜底）
     const text = input.trim()
     if (!text && attachments.length === 0) return
     // 未填主模型 key：弹框提醒，保留输入不发送
@@ -503,8 +506,9 @@ const TEMPLATE_OPTIONS = [
               </div>
               <button
                 onClick={isLoading ? (onStop || handleSend) : handleSend}
-                className={"w-9 h-9 ml-2 flex items-center justify-center rounded-full" + (isLoading ? " bg-red-500 hover:bg-red-600 text-white" : " btn-primary")}
-                title={isLoading ? "停止生成" : "发送"}
+                className={"w-9 h-9 ml-2 flex items-center justify-center rounded-full" + (isLoading ? " bg-red-500 hover:bg-red-600 text-white" : " btn-primary") + (profilePending ? " opacity-40 cursor-not-allowed" : "")}
+                title={isLoading ? "停止生成" : (profilePending ? "学情画像生成中，稍候…" : "发送")}
+                disabled={profilePending}
               >
                 {isLoading ? <Square size={14} /> : <Send size={15} />}
               </button>

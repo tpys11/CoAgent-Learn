@@ -53,6 +53,8 @@ export const api = {
   listProjectDialogues: (pid: string) =>
     apiFetch<DialogueList>('/api/projects/' + encodeURIComponent(pid) + '/dialogues'),
   createDialogue: (body: unknown) => apiFetch<any>('/api/dialogues', jsonInit('POST', body)),
+  getDialogueProfileStatus: (did: string) =>
+    apiFetch<{ status: string }>('/api/dialogues/' + encodeURIComponent(did) + '/profile_status', { cache: 'no-store' }),
   getDialogueMessages: (did: string) =>
     apiFetch<MessagesData>('/api/dialogues/' + encodeURIComponent(did) + '/messages', { cache: 'no-store' }),
   postDialogueMessage: (did: string, body: unknown) =>

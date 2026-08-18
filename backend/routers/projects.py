@@ -33,6 +33,12 @@ async def list_projects():
 async def create_project(req: ProjectCreate):
     pid = time.strftime("%Y%m%d%H%M%S") + str(int(time.time() * 1000))[-4:]
     get_project_repo().insert_project(pid, req.name, req.simple, req.domain)
+    try:
+        # 新开课程：个人画像 + 课程初始化信息 → 初始课程画像
+        from core.memory_service import init_course_profile
+        init_course_profile(pid, req.name, req.domain)
+    except Exception:
+        logger.exception("初始化课程画像失败 pid=%s", pid)
     return {"id": pid, "name": req.name, "is_default": False, "simple": req.simple, "domain": req.domain}
 
 
@@ -80,8 +86,25 @@ async def create_dialogue(req: dict):
     pid = req.get("project_id") or "default"
     name = req.get("name") or "对话"
     did = req.get("id") or ("dlg-" + str(int(time.time() * 1000)) + "-" + str(abs(hash(name)) % 10000))
-    get_project_repo().insert_or_ignore_dialogue(did, name, pid)
+    repo = get_project_repo()
+    exist = repo.get_dialogue_status(did)
+    repo.insert_or_ignore_dialogue(did, name, pid)
+    if exist is None:
+        # 新对话：画像后台异步合成（pending 期间 chat 接口守卫禁发，前端禁发送）
+        try:
+            from core.background import submit
+            from core.memory_service import generate_dialogue_profile
+            repo.mark_dialogue_status(did, "pending")
+            submit(generate_dialogue_profile, did, str(req.get("api_key") or ""))
+        except Exception:
+            logger.exception("启动画像合成失败 did=%s", did)
     return {"id": did, "name": name}
+
+
+@router.get("/api/dialogues/{did}/profile_status")
+async def get_dialogue_profile_status(did: str):
+    status = get_project_repo().get_dialogue_status(did)
+    return {"status": status or "ready"}
 
 
 @router.get("/api/dialogues/{did}/messages")
