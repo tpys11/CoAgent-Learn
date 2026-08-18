@@ -158,24 +158,38 @@ def _invalidate_bm25(project_id: str):
 
 def _extract_tree(text: str) -> list:
     """从文档文本提取标题层级树（复用上传资料自身的形式分类逻辑：markdown 标题）
-    无标题时返回空列表（前端显示空树占位）。"""
+    标题行开新节点；标题间的正文累积进节点 content（预览截断 2000 字）；
+    文档开头（首个标题前）的正文不归属任何节点。无标题时返回空列表（前端显示空树占位）。"""
+    def _append_content(node: dict, line: str):
+        c = node.get("content", "")
+        if len(c) >= 2000:
+            return
+        piece = line.strip()
+        if not piece:
+            return
+        node["content"] = (c + "\n" + piece) if c else piece
+        if len(node["content"]) > 2000:
+            node["content"] = node["content"][:2000]
     tree = []
     stack: list[tuple[int, dict]] = []
+    pending: dict | None = None  # 正在累积正文的节点（最近的标题）
     for line in (text or "").splitlines():
-        if not line.strip().startswith("#"):
-            continue
-        m = re.match(r"^(#{1,6})\s+(.+)$", line.rstrip())
-        if not m:
-            continue
-        lvl = len(m.group(1))
-        node = {"name": m.group(2).strip(), "children": []}
-        while stack and stack[-1][0] >= lvl:
-            stack.pop()
-        if stack:
-            stack[-1][1]["children"].append(node)
+        m = re.match(r"^(#{1,6})\s+(.+)$", line.rstrip()) if line.strip().startswith("#") else None
+        if m:
+            lvl = len(m.group(1))
+            node = {"name": m.group(2).strip(), "children": []}
+            while stack and stack[-1][0] >= lvl:
+                stack.pop()
+            if stack:
+                stack[-1][1]["children"].append(node)
+            else:
+                tree.append(node)
+            stack.append((lvl, node))
+            pending = node
         else:
-            tree.append(node)
-        stack.append((lvl, node))
+            if not stack:
+                continue  # 文档开头正文（标题前）不归属任何节点
+            _append_content(pending if pending is not None else stack[-1][1], line)
     return tree
 
 
