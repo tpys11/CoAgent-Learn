@@ -361,18 +361,16 @@ async def chat(req: ChatRequest):
                             except Exception as _e:
                                 logger.exception("自动保存生成物失败 did=%s", _did)
                     submit(_persist)
-                    # 后台异步分析记忆 + 生成追问（开关可配）
+# 后台异步分析记忆 + 生成追问（开关可配）
                     try:
                         reply = result.get("final_reply", "")
                         if reply:
-                            from core.memory_analysis import update_memories
-                            from core.compress import compress_dialogue
+                            from core.memory_service import compress_dialogue, distill_memory, generate_followups
                             from core.postgres_client import pg_client
-                            submit(update_memories, req.api_key, pid, _did, pg_client, req.session_id or "default")
+                            submit(distill_memory, req.api_key, pid, _did, pg_client, req.session_id or "default")
                             # 上下文自动压缩：token 预算制（后台，用户无感知）
                             submit(compress_dialogue, req.api_key, _did, pg_client)
                             if not (req.settings and req.settings.get('autoFollowups') is False):
-                                from core.followups import generate_followups
                                 submit(generate_followups, req.api_key, pid, _did, pg_client, req.followup_focus or "purpose")
                             # 主对话完成后同步为第二对话生成横向拓展/闲聊追问（第二对话发送时不会带 extra 字段，互不影响）
                             if req.extra_followup_did:

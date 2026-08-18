@@ -166,16 +166,16 @@ async def clear_memories():
 @router.post("/api/memory/rebuild")
 async def memory_rebuild(req: dict):
     from core.background import submit
-    from core.memory_analysis import update_memories
+    from core.memory_service import distill_memory
     from core.sqlite_client import get_db
     api_key = (req or {}).get("api_key") or ""
     project_id = (req or {}).get("project_id") or ""
     if project_id:
-        submit(update_memories, api_key, project_id, None, get_db(), "default")
+        submit(distill_memory, api_key, project_id, None, get_db(), "default")
     else:
         rows = get_project_repo().list_active_projects()
         for r in rows or []:
-            submit(update_memories, api_key, r["id"], None, get_db(), "default")
+            submit(distill_memory, api_key, r["id"], None, get_db(), "default")
     return {"status": "ok", "message": "记忆分析已启动，稍后刷新查看"}
 
 
