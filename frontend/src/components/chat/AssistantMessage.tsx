@@ -50,6 +50,8 @@ interface AssistantMessageProps {
   isLast: boolean
   flowActiveAgent?: string | null
   flowStatus?: string
+  /** 本次流式已参与的 agent 序列（step/thought_token 事件收集），标题行展示链条 */
+  flowAgents?: string[]
   specialSelectedKeys: string[]
   onToggleSpecial: (key: string) => void
   specialDismissed: boolean
@@ -63,7 +65,7 @@ interface AssistantMessageProps {
 
 /** AI 回复消息气泡：思考过程 + 回答正文 + 运行统计 + 资源生成建议 + 图片命中 + 审核报告 + 追问。 */
 export default function AssistantMessage({
-  msg, isLoading, isLast, flowActiveAgent, flowStatus,
+  msg, isLoading, isLast, flowActiveAgent, flowStatus, flowAgents,
   specialSelectedKeys, onToggleSpecial, specialDismissed, onDismissSpecial,
   followups, onSendFollowup, onManualSetup, currentProject, onGenerateSpecial,
 }: AssistantMessageProps) {
@@ -73,7 +75,7 @@ export default function AssistantMessage({
       {/* 思考过程区块（DeepSeek 式：流式展开逐字 / 完成自动折叠为一行） */}
       {msg.think && msg.think.length > 0 && (
         <div className="mb-3">
-          <ReasoningBlock items={msg.think} streaming={streaming} activeAgent={flowActiveAgent} activeStatus={flowStatus} />
+          <ReasoningBlock items={msg.think} streaming={streaming} activeAgent={flowActiveAgent} activeStatus={flowStatus} flowAgents={flowAgents} />
         </div>
       )}
       {/* 回答正文：流式逐字纯文本（绝不 markdown）/ 完成一次性 markdown 渲染 */}
@@ -244,7 +246,7 @@ function StreamingMd({ text, streaming }: { text: string; streaming?: boolean })
 }
 
 /** 思考过程区块（DeepSeek 式独立区块）。 */
-function ReasoningBlock({ items, streaming, activeAgent, activeStatus }: { items: Array<{ agent: string; content: string }> | string[]; streaming?: boolean; activeAgent?: string | null; activeStatus?: string }) {
+function ReasoningBlock({ items, streaming, activeAgent, activeStatus, flowAgents }: { items: Array<{ agent: string; content: string }> | string[]; streaming?: boolean; activeAgent?: string | null; activeStatus?: string; flowAgents?: string[] }) {
   const merged = useMemo(() => {
     const list = (items || []).map(it => typeof it === 'string' ? { agent: '', content: it } : it)
       .filter(it => it.agent !== '运行统计')
@@ -286,7 +288,16 @@ function ReasoningBlock({ items, streaming, activeAgent, activeStatus }: { items
         <span className="text-[9px] flex-shrink-0">{open ? '▾' : '▸'}</span>
         <span>思考过程</span>
         {streaming
-          ? <span className="ml-1 font-normal text-[10px]">{activeStatus || '思考中…'}</span>
+          ? (flowAgents && flowAgents.length > 0
+              ? <span className="ml-1 font-normal text-[10px] flex items-center gap-0.5">
+                  {flowAgents.map((a, i) => (
+                    <span key={i} className="flex items-center gap-0.5">
+                      {i > 0 && <span className="text-dim">→</span>}
+                      <span className={activeAgent && displayAgent(a) === displayAgent(activeAgent) ? 'text-[var(--accent)]' : ''}>{displayAgent(a)}</span>
+                    </span>
+                  ))}
+                </span>
+              : <span className="ml-1 font-normal text-[10px]">{activeStatus || '思考中…'}</span>)
           : <span className="ml-1 font-normal text-[10px] text-dim">已完成</span>}
       </button>
       {open && (

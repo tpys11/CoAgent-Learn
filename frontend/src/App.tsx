@@ -182,7 +182,7 @@ function App() {
   const appRef = useRef<HTMLDivElement>(null)
 
   // 主对话聊天流（发送 + SSE 解析 + 流式渲染节奏 + 停止/断线取回）已抽到 useChatStream
-  const { sendMessage, stop, resetFlow, flowStatus, flowActiveAgent } = useChatStream({
+  const { sendMessage, stop, resetFlow, flowStatus, flowActiveAgent, flowAgents } = useChatStream({
     agents,
     currentProjectId,
     dialogues,
@@ -418,6 +418,7 @@ function App() {
         draft={prefillInput}
         flowStatus={flowStatus}
         flowActiveAgent={flowActiveAgent}
+        flowAgents={flowAgents}
         onManualSetup={() => {
           if (!currentProjectId) return
           const done = lsGetJSON<string[]>(LS.manualSetupDone, [])

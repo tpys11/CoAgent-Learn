@@ -402,5 +402,5 @@ export function useChatStream(args: UseChatStreamArgs) {
     mindchainRef.current = []
   }, [])
 
-  return { sendMessage, stop, resetFlow, flowStatus, flowActiveAgent }
+  return { sendMessage, stop, resetFlow, flowStatus, flowActiveAgent, flowAgents }
 }

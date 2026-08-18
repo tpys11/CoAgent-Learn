@@ -57,11 +57,12 @@ interface CenterPanelProps {
   onManualSetup?: () => void
   flowStatus?: string
   flowActiveAgent?: string | null
+  flowAgents?: string[]
   /** 新对话学情画像合成中：禁用发送（后端 409 兜底） */
   profilePending?: boolean
 }
 
-export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, onStop, onRequestKey, statsCollapsed, onToggleStats, onOpenSettings, projectInitialized, draft, analyzeHint, onClearAnalyzeHint, onManualSetup, flowStatus, flowActiveAgent, profilePending }: CenterPanelProps) {
+export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, onStop, onRequestKey, statsCollapsed, onToggleStats, onOpenSettings, projectInitialized, draft, analyzeHint, onClearAnalyzeHint, onManualSetup, flowStatus, flowActiveAgent, flowAgents, profilePending }: CenterPanelProps) {
   const [input, setInput] = useState('')
   // 记忆修改预填：draft 变化时写入输入框（从记忆界面跳转）
   useEffect(() => { if (draft) setInput(draft) }, [draft])
@@ -376,6 +377,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                   isLast={idx === messages.length - 1}
                   flowActiveAgent={flowActiveAgent}
                   flowStatus={flowStatus}
+                  flowAgents={flowAgents}
                   specialSelectedKeys={specialSel[idx] ?? (msg.special || []).map(x => x.key)}
                   onToggleSpecial={(key) => setSpecialSel(prev => {
                     const cur = prev[idx] ?? (msg.special || []).map(x => x.key)
