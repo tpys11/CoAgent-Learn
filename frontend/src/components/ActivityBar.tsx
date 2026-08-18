@@ -17,7 +17,7 @@ const ITEMS: Array<{ key: ViewKey; icon: any; label: string }> = [
 ]
 
 /** 左侧导航栏（参考 deeptutor dashboard 侧栏：w-64=256px、分组小字标签、图标+文字导航项）。
- * 主页时展开加宽（deeptutor 式横排），离开主页变窄（图标在上、文字在下）。 */
+ * 主页时展开加宽（deeptutor 式横排），离开主页折叠为仅图标栏。 */
 export default function ActivityBar({ view, onChange, expanded, onSettings }: Props) {
   const renderBtn = (key: ViewKey, Icon: any, label: string, active: boolean) => (
     expanded ? (
@@ -37,17 +37,17 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
         key={key}
         onClick={() => onChange(key)}
         title={label}
-        className={`w-full h-9 mb-2 px-3 flex items-center gap-2 rounded-md text-[11px] transition-colors ${
+        aria-label={label}
+        className={`w-10 h-10 mb-2 flex items-center justify-center rounded-xl text-[11px] transition-colors ${
           active ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'
         }`}
       >
-        <Icon size={16} strokeWidth={active ? 2 : 1.6} />
-        <span className="leading-none truncate">{label}</span>
+        <Icon size={18} strokeWidth={active ? 2 : 1.6} />
       </button>
     )
   )
   return (
-    <nav className={`h-full flex-shrink-0 flex flex-col transition-all duration-300 ${expanded ? 'w-48 py-4 items-stretch' : 'w-[104px] py-4 items-stretch'}`}>
+    <nav className={`h-full flex-shrink-0 flex flex-col transition-all duration-300 ${expanded ? 'w-48 py-4 items-stretch' : 'w-[64px] py-4 items-center'}`}>
       {/* 顶部品牌区（两态等高 h-[80px]+mb-2，保证按钮起始 y 锚定） */}
       {expanded ? (
         <div className="h-[80px] px-6 pt-2 mb-2 border-b hairline flex flex-col gap-2">
@@ -59,7 +59,7 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
           </a>
         </div>
       ) : (
-        <div className="h-[80px] px-3 mb-2" />
+        <div className="h-[80px] mb-2" />
       )}
       {ITEMS.map(({ key, icon, label }) => renderBtn(key, icon, label, view === key))}
       <div className="flex-1" />
@@ -80,13 +80,13 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
       ) : (
         <>
           <button onClick={() => onChange('tutorial')} title="项目介绍"
-            className={`w-full h-9 mb-2 px-3 flex items-center gap-2 rounded-md text-[11px] transition-colors ${view === 'tutorial' ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'}`}>
-            <GraduationCap size={16} strokeWidth={1.6} />
-            <span className="leading-none">介绍</span>
+            aria-label="项目介绍"
+            className={`w-10 h-10 mb-2 flex items-center justify-center rounded-xl transition-colors ${view === 'tutorial' ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'}`}>
+            <GraduationCap size={18} strokeWidth={1.6} />
           </button>
-          <button onClick={onSettings} title="设置" className="w-full h-9 px-3 flex items-center gap-2 rounded-md text-[11px] icon-btn transition-colors">
-            <Settings size={16} strokeWidth={1.6} />
-            <span className="leading-none">设置</span>
+          <button onClick={onSettings} title="设置" aria-label="设置"
+            className="w-10 h-10 flex items-center justify-center rounded-xl icon-btn transition-colors">
+            <Settings size={18} strokeWidth={1.6} />
           </button>
         </>
       )}

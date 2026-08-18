@@ -15,7 +15,6 @@ import ProjectConfigModal from './components/ProjectConfigModal'
 import ObsidianView from './components/ObsidianView'
 import HomeView from './components/HomeView'
 import ProfileWizard from './components/ProfileWizard'
-import GuideModal from './components/GuideModal'
 import ActivityBar, { type ViewKey } from './components/ActivityBar'
 import TutorialView from './components/TutorialView'
 import ResourceView from './components/ResourceView'
@@ -100,7 +99,6 @@ function App() {
     check()
     profilePollTimer.current = setInterval(check, 1500)
   }, [])
-  const [showGuide, setShowGuide] = useState(false)
   const [view, setView] = useState<ViewKey>('chat')
   // 主页模式：view=chat 时默认显示主页（按项目展开），进入项目后才显示对话界面
   const [chatOpen, setChatOpen] = useState(false)
@@ -415,7 +413,6 @@ function App() {
         onStop={stop}
         onRequestKey={() => setShowApiKeyPrompt(true)}
         statsCollapsed={statsCollapsed} onToggleStats={() => setStatsCollapsed(!statsCollapsed)}
-          onOpenGuide={() => setShowGuide(true)}
           onOpenSettings={() => setShowSettings(true)}
         projectInitialized={currentProject?.initialized !== false}
         draft={prefillInput}
@@ -474,7 +471,6 @@ function App() {
           onClose={() => { setShowProjectConfig(false); setManualSetupOnly(false) }}
         />
       )}
-      {showGuide && <GuideModal onClose={() => setShowGuide(false)} />}
       {wizard && <ProfileWizard mode={wizard.mode} projectName={wizard.name} onClose={() => {
         // 跳过：项目标记为无画像（simple），名字加 [简]，后续对话不弹向导
         if (wizard.mode === 'project') {

@@ -5,6 +5,38 @@ import { LS, lsGet, lsSet, lsGetJSON } from '../storage'
 import { api } from '../api'
 import AssistantMessage from './chat/AssistantMessage'
 
+/** 档位模式：极速/思考/研究（用户时间-质量期望的表达），与「对话流程」区块一致 */
+const TEMPLATE_OPTIONS = [
+  { name: '极速', desc: '最短响应（1 秒内首字，500-800 字）' },
+  { name: '思考', desc: '完整流程 + 轻量单审（800-1200 字）' },
+  { name: '研究', desc: '完整流程 + 严格检测（多轮搜索）' },
+]
+
+/** 模型厂家配置（仅保留最常用：DeepSeek / 智谱GLM） */
+const MODEL_PROVIDERS = [
+  { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', models: ['deepseek-v4-pro', 'deepseek-v4-flash'] },
+  { id: 'zhipu', name: '智谱GLM', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', models: ['glm-4-plus', 'glm-4-flash'] },
+]
+
+/** 时间范围选项（顶条统计） */
+const TIME_LABELS = ['本次', '今天', '本周', '本月', '今年', '总']
+
+/** 取当前生效的主模型 key：厂家专 key 优先，兜底旧 apiKey 字段 */
+const getApiKey = () => {
+  const prov = lsGet(LS.provider, 'deepseek')
+  const keys = lsGetJSON<Record<string, string>>(LS.providerKeys, {})
+  return keys[prov] || lsGet(LS.apiKey, '')
+}
+
+/** 消息渲染：文件标记段转成卡片，其余文本正常显示 */
+const renderContent = function(content: string) {
+  const html = content
+    .replace(/【用户上传文件: ([^】]+)】[\s\S]*?(?=【用户上传文件:|$)/g,
+      '<span style="display:inline-flex;align-items:center;gap:4px;background:var(--bg-hover);border-radius:8px;padding:2px 8px;font-size:12px;color:var(--text-muted);margin:2px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> $1</span>')
+    .replace(/\n/g, '<br/>')
+  return html
+}
+
 
 interface CenterPanelProps {
   messages: Message[]
@@ -17,7 +49,6 @@ interface CenterPanelProps {
   onRequestKey?: () => void
   statsCollapsed: boolean
   onToggleStats: () => void
-  onOpenGuide?: () => void
   onOpenSettings?: () => void
   projectInitialized?: boolean
   draft?: string
@@ -30,7 +61,7 @@ interface CenterPanelProps {
   profilePending?: boolean
 }
 
-export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, onStop, onRequestKey, statsCollapsed, onToggleStats, onOpenGuide, onOpenSettings, projectInitialized, draft, analyzeHint, onClearAnalyzeHint, onManualSetup, flowStatus, flowActiveAgent, profilePending }: CenterPanelProps) {
+export default function CenterPanel({ messages, isLoading, currentProject, dialogueId, onSendMessage, onStop, onRequestKey, statsCollapsed, onToggleStats, onOpenSettings, projectInitialized, draft, analyzeHint, onClearAnalyzeHint, onManualSetup, flowStatus, flowActiveAgent, profilePending }: CenterPanelProps) {
   const [input, setInput] = useState('')
   // 记忆修改预填：draft 变化时写入输入框（从记忆界面跳转）
   useEffect(() => { if (draft) setInput(draft) }, [draft])
@@ -146,18 +177,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   }
   const [time, setTime] = useState(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }))
   const [showModelModal, setShowModelModal] = useState(false)
-  // 档位模式：极速/思考/研究（用户时间-质量期望的表达），与「对话流程」区块一致
-const TEMPLATE_OPTIONS = [
-  { name: '极速', desc: '最短响应（1 秒内首字，500-800 字）' },
-  { name: '思考', desc: '完整流程 + 轻量单审（800-1200 字）' },
-  { name: '研究', desc: '完整流程 + 严格检测（多轮搜索）' },
-]
-
-/** 模型厂家配置（仅保留最常用：DeepSeek / 智谱GLM） */
-  const MODEL_PROVIDERS = [
-    { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', models: ['deepseek-v4-pro', 'deepseek-v4-flash'] },
-    { id: 'zhipu', name: '智谱GLM', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', models: ['glm-4-plus', 'glm-4-flash'] },
-  ]
   const [selectedProvider, setSelectedProvider] = useState(() => lsGet(LS.provider, 'deepseek'))
   const [selectedModel, setSelectedModel] = useState(() => {
     const m = lsGet(LS.model, 'deepseek-v4-flash')
@@ -197,7 +216,6 @@ const TEMPLATE_OPTIONS = [
   const [timeRange, setTimeRange] = useState('今天')
   const [showTimeRange, setShowTimeRange] = useState(false)
   const timeRangeRef = useRef<HTMLDivElement>(null)
-  const timeLabels = ['本次', '今天', '本周', '本月', '今年', '总']
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -214,23 +232,13 @@ const TEMPLATE_OPTIONS = [
   }, [])
 
   // 消息渲染：文件标记段转成卡片，其余文本正常显示
-  const renderContent = function(content: string) {
-    const html = content
-      .replace(/【用户上传文件: ([^】]+)】[\s\S]*?(?=【用户上传文件:|$)/g,
-        '<span style="display:inline-flex;align-items:center;gap:4px;background:var(--bg-hover);border-radius:8px;padding:2px 8px;font-size:12px;color:var(--text-muted);margin:2px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> $1</span>')
-      .replace(/\n/g, '<br/>')
-    return html
-  }
-
   const handleSend = () => {
     if (isLoading) return  // 生成中：发送按钮已变为"停止"，Enter 等途径不触发新消息（避免并行流）
     if (profilePending) return  // 新对话学情画像合成中：禁发（后端 409 兜底）
     const text = input.trim()
     if (!text && attachments.length === 0) return
     // 未填主模型 key：弹框提醒，保留输入不发送
-    const prov = lsGet(LS.provider, 'deepseek')
-    const keys = lsGetJSON<Record<string, string>>(LS.providerKeys, {})
-    if (!(keys[prov] || lsGet(LS.apiKey, ''))) { onRequestKey?.(); return }
+    if (!getApiKey()) { onRequestKey?.(); return }
     let full = text
     let image: string | undefined
     if (attachments.length > 0) {
@@ -254,9 +262,7 @@ const TEMPLATE_OPTIONS = [
   }
 
   const sendFollowup = (q: string) => {
-    const prov = lsGet(LS.provider, 'deepseek')
-    const keys = lsGetJSON<Record<string, string>>(LS.providerKeys, {})
-    if (!(keys[prov] || lsGet(LS.apiKey, ''))) { onRequestKey?.(); return }
+    if (!getApiKey()) { onRequestKey?.(); return }
     onSendMessage(q, {
       template: templateMode,
       auto: autoMode,
@@ -267,10 +273,9 @@ const TEMPLATE_OPTIONS = [
   /** 资源生成：按能力注册表逐项生成，并保存到「我的上传」 */
   const handleGenerateSpecial = async (keys: string[], content: string) => {
     if (!keys.length || !currentProject) return
-    const prov = lsGet(LS.provider, 'deepseek')
-    const keysMap = lsGetJSON<Record<string, string>>(LS.providerKeys, {})
-    const apiKey = keysMap[prov] || lsGet(LS.apiKey, '')
+    const apiKey = getApiKey()
     if (!apiKey) { onRequestKey?.(); return }
+    const prov = lsGet(LS.provider, 'deepseek')
     const baseUrl = prov === 'zhipu' ? 'https://open.bigmodel.cn/api/paas/v4' : 'https://api.deepseek.com/v1'
     const model = prov === 'zhipu' ? 'glm-4-flash' : 'deepseek-v4-flash'
     const done: string[] = []
@@ -300,7 +305,7 @@ const TEMPLATE_OPTIONS = [
             </button>
             {showTimeRange && (
               <div className="absolute top-full left-0 mt-1 card-lift p-1 z-50 w-20">
-                {timeLabels.map(label => (
+                {TIME_LABELS.map(label => (
                   <button key={label} onClick={() => { setTimeRange(label); setShowTimeRange(false) }}
                     className={`text-[11px] px-2 py-1 rounded-lg text-left ${label === timeRange ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
                     {label}
