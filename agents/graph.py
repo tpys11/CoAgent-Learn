@@ -502,6 +502,37 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         except Exception:
             logger.exception("生成节点：历史/画像注入失败")
         # 输出增强能力已融入学习助手（见 MAIN_GENERATE_PROMPT 输出形式指令），不再按模板调用输出子 Agent
+        # 3.4 技能路由骨架：用户明确要求特定输出形式（流程图等）→ 读 state 路由 → registry.execute 产出结构化内容；
+        # 技能未命中/执行失败 → try/except 降级为下方 LLM 纯文本生成兜底
+        try:
+            _form = registry.form_router(state)
+            if _form:
+                if on_token:
+                    on_token("学习助手·生成", "")  # 触发生成 step
+                _fr = registry.execute(_form,
+                                       topic=state.get("user_input") or "",
+                                       context=context[:8000],
+                                       api_key=api_key or "",
+                                       model=model or "",
+                                       base_url=base_url or "")
+                if _fr.get("mermaid"):
+                    _fc = "以下是流程图（mermaid）：\n\n```mermaid\n" + str(_fr["mermaid"]) + "\n```"
+                    if on_answer:
+                        for _piece in _fc:
+                            on_answer(_piece)
+                    new_mc.append({"agent": "学习助手·生成", "content": "已按流程图形式组织输出（技能 form_flowchart）"})
+                    new_steps.append({"agent": "学习助手·生成", "status": "done", "detail": "流程图技能生成"})
+                    state["generated"] = _fc
+                    out = {
+                        "generated": state["generated"],
+                        "mindchain": new_mc,
+                        "steps": new_steps,
+                        "task_stats": _stats("generate", int((time.time() - t0) * 1000), 1, len(_fc) // 2),
+                    }
+                    return out
+                logger.warning("输出形式技能执行失败，降级为纯文本生成：%s", _fr.get("error", "未知错误"))
+        except Exception:
+            logger.exception("输出形式技能路由/执行异常，降级为纯文本生成")
         try:
             # 简单问题/极速档：非思考模式直接生成回答（无说明文字，规划后马上流式输出，不再显示生成阶段）；
             # 复杂问题：思考模式深入生成
