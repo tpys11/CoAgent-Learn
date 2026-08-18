@@ -679,11 +679,18 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 _append_example(cfg, generated + chr(10) + "学情画像：" + profile_txt + kb_txt), "审核")
             state["reviewed"] = result if isinstance(result, dict) else {"passed": True, "score": 80}
             # 3.5 二次复审：复杂任务 / 知识库占比低 / 信息源质量低 → 用同一审核模型复核第二次（上限 2 次）
-            _need_2nd = (state.get("complexity") == "complex"
-                         or (state.get("search_results") is not None and len(state.get("search_results") or []) < 3)
-                         or (_kb_evidence and state["reviewed"].get("score", 100) < 80))
+            # 知识库占比低 = 审核主动检索在知识库中找到相关内容（_kb_evidence 非空），但生成阶段输入里没有知识库片段（state.knowledge 为空）
+            _complex_2nd = state.get("complexity") == "complex"
+            _low_source_2nd = state.get("search_results") is not None and len(state.get("search_results") or []) < 3
+            _low_kb_2nd = bool(_kb_evidence) and not (state.get("knowledge") or [])
+            _need_2nd = _complex_2nd or _low_source_2nd or _low_kb_2nd
             if _need_2nd:
                 _rounds = 2
+                _why = []
+                if _complex_2nd: _why.append("复杂任务")
+                if _low_source_2nd: _why.append("信息源质量低")
+                if _low_kb_2nd: _why.append("知识库占比低")
+                new_mc.append({"agent": "审核", "content": "触发二次复审：" + "、".join(_why)})
                 _t2, _r2 = think_then_json(_pick_llm(cfg, llm_review), REVIEW_PROMPT,
                     _append_example(cfg, generated + chr(10) + "第一轮审核结论：" + json.dumps(state["reviewed"], ensure_ascii=False)
                                     + chr(10) + "学情画像：" + profile_txt + kb_txt), "审核")
