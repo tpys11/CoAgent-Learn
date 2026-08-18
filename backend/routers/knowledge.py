@@ -136,6 +136,53 @@ def kb_node_content(project_id: str, source: str, path: str):
             "content": content, "chunk_index": chunk_index}
 
 
+@router.get("/api/kb/{project_id}/chunk-node")
+def kb_chunk_node(project_id: str, source: str, chunk: int):
+    """审核引用跳转（5.2）：chunk 序号 → 所属章节节点 path。
+    标题级起始 chunk ≤ N 且为最大的节点即含 chunk N；无命中取首个有正文节点兜底。"""
+    from core.db import get_kb_repo
+    repo = get_kb_repo()
+    trees = [t for t in repo.get_all_kb_trees(project_id) if t.get("source") == source]
+    if not trees:
+        return {"status": "not_found", "source": source}
+    nodes: list = []
+
+    def _name(n: dict) -> str:
+        return str(n.get("name") or n.get("title") or "").strip()
+
+    def walk(children, prefix):
+        for n in children or []:
+            nm = _name(n)
+            if not nm:
+                continue
+            path = (prefix + "/" + nm).strip("/")
+            nodes.append((path, n))
+            walk(n.get("children") or [], path)
+
+    walk(trees[0].get("tree") or [], "")
+    if not nodes:
+        return {"status": "not_found", "source": source}
+    best_start = None
+    best_path = None
+    for path, n in nodes:
+        try:
+            ci = repo.find_chunk_index(project_id, source, _name(n))
+        except Exception:
+            ci = None
+        if ci is not None and (best_start is None or ci > best_start):
+            best_start = ci
+            best_path = path
+    target = best_path if best_start is not None and best_start <= chunk else None
+    if target is None:
+        for path, n in nodes:
+            if n.get("content"):
+                target = path
+                break
+    if target is None:
+        target = nodes[0][0]
+    return {"status": "ok", "source": source, "chunk": chunk, "path": target}
+
+
 @router.post("/api/knowledge/upload")
 async def knowledge_upload(req: KnowledgeUpload, wait: bool = False):
     _ch = hashlib.sha256((req.text or "").encode("utf-8")).hexdigest()

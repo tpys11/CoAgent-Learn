@@ -8,13 +8,23 @@ import { LS, lsGetJSON } from '../../storage'
 const mdThink = new MarkdownIt({ html: false, linkify: true, breaks: true })
 const renderMd = (text: string) => mdThink.render(text || '')
 
+// 审核引用标注（5.2）：`[来源:xxx#chunk-N]` 渲染为可点击元素（data-src/data-chunk 供事件委托跳知识库）
+const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+const annotateCitations = (html: string) => html.replace(
+  /\[来源:([^\]\n]+?)#chunk-(\d+)\]/g,
+  (_m, src: string, ch: string) => {
+    const safe = escapeHtml(src.trim())
+    return `<span class="citation-ref" data-src="${safe}" data-chunk="${ch}" title="查看知识库出处">来源:${safe} #chunk-${ch}</span>`
+  },
+)
+
 // markdown 渲染结果缓存：历史消息 content 不变，命中即跳过 markdown-it 全量解析
 const _mdCache = new Map<string, string>()
 const renderMdCached = (text: string) => {
   const key = text || ''
   let h = _mdCache.get(key)
   if (h === undefined) {
-    h = renderMd(key)
+    h = annotateCitations(renderMd(key))
     if (_mdCache.size > 300) {
       const first = _mdCache.keys().next().value
       if (first !== undefined) _mdCache.delete(first)
@@ -250,12 +260,24 @@ function ReasoningBlock({ items, streaming, activeAgent, activeStatus }: { items
     }, [])
   }, [items])
   const [open, setOpen] = useState(true)
+  // 块级折叠（5.2）：流式中非当前输出的 agent 块折叠为小标题行；完成后整块折叠
+  const [folded, setFolded] = useState<Record<number, boolean>>({})
   const prevStreaming = useRef(streaming)
   useEffect(() => {
-    if (streaming) { setOpen(true); return }
+    if (streaming) {
+      setOpen(true)
+      setFolded(prev => {
+        const next: Record<number, boolean> = {}
+        merged.forEach((it, i) => {
+          next[i] = !(activeAgent && displayAgent(it.agent) === displayAgent(activeAgent))
+        })
+        return next
+      })
+      return
+    }
     if (prevStreaming.current && !streaming) setOpen(false)
     prevStreaming.current = streaming
-  }, [streaming])
+  }, [streaming, activeAgent, merged.length])
   if (merged.length === 0) return null
   const toggle = () => { if (!streaming) setOpen(o => !o) }
   return (
@@ -269,11 +291,19 @@ function ReasoningBlock({ items, streaming, activeAgent, activeStatus }: { items
       </button>
       {open && (
         <div className="mt-1.5 flex flex-col gap-2">
-          {merged.map((it, i) => (
+          {merged.map((it, i) => {
+            const isFolded = !!folded[i]
+            return (
             <div key={i} className="animate-[fadeIn_0.15s_ease]">
               {it.agent && merged.length > 1 && (
-                <div className="text-[11px] font-semibold mb-0.5 text-[var(--text)]">{displayAgent(it.agent)}</div>
+                <button onClick={() => setFolded(f => ({ ...f, [i]: !f[i] }))}
+                  className="flex items-center gap-1 text-[11px] font-semibold mb-0.5 text-[var(--text)] hover:opacity-80 text-left">
+                  <span className="text-[9px] text-dim flex-shrink-0">{isFolded ? '▸' : '▾'}</span>
+                  {displayAgent(it.agent)}
+                  {isFolded && <span className="text-[9px] font-normal text-dim">（已折叠）</span>}
+                </button>
               )}
+              {!isFolded && (
               <div className="text-[11px] leading-relaxed text-dim">
                 {streaming ? (
                   <div className="whitespace-pre-wrap break-words">{it.content}</div>
@@ -281,8 +311,10 @@ function ReasoningBlock({ items, streaming, activeAgent, activeStatus }: { items
                   <div className="md-think-body" dangerouslySetInnerHTML={{ __html: renderMdCached(it.content) }} />
                 )}
               </div>
+              )}
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>

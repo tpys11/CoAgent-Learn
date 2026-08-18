@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect, useRef, useMemo } from 'react'
 import { Brain, User, FolderTree, Check, Loader2, PenLine, ChevronRight, ChevronDown } from 'lucide-react'
 import { KnowledgeTree } from './KbTree'
+import ProgressBar from './ProgressBar'
 import { LS, lsGet } from '../storage'
 import { api } from '../api'
 import { MiniMD } from './memoryView/MiniMD'
@@ -87,11 +88,13 @@ const nodeBorder = (m: Milestone, mastery: number | null) => {
 /** 记忆系统：两级（个人全局性记忆 / 课程记忆）完整界面 */
 
 /** 迷你 Markdown 渲染：段落 / 有序/无序列表 / **加粗**（行级，够用即可） */
-export default function MemoryView({ projectId, onRequestModify, onRequestAnalyze, projectOnly, initialEdit, onEditChange }: {
+export default function MemoryView({ projectId, onRequestModify, onRequestAnalyze, projectOnly, initialEdit, onEditChange, focus }: {
   projectId: string | null
   onRequestModify?: (label: string, pid?: string) => void
   onRequestAnalyze?: (projectName: string) => void
   projectOnly?: boolean
+  /** 引用跳转目标（5.2）：{source, chunk}，由聊天里点击 [来源:...] 触发 */
+  focus?: { source: string; chunk: number; seq: number } | null
   /** 初次手动初始化：基本情况/目的/初始情况三个区域原地可编辑，编辑内容通过 onEditChange 上报 */
   initialEdit?: boolean
   onEditChange?: (f: Record<string, string>) => void
@@ -111,7 +114,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
   const [gPref, setGPref] = useState<Record<string, any> | null>(null) // 阅读偏好（问卷式）
 
   // 课程记忆（全部课程，默认展开显示）
-  const [projData, setProjData] = useState<Record<string, { fields: Record<string, string>; count: number; latest: string; days: Record<string, any[]>; progress: { items: any[]; daily: Array<{ date: string; count: number }>; pace: string }; treeDocs: Array<{ source: string; tree: any[] }> }>>({})
+  const [projData, setProjData] = useState<Record<string, { fields: Record<string, string>; count: number; latest: string; days: Record<string, any[]>; progress: { items: any[]; daily: Array<{ date: string; count: number }>; pace: string }; chapters: Record<string, number>; treeDocs: Array<{ source: string; tree: any[] }> }>>({})
   // 初次手动初始化：基本情况/目的/初始情况 三个区域的编辑值
   const [projLoading, setProjLoading] = useState(false)
   // 当前查看的课程（点击课程按钮切换）
@@ -214,7 +217,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
       const plist = (Array.isArray(arr) ? arr : []) as Array<{ id: string; name: string; created_at?: string }>
       setProjects(plist)
       if (plist.length === 0) { setProjLoading(false); return }
-      const out: Record<string, { fields: Record<string, string>; count: number; latest: string; days: Record<string, any[]>; progress: { items: any[]; daily: Array<{ date: string; count: number }>; pace: string }; treeDocs: Array<{ source: string; tree: any[] }> }> = {}
+      const out: Record<string, { fields: Record<string, string>; count: number; latest: string; days: Record<string, any[]>; progress: { items: any[]; daily: Array<{ date: string; count: number }>; pace: string }; chapters: Record<string, number>; treeDocs: Array<{ source: string; tree: any[] }> }> = {}
       let done = 0
       // 加载超时兜底：任何接口挂起也不让页面卡在「加载中…」
       const timer = window.setTimeout(() => {
@@ -245,8 +248,9 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
           const count = daysArr.reduce((s: number, x: any) => s + ((x.items || []).length || 0), 0)
           const latest = daysArr.length ? daysArr.map((x: any) => x.date).sort().pop() : ''
           const progress = { items: (pg.items || []), daily: (pg.daily || []), pace: (pg.pace || '') }
+          const chapters = (mem['进度'] && typeof mem['进度'] === 'object' && !Array.isArray(mem['进度'])) ? mem['进度'] : {}
           const treeDocs = (Array.isArray(kb) ? kb : []).map((x: any) => ({ source: x.source || '未命名', tree: Array.isArray(x.tree) ? x.tree : [] }))
-          out[pid] = { fields, count, latest, days, progress, treeDocs }
+          out[pid] = { fields, count, latest, days, progress, chapters, treeDocs }
           finish()
         })
       }
@@ -586,7 +590,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                         {!initialEdit && (
                         <div className="flex flex-col gap-2 max-w-3xl">
                           <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">知识图谱</p>
-                          <KnowledgeTree treeDocs={data?.treeDocs || []} progressItems={data?.progress.items || []} projectId={projectId} />
+                          <KnowledgeTree treeDocs={data?.treeDocs || []} progressItems={data?.progress.items || []} projectId={projectId} focus={focus} />
                         </div>
                         )}
 
@@ -609,6 +613,12 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                               }
                               return (
                                 <>
+                                  {/* 章节进度条（读课程记忆「进度」：章节名→完成度，均匀布点最多 6 点） */}
+                                  {data?.chapters && Object.keys(data.chapters).length > 0 && (
+                                    <div className="mb-3">
+                                      <ProgressBar chapters={data.chapters} />
+                                    </div>
+                                  )}
                                   {/* 加宽进度条 + 节点 */}
                                   <div className="relative pt-4 pb-7">
                                     <div className="relative h-4 rounded-full bg-[#ececec]">

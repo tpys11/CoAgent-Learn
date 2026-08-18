@@ -106,6 +106,23 @@ function App() {
   const [chatOpen, setChatOpen] = useState(false)
   // 记忆修改预填：从记忆界面跳转时，输入框以 [模块名] 引用并提示补充想法
   const [prefillInput, setPrefillInput] = useState('')
+  // 审核引用跳转（5.2）：聊天里点击 [来源:xxx#chunk-N] → 跳记忆视图 focus 该 chunk 所在章节
+  const [citationFocus, setCitationFocus] = useState<{ source: string; chunk: number; seq: number } | null>(null)
+  // 事件委托：markdown 渲染出的 .citation-ref 元素（dangerouslySetInnerHTML 无法直接绑 onClick）
+  useEffect(() => {
+    const onClick = (e: MouseEvent) => {
+      const t = e.target as HTMLElement | null
+      const el = t && t.closest ? (t.closest('.citation-ref') as HTMLElement | null) : null
+      if (!el) return
+      const src = el.getAttribute('data-src') || ''
+      const chunk = el.getAttribute('data-chunk')
+      if (!src || !chunk) return
+      setCitationFocus({ source: src, chunk: parseInt(chunk, 10), seq: Date.now() })
+      setView('memory')
+    }
+    document.addEventListener('click', onClick)
+    return () => document.removeEventListener('click', onClick)
+  }, [])
   // 项目记忆分析持久提示：从记忆界面跳转对话时显示（label 区分分析/修改基本情况）
   const [analyzeHint, setAnalyzeHint] = useState<{ label: string; project: string } | null>(null)
   // 首次进入：弹出项目介绍面板（localStorage 标记，只弹一次）
@@ -359,7 +376,7 @@ function App() {
       )}
       {view === 'tutorial' && <TutorialView agents={agents} onSave={handleSaveAgent} onReplace={handleReplaceAgents} projectId={currentProjectId} />}
       {view === 'resources' && <ResourceView projectId={currentProjectId} />}
-      {view === 'memory' && <MemoryView projectId={currentProjectId} onRequestModify={handleRequestModify} onRequestAnalyze={handleRequestAnalyze} />}
+      {view === 'memory' && <MemoryView projectId={currentProjectId} onRequestModify={handleRequestModify} onRequestAnalyze={handleRequestAnalyze} focus={citationFocus} />}
       {view === 'knowledge' && <KnowledgeView projectId={projectKBId ?? currentProjectId} onClose={() => { setView('chat'); setChatOpen(true) }} />}
       {view === 'agents' && <AgentsView agents={agents} onSave={handleSaveAgent} onReplace={handleReplaceAgents} projectId={currentProjectId} />}
       {view === 'obsidian' && <ObsidianView />}
