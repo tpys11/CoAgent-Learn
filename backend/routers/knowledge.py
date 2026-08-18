@@ -129,6 +129,9 @@ def kb_node_content(project_id: str, source: str, path: str):
         chunk_index = repo.find_chunk_index(project_id, source, c)
         if chunk_index is not None:
             break
+    # 旧数据兜底：节点无 content（升级前上传）时按标题在 kb_vectors 找首块，用该块原文作正文
+    if not content and chunk_index is not None:
+        content = repo.get_kb_chunk(project_id, source, chunk_index) or ""
     return {"status": "ok", "source": source, "path": path, "name": node.get("name", ""),
             "content": content, "chunk_index": chunk_index}
 

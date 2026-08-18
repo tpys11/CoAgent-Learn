@@ -84,6 +84,14 @@ class KbRepo:
         )
         return rows[0]["c"] if rows and rows[0]["c"] is not None else None
 
+    def get_kb_chunk(self, project_id, source, chunk):
+        """按 source+chunk 序号取单块原文（旧数据兜底用）。"""
+        rows = self._db.execute(
+            "SELECT content FROM kb_vectors WHERE project_id=? AND source=? AND chunk=?",
+            (project_id, source, chunk),
+        )
+        return rows[0]["content"] if rows else ""
+
     def search_kb_vectors(self, *args, **kwargs):
         return self._db.search_kb_vectors(*args, **kwargs)
 
