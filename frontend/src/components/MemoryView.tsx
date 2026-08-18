@@ -586,7 +586,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                         {!initialEdit && (
                         <div className="flex flex-col gap-2 max-w-3xl">
                           <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">知识图谱</p>
-                          <KnowledgeTree treeDocs={data?.treeDocs || []} progressItems={data?.progress.items || []} />
+                          <KnowledgeTree treeDocs={data?.treeDocs || []} progressItems={data?.progress.items || []} projectId={projectId} />
                         </div>
                         )}
 

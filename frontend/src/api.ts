@@ -84,6 +84,8 @@ export const api = {
     apiFetch<any>('/api/knowledge/list?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' }),
   deleteKnowledge: (projectId: string, source: string) =>
     apiFetch<any>('/api/knowledge/delete?project_id=' + encodeURIComponent(projectId) + '&source=' + encodeURIComponent(source), jsonInit('DELETE')),
+  getKbNodeContent: (pid: string, source: string, path: string) =>
+    apiFetch<any>('/api/kb/' + encodeURIComponent(pid) + '/content?source=' + encodeURIComponent(source) + '&path=' + encodeURIComponent(path), { cache: 'no-store' }),
   getKb: (projectId: string) =>
     apiFetch<any>('/api/kb/' + encodeURIComponent(projectId), { cache: 'no-store' }),
   queryKnowledge: (projectId: string, q: string, topK = 3) =>

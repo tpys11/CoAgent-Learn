@@ -232,7 +232,7 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
           <Pane title={w.title} icon={w.icon} height={heights[w.key]} flex={i === shown.length - 1} onClose={() => toggleWin(w.key)}>
             {w.key === 'graph' && (
               <div className="w-full h-full overflow-y-auto px-2 py-1.5">
-                <KnowledgeTree treeDocs={treeDocs} progressItems={progressItems} />
+                <KnowledgeTree treeDocs={treeDocs} progressItems={progressItems} projectId={projectId} />
               </div>
             )}
             {w.key === 'chat' && (
