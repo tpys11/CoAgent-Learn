@@ -286,6 +286,43 @@ def _build_preloaded(pid: str, did: str, user_input: str) -> dict:
     return out
 
 
+def _parse_special_inputs(message: str) -> str:
+    """特殊格式并行解析：检出消息中的 URL（最多 5 个）并行抓取正文并合并进消息（20s 超时降级，不阻塞主流程）。
+    附件（doc/docx/pdf/md）由前端解析为文本内联进消息（【用户上传文件: xx】+内容），此处不再处理；
+    若标记后无内容（解析失败未内联），保持原文不动，由模型按原样处理。"""
+    import re as _re
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FTimeout
+    urls = _re.findall(r"https?://[^\s\u4e00-\u9fff()（）\[\]【】，。！？、；：\"'”’]+", message or "")
+    urls = [u.rstrip(".,;:)") for u in urls][:5]
+    if not urls:
+        return message or ""
+    from skills.registry import registry
+    def _fetch(u):
+        try:
+            r = registry.execute("fetch_web", url=u, max_chars=3000)
+            if r.get("results"):
+                return "【网页内容: " + u + "】\n" + str(r["results"][0].get("content") or "")[:3000]
+        except Exception:
+            pass
+        raise RuntimeError("fetch failed: " + u)
+    parts = []
+    logger.info("特殊格式并行解析启动：%d 个 URL", len(urls))
+    with ThreadPoolExecutor(max_workers=len(urls)) as _ex:
+        _futs = {_ex.submit(_fetch, u): u for u in urls}
+        for _f, _u in _futs.items():
+            try:
+                _txt = _f.result(timeout=20)
+                if _txt:
+                    parts.append(_txt)
+            except _FTimeout:
+                logger.warning("URL 解析超时（>20s）：%s", _u)
+                parts.append("（链接 " + _u + " 解析超时，未获取内容）")
+            except Exception:
+                logger.warning("URL 解析失败：%s", _u)
+                parts.append("（链接 " + _u + " 解析失败，未获取内容）")
+    return (message or "") + "\n\n" + "\n\n".join(parts)
+
+
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
     # 画像守卫：新对话画像未合成完成时禁发（前端同步禁用发送按钮）——必须在 SSE 流开始前检查
@@ -363,8 +400,9 @@ async def chat(req: ChatRequest):
                         return
                     import time as _time
                     _t0 = _time.time()
-                    _pre = _build_preloaded(pid, _did, req.message)
-                    result = wf.invoke({"user_input": req.message, "project_id": pid, "dialogue_id": _did, "session_id": req.session_id or "default", "mode": req.mode or "kb", "image": req.image or "", "steps": [], "mindchain": [], "preloaded": _pre})
+                    _msg = _parse_special_inputs(req.message)
+                    _pre = _build_preloaded(pid, _did, _msg)
+                    result = wf.invoke({"user_input": _msg, "project_id": pid, "dialogue_id": _did, "session_id": req.session_id or "default", "mode": req.mode or "kb", "image": req.image or "", "steps": [], "mindchain": [], "preloaded": _pre})
                     # 用户手动停止：不落库、不执行记忆/追问等后处理（前端已保留流式显示内容；避免旧线程与新消息乱序/竞态）
                     # 必须发一个带空 reply 的 done 让 SSE 主循环 break，否则主循环无限心跳、前端永久卡"正在输出回答…"
                     if cancel_evt.is_set():
