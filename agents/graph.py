@@ -439,76 +439,33 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         # 知识库模式（按需检索后生效）：本次检索过知识库时优先基于知识库回答；未命中必须申明
         if state.get("knowledge"):
             context += "【知识库模式】请优先基于知识库内容回答；若知识库没有相关内容，回答第一句必须明确告知：⚠️ 未在知识库中检索到相关内容，以下为模型通识回答。" + NL
-        # 学情画像文档（后台学情与记忆管理 Agent 的产物）：直接注入，生成模型结合当前问题判断难度
+        # 对话学情画像（1.5 合成缓存，dialogues.profile）：对话全程用合成画像（新开对话融入一次），
+        # 不再每轮注入个人/课程记忆
         if cfg.get("memoryEnabled") is not False:
             try:
-                _g = (state.get("preloaded") or {}).get("global_profile")
-                if _g:
+                _dp = (state.get("preloaded") or {}).get("dialogue_profile_cache")
+                if _dp:
                     _parts = []
-                    if _g.get("基本情况"):
-                        _parts.append("基本情况：" + str(_g["基本情况"])[:500])
-                    _lc = _g.get("学习情况")
-                    if isinstance(_lc, dict):
-                        if _lc.get("总体概述"):
-                            _parts.append("学习情况概述：" + str(_lc["总体概述"])[:300])
-                        for _c in (_lc.get("课程") or [])[:3]:
-                            if isinstance(_c, dict):
-                                _parts.append(f"课程[{_c.get('课程名', '')}] 目标:{_c.get('目标', '')} 当前情况:{_c.get('当前情况', '')}")
-                    if _g.get("阅读偏好"):
-                        _parts.append("阅读偏好：" + json.dumps(_g.get("阅读偏好"), ensure_ascii=False)[:300])
+                    if _dp.get("用户背景"):
+                        _parts.append("用户背景：" + str(_dp["用户背景"])[:500])
+                    for _k, _label in [("偏好提问方式", "偏好提问方式"), ("偏好学习方式", "偏好学习方式"), ("偏好_输出", "偏好输出形式")]:
+                        _v = _dp.get(_k)
+                        if _v:
+                            _text = "、".join(str(x) for x in _v) if isinstance(_v, list) else str(_v)
+                            _parts.append(f"{_label}：{_text[:200]}")
                     if _parts:
                         context += "【用户画像】" + NL + NL.join(_parts) + NL + "请结合画像与当前问题判断用户水平并调整内容深度。" + NL
             except Exception:
                 pass
-        # 课程画像 + 本次对话画像：普通（思考 / 研究）档同样注入，避免只在极速档使用项目记忆
-        if cfg.get("memoryEnabled") is not False:
-            try:
-                _pre = state.get("preloaded") or {}
-                _pm = _pre.get("project_memory")
-                _dp = _pre.get("dialogue_profile")
-                _mem_parts = []
-                if _pm:
-                    for _src, _label in [
-                        ("抽象目的", "目的"), ("目标", "目标"), ("当前水平", "当前水平"),
-                        ("起点", "起点"), ("偏好", "偏好"), ("知识点", "知识点"),
-                        ("难点", "难点"), ("薄弱点", "薄弱点"),
-                    ]:
-                        _v = _pm.get(_src)
-                        if _v:
-                            _text = "、".join(str(x) for x in _v) if isinstance(_v, list) else str(_v)
-                            _mem_parts.append(f"{_label}：{_text[:200]}")
-                if _dp:
-                    _dparts = []
-                    for _k in ("topic", "selfLevel", "target", "questionType"):
-                        _v = _dp.get(_k)
-                        if _v:
-                            _dparts.append(f"{_k}: {str(_v)[:120]}")
-                    if _dparts:
-                        _mem_parts.append("本次对话：" + "；".join(_dparts))
-                if _mem_parts:
-                    context += "【课程与对话画像】" + NL + NL.join(_mem_parts) + NL + "请结合课程画像与本次对话目标调整讲解深度。" + NL
-            except Exception:
-                pass
-        # 阅读偏好：用户对输出形式的偏好（初始化问卷/手动设置），注入生成约束（不阻塞主流程）
-        try:
-            _gp = (state.get("preloaded") or {}).get("global_profile")
-            _rp = (_gp or {}).get("阅读偏好")
-            if _rp and isinstance(_rp, dict):
-                context += "【用户阅读偏好】" + json.dumps(_rp, ensure_ascii=False) + " 请按此偏好组织输出形式（列表/表格/latex/md 等）。" + NL
-        except Exception:
-            pass
         if state.get("knowledge"): context += f"知识库: {json.dumps(state['knowledge'], ensure_ascii=False)}" + NL
         if state.get("search_results"): context += f"联网搜索: {json.dumps(state['search_results'], ensure_ascii=False)}" + NL
         # 极速档：不调用学情与记忆管理/知识库管理，改为合并已保存的信息为「综合概述性记忆」直接发送
         # 前提：首次使用时各 Agent 调用后已保存（个人全局记忆 / 项目记忆 / 知识库概述）
         if tpl == "极速":
             _summary = []
-            _g = (state.get("preloaded") or {}).get("global_profile")
-            _m = (state.get("preloaded") or {}).get("project_memory")
-            if _g:
-                _summary.append("个人记忆概述：" + json.dumps(_g, ensure_ascii=False))
-            if _m:
-                _summary.append("项目记忆概述：" + json.dumps(_m, ensure_ascii=False))
+            _dp = (state.get("preloaded") or {}).get("dialogue_profile_cache")
+            if _dp:
+                _summary.append("对话学情画像：" + json.dumps(_dp, ensure_ascii=False))
             _ko = (state.get("preloaded") or {}).get("kb_overview")
             if _ko:
                 _summary.append("知识库概述：" + str(_ko))

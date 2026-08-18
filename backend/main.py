@@ -224,26 +224,17 @@ def _build_preloaded(pid: str, did: str, user_input: str) -> dict:
     """生成节点上下文预查（main.py 预取 → 塞 state["preloaded"]，generate_node 不再直接查库）。
     各段独立容错：单段失败不影响其他段，生成节点按 preloaded 有无决定注入。"""
     import json as _json
-    from core.memory_analysis import _as_dict
-    out = {"global_profile": None, "project_memory": None, "dialogue_profile": None,
-           "history": None, "kb_overview": None}
+    out = {"dialogue_profile_cache": None, "history": None, "kb_overview": None}
+    # 对话学情画像（1.5 合成缓存）：对话全程用合成画像，不再注入个人/课程记忆
     try:
-        from core.postgres_client import pg_client as _pgp
-        _g = _pgp.execute("SELECT data FROM global_profile ORDER BY updated_at DESC LIMIT 1")
-        if _g and _g[0].get("data"):
-            out["global_profile"] = _as_dict(_g[0]["data"])
+        from core.sqlite_client import get_db
+        _drow = get_db().execute("SELECT profile FROM dialogues WHERE id=%s", (did,))
+        if _drow and _drow[0].get("profile"):
+            _p = _json.loads(_drow[0]["profile"])
+            if isinstance(_p, dict):
+                out["dialogue_profile_cache"] = _p
     except Exception:
-        logger.exception("预查全局画像失败")
-    try:
-        from core.postgres_client import pg_client as _pgm
-        _pm = _pgm.execute("SELECT data FROM project_memories WHERE project_id=%s ORDER BY updated_at DESC LIMIT 1", (pid,))
-        if _pm and _pm[0].get("data"):
-            out["project_memory"] = _as_dict(_pm[0]["data"])
-        _dp = _pgm.execute("SELECT profile_data FROM dialogue_memories WHERE dialogue_id=%s", (did,))
-        if _dp and _dp[0].get("profile_data"):
-            out["dialogue_profile"] = _as_dict(_dp[0]["profile_data"])
-    except Exception:
-        logger.exception("预查课程/对话画像失败")
+        logger.exception("预查对话画像失败")
     try:
         from core.sqlite_client import get_db
         from core.helpers import estimate_tokens
