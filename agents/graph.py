@@ -195,13 +195,22 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
     llm_main_no_think = DeepSeekLLM(api_key=api_key, model=model, base_url=base_url, thinking=False)
     # 简单问题主模型：保留思考模式（思维链展示）但 effort=low（极短思考，秒级完成）
     llm_main_low = DeepSeekLLM(api_key=api_key, model=model, base_url=base_url, thinking=True, effort='low')
-    # 审核模型：开启独立审核模型时走硅基流动（复用硅基流动 key），否则回退主快模型（deepseek v4 flash）
+    # 审核模型：开启独立审核时按档位双 LLM（3.5）——思考档走主模型同系快模型（用户 key），
+    # 研究档走独立审核模型（硅基流动 key）；key 缺失 → 回退主快模型 llm_fast
     from core.config import config as _cfg_review
     if str(getattr(_cfg_review, "REVIEW_ENABLED", "0")) == "1":
-        _review_key = getattr(_cfg_review, "EMBEDDING_API_KEY", "") or api_key
-        _review_base = getattr(_cfg_review, "VL_BASE_URL", "https://api.siliconflow.cn/v1")
-        _review_model = getattr(_cfg_review, "REVIEW_MODEL", "Qwen/Qwen2.5-72B-Instruct")
-        llm_review = DeepSeekLLM(api_key=_review_key, model=_review_model, base_url=_review_base, thinking=False)
+        _review_key = getattr(_cfg_review, "EMBEDDING_API_KEY", "") or getattr(_cfg_review, "VL_API_KEY", "")
+        if tpl == "研究":
+            _review_model = getattr(_cfg_review, "REVIEW_MODEL_RESEARCH", "Qwen/Qwen2.5-72B-Instruct")
+            _review_base = getattr(_cfg_review, "VL_BASE_URL", "https://api.siliconflow.cn/v1")
+        else:
+            _review_model = getattr(_cfg_review, "REVIEW_MODEL_THINK", "deepseek-v4-flash")
+            _review_key = _review_key or api_key
+            _review_base = base_url
+        if _review_key:
+            llm_review = DeepSeekLLM(api_key=_review_key, model=_review_model, base_url=_review_base, thinking=False)
+        else:
+            llm_review = llm_fast
     else:
         llm_review = llm_fast
 
@@ -632,27 +641,77 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         profile_txt = json.dumps(state.get("profile", {}), ensure_ascii=False) if state.get("profile") else "未知学情"
         # 符实性核查依据：注入本次检索到的知识库片段与联网搜索结果，审核 Agent 对照原文核查幻觉
         kb_txt = ""
+        _kb_evidence = []
         if state.get("knowledge"):
             kb_txt = "\n知识库检索片段：" + json.dumps(state["knowledge"], ensure_ascii=False)[:2000]
+            _kb_evidence = state["knowledge"]
         if state.get("search_results"):
             kb_txt += "\n联网搜索结果：" + json.dumps(state["search_results"], ensure_ascii=False)[:2000]
+        # 3.5 主动检索验证：审核前独立检索知识库拿证据，对照补遗漏/删虚构（不阻塞，失败跳过）
+        try:
+            from skills.registry import registry
+            _ae = registry.execute("knowledge_retrieval",
+                                   query=state.get("processed_input", state["user_input"]),
+                                   project_id=state.get("project_id", "default"),
+                                   include_images=False, rerank=False, top_k=5)
+            _hits = _ae.get("results") or []
+            if _hits:
+                _kb_evidence = _hits
+                kb_txt += "\n审核主动检索证据：" + json.dumps([{
+                    "content": str(h.get("content", ""))[:200],
+                    "metadata": h.get("metadata", {}),
+                } for h in _hits[:5]], ensure_ascii=False)[:2000]
+        except Exception:
+            logger.exception("审核主动检索失败（跳过）")
+        _rounds = 1
         try:
             thinking, result = think_then_json(_pick_llm(cfg, llm_review), REVIEW_PROMPT,
                 _append_example(cfg, generated + chr(10) + "学情画像：" + profile_txt + kb_txt), "审核")
             state["reviewed"] = result if isinstance(result, dict) else {"passed": True, "score": 80}
+            # 3.5 二次复审：复杂任务 / 知识库占比低 / 信息源质量低 → 用同一审核模型复核第二次（上限 2 次）
+            _need_2nd = (state.get("complexity") == "complex"
+                         or (state.get("search_results") is not None and len(state.get("search_results") or []) < 3)
+                         or (_kb_evidence and state["reviewed"].get("score", 100) < 80))
+            if _need_2nd:
+                _rounds = 2
+                _t2, _r2 = think_then_json(_pick_llm(cfg, llm_review), REVIEW_PROMPT,
+                    _append_example(cfg, generated + chr(10) + "第一轮审核结论：" + json.dumps(state["reviewed"], ensure_ascii=False)
+                                    + chr(10) + "学情画像：" + profile_txt + kb_txt), "审核")
+                if isinstance(_r2, dict):
+                    state["reviewed"] = _r2
+                thinking = _t2 + chr(10) + "（二次复审）"
             if not state["reviewed"].get("passed", True):
                 issues = state["reviewed"].get("issues") or []
                 state["review_feedback"] = "审核意见：" + str(state["reviewed"].get("suggestion", "")) + " " + "；".join(str(i.get("fix", "")) for i in issues if isinstance(i, dict))
         except Exception:
             thinking = "审核异常"
             state["reviewed"] = {"passed": True, "score": 80, "verdict": "审核异常，默认通过"}
+        state["reviewed"]["rounds"] = _rounds
         new_mc.append({"agent": "审核", "content": thinking})
         new_steps.append({"agent": "审核", "status": "done",
             "detail": f"score={state['reviewed'].get('score', 0)} passed={state['reviewed'].get('passed', True)}"})
         # 输出：审核通过直接交付；不通过（已到重试上限）交付并标注
         generated = state.get("generated") or "（系统未生成内容）"
         passed = state.get("reviewed", {}).get("passed", True)
-        if passed:
+        # 3.5 引用标注：有知识库证据且审核通过 → citation_compile 技能补 [来源:xxx#chunk-N]（失败保留原文）
+        _cited = None
+        if passed and _kb_evidence:
+            try:
+                from skills.registry import registry
+                _cc = registry.execute("citation_compile",
+                                       content=generated,
+                                       kb_chunks=_kb_evidence[:8],
+                                       api_key=api_key or "",
+                                       model=model or "",
+                                       base_url=base_url or "")
+                if _cc.get("content") and _cc.get("content") != generated:
+                    _cited = _cc["content"]
+                    new_mc.append({"agent": "审核", "content": "已补引用标注 [来源:...#chunk-N]：" + str(_cc.get("citations", 0)) + " 处"})
+            except Exception:
+                logger.exception("引用标注技能异常（保留原文）")
+        if _cited:
+            state["final_reply"] = _cited
+        elif passed:
             state["final_reply"] = generated
         else:
             state["final_reply"] = generated + f"\n\n> ⚠️ 审核未完全通过 (重试{state.get('retry_count', 0)}次)"

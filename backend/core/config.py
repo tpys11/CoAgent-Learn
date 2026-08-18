@@ -48,6 +48,9 @@ class Config:
     # 独立审核模型（走硅基流动）：开关 + 模型；关闭时审核回退主模型快模型（deepseek v4 flash）
     REVIEW_ENABLED: str = os.getenv("REVIEW_ENABLED", "0")
     REVIEW_MODEL: str = os.getenv("REVIEW_MODEL", "Qwen/Qwen2.5-72B-Instruct")
+    # 双 LLM 审核（3.5）：思考档用主模型同系快模型（走用户 key），研究档用独立审核模型（走硅基流动 key）
+    REVIEW_MODEL_THINK: str = os.getenv("REVIEW_MODEL_THINK", "deepseek-v4-flash")
+    REVIEW_MODEL_RESEARCH: str = os.getenv("REVIEW_MODEL_RESEARCH", "Qwen/Qwen2.5-72B-Instruct")
 
     # ── 联网代理（可选）：容器访问国外站点（GitHub 等）失败时，配宿主梯子代理 ──
     # 例：PROXY_URL=http://host.docker.internal:7993（宿主梯子监听端口）
