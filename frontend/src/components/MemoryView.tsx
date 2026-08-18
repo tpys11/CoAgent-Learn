@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect, useRef, useMemo } from 'react'
-import { Brain, User, FolderTree, Check, Loader2, PenLine, ChevronRight, ChevronDown } from 'lucide-react'
+import { Brain, User, FolderTree, Check, Loader2, PenLine, ChevronRight, ChevronDown, ArrowLeft } from 'lucide-react'
 import { KnowledgeTree } from './KbTree'
 import ProgressBar from './ProgressBar'
 import { LS, lsGet } from '../storage'
@@ -119,8 +119,6 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
   const [projLoading, setProjLoading] = useState(false)
   // 当前查看的课程（点击课程按钮切换）
   const [activeProject, setActiveProject] = useState<string | null>(projectOnly ? projectId : null)
-  // 课程详情弹层（个人画像·学习情况 点击课程方形按钮打开）
-  const [courseModal, setCourseModal] = useState(false)
   // 初次手动初始化：基本情况/目的/初始情况 三个区域的编辑值（随课程数据加载初始化）
   const [editFields, setEditFields] = useState<Record<string, string>>({})
   useEffect(() => {
@@ -362,7 +360,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                     {projects.length > 0 ? (
                       <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3">
                         {projects.map(p => (
-                          <button key={p.id} onClick={() => { setActiveProject(p.id); setLevel('project'); setCourseModal(true) }}
+                          <button key={p.id} onClick={() => { setActiveProject(p.id); setLevel('project') }}
                             className="aspect-square rounded-xl border hairline bg-[var(--bg-input)] flex flex-col items-center justify-center gap-1 hover:border-[var(--accent)] hover:bg-[var(--bg-hover)] transition-colors">
                             <span className="text-lg font-bold leading-none text-[var(--text)]">{p.name.slice(0, 1)}</span>
                             <span className="text-[10px] text-dim leading-tight text-center px-1 truncate max-w-full">{p.name}</span>
@@ -427,16 +425,18 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
           </div>
         )}
 
-        {/* ========== 课程详情弹层 ========== */}
-        {courseModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-6" onClick={() => setCourseModal(false)}>
-            <div className="w-[960px] max-h-[85vh] overflow-y-auto panel rounded-3xl p-6 flex flex-col gap-4" onClick={e => e.stopPropagation()}>
-              <div className="flex items-center justify-between flex-shrink-0">
-                <span className="text-base font-bold">课程记忆{activeProject ? ` · ${projects.find(p => p.id === activeProject)?.name || ''}` : ''}</span>
-                <button onClick={() => setCourseModal(false)} className="text-xs text-dim hover:text-[var(--text)]">关闭 ✕</button>
-              </div>
+        {/* ========== 课程记忆（层级：课程） ========== */}
         {level === 'project' && (
           <div className="w-full flex flex-col gap-4">
+            {/* 返回个人画像（projectOnly 弹窗内固定课程记忆，不显示） */}
+            {!projectOnly && (
+            <div className="flex items-center justify-between">
+              <h1 className="text-2xl font-bold">课程记忆</h1>
+              <button onClick={() => setLevel('global')} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border hairline text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors">
+                <ArrowLeft size={12} /> 返回个人画像
+              </button>
+            </div>
+            )}
             {projLoading ? <p className="text-xs text-dim text-center py-10">加载中…</p> : projects.length === 0 ? (
               <p className="text-xs text-dim text-center py-10">暂无课程</p>
             ) : (
@@ -710,9 +710,6 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
             )}
           </div>
         )}
-          </div>
-        </div>
-      )}
       </div>
 
       {/* 记忆模块只读详情（修改记忆由 AI 处理：跳转主对话并以 [模块名] 引用） */}
