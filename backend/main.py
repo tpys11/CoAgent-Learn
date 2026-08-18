@@ -323,6 +323,21 @@ def _parse_special_inputs(message: str) -> str:
     return (message or "") + "\n\n" + "\n\n".join(parts)
 
 
+def _five_round_hook(pid: str, did: str):
+    """单窗口每五轮对话 → 课程记忆 + 进度条（4.2）：轮数按 messages 表 COUNT(role='user') 计（不加列），
+    %5==0 时调 transfer_dialogue_to_project（内含概要入课程记忆 + update_progress + 变更计数）。幂等：计数不会重复触发。"""
+    try:
+        from core.postgres_client import pg_client as _pg5
+        _n = _pg5.execute("SELECT COUNT(*) AS n FROM messages WHERE dialogue_id=%s AND role='user'", (did,))
+        _cnt = int(_n[0]["n"]) if _n else 0
+        if _cnt > 0 and _cnt % 5 == 0:
+            from core.memory_service import transfer_dialogue_to_project
+            transfer_dialogue_to_project(pid, did)
+            logger.info("五轮对话传递：did=%s 第%d轮 → 课程记忆+进度条", did, _cnt)
+    except Exception:
+        logger.exception("五轮对话传递失败 did=%s", did)
+
+
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
     # 画像守卫：新对话画像未合成完成时禁发（前端同步禁用发送按钮）——必须在 SSE 流开始前检查
@@ -396,6 +411,7 @@ async def chat(req: ChatRequest):
                             _pg2.execute("INSERT INTO messages(dialogue_id,role,content,think) VALUES(%s,%s,%s,%s)", (_did, "assistant", _reply2, ""))
                         except Exception:
                             logger.exception("保存记忆修改回复失败 did=%s", _did)
+                        _five_round_hook(pid, _did)
                         token_queue.put(("done", {"final_reply": _reply2, "steps": _edit["steps"], "mindchain": [], "task_stats": {}}))
                         return
                     import time as _time
@@ -422,6 +438,11 @@ async def chat(req: ChatRequest):
                     token_queue.put(("done", result))
                     def _persist():
                         import time as _time2
+                        # 五轮对话→课程记忆钩子（4.2）：COUNT 用户消息 %5==0 触发传递+进度条（进度条唯一更新逻辑）
+                        try:
+                            _five_round_hook(pid, _did)
+                        except Exception:
+                            logger.exception("五轮对话传递钩子异常 did=%s", _did)
                         # 专注时长：本次任务完成，累加进项目 stats（可视化反馈：专注时长 + token 用量）
                         try:
                             from core.postgres_client import pg_client as _pg4
