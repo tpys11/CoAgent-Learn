@@ -116,6 +116,12 @@ _DEFAULT_KB_SUBS = [
 _RESEARCH_MAX_ROUNDS = 3  # 研究档联网搜索最多轮数（1-5 可配，先保守取 3）
 
 
+# 3.6 极速档字数参数：目标区间 500-800 字，1000 字硬上限（注入极速档生成提示词）
+FAST_WORD_MIN = 500
+FAST_WORD_MAX = 800
+FAST_WORD_HARD = 1000
+
+
 def _judge_search_sufficient(llm, query: str, results: list) -> bool:
     """用快模型判断现有联网搜索结果是否已足以回答用户问题。失败默认视为足够。"""
     try:
@@ -363,7 +369,8 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         def _do_search():
             if tpl == "研究":
                 return _research_multi_search(registry, llm_fast, query)
-            return registry.execute("web_search", query=query)
+            # 思考档：并行搜索一轮 10-20 条（3.6 档位参数对齐）
+            return registry.execute("web_search", query=query, max_results=15)
 
         with ThreadPoolExecutor(max_workers=2) as _ex:
             _f1 = _ex.submit(_do_retrieve)
@@ -445,6 +452,9 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         # 档位时间期望（写入提示词）：极速必快、思考视情况、研究至少思考半分钟
         if TIER_TIME_EXPECT.get(tpl):
             context += TIER_TIME_EXPECT[tpl] + NL
+        # 3.6 极速档字数参数：目标区间 500-800 字，1000 字硬上限
+        if tpl == "极速":
+            context += f"【输出要求】回答控制在 {FAST_WORD_MIN}-{FAST_WORD_MAX} 字以内（硬上限 {FAST_WORD_HARD} 字），直接给结论要点，不展开长篇。" + NL
         # 知识库模式（按需检索后生效）：本次检索过知识库时优先基于知识库回答；未命中必须申明
         if state.get("knowledge"):
             context += "【知识库模式】请优先基于知识库内容回答；若知识库没有相关内容，回答第一句必须明确告知：⚠️ 未在知识库中检索到相关内容，以下为模型通识回答。" + NL
