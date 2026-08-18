@@ -103,6 +103,7 @@ class AgentState(TypedDict):
     mindchain: Annotated[list, operator.add]  # 并行节点各自追加思维链条目，按序合并
     task_stats: Annotated[dict, _merge_stats]  # 并行节点各写各的统计
     sub_outputs: dict  # 子Agent产出：{kb: str}
+    preloaded: dict  # main.py 预查的上下文（画像/历史/知识库概述），生成节点只读 state 不再查库
 
 
 # 检索增强模板的内置默认子 Agent（知识库与搜索 Agent 强制调用；用户配置了 subAgents 则用自定义）
@@ -441,12 +442,9 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         # 学情画像文档（后台学情与记忆管理 Agent 的产物）：直接注入，生成模型结合当前问题判断难度
         if cfg.get("memoryEnabled") is not False:
             try:
-                from core.postgres_client import pg_client as _pgp
-                from core.memory_analysis import _as_dict as _md_as_dict
-                _prows = _pgp.execute("SELECT data FROM global_profile ORDER BY updated_at DESC LIMIT 1")
-                _parts = []
-                if _prows and _prows[0].get("data"):
-                    _g = _md_as_dict(_prows[0]["data"])
+                _g = (state.get("preloaded") or {}).get("global_profile")
+                if _g:
+                    _parts = []
                     if _g.get("基本情况"):
                         _parts.append("基本情况：" + str(_g["基本情况"])[:500])
                     _lc = _g.get("学习情况")
@@ -458,21 +456,18 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                                 _parts.append(f"课程[{_c.get('课程名', '')}] 目标:{_c.get('目标', '')} 当前情况:{_c.get('当前情况', '')}")
                     if _g.get("阅读偏好"):
                         _parts.append("阅读偏好：" + json.dumps(_g.get("阅读偏好"), ensure_ascii=False)[:300])
-                if _parts:
-                    context += "【用户画像】" + NL + NL.join(_parts) + NL + "请结合画像与当前问题判断用户水平并调整内容深度。" + NL
+                    if _parts:
+                        context += "【用户画像】" + NL + NL.join(_parts) + NL + "请结合画像与当前问题判断用户水平并调整内容深度。" + NL
             except Exception:
                 pass
         # 课程画像 + 本次对话画像：普通（思考 / 研究）档同样注入，避免只在极速档使用项目记忆
         if cfg.get("memoryEnabled") is not False:
             try:
-                from core.postgres_client import pg_client as _pgm
-                from core.memory_analysis import _as_dict as _m_as_dict
-                _pid = state.get("project_id") or "default"
-                _did = state.get("dialogue_id") or "default"
+                _pre = state.get("preloaded") or {}
+                _pm = _pre.get("project_memory")
+                _dp = _pre.get("dialogue_profile")
                 _mem_parts = []
-                _prow = _pgm.execute("SELECT data FROM project_memories WHERE project_id=%s ORDER BY updated_at DESC LIMIT 1", (_pid,))
-                if _prow and _prow[0].get("data"):
-                    _pm = _m_as_dict(_prow[0]["data"])
+                if _pm:
                     for _src, _label in [
                         ("抽象目的", "目的"), ("目标", "目标"), ("当前水平", "当前水平"),
                         ("起点", "起点"), ("偏好", "偏好"), ("知识点", "知识点"),
@@ -482,9 +477,7 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                         if _v:
                             _text = "、".join(str(x) for x in _v) if isinstance(_v, list) else str(_v)
                             _mem_parts.append(f"{_label}：{_text[:200]}")
-                _drow = _pgm.execute("SELECT profile_data FROM dialogue_memories WHERE dialogue_id=%s", (_did,))
-                if _drow and _drow[0].get("profile_data"):
-                    _dp = _m_as_dict(_drow[0]["profile_data"])
+                if _dp:
                     _dparts = []
                     for _k in ("topic", "selfLevel", "target", "questionType"):
                         _v = _dp.get(_k)
@@ -498,14 +491,10 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                 pass
         # 阅读偏好：用户对输出形式的偏好（初始化问卷/手动设置），注入生成约束（不阻塞主流程）
         try:
-            from core.postgres_client import pg_client as _pg_gp
-            from core.memory_analysis import _as_dict as _gp_as_dict
-            _gp_rows = _pg_gp.execute("SELECT data FROM global_profile ORDER BY updated_at DESC LIMIT 1")
-            if _gp_rows and _gp_rows[0].get("data"):
-                _gp = _gp_as_dict(_gp_rows[0]["data"])
-                _rp = _gp.get("阅读偏好") if isinstance(_gp, dict) else None
-                if _rp and isinstance(_rp, dict):
-                    context += "【用户阅读偏好】" + json.dumps(_rp, ensure_ascii=False) + " 请按此偏好组织输出形式（列表/表格/latex/md 等）。" + NL
+            _gp = (state.get("preloaded") or {}).get("global_profile")
+            _rp = (_gp or {}).get("阅读偏好")
+            if _rp and isinstance(_rp, dict):
+                context += "【用户阅读偏好】" + json.dumps(_rp, ensure_ascii=False) + " 请按此偏好组织输出形式（列表/表格/latex/md 等）。" + NL
         except Exception:
             pass
         if state.get("knowledge"): context += f"知识库: {json.dumps(state['knowledge'], ensure_ascii=False)}" + NL
@@ -514,25 +503,15 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         # 前提：首次使用时各 Agent 调用后已保存（个人全局记忆 / 项目记忆 / 知识库概述）
         if tpl == "极速":
             _summary = []
-            try:
-                from core.postgres_client import pg_client
-                from core.memory_analysis import _as_dict
-                _pid = state.get("project_id") or "default"
-                _g = pg_client.execute("SELECT data FROM global_profile ORDER BY updated_at DESC LIMIT 1")
-                if _g and _g[0].get("data"):
-                    _summary.append("个人记忆概述：" + json.dumps(_as_dict(_g[0]["data"]), ensure_ascii=False))
-                _m = pg_client.execute("SELECT data FROM project_memories WHERE project_id=%s", (_pid,))
-                if _m and _m[0].get("data"):
-                    _summary.append("项目记忆概述：" + json.dumps(_as_dict(_m[0]["data"]), ensure_ascii=False))
-                try:
-                    from core.knowledge_service import list_docs
-                    _docs = list_docs(_pid)
-                    if _docs:
-                        _summary.append("知识库概述：" + "；".join(f"{d.get('source','')}({d.get('chunks',0)}块)" for d in _docs[:20]))
-                except Exception:
-                    pass
-            except Exception:
-                pass
+            _g = (state.get("preloaded") or {}).get("global_profile")
+            _m = (state.get("preloaded") or {}).get("project_memory")
+            if _g:
+                _summary.append("个人记忆概述：" + json.dumps(_g, ensure_ascii=False))
+            if _m:
+                _summary.append("项目记忆概述：" + json.dumps(_m, ensure_ascii=False))
+            _ko = (state.get("preloaded") or {}).get("kb_overview")
+            if _ko:
+                _summary.append("知识库概述：" + str(_ko))
             if _summary:
                 context += NL + "【综合概述性记忆】" + NL + NL.join(_summary) + NL
                 # 极速档无深度思考（非思考模式），生成节点不产生 reasoning → 手动补一条"学习助手·生成"思考，
@@ -546,54 +525,23 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         # 可用 Skill：让学习助手知道自己可调用的技能（来自 Agent 配置的 skill 字段）
         if cfg.get("skill"):
             context += NL + "【可用 Skill】" + NL + str(cfg["skill"]) + NL
-        # 读最近对话历史（token 预算制）+ 会话摘要（压缩产物）+ 历史向量召回
+        # 读最近对话历史（token 预算制）+ 会话摘要（压缩产物）+ 历史向量召回：全部来自 main.py 预查（preloaded）
         try:
-            from core.sqlite_client import get_db
-            from core.helpers import estimate_tokens
-            from core.compress import HISTORY_TOKEN_BUDGET
-            _dbx = get_db()
-            _did = state.get("dialogue_id", "default")
-            # 会话摘要（自动压缩产物；游标之后的原文不重复注入）
-            _drow = _dbx.execute("SELECT summary, compressed_upto FROM dialogues WHERE id=%s", (_did,))
-            _summary = (_drow[0].get("summary") or "") if _drow else ""
-            _upto = int((_drow[0].get("compressed_upto") or 0) if _drow else 0)
-            if _summary:
-                context += NL + "【会话摘要】" + NL + str(_summary)[:1500] + NL
-            _rows = _dbx.execute(
-                "SELECT role, content FROM messages WHERE dialogue_id=%s AND id > %s ORDER BY created_at DESC LIMIT 200",
-                (_did, _upto))
-            # 从最新往回累加，保留到预算为止
-            _recent = []
-            _used = 0
-            for _r in _rows:
-                _c = str(_r.get("content") or "")
-                if not _c or _c == "（系统未生成内容）":
-                    continue
-                _t = estimate_tokens(_c)
-                if _recent and _used + _t > HISTORY_TOKEN_BUDGET:
-                    break
-                _recent.append(_r)
-                _used += _t
-            _recent.reverse()
-            if _recent:
-                context += NL + "【历史对话】" + NL
-                for _r in _recent[:-1]:
-                    _c = str(_r.get("content")) or ""
-                    context += ("user: " if _r.get("role") == "user" else "assistant: ") + _c[:150] + NL
-            # 历史向量召回：问题与已压缩历史相关时，捞回原文细节（压缩不丢信息）
-            if _upto > 0:
-                try:
-                    from core.knowledge_service import _embed
-                    _qv = _embed([str(state.get("user_input", ""))[:500]])[0]
-                    _hits = _dbx.search_message_vectors(_did, _qv, k=2)
-                    if _hits:
-                        _useful = [h for h in _hits if h.get("distance", 1.0) < 0.6]
-                        if _useful:
-                            context += NL + "【历史相关内容（压缩前原文召回）】" + NL
-                            for _h in _useful:
-                                context += str(_h.get("content"))[:300] + NL
-                except Exception:
-                    logger.exception("生成节点：历史消息向量召回失败")
+            _hist = (state.get("preloaded") or {}).get("history")
+            if _hist:
+                # 会话摘要（自动压缩产物；游标之后的原文不重复注入）
+                if _hist.get("summary"):
+                    context += NL + "【会话摘要】" + NL + str(_hist["summary"])[:1500] + NL
+                if _hist.get("recent"):
+                    context += NL + "【历史对话】" + NL
+                    for _r in _hist["recent"][:-1]:
+                        _c = str(_r.get("content")) or ""
+                        context += ("user: " if _r.get("role") == "user" else "assistant: ") + _c[:150] + NL
+                # 历史向量召回：问题与已压缩历史相关时，捞回原文细节（压缩不丢信息）
+                if _hist.get("vector_hits"):
+                    context += NL + "【历史相关内容（压缩前原文召回）】" + NL
+                    for _h in _hist["vector_hits"]:
+                        context += str(_h)[:300] + NL
         except Exception:
             logger.exception("生成节点：历史/画像注入失败")
         # 输出增强能力已融入学习助手（见 MAIN_GENERATE_PROMPT 输出形式指令），不再按模板调用输出子 Agent

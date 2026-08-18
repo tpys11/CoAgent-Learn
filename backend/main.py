@@ -220,6 +220,81 @@ async def memory_chat(req: ChatRequest):
     return await run_in_threadpool(_memory_chat_service, req.api_key, req.message, req.project_id)
 
 
+def _build_preloaded(pid: str, did: str, user_input: str) -> dict:
+    """生成节点上下文预查（main.py 预取 → 塞 state["preloaded"]，generate_node 不再直接查库）。
+    各段独立容错：单段失败不影响其他段，生成节点按 preloaded 有无决定注入。"""
+    import json as _json
+    from core.memory_analysis import _as_dict
+    out = {"global_profile": None, "project_memory": None, "dialogue_profile": None,
+           "history": None, "kb_overview": None}
+    try:
+        from core.postgres_client import pg_client as _pgp
+        _g = _pgp.execute("SELECT data FROM global_profile ORDER BY updated_at DESC LIMIT 1")
+        if _g and _g[0].get("data"):
+            out["global_profile"] = _as_dict(_g[0]["data"])
+    except Exception:
+        logger.exception("预查全局画像失败")
+    try:
+        from core.postgres_client import pg_client as _pgm
+        _pm = _pgm.execute("SELECT data FROM project_memories WHERE project_id=%s ORDER BY updated_at DESC LIMIT 1", (pid,))
+        if _pm and _pm[0].get("data"):
+            out["project_memory"] = _as_dict(_pm[0]["data"])
+        _dp = _pgm.execute("SELECT profile_data FROM dialogue_memories WHERE dialogue_id=%s", (did,))
+        if _dp and _dp[0].get("profile_data"):
+            out["dialogue_profile"] = _as_dict(_dp[0]["profile_data"])
+    except Exception:
+        logger.exception("预查课程/对话画像失败")
+    try:
+        from core.sqlite_client import get_db
+        from core.helpers import estimate_tokens
+        from core.compress import HISTORY_TOKEN_BUDGET
+        _dbx = get_db()
+        _drow = _dbx.execute("SELECT summary, compressed_upto FROM dialogues WHERE id=%s", (did,))
+        _hist = {
+            "summary": (_drow[0].get("summary") or "") if _drow else "",
+            "compressed_upto": int((_drow[0].get("compressed_upto") or 0) if _drow else 0),
+            "recent": [], "vector_hits": [],
+        }
+        _rows = _dbx.execute(
+            "SELECT role, content FROM messages WHERE dialogue_id=%s AND id > %s ORDER BY created_at DESC LIMIT 200",
+            (did, _hist["compressed_upto"]))
+        # 从最新往回累加，保留到预算为止（与 generate_node 原逻辑一致）
+        _recent = []
+        _used = 0
+        for _r in _rows:
+            _c = str(_r.get("content") or "")
+            if not _c or _c == "（系统未生成内容）":
+                continue
+            _t = estimate_tokens(_c)
+            if _recent and _used + _t > HISTORY_TOKEN_BUDGET:
+                break
+            _recent.append({"role": _r.get("role"), "content": _c})
+            _used += _t
+        _recent.reverse()
+        _hist["recent"] = _recent
+        # 历史向量召回：有已压缩历史时捞回原文细节（压缩不丢信息）
+        if _hist["compressed_upto"] > 0:
+            try:
+                from core.knowledge_service import _embed
+                _qv = _embed([(user_input or "")[:500]])[0]
+                _hits = _dbx.search_message_vectors(did, _qv, k=2)
+                if _hits:
+                    _hist["vector_hits"] = [str(h.get("content"))[:300] for h in _hits if h.get("distance", 1.0) < 0.6]
+            except Exception:
+                logger.exception("预查历史向量召回失败")
+        out["history"] = _hist
+    except Exception:
+        logger.exception("预查历史失败")
+    try:
+        from core.knowledge_service import list_docs
+        _docs = list_docs(pid)
+        if _docs:
+            out["kb_overview"] = "；".join(f"{d.get('source', '')}({d.get('chunks', 0)}块)" for d in _docs[:20])
+    except Exception:
+        logger.exception("预查知识库概述失败")
+    return out
+
+
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
     # 画像守卫：新对话画像未合成完成时禁发（前端同步禁用发送按钮）——必须在 SSE 流开始前检查
@@ -297,7 +372,8 @@ async def chat(req: ChatRequest):
                         return
                     import time as _time
                     _t0 = _time.time()
-                    result = wf.invoke({"user_input": req.message, "project_id": pid, "dialogue_id": _did, "session_id": req.session_id or "default", "mode": req.mode or "kb", "image": req.image or "", "steps": [], "mindchain": []})
+                    _pre = _build_preloaded(pid, _did, req.message)
+                    result = wf.invoke({"user_input": req.message, "project_id": pid, "dialogue_id": _did, "session_id": req.session_id or "default", "mode": req.mode or "kb", "image": req.image or "", "steps": [], "mindchain": [], "preloaded": _pre})
                     # 用户手动停止：不落库、不执行记忆/追问等后处理（前端已保留流式显示内容；避免旧线程与新消息乱序/竞态）
                     # 必须发一个带空 reply 的 done 让 SSE 主循环 break，否则主循环无限心跳、前端永久卡"正在输出回答…"
                     if cancel_evt.is_set():
