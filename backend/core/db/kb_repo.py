@@ -55,6 +55,22 @@ class KbRepo:
     def get_kb_tree(self, project_id, source):
         return self._db.get_kb_tree(project_id, source)
 
+    def get_all_kb_trees(self, project_id):
+        """返回项目全部文档标题树 [{source, tree}]"""
+        import json as _json
+        rows = self._db.execute("SELECT source, tree FROM kb_tree WHERE project_id=?", (project_id,))
+        out = []
+        for r in rows or []:
+            if not r.get("tree"):
+                continue
+            try:
+                t = _json.loads(r["tree"])
+            except Exception:
+                continue
+            if isinstance(t, list):
+                out.append({"source": r.get("source"), "tree": t})
+        return out
+
     def delete_kb_tree_by_source(self, project_id, source):
         return self._db.delete_kb_tree_by_source(project_id, source)
 

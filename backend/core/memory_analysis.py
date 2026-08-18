@@ -74,9 +74,29 @@ def update_memories(api_key, project_id, dialogue_id, db, session_id="default"):
 
     # 2. 情景记忆（当前项目）
     try:
+        # 章节结构（进度条依据：顶层章节标题）
+        chapters = []
+        try:
+            _tree_rows = db.execute("SELECT tree FROM kb_tree WHERE project_id=%s", (project_id,))
+            for _tr in _tree_rows or []:
+                _t = _tr.get("tree")
+                if not _t:
+                    continue
+                try:
+                    _tl = json.loads(_t)
+                except Exception:
+                    continue
+                for _n in _tl if isinstance(_tl, list) else []:
+                    if isinstance(_n, dict) and _n.get("title"):
+                        chapters.append(_n["title"])
+        except Exception:
+            chapters = []
         p = "根据以下对话内容，提炼本项目的情景记忆（JSON格式）：" + NL + "对话内容：" + NL + convo[:6000]
+        if chapters:
+            p += NL + NL + "课程章节结构（用于判断学习进度）：" + NL + "、".join(chapters[:20])
+            p += NL + "请根据对话内容判断每个章节的学习完成度（0-100 的整数，未学到的章节为 0）。"
         p += NL + NL + "JSON格式：" + NL
-        p += "{\"抽象目的\":\"项目要达到的目标\",\"抽象项目情况\":\"项目整体情况概括\",\"起点\":\"开始时的水平\",\"当前水平\":\"现在的水平\",\"目标\":\"学习目标\",\"偏好\":[\"方式\"],\"知识点\":[\"概念\"],\"难点\":[\"难点\"],\"薄弱点\":[\"难点\"],\"学习建议\":\"建议\",\"摘要\":\"一句话总结\"}"
+        p += "{\"抽象目的\":\"项目要达到的目标\",\"抽象项目情况\":\"项目整体情况概括\",\"起点\":\"开始时的水平\",\"当前水平\":\"现在的水平\",\"目标\":\"学习目标\",\"偏好\":[\"方式\"],\"知识点\":[\"概念\"],\"难点\":[\"难点\"],\"薄弱点\":[\"难点\"],\"学习建议\":\"建议\",\"摘要\":\"一句话总结\",\"进度\":{\"章节名\": 完成度整数}}"
         r = _call_llm(p)
         data = _extract_json(r)
         if not isinstance(data, dict):
@@ -101,6 +121,8 @@ def update_memories(api_key, project_id, dialogue_id, db, session_id="default"):
                     ss = old.get("对话摘要", []) if isinstance(old.get("对话摘要"), list) else []
                     ss.append({"摘要": data["摘要"][:200]})
                     old["对话摘要"] = ss[-10:]
+                if data.get("进度") and isinstance(data["进度"], dict):
+                    old["进度"] = data["进度"]
                 db.execute("UPDATE project_memories SET data=%s,updated_at=CURRENT_TIMESTAMP WHERE project_id=%s", (json.dumps(old, ensure_ascii=False), project_id))
             else:
                 db.execute("INSERT INTO project_memories (session_id,project_id,data) VALUES (%s,%s,%s)", (session_id, project_id, json.dumps(data, ensure_ascii=False)))
