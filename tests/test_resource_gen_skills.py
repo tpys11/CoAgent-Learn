@@ -1,0 +1,198 @@
+# -*- coding: utf-8 -*-
+"""resource_gen 解耦后的纯逻辑测试：skills/gen_* 契约 + resource_gen 转调层。
+
+mock 手法：gen_* 技能 execute 内是延迟 import（from core.base_llm import DeepSeekLLM），
+monkeypatch.setattr("core.base_llm.DeepSeekLLM", FakeLLM) 即可拦截；registry 转调链随之生效。
+"""
+import json
+
+import pytest
+
+from services.resource_gen import CAPABILITIES, generate_resource, list_capabilities
+from skills.registry import registry
+from skills.gen_quiz import GenQuiz, _validate_quiz
+from skills.gen_report import GenReport
+from skills.gen_flow import GenFlow
+from skills.gen_tree import GenTree
+
+
+class FakeLLM:
+    """可配置的 DeepSeekLLM 替身：类属性即行为配置（测试中经 monkeypatch 修改）。"""
+
+    chat_result = "mock text"
+    json_result = {}
+    chat_error = None
+    json_error = None
+
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def chat(self, messages, temperature=0.7, max_tokens=None):
+        if FakeLLM.chat_error:
+            raise FakeLLM.chat_error
+        return FakeLLM.chat_result
+
+    def chat_with_json(self, messages, output_schema, temperature=0.3):
+        if FakeLLM.json_error:
+            raise FakeLLM.json_error
+        return FakeLLM.json_result
+
+
+@pytest.fixture(autouse=True)
+def _fake_llm(monkeypatch):
+    monkeypatch.setattr("core.base_llm.DeepSeekLLM", FakeLLM)
+    FakeLLM.chat_result = "mock text"
+    FakeLLM.json_result = {}
+    FakeLLM.chat_error = None
+    FakeLLM.json_error = None
+    yield
+
+
+# ---------- registry 自动发现 ----------
+
+def test_registry_discovers_gen_skills():
+    names = {s["name"] for s in registry.list_all()}
+    assert {"gen_report", "gen_flow", "gen_tree", "gen_quiz"} <= names
+    assert GenQuiz.category == "resource"
+    assert GenReport.category == "resource"
+    assert GenFlow.category == "resource"
+    assert GenTree.category == "resource"
+
+
+# ---------- _validate_quiz ----------
+
+def _valid_quiz():
+    return {
+        "quizTitle": "牛顿三定律测验",
+        "quizSynopsis": "共5题，基础题3道(point=10)进阶题2道(point=20)",
+        "questions": [
+            {
+                "question": "惯性大小与什么有关？",
+                "questionType": "text",
+                "answerSelectionType": "single",
+                "answers": ["质量", "速度", "力", "位移"],
+                "correctAnswer": "1",
+                "messageForCorrectAnswer": "正确",
+                "messageForIncorrectAnswer": "再想想",
+                "explanation": "质量是惯性大小的量度",
+                "point": 10,
+            }
+        ],
+    }
+
+
+def test_validate_quiz_ok():
+    assert _validate_quiz(_valid_quiz()) is None
+
+
+def test_validate_quiz_not_dict():
+    assert _validate_quiz("x") == "生成的测验结构不完整，请重试"
+
+
+def test_validate_quiz_missing_title():
+    d = _valid_quiz()
+    d.pop("quizTitle")
+    assert _validate_quiz(d) == "生成的测验结构不完整，请重试"
+
+
+def test_validate_quiz_empty_questions():
+    d = _valid_quiz()
+    d["questions"] = []
+    assert _validate_quiz(d) == "生成的测验结构不完整，请重试"
+
+
+def test_validate_quiz_correct_answer_out_of_range():
+    d = _valid_quiz()
+    d["questions"][0]["correctAnswer"] = "9"
+    assert _validate_quiz(d) == "生成的测验结构不完整，请重试"
+
+
+def test_validate_quiz_correct_answer_list_ok():
+    d = _valid_quiz()
+    d["questions"][0]["correctAnswer"] = ["1", "2"]
+    assert _validate_quiz(d) is None
+
+
+# ---------- generate_resource 转调层 ----------
+
+def test_generate_unknown_key():
+    r = generate_resource("k", "nonsense", "x")
+    assert r == {"status": "error", "msg": "未知能力: nonsense"}
+
+
+def test_generate_empty_content():
+    r = generate_resource("k", "report", "  ")
+    assert r == {"status": "error", "msg": "源内容为空"}
+
+
+def test_generate_report_ok(monkeypatch):
+    monkeypatch.setattr(FakeLLM, "chat_result", "# 报告\n正文内容")
+    r = generate_resource("k", "report", "内容")
+    assert r["status"] == "ok"
+    assert r["key"] == "report"
+    assert r["label"] == "报告"
+    assert r["output"] == "markdown"
+    assert r["content"] == "# 报告\n正文内容"
+
+
+def test_generate_report_empty(monkeypatch):
+    monkeypatch.setattr(FakeLLM, "chat_result", "   ")
+    r = generate_resource("k", "report", "内容")
+    assert r == {"status": "error", "msg": "模型未返回内容"}
+
+
+def test_generate_flow_keeps_fence(monkeypatch):
+    md = "```mermaid\ngraph TD\nA-->B\n```"
+    monkeypatch.setattr(FakeLLM, "chat_result", md)
+    r = generate_resource("k", "flow", "内容")
+    assert r["status"] == "ok"
+    assert r["output"] == "mermaid"
+    assert r["content"] == md  # 保留 fence（与 form_flowchart 不同，资源面板直接渲染）
+
+
+def test_generate_tree_keeps_fence(monkeypatch):
+    md = "```mermaid\nmindmap\n  A\n    B\n```"
+    monkeypatch.setattr(FakeLLM, "chat_result", md)
+    r = generate_resource("k", "tree", "内容")
+    assert r["status"] == "ok"
+    assert r["output"] == "mermaid"
+    assert r["content"] == md
+
+
+def test_generate_quiz_ok(monkeypatch):
+    quiz = _valid_quiz()
+    monkeypatch.setattr(FakeLLM, "json_result", quiz)
+    r = generate_resource("k", "quiz", "内容")
+    assert r["status"] == "ok"
+    assert r["key"] == "quiz"
+    assert r["output"] == "markdown"
+    assert json.loads(r["content"]) == quiz  # content 为 JSON 字符串（QuizViewer 可解析）
+
+
+def test_generate_quiz_invalid(monkeypatch):
+    monkeypatch.setattr(FakeLLM, "json_result", {"quizTitle": "t", "quizSynopsis": "s", "questions": []})
+    r = generate_resource("k", "quiz", "内容")
+    assert r == {"status": "error", "msg": "生成的测验结构不完整，请重试"}
+
+
+def test_generate_skill_error(monkeypatch):
+    monkeypatch.setattr(FakeLLM, "chat_error", RuntimeError("boom"))
+    r = generate_resource("k", "report", "内容")
+    assert r["status"] == "error"
+    assert "boom" in r["msg"]
+
+
+# ---------- list_capabilities ----------
+
+def test_list_capabilities_order_and_no_prompt():
+    caps = list_capabilities()
+    assert [c["key"] for c in caps] == ["report", "flow", "tree", "quiz"]
+    assert all("prompt" not in c for c in caps)
+
+
+def test_capabilities_skill_mapping():
+    assert CAPABILITIES["report"]["skill"] == "gen_report"
+    assert CAPABILITIES["flow"]["skill"] == "gen_flow"
+    assert CAPABILITIES["tree"]["skill"] == "gen_tree"
+    assert CAPABILITIES["quiz"]["skill"] == "gen_quiz"
+    assert "prompt" not in CAPABILITIES["quiz"]
