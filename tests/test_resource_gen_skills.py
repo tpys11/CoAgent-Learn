@@ -17,6 +17,7 @@ from skills.gen_tree import GenTree
 from skills.gen_guide import GenGuide
 from skills.gen_diagnosis import GenDiagnosis
 from skills.gen_image import GenImage, _parse_wikimedia, _parse_openverse, _dedupe, search_images
+from skills.gen_chart import GenChart, _validate_chart_option
 
 
 class FakeLLM:
@@ -55,7 +56,7 @@ def _fake_llm(monkeypatch):
 
 def test_registry_discovers_gen_skills():
     names = {s["name"] for s in registry.list_all()}
-    assert {"gen_report", "gen_flow", "gen_tree", "gen_quiz", "gen_guide", "gen_diagnosis", "gen_image"} <= names
+    assert {"gen_report", "gen_flow", "gen_tree", "gen_quiz", "gen_guide", "gen_diagnosis", "gen_image", "gen_chart"} <= names
     assert GenQuiz.category == "resource"
     assert GenReport.category == "resource"
     assert GenFlow.category == "resource"
@@ -63,6 +64,7 @@ def test_registry_discovers_gen_skills():
     assert GenGuide.category == "resource"
     assert GenDiagnosis.category == "resource"
     assert GenImage.category == "resource"
+    assert GenChart.category == "resource"
 
 
 # ---------- _validate_quiz ----------
@@ -356,11 +358,51 @@ def test_gen_image_no_results_error(monkeypatch):
     assert r == {"error": "未找到合适图片，请换个描述重试"}
 
 
+# ---------- gen_chart ----------
+
+def test_validate_chart_option_ok():
+    assert _validate_chart_option({"series": [{"type": "line", "data": [1, 2]}]}) is None
+    assert _validate_chart_option({"series": [{"type": "radar", "data": [{"value": [1]}]}]}) is None
+
+
+def test_validate_chart_option_not_dict():
+    assert _validate_chart_option("not a dict") == "生成的图表配置不合法，请重试"
+    assert _validate_chart_option(None) == "生成的图表配置不合法，请重试"
+
+
+def test_validate_chart_option_empty_series():
+    assert _validate_chart_option({"series": []}) == "生成的图表配置不合法，请重试"
+    assert _validate_chart_option({"series": "x"}) == "生成的图表配置不合法，请重试"
+    assert _validate_chart_option({}) == "生成的图表配置不合法，请重试"
+
+
+def test_validate_chart_option_bad_type():
+    assert _validate_chart_option({"series": [{"type": "sunburst"}]}) == "生成的图表配置不合法，请重试"
+    assert _validate_chart_option({"series": [{"type": "line"}, {"type": "treemap"}]}) == "生成的图表配置不合法，请重试"
+
+
+def test_gen_chart_ok(monkeypatch):
+    option = {"title": {"text": "销量"}, "series": [{"type": "bar", "data": [1, 2]}]}
+    monkeypatch.setattr(FakeLLM, "json_result", option)
+    r = GenChart().execute(content="一季度 120")
+    assert r["content"].startswith("```echarts\n")
+    assert r["content"].endswith("\n```")
+    import json as _json
+    inner = _json.loads(r["content"].replace("```echarts\n", "", 1).rsplit("\n```", 1)[0])
+    assert inner["series"][0]["type"] == "bar"
+
+
+def test_gen_chart_invalid_option_error(monkeypatch):
+    monkeypatch.setattr(FakeLLM, "json_result", {"series": [{"type": "sunburst"}]})
+    r = GenChart().execute(content="数据")
+    assert r == {"error": "生成的图表配置不合法，请重试"}
+
+
 # ---------- list_capabilities ----------
 
 def test_list_capabilities_order_and_no_prompt():
     caps = list_capabilities()
-    assert [c["key"] for c in caps] == ["report", "flow", "tree", "quiz", "guide", "diagnosis", "image"]
+    assert [c["key"] for c in caps] == ["report", "flow", "tree", "quiz", "guide", "diagnosis", "chart", "image"]
     assert all("prompt" not in c for c in caps)
 
 
@@ -372,4 +414,5 @@ def test_capabilities_skill_mapping():
     assert CAPABILITIES["guide"]["skill"] == "gen_guide"
     assert CAPABILITIES["diagnosis"]["skill"] == "gen_diagnosis"
     assert CAPABILITIES["image"]["skill"] == "gen_image"
+    assert CAPABILITIES["chart"]["skill"] == "gen_chart"
     assert "prompt" not in CAPABILITIES["quiz"]

@@ -52,6 +52,13 @@ CAPABILITIES: dict = {
         "output": "markdown",
         "skill": "gen_diagnosis",
     },
+    "chart": {
+        "key": "chart",
+        "label": "图表",
+        "desc": "把数据渲染为 ECharts 图表",
+        "output": "markdown",
+        "skill": "gen_chart",
+    },
     "image": {
         "key": "image",
         "label": "图片",
