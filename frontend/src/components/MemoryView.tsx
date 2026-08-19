@@ -1,12 +1,10 @@
-﻿import { useState, useEffect, useRef, useMemo } from 'react'
+﻿import { useState, useEffect, useRef } from 'react'
 import { Brain, User, FolderTree, Check, Loader2, PenLine, ChevronRight, ChevronDown, ArrowLeft } from 'lucide-react'
 import { KnowledgeTree } from './KbTree'
-import ProgressBar from './ProgressBar'
 import { LS, lsGet } from '../storage'
 import { api } from '../api'
 import { MiniMD } from './memoryView/MiniMD'
 import { PrefSummary } from './memoryView/PrefSummary'
-import { NewMilestoneForm } from './memoryView/MilestoneForm'
 
 /** 个人全局性记忆：基础信息字段（固定，纵向表单） */
 const BASIC_FIELDS = [
@@ -22,68 +20,6 @@ const PROJECT_DIMS: Array<{ title: string; hint: string; keys: string[]; arrayKe
   { title: '概述', hint: '抽象课程目的与整体情况', keys: ['抽象目的', '抽象项目情况'], arrayKeys: ['偏好', '知识点', '难点', '薄弱点', '兴趣'] },
   { title: '实现进度', hint: '起点 → 当前水平 → 目标', keys: ['起点', '当前水平', '目标'], arrayKeys: [] },
 ]
-/** 里程碑节点：进度条上的可交互节点（起点/当前/目标固定，系统预分析重要节点，用户自定义可增删） */
-type MilestoneType = 'start' | 'current' | 'goal' | 'system' | 'custom'
-interface Milestone { id: string; label: string; detail?: string; type: MilestoneType; pos: number; important?: boolean }
-
-/** 构建里程碑列表：用户保存过的优先；否则自动生成（起点/当前/目标 + 系统预分析的知识点/难点节点） */
-const buildMilestones = (data: any): Milestone[] => {
-  const savedRaw = data?.fields?.['里程碑']
-  if (savedRaw) {
-    try {
-      const arr = JSON.parse(savedRaw)
-      if (Array.isArray(arr) && arr.length) return arr
-    } catch { /* 忽略损坏数据 */ }
-  }
-  const list: Milestone[] = []
-  list.push({ id: 'start', label: '起点', detail: data?.fields?.['起点'] || '', type: 'start', pos: 0, important: false })
-  // 当前节点位置：按「当前水平」关键词映射，无则按对话量估计
-  const lv = (data?.fields?.['当前水平'] || '').toLowerCase()
-  let curP = 15
-  if (/beginner|初级|入门/.test(lv)) curP = 30
-  else if (/intermediate|中级|进阶/.test(lv)) curP = 60
-  else if (/advanced|高级|掌握/.test(lv)) curP = 85
-  else curP = Math.min(80, 15 + (data?.count || 0) * 3)
-  list.push({ id: 'cur', label: '当前', detail: data?.fields?.['当前水平'] || '', type: 'current', pos: curP, important: false })
-  list.push({ id: 'goal', label: '目标', detail: data?.fields?.['目标'] || '', type: 'goal', pos: 100, important: false })
-  const goalText = data?.fields?.['目标'] || ''
-  const kps = (data?.progress.items || []).filter((x: any) => x.kind === '知识点')
-  kps.forEach((k: any, i: number) => {
-    list.push({
-      id: 'sys-' + (k.name || i),
-      label: k.name || '知识点',
-      detail: `${k.mastery ?? 0}% 掌握${k.daysSince >= 999 ? '' : `，${k.daysSince} 天前提及`}`,
-      type: 'system',
-      pos: Math.round(8 + (i / Math.max(1, kps.length)) * 84),
-      important: !!(k.forgotten || (k.mastery ?? 0) < 0.6 || (goalText && k.name && goalText.includes(k.name))),
-    })
-  })
-  const diffs = (data?.fields?.['难点'] || '').split(/[,，、]/).map((s: string) => s.trim()).filter(Boolean)
-  diffs.forEach((s: string, i: number) => {
-    list.push({ id: 'sys-diff-' + i, label: s, detail: '难点', type: 'system', pos: Math.round(10 + (i / Math.max(1, diffs.length)) * 80), important: true })
-  })
-  return list
-}
-
-/** 节点填充色（实心色块内部）：固定节点按类型定深浅；系统/自定义节点按掌握度深浅（与知识图谱一致） */
-const nodeFill = (m: Milestone, mastery: number | null) => {
-  if (m.type === 'start') return 'color-mix(in srgb, var(--accent) 20%, var(--bg-panel))'
-  if (m.type === 'current') return 'var(--accent)'
-  if (m.type === 'goal') return 'color-mix(in srgb, var(--accent) 85%, var(--bg-panel))'
-  if (m.type === 'custom') return 'color-mix(in srgb, var(--accent) 40%, var(--bg-panel))'
-  const base = mastery == null ? 30 : Math.round(30 + mastery * 70)
-  return `color-mix(in srgb, var(--accent) ${base}%, var(--bg-panel))`
-}
-
-/** 节点边框色：符合主题但与填充/进度条不重复（更深一档） */
-const nodeBorder = (m: Milestone, mastery: number | null) => {
-  if (m.type === 'start') return 'color-mix(in srgb, var(--accent) 50%, transparent)'
-  if (m.type === 'current') return 'color-mix(in srgb, var(--accent) 60%, #1a1a1a)'
-  if (m.type === 'goal') return 'color-mix(in srgb, var(--accent) 45%, #1a1a1a)'
-  if (m.type === 'custom') return 'color-mix(in srgb, var(--accent) 60%, transparent)'
-  const base = mastery == null ? 55 : Math.round(55 + mastery * 30)
-  return `color-mix(in srgb, var(--accent) ${base}%, transparent)`
-}
 
 /** 记忆系统：两级（个人全局性记忆 / 课程记忆）完整界面 */
 
@@ -137,7 +73,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
   const [globalStats, setGlobalStats] = useState<{ count: number; latest: string }>({ count: 0, latest: '' })
   const [dayDetail, setDayDetail] = useState<{ date: string; items: any[] } | null>(null)
   // 里程碑弹层：查看/编辑节点（null 不显示；{ mode:'new' } 为新增节点）
-  const [msNode, setMsNode] = useState<Milestone | { mode: 'new' } | null>(null)
+
   // 课程详情页签：基本情况 | 进度与细节
   // 记忆对话（右侧对话框，直接输入修改记忆）
   const [mcMsgs, setMcMsgs] = useState<Array<{ role: 'user' | 'assistant'; content: string }>>([])
@@ -564,24 +500,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                                     </div>
                                   </div>
                                 </section>
-                                {/* 标签区：偏好/知识点/难点/薄弱点/兴趣（胶囊） */}
-                                {['偏好', '知识点', '难点', '薄弱点', '兴趣'].map(k => {
-                                  const arr = (data?.fields[k] || '').split(/[,，、]/).map((s: string) => s.trim()).filter(Boolean)
-                                  if (!arr.length) return null
-                                  return (
-                                    <section key={k}>
-                                      <h3 className="text-[11px] font-bold uppercase tracking-widest mb-2.5" style={{ color: 'var(--accent)' }}>{k}</h3>
-                                      <div className="flex flex-wrap gap-2">
-                                        {arr.map((s, i) => (
-                                          <span key={i} className="px-3 py-1 rounded-full text-[11px] border hairline"
-                                            style={{ background: 'color-mix(in srgb, var(--accent) 8%, var(--bg-panel))', borderColor: 'color-mix(in srgb, var(--accent) 25%, transparent)' }}>
-                                            {s}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    </section>
-                                  )
-                                })}
+
                               </div>
                             </div>
                           </div>
@@ -594,62 +513,17 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                         </div>
                         )}
 
-                        {/* 进度：里程碑时间线；初始化时不展示 */}
+                        {/* 进度：基础进度条；初始化时不展示 */}
                         {!initialEdit && (
                         <div className="flex flex-col gap-2 max-w-3xl">
                           <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-3">
                             <div className="flex items-center justify-between">
                               <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">进度</p>
-                              <button onClick={() => setMsNode({ mode: 'new' })}
-                                className="px-2.5 py-1 rounded-lg border hairline text-[10px] text-dim hover:bg-[var(--bg-hover)] transition-colors">＋ 新增节点</button>
+                              <span className="text-[11px] font-semibold text-[var(--accent)]">{pctOf(data?.fields || {}, data?.count || 0)}%</span>
                             </div>
-                            {(() => {
-                              const pct = pctOf(data?.fields || {}, data?.count || 0)
-                              const ms = buildMilestones(data)
-                              // 节点掌握度：与知识图谱同源匹配（名与知识点/难点双向包含）
-                              const masteryOf = (label: string) => {
-                                const hit = (data?.progress.items || []).find((it: any) => it.name && label && (label.includes(it.name) || it.name.includes(label)))
-                                return hit ? (hit.retrievability || 0) : null
-                              }
-                              return (
-                                <>
-                                  {/* 章节进度条（读课程记忆「进度」：章节名→完成度，均匀布点最多 6 点） */}
-                                  {data?.chapters && Object.keys(data.chapters).length > 0 && (
-                                    <div className="mb-3">
-                                      <ProgressBar chapters={data.chapters} />
-                                    </div>
-                                  )}
-                                  {/* 加宽进度条 + 节点 */}
-                                  <div className="relative pt-4 pb-7">
-                                    <div className="relative h-4 rounded-full bg-[#ececec]">
-                                      <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: pct + '%', background: 'var(--accent)', opacity: 0.9 }} />
-                                      {ms.map(m => {
-                                        const mst = masteryOf(m.label)
-                                        return (
-                                        <button key={m.id} onClick={() => setMsNode(m)}
-                                          title={m.label}
-                                          className="absolute top-0 bottom-0 w-7 group"
-                                          style={{ left: m.pos + '%', transform: 'translateX(-50%)' }}>
-                                          {/* 圆点：按钮宽=圆点宽，水平中心=pos%；垂直 top-1/2 居中于条中线 */}
-                                          <span className="absolute left-0 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full shadow transition-transform group-hover:scale-110"
-                                            style={{ background: nodeFill(m, mst), border: '3px solid ' + nodeBorder(m, mst) }}>
-                                            {m.important && <span className="absolute -top-3 -right-2.5 text-[10px] leading-none text-amber-500">★</span>}
-                                          </span>
-                                          {/* 小三角：提示可点击查看内容（挂在圆点正下方，与圆点同中心） */}
-                                          <span className="absolute left-1/2 -translate-x-1/2 w-0 h-0 border-l-[4px] border-r-[4px] border-b-[5px] border-l-transparent border-r-transparent"
-                                            style={{ top: 'calc(50% + 17px)', borderBottomColor: nodeFill(m, mst) }} />
-                                          {m.type !== 'start' && m.type !== 'current' && m.type !== 'goal' && (
-                                            <span className="absolute left-1/2 -translate-x-1/2 max-w-[56px] truncate text-[9px] text-dim group-hover:text-[var(--text)]"
-                                              style={{ top: 'calc(50% + 22px)' }}>{m.label}</span>
-                                          )}
-                                        </button>
-                                        )
-                                      })}
-                                    </div>
-                                  </div>
-                                </>
-                              )
-                            })()}
+                            <div className="relative h-2.5 rounded-full bg-[#ececec]">
+                              <div className="absolute inset-y-0 left-0 rounded-full transition-all" style={{ width: pctOf(data?.fields || {}, data?.count || 0) + '%', background: 'var(--accent)', opacity: 0.9 }} />
+                            </div>
                           </div>
                         </div>
                         )}
@@ -730,62 +604,6 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                 修改记忆
               </button>
             </div>
-          </div>
-        </div>
-      )}
-      {/* 里程碑节点弹层：查看内容 / 标注重要 / 删除 / 新增 */}
-      {msNode && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setMsNode(null)}>
-          <div className="card-lift rounded-2xl p-5 w-[340px] flex flex-col gap-3" onClick={e => e.stopPropagation()}>
-            {'mode' in msNode ? (
-              <NewMilestoneForm
-                onCancel={() => setMsNode(null)}
-                onAdd={(label, detail, pos) => {
-                  const data = projData[activeProject || '']
-                  const base = buildMilestones(data)
-                  const next = [...base, { id: 'c-' + Date.now(), label, detail, type: 'custom' as MilestoneType, pos, important: false }]
-                  setProjData(prev => ({ ...prev, [activeProject || '']: { ...prev[activeProject || ''], fields: { ...prev[activeProject || '']?.fields, 里程碑: JSON.stringify(next) } } }))
-scheduleSave(() => api.saveProjectMemory(activeProject || 'default', { 里程碑: next }))
-                  setMsNode(null)
-                }}
-              />
-            ) : (() => {
-              const m = msNode as Milestone
-              const fixed = m.type === 'start' || m.type === 'current' || m.type === 'goal'
-              const typeName = { start: '起点', current: '当前', goal: '目标', system: '系统预分析', custom: '自定义' }[m.type]
-              return (
-                <>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-bold truncate">{m.label}</span>
-                    <span className="text-[10px] text-dim flex-shrink-0">{typeName}</span>
-                  </div>
-                  <div className="text-xs text-[var(--text-muted)] leading-relaxed min-h-[40px] whitespace-pre-wrap">
-                    {m.detail?.trim() ? m.detail : '（无内容）'}
-                  </div>
-                  {!fixed && (
-                    <div className="flex flex-col gap-2 pt-2 border-t hairline">
-                      <button onClick={() => {
-                        const data = projData[activeProject || '']
-                        const base = buildMilestones(data)
-                        const next = base.map(x => x.id === m.id ? { ...x, important: !x.important } : x)
-                        setProjData(prev => ({ ...prev, [activeProject || '']: { ...prev[activeProject || ''], fields: { ...prev[activeProject || '']?.fields, 里程碑: JSON.stringify(next) } } }))
-scheduleSave(() => api.saveProjectMemory(activeProject || 'default', { 里程碑: next }))
-                      }} className="py-2 rounded-xl border hairline text-[11px] text-dim hover:bg-[var(--bg-hover)] transition-colors">
-                        {m.important ? '取消重要标注' : '标注为重要节点'}
-                      </button>
-                      <button onClick={() => {
-                        const data = projData[activeProject || '']
-                        const next = buildMilestones(data).filter(x => x.id !== m.id)
-                        setProjData(prev => ({ ...prev, [activeProject || '']: { ...prev[activeProject || ''], fields: { ...prev[activeProject || '']?.fields, 里程碑: JSON.stringify(next) } } }))
-scheduleSave(() => api.saveProjectMemory(activeProject || 'default', { 里程碑: next }))
-                        setMsNode(null)
-                      }} className="py-2 rounded-xl bg-red-50 text-red-600 text-[11px] hover:bg-red-100 transition-colors">删除该节点</button>
-                    </div>
-                  )}
-                  <button onClick={() => setMsNode(null)} className="py-2 rounded-xl bg-[#1a1a1a] text-white text-xs font-medium">关闭</button>
-                </>
-              )
-            })()}
           </div>
         </div>
       )}
