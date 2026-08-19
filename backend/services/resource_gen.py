@@ -52,6 +52,13 @@ CAPABILITIES: dict = {
         "output": "markdown",
         "skill": "gen_diagnosis",
     },
+    "image": {
+        "key": "image",
+        "label": "图片",
+        "desc": "搜索免费版权配图",
+        "output": "markdown",
+        "skill": "gen_image",
+    },
 }
 
 

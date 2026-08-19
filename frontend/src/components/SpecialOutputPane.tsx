@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { FileText, Workflow, Network, ClipboardList, Wrench, Stethoscope, Send, Loader2 } from 'lucide-react'
+import { FileText, Workflow, Network, ClipboardList, Wrench, Stethoscope, Image as ImageIcon, Send, Loader2 } from 'lucide-react'
 import MarkdownIt from 'markdown-it'
 import mermaid from 'mermaid'
 import { api } from '../api'
@@ -37,6 +37,7 @@ const ICONS: Record<string, any> = {
   quiz: ClipboardList,
   guide: Wrench,
   diagnosis: Stethoscope,
+  image: ImageIcon,
 }
 
 interface Capability { key: string; label: string; desc: string; output: string }
@@ -166,6 +167,7 @@ export default function SpecialOutputPane({ projectId }: { projectId?: string | 
 
       <style>{`
         .rp-mermaid { background: var(--bg-panel); border: 1px solid var(--border-color, #e5e5e5); border-radius: 10px; padding: 0.8em; text-align: center; overflow-x: auto; }
+        .md-answer-body img { max-width: 100%; border-radius: 10px; margin: 6px 0; }
       `}</style>
     </div>
   )
