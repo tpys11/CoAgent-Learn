@@ -75,6 +75,43 @@ def sanitize_echarts_blocks(md: str) -> str:
     return re.sub(r"```echarts\n(.*?)```", _repl, md, flags=re.DOTALL)
 
 
+def embed_images(md: str, searcher=None, max_images: int = _MAX_IMAGES) -> str:
+    """把 md 中的 {{IMG:关键词|说明}} 标记替换为真实图片（并行搜索，注入依赖可测）。
+
+    公共后处理链：report/guide/diagnosis 三技能共用（图表图片是嵌入内容而非独立板块）。
+    searcher 默认用 gen_image.search_images；传入自定义函数便于测试。
+    """
+    markers = list(_IMG_MARKER_RE.finditer(md))[:max_images]
+    if not markers:
+        return md
+
+    def _search(m):
+        kw = m.group(1).strip()
+        try:
+            fn = searcher or search_images
+            return kw, fn(kw, limit=1)
+        except Exception:
+            return kw, []
+
+    results: dict = {}
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        futures = [ex.submit(_search, m) for m in markers]
+        for f in futures:
+            try:
+                kw, hits = f.result(timeout=8)
+                results[kw] = hits
+            except Exception:
+                pass
+
+    return replace_image_markers(md, lambda kw, limit=1: results.get(kw, []))
+
+
+def search_images(query: str, limit: int = 2) -> list:
+    """薄封装：延迟导入 gen_image 的搜索实现，供 embed_images 默认使用。"""
+    from skills.gen_image import search_images as _impl
+    return _impl(query, limit=limit)
+
+
 class GenReport(Skill):
     name = "gen_report"
     category = "resource"
@@ -107,30 +144,8 @@ class GenReport(Skill):
             # 1) 校验并降级非法 echarts 块
             draft = sanitize_echarts_blocks(text)
 
-            # 2) 提取前 4 处 IMG 标记，并行搜索图片
-            markers = list(_IMG_MARKER_RE.finditer(draft))[:_MAX_IMAGES]
-            results: dict = {}
-
-            def _search(m):
-                kw = m.group(1).strip()
-                from skills.gen_image import search_images
-                try:
-                    return kw, search_images(kw, limit=1)
-                except Exception:
-                    return kw, []
-
-            if markers:
-                with ThreadPoolExecutor(max_workers=4) as ex:
-                    futures = [ex.submit(_search, m) for m in markers]
-                    for f in futures:
-                        try:
-                            kw, hits = f.result(timeout=8)
-                            results[kw] = hits
-                        except Exception:
-                            pass
-
-            # 3) 注入搜索结果替换标记
-            final = replace_image_markers(draft, lambda kw, limit=1: results.get(kw, []))
+            # 2) 提取 IMG 标记并并行搜索图片注入（公共后处理链）
+            final = embed_images(draft)
             return {"content": final}
         except Exception as e:
             return {"error": str(e)[:200]}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { FileText, Workflow, Network, ClipboardList, Wrench, Stethoscope, Image as ImageIcon, BarChart3, Send, Loader2 } from 'lucide-react'
+import { FileText, Workflow, Network, ClipboardList, Wrench, Stethoscope, Send, Loader2 } from 'lucide-react'
 import MarkdownIt from 'markdown-it'
 import mermaid from 'mermaid'
 import * as echarts from 'echarts'
@@ -56,8 +56,6 @@ const ICONS: Record<string, any> = {
   quiz: ClipboardList,
   guide: Wrench,
   diagnosis: Stethoscope,
-  chart: BarChart3,
-  image: ImageIcon,
 }
 
 interface Capability { key: string; label: string; desc: string; output: string }

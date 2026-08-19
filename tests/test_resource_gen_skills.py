@@ -11,7 +11,7 @@ import pytest
 from services.resource_gen import CAPABILITIES, generate_resource, list_capabilities
 from skills.registry import registry
 from skills.gen_quiz import GenQuiz, _validate_quiz
-from skills.gen_report import GenReport, replace_image_markers, sanitize_echarts_blocks
+from skills.gen_report import GenReport, replace_image_markers, sanitize_echarts_blocks, embed_images
 from skills.gen_flow import GenFlow
 from skills.gen_tree import GenTree
 from skills.gen_guide import GenGuide
@@ -487,11 +487,61 @@ def test_gen_report_execute_search_fail_degrade(monkeypatch):
     assert "![" not in r["content"]
 
 
+# ---------- embed_images 公共后处理链 ----------
+
+def test_embed_images_no_markers():
+    """无标记原文返回。"""
+    assert embed_images("无标记内容") == "无标记内容"
+
+
+def test_embed_images_hit():
+    """标记命中：返回真实图片 markdown。"""
+    def fake_searcher(query, limit=1):
+        return [{"url": "http://x/a.jpg"}]
+    out = embed_images("前文 {{IMG:牛顿|图1}} 后文", searcher=fake_searcher)
+    assert "![图1](http://x/a.jpg)" in out
+    assert "{{IMG:" not in out
+
+
+def test_embed_images_miss():
+    """标记未命中：降级为配图建议引用块。"""
+    out = embed_images("{{IMG:不存在|某图}}", searcher=lambda q, limit=1: [])
+    assert "> 配图建议：某图（未找到合适图片）" in out
+
+
+# ---------- guide/diagnosis 嵌图嵌表 ----------
+
+def test_guide_execute_embeds_images(monkeypatch):
+    """guide 嵌图：mock LLM + mock requests → 标记替换为真实图片。"""
+    monkeypatch.setattr(FakeLLM, "chat_result", "# 步骤\n\n{{IMG:牛顿|实验图}}\n\n第一步操作")
+    data = {"query": {"pages": _wm_page("1", "File:G.jpg", "http://x/g.jpg", 800)}}
+
+    def fake_get(url, **kwargs):
+        class R:
+            def raise_for_status(self): pass
+            def json(self): return data
+        return R()
+
+    monkeypatch.setattr("requests.get", fake_get)
+    r = GenGuide().execute(content="牛顿力学")
+    assert r["content"].startswith("# 步骤")
+    assert "![实验图](http://x/g.jpg)" in r["content"]
+    assert "{{IMG:" not in r["content"]
+
+
+def test_diagnosis_execute_embeds_charts(monkeypatch):
+    """diagnosis 嵌表：mock LLM 返回含 echarts 块 → 合法块保留。"""
+    monkeypatch.setattr(FakeLLM, "chat_result", "# 诊断\n\n掌握度：\n\n```echarts\n{\"series\": [{\"type\": \"radar\", \"data\": [{\"value\": [80, 60], \"name\": \"obj\"}]}]}\n```\n\n建议")
+    r = GenDiagnosis().execute(content="课程记录")
+    assert r["content"].startswith("# 诊断")
+    assert "```echarts" in r["content"]
+
+
 # ---------- list_capabilities ----------
 
 def test_list_capabilities_order_and_no_prompt():
     caps = list_capabilities()
-    assert [c["key"] for c in caps] == ["report", "flow", "tree", "quiz", "guide", "diagnosis", "chart", "image"]
+    assert [c["key"] for c in caps] == ["report", "flow", "tree", "quiz", "guide", "diagnosis"]
     assert all("prompt" not in c for c in caps)
 
 
@@ -502,6 +552,5 @@ def test_capabilities_skill_mapping():
     assert CAPABILITIES["quiz"]["skill"] == "gen_quiz"
     assert CAPABILITIES["guide"]["skill"] == "gen_guide"
     assert CAPABILITIES["diagnosis"]["skill"] == "gen_diagnosis"
-    assert CAPABILITIES["image"]["skill"] == "gen_image"
-    assert CAPABILITIES["chart"]["skill"] == "gen_chart"
+    assert len(CAPABILITIES) == 6
     assert "prompt" not in CAPABILITIES["quiz"]
