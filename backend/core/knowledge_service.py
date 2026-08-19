@@ -452,10 +452,24 @@ def _get_reranker():
     return _reranker_local or None
 
 
+def _is_junk_autosave(name: str, content_len: int) -> bool:
+    """自动转存条目（对话生成·前缀）垃圾判定：报错/警告/系统提示/思维链泄露/过短寒暄。
+    用户手动上传的资源不受此过滤影响。"""
+    _prefix = "对话生成·"
+    if not name.startswith(_prefix):
+        return False
+    head = name[len(_prefix):]
+    _junk_heads = ("抱歉", "⚠️", "（系统", "你好", "我们", "好的", "我帮你", "你想")
+    if any(head.startswith(p) for p in _junk_heads):
+        return True
+    return content_len < 120
+
+
 def list_docs(project_id: str) -> list:
     """列出项目知识库的文档（按 source 聚合）。
     同时查 resources 表（已上传原文）和 kb_vectors（向量块），
-    未向量化的资源也显示（chunks=0, vectorized=false），前端可标注。"""
+    未向量化的资源也显示（chunks=0, vectorized=false），前端可标注。
+    自动转存的垃圾条目（报错/寒暄等）过滤不显示。"""
     # 从 resources 表取全部资源（原文已存）
     res_rows = _db.get_resources(project_id)
     # 从 kb_vectors 取已有向量块（按 source 聚合）
@@ -470,6 +484,8 @@ def list_docs(project_id: str) -> list:
         src = r["name"]
         if not src:
             continue
+        if _is_junk_autosave(src, r["content_len"] or 0):
+            continue
         grouped[src] = {
             "source": src,
             "chunks": vec_map.get(src, 0),
@@ -483,10 +499,18 @@ def list_docs(project_id: str) -> list:
 
 
 def delete_doc(project_id: str, source: str) -> int:
-    """删除某个来源的全部块，返回删除块数"""
+    """删除某个来源的全部块，返回删除块数。
+    连带清理 resources 表（原文）与 file_hashes 表（去重 hash），
+    否则残留幽灵记录会让同内容再上传被误判重复。"""
     n = _db.delete_kb_by_source(project_id, source)
     _db.delete_image_by_source(project_id, source)
     _db.delete_kb_tree_by_source(project_id, source)
+    try:
+        from core.postgres_client import pg_client as _pg
+        _pg.execute("DELETE FROM resources WHERE project_id=%s AND name=%s", (project_id, source))
+        _pg.execute("DELETE FROM file_hashes WHERE project_id=%s AND source=%s", (project_id, source))
+    except Exception:
+        logger.warning("删除资源原文/去重 hash 失败 source=%s", source, exc_info=True)
     _invalidate_bm25(project_id)
     return n
 

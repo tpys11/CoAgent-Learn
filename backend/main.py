@@ -485,13 +485,22 @@ async def chat(req: ChatRequest):
                                 import hashlib as _hl
                                 from core.postgres_client import pg_client as _pg3
                                 _fr = result.get("final_reply","")
-                                _nm = "对话生成·" + _fr.strip()[:14]
-                                _rid = _hl.md5((_nm + pid).encode()).hexdigest()[:16]
-                                _has = _pg3.execute("SELECT id FROM resources WHERE id=%s", (_rid,))
-                                if _has:
-                                    _pg3.execute("UPDATE resources SET content=%s WHERE id=%s", (_fr[:6000], _rid))
-                                else:
-                                    _pg3.execute("INSERT INTO resources (id, name, content, project_id) VALUES (%s,%s,%s,%s)", (_rid, _nm, _fr[:6000], pid))
+                                # 垃圾过滤：报错/系统提示/太短的寒暄不入资源表
+                                _head = _fr.strip()[:40]
+                                _junk = (
+                                    "生成内容时出现错误" in _head
+                                    or _head.startswith("⚠️")
+                                    or _head.startswith("（系统未生成内容）")
+                                    or len(_fr.strip()) < 120
+                                )
+                                if not _junk:
+                                    _nm = "对话生成·" + _fr.strip()[:14]
+                                    _rid = _hl.md5((_nm + pid).encode()).hexdigest()[:16]
+                                    _has = _pg3.execute("SELECT id FROM resources WHERE id=%s", (_rid,))
+                                    if _has:
+                                        _pg3.execute("UPDATE resources SET content=%s WHERE id=%s", (_fr[:6000], _rid))
+                                    else:
+                                        _pg3.execute("INSERT INTO resources (id, name, content, project_id) VALUES (%s,%s,%s,%s)", (_rid, _nm, _fr[:6000], pid))
                             except Exception as _e:
                                 logger.exception("自动保存生成物失败 did=%s", _did)
                     submit(_persist)

@@ -105,6 +105,22 @@ class KbRepo:
             (project_id,),
         )
 
+    def count_kb_by_source(self, project_id, source):
+        """按 source 统计向量块数（幽灵 hash 自愈判定用）"""
+        rows = self._db.execute(
+            "SELECT COUNT(*) c FROM kb_vectors WHERE project_id=? AND source=?",
+            (project_id, source),
+        )
+        return rows[0]["c"] if rows else 0
+
+    def get_file_hash_source(self, project_id, sha256):
+        """取去重表里该 hash 对应的 source（判断向量是否被删过）"""
+        rows = self._db.execute(
+            "SELECT source FROM file_hashes WHERE project_id=? AND sha256=?",
+            (project_id, sha256),
+        )
+        return rows[0]["source"] if rows else ""
+
     def list_project_ids(self):
         rows = self._db.execute("SELECT DISTINCT project_id FROM kb_vectors")
         return [r["project_id"] for r in rows]

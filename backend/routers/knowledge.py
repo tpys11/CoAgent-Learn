@@ -31,7 +31,11 @@ def _process_upload(project_id, text, source, session_id, api_key, skip_context:
     try:
         from core.db import get_kb_repo
         if content_hash and get_kb_repo().has_file_hash(project_id, content_hash):
-            return -1
+            # 幽灵 hash 自愈：hash 在但向量已被删（旧版 delete_doc 不清 file_hashes）→ 重新入库
+            _hash_src = get_kb_repo().get_file_hash_source(project_id, content_hash)
+            if _hash_src and get_kb_repo().count_kb_by_source(project_id, _hash_src) > 0:
+                return -1  # 真重复（向量还在）：跳过
+            logger.info("检测到幽灵 hash（向量已删），重新入库 source=%s", _hash_src or source)
     except Exception:
         logger.warning("查询内容去重表失败", exc_info=True)
     try:
