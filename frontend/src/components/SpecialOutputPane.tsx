@@ -4,6 +4,7 @@ import MarkdownIt from 'markdown-it'
 import mermaid from 'mermaid'
 import { api } from '../api'
 import { LS, lsGet, lsGetJSON } from '../storage'
+import QuizViewer from './quiz/QuizViewer'
 
 mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', theme: 'default' })
 let mmdSeq = 0
@@ -105,6 +106,8 @@ export default function SpecialOutputPane({ projectId }: { projectId?: string | 
 
   const Icon = ICONS[form] || FileText
   const cur = caps.find(c => c.key === form)
+  // 交互式测验优先组件渲染；组件解析失败（null）时回退 Markdown（兼容存量静态测试题）
+  const quizEl = result && form === 'quiz' ? <QuizViewer content={result.content} /> : null
 
   return (
     <div className="w-full h-full flex flex-col min-h-0">
@@ -156,7 +159,7 @@ export default function SpecialOutputPane({ projectId }: { projectId?: string | 
             <p className="text-[10px] font-semibold text-dim mb-2 flex items-center gap-1">
               <Icon size={12} /> {result.label}
             </p>
-            <div className="md-answer-body text-[12px] leading-relaxed" dangerouslySetInnerHTML={{ __html: renderMd(result.content) }} />
+            {quizEl ?? <div className="md-answer-body text-[12px] leading-relaxed" dangerouslySetInnerHTML={{ __html: renderMd(result.content) }} />}
           </div>
         ) : (
           <div className="flex-1 min-h-[120px] border-2 border-dashed hairline rounded-2xl flex flex-col items-center justify-center gap-2 text-dim">
