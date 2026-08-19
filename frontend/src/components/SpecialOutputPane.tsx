@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { FileText, Workflow, Network, Table as TableIcon, BarChart3, ClipboardList, Send, Loader2 } from 'lucide-react'
+import { FileText, Workflow, Network, ClipboardList, Wrench, Send, Loader2 } from 'lucide-react'
 import MarkdownIt from 'markdown-it'
 import mermaid from 'mermaid'
 import { api } from '../api'
@@ -33,14 +33,18 @@ const ICONS: Record<string, any> = {
   report: FileText,
   flow: Workflow,
   tree: Network,
-  table: TableIcon,
-  chart: BarChart3,
   quiz: ClipboardList,
 }
 
 interface Capability { key: string; label: string; desc: string; output: string }
 interface GenResult { key: string; label: string; output: string; content: string }
 interface GenItem { id: string; name: string; content: string; created_at?: string }
+
+/** 占位能力（即将上线）：仅前端展示，不可生成 */
+const PLACEHOLDER_CAPS: Array<Capability & { icon: any }> = [
+  { key: 'guide', label: '实操指南', desc: '即将上线', output: 'markdown', icon: Wrench },
+  { key: 'diagnosis', label: '课程学情诊断', desc: '即将上线', output: 'markdown', icon: ClipboardList },
+]
 
 /** 资源生成：能力注册表驱动的生成器（从后端 /api/resources/capabilities 拉取能力清单） */
 export default function SpecialOutputPane({ projectId }: { projectId?: string | null }) {
@@ -53,7 +57,7 @@ export default function SpecialOutputPane({ projectId }: { projectId?: string | 
 
   useEffect(() => {
     api.listCapabilities().then(d => {
-      const list: Capability[] = d.capabilities || []
+      const list: Capability[] = (d.capabilities || []).filter(c => c.key !== 'table' && c.key !== 'chart')
       setCaps(list)
       if (list.length && !list.some(c => c.key === form)) setForm(list[0].key)
     }).catch(() => {})
@@ -105,13 +109,15 @@ export default function SpecialOutputPane({ projectId }: { projectId?: string | 
   return (
     <div className="w-full h-full flex flex-col min-h-0">
       <div className="grid grid-cols-3 gap-1.5 px-3 pt-2.5 flex-shrink-0">
-        {caps.map(c => {
-          const CIcon = ICONS[c.key] || FileText
+        {[...caps, ...PLACEHOLDER_CAPS].map(c => {
+          const placeholder = PLACEHOLDER_CAPS.some(p => p.key === c.key)
+          const CIcon = placeholder ? (PLACEHOLDER_CAPS.find(p => p.key === c.key)!.icon) : (ICONS[c.key] || FileText)
           return (
-            <button key={c.key} onClick={() => { setForm(c.key); setResult(null) }} title={c.desc}
-              className={`flex flex-col items-center justify-center gap-1.5 rounded-xl aspect-[5/4] transition-colors ${form === c.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] text-dim hover:opacity-80'}`}>
+            <button key={c.key} onClick={() => { if (placeholder) return; setForm(c.key); setResult(null) }} title={c.desc} disabled={placeholder}
+              className={`flex flex-col items-center justify-center gap-1.5 rounded-xl aspect-[5/4] transition-colors ${form === c.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] text-dim hover:opacity-80'} ${placeholder ? 'opacity-60 cursor-not-allowed' : ''}`}>
               <CIcon size={18} strokeWidth={1.8} />
               <span className="text-[9px] leading-none">{c.label}</span>
+              {placeholder && <span className="text-[8px] leading-none text-[var(--accent)]">即将上线</span>}
             </button>
           )
         })}
