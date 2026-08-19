@@ -302,6 +302,7 @@ const d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, 
                 <div key={d.source} className="group flex items-center gap-2 border hairline rounded-xl px-3 py-2 bg-[var(--bg-panel)]">
                   <span className="w-7 h-7 rounded-lg bg-[#1a1a1a] text-white flex items-center justify-center flex-shrink-0"><FileText size={13} /></span>
                   <span className="text-xs font-semibold truncate flex-1 min-w-0" title={d.source}>{d.source}</span>
+                  {d.vectorized === false && <span className="text-[9px] text-amber-500/80 flex-shrink-0">未向量化</span>}
                   <button onClick={() => setRemoveTarget(d.source)} title="移除"
                     className="opacity-0 group-hover:opacity-100 p-1 rounded text-dim hover:text-red-500 transition-colors flex-shrink-0"><Trash2 size={12} /></button>
                 </div>

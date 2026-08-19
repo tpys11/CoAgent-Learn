@@ -454,20 +454,32 @@ def _get_reranker():
 
 def list_docs(project_id: str) -> list:
     """列出项目知识库的文档（按 source 聚合）。
-    只返回 source/chunks/preview/tree——不返回每块完整正文（块多时响应可达几百 KB，
-    前端并不使用 blocks 内容，拉取/解析会拖慢界面加载）。"""
-    rows = _db.get_kb_docs(project_id)
-    if not rows:
-        return []
-    grouped = {}
-    for r in rows:
+    同时查 resources 表（已上传原文）和 kb_vectors（向量块），
+    未向量化的资源也显示（chunks=0, vectorized=false），前端可标注。"""
+    # 从 resources 表取全部资源（原文已存）
+    res_rows = _db.execute(
+        "SELECT name, length(content) as content_len FROM resources WHERE project_id = ?",
+        (project_id,),
+    )
+    # 从 kb_vectors 取已有向量块（按 source 聚合）
+    vec_rows = _db.get_kb_docs(project_id)
+    vec_map: dict[str, int] = {}
+    for r in vec_rows:
         src = r["source"] or "未命名"
-        g = grouped.setdefault(src, {"source": src, "chunks": 0, "preview": ""})
-        g["chunks"] += 1
-        content = r["content"] or ""
-        if not g["preview"]:
-            g["preview"] = content[:150]
-    # 标题树每个 source 只查一次（之前误放循环内，块多时每行都查库 → 接口 3.5s 卡顿）
+        vec_map[src] = vec_map.get(src, 0) + 1
+    # 合并：resources 为主，kb_vectors 补充块数
+    grouped: dict[str, dict] = {}
+    for r in res_rows:
+        src = r["name"]
+        if not src:
+            continue
+        grouped[src] = {
+            "source": src,
+            "chunks": vec_map.get(src, 0),
+            "vectorized": src in vec_map,
+            "preview": "",
+        }
+    # 补充 tree（每个 source 只查一次）
     for src in grouped:
         grouped[src]["tree"] = _db.get_kb_tree(project_id, src)
     return list(grouped.values())
