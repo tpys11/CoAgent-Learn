@@ -1,32 +1,10 @@
 ﻿import { useEffect, useState } from 'react'
-import { ArrowLeft, MessageSquare, FileText, X, Plus, SlidersHorizontal, Pencil, PanelLeftClose, ChevronDown, ChevronRight, FolderOpen, FolderClosed } from 'lucide-react'
+import { ArrowLeft, MessageSquare, FileText, X, SlidersHorizontal, Pencil, PanelLeftClose } from 'lucide-react'
 import { LS, lsGetJSON, lsSetJSON } from '../storage'
 import { api } from '../api'
 
 interface Dialogue { id: string; name: string; archived?: boolean }
-interface KbTreeNode { name: string; children: KbTreeNode[]; content?: string }
-interface KbDoc { source: string; chunks: number; preview: string; tree: KbTreeNode[]; vectorized?: boolean }
-
-/** 课程专属侧栏：课程记忆 / 课程资源 / 对话（不再与其他课程并列） */
-function KbTreeItem({ node, depth }: { node: KbTreeNode; depth: number }) {
-  const [expanded, setExpanded] = useState(depth < 2)
-  const hasKids = node.children && node.children.length > 0
-  return (
-    <div>
-      <button onClick={() => hasKids && setExpanded(!expanded)}
-        className="w-full flex items-center gap-1.5 py-1 rounded-lg text-[11px] hover:bg-[var(--bg-hover)] transition-colors"
-        style={{ paddingLeft: depth * 14 + 8 }}>
-        {hasKids
-          ? (expanded ? <ChevronDown size={11} className="text-dim flex-shrink-0" /> : <ChevronRight size={11} className="text-dim flex-shrink-0" />)
-          : <FileText size={11} className="text-dim flex-shrink-0" />}
-        <span className="truncate">{node.name}</span>
-      </button>
-      {expanded && node.children?.map((c, i) => (
-        <KbTreeItem key={i} node={c} depth={depth + 1} />
-      ))}
-    </div>
-  )
-}
+interface KbDoc { source: string; chunks: number; preview: string; vectorized?: boolean }
 export default function ProjectSidebar({ project, dialogues, currentDialogueId, kbRefreshKey = 0, onHome, onSelectDialogue, onCreateDialogue, onRenameDialogue, onDeleteDialogue, onOpenMemory, onOpenResource, onCollapse }: {
   project: { id: string; name: string } | null
   dialogues: Dialogue[]
@@ -149,19 +127,12 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
                 <>
                   <div className="flex flex-col max-h-[30vh] overflow-y-auto">
                     {kbDocs.map(d => (
-                      <div key={d.source}>
-                        <div className="flex items-center gap-1.5 px-1.5 py-1 rounded-lg text-[11px] font-medium hover:bg-[var(--bg-hover)] transition-colors" title={d.source}>
-                          <FolderClosed size={12} className="text-dim flex-shrink-0" />
-                          <span className="truncate flex-1">{d.source}</span>
-                          {d.vectorized === false
-                            ? <span className="text-[9px] text-amber-500/80 flex-shrink-0">未向量化</span>
-                            : <span className="text-[9px] text-dim flex-shrink-0">{d.chunks}</span>}
-                        </div>
-                        {d.tree && d.tree.length > 0 && (
-                          <div className="ml-2">
-                            {d.tree.map((n, i) => <KbTreeItem key={i} node={n} depth={1} />)}
-                          </div>
-                        )}
+                      <div key={d.source} className="flex items-center gap-1.5 px-1.5 py-1 rounded-lg text-[11px] font-medium hover:bg-[var(--bg-hover)] transition-colors" title={d.source}>
+                        <FileText size={12} className="text-dim flex-shrink-0" />
+                        <span className="truncate flex-1">{d.source}</span>
+                        {d.vectorized === false
+                          ? <span className="text-[9px] text-amber-500/80 flex-shrink-0">未向量化</span>
+                          : <span className="text-[9px] text-dim flex-shrink-0">{d.chunks}</span>}
                       </div>
                     ))}
                   </div>
