@@ -10,12 +10,6 @@ interface Props {
   projectId: string | null
 }
 
-/** 多厂家 API Key 管理 */
-const PROVIDERS = [
-  { id: 'deepseek', name: 'DeepSeek' },
-  { id: 'zhipu', name: '智谱 GLM' },
-]
-
 interface McpServer { id: string; name: string; type: 'stdio' | 'http' | 'sse'; target: string }
 
 /** 当前版本号（与 package.json 同步） */
@@ -95,10 +89,14 @@ export default function SettingsModal({ onClose, projectId }: Props) {
 
   // 生成后动作
   const [postActions, setPostActions] = useState(() => lsGetJSON(LS.postActions, { autoFollowups: true }))
-  // 模型与 Key
-  const [provider, setProvider] = useState(() => lsGet(LS.provider, 'deepseek'))
-  const [provKeys, setProvKeys] = useState<Record<string, string>>(() => lsGetJSON(LS.providerKeys, {}))
-  const [mainKey, setMainKey] = useState(() => lsGet(LS.apiKey, ''))
+// 模型与 Key（仅 DeepSeek，localStorage 单一配置）
+  const [savedDsKey, setSavedDsKey] = useState(() => {
+    const keys = lsGetJSON<Record<string, string>>(LS.providerKeys, {})
+    return keys['deepseek'] || lsGet(LS.apiKey, '')
+  })
+  const [dsKey, setDsKey] = useState('')
+  const [dsEditing, setDsEditing] = useState(false)
+  const [dsSaved, setDsSaved] = useState(false)
   // 超时（1-30s）
   const [timeoutSec, setTimeoutSec] = useState(() => Math.min(30, Math.max(1, parseInt(lsGet(LS.timeout, '30')) || 30)))
   // MCP 配置
@@ -120,12 +118,9 @@ export default function SettingsModal({ onClose, projectId }: Props) {
     lsSet(LS.fontSize, String(fontSize))
   }, [fontSize])
   useEffect(() => { setThemePref(theme) }, [theme])
-  useEffect(() => { lsSetJSON(LS.postActions, postActions) }, [postActions])
-  useEffect(() => { lsSet(LS.provider, provider) }, [provider])
-  useEffect(() => { lsSetJSON(LS.providerKeys, provKeys) }, [provKeys])
-  useEffect(() => {
-    if (mainKey.trim()) lsSet(LS.apiKey, mainKey.trim())
-  }, [mainKey])
+useEffect(() => { lsSetJSON(LS.postActions, postActions) }, [postActions])
+  // 仅保留 DeepSeek：清理历史遗留的厂家选择（CenterPanel / SpecialOutputPane 仍读取 LS.provider）
+  useEffect(() => { lsRemove(LS.provider) }, [])
   useEffect(() => { lsSet(LS.timeout, String(timeoutSec)) }, [timeoutSec])
   useEffect(() => { lsSet(LS.debug, debug ? '1' : '0') }, [debug])
   useEffect(() => { lsSet(LS.dialogueLimit, String(dialogueLimit)) }, [dialogueLimit])
@@ -139,6 +134,22 @@ export default function SettingsModal({ onClose, projectId }: Props) {
   }
 
   const flash = (msg: string) => { setFeedback(msg); setTimeout(() => setFeedback(''), 2000) }
+
+  /** DeepSeek key 部分展示（sk-****后4位） */
+  const maskKey = (k: string) => (k.length > 8 ? k.slice(0, 3) + '****' + k.slice(-4) : 'sk-****')
+
+  /** 保存 DeepSeek key：写 providerKeys.deepseek（主存储）+ apiKey（兼容旧读取点） */
+  const saveDsKey = () => {
+    const k = dsKey.trim()
+    if (!k) return
+    const keys = lsGetJSON<Record<string, string>>(LS.providerKeys, {})
+    keys['deepseek'] = k
+    lsSetJSON(LS.providerKeys, keys)
+    lsSet(LS.apiKey, k)
+    setSavedDsKey(k)
+    setDsSaved(true)
+    setDsEditing(false)
+  }
 
   const doClearDialogues = async () => {
     if (!projectId) { flash('暂无课程'); return }
@@ -268,32 +279,28 @@ export default function SettingsModal({ onClose, projectId }: Props) {
               </Section>
             )}
 
-            {/* 模型与 API Key */}
+            {/* 模型与 API Key（仅 DeepSeek） */}
             {show('keys') && (
-              <Section icon={Key} title="模型与 API Key" desc="与模型卡共用同一份配置（localStorage）">
-                <div className="flex flex-col gap-4">
+              <Section icon={Key} title="模型与 API Key">
+                <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2.5">
+                  <p className="text-sm font-semibold">DeepSeek API Key</p>
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-dim w-20 flex-shrink-0">默认厂家</span>
-                    <select value={provider} onChange={e => setProvider(e.target.value)} className={inputCls}>
-                      {PROVIDERS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
+                    {savedDsKey && !dsEditing ? (
+                      <>
+                        <span className="flex-1 text-xs font-medium text-green-700">✓ 已配置：{maskKey(savedDsKey)}</span>
+                        <button onClick={() => { setDsEditing(true); setDsKey(''); setDsSaved(false) }}
+                          className="text-[10px] text-dim hover:text-[var(--text)] flex-shrink-0">修改</button>
+                      </>
+                    ) : (
+                      <input type="password" name="deepseek-api-key" autoComplete="new-password" value={dsKey} placeholder="sk-...（DeepSeek）"
+                        onChange={e => { setDsKey(e.target.value); setDsSaved(false) }} className={inputCls} />
+                    )}
+                    {(!savedDsKey || dsEditing) && (
+                      <button onClick={saveDsKey}
+                        className={`px-4 py-1.5 text-[11px] rounded-lg font-semibold flex-shrink-0 ${dsSaved ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#1a1a1a] text-white'}`}>保存</button>
+                    )}
                   </div>
-                  <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-4">
-                    {PROVIDERS.map(p => (
-                      <div key={p.id} className="flex items-center gap-2">
-                        <span className="text-[11px] text-dim w-20 flex-shrink-0">{p.name}</span>
-                        <input type="password" value={provKeys[p.id] || ''} placeholder={p.id === 'deepseek' ? 'sk-...' : '可选'}
-                          onChange={e => setProvKeys({ ...provKeys, [p.id]: e.target.value })}
-                          className={inputCls} />
-                        {(provKeys[p.id] || '').length > 8 && <span className="text-[10px] text-green-600 flex-shrink-0">✓ 已配置</span>}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-dim w-20 flex-shrink-0">主 Key</span>
-                    <input type="password" value={mainKey} placeholder="coagent-apikey（兼容旧配置）"
-                      onChange={e => setMainKey(e.target.value)} className={inputCls} />
-                  </div>
+                  <p className="text-[10px] text-dim">该 key 用于对话与全部模型调用</p>
                 </div>
               </Section>
             )}
