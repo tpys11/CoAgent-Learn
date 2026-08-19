@@ -11,7 +11,7 @@ import pytest
 from services.resource_gen import CAPABILITIES, generate_resource, list_capabilities
 from skills.registry import registry
 from skills.gen_quiz import GenQuiz, _validate_quiz
-from skills.gen_report import GenReport
+from skills.gen_report import GenReport, replace_image_markers, sanitize_echarts_blocks
 from skills.gen_flow import GenFlow
 from skills.gen_tree import GenTree
 from skills.gen_guide import GenGuide
@@ -396,6 +396,95 @@ def test_gen_chart_invalid_option_error(monkeypatch):
     monkeypatch.setattr(FakeLLM, "json_result", {"series": [{"type": "sunburst"}]})
     r = GenChart().execute(content="数据")
     assert r == {"error": "生成的图表配置不合法，请重试"}
+
+
+# ---------- gen_report 升级（Wave5：专业结构 + 自动嵌图 + 内嵌 echarts） ----------
+
+def test_replace_image_markers_hit():
+    out = replace_image_markers(
+        "前文 {{IMG:牛顿定律|牛顿实验图}} 后文",
+        lambda kw, limit=1: [{"url": "http://x/n.jpg", "title": "N"}],
+    )
+    assert "![牛顿实验图](http://x/n.jpg)" in out
+    assert "*图：牛顿实验图（来源：Wikimedia Commons/Openverse）*" in out
+    assert "{{IMG:" not in out
+
+
+def test_replace_image_markers_miss():
+    out = replace_image_markers(
+        "前文 {{IMG:不存在的词|示意图}} 后文",
+        lambda kw, limit=1: [],
+    )
+    assert "> 配图建议：示意图（未找到合适图片）" in out
+    assert "![" not in out
+
+
+def test_replace_image_markers_over_limit_no_search():
+    calls = []
+    md = " ".join("{{IMG:词%d|图%d}}" % (i, i) for i in range(6))
+
+    def fake_searcher(kw, limit=1):
+        calls.append(kw)
+        return [{"url": "http://x/%s.jpg" % kw}]
+
+    out = replace_image_markers(md, fake_searcher)
+    assert len(calls) == 4  # 只搜索前 4 处，控延迟
+    assert out.count("![图") == 4  # 命中 4 处
+    assert out.count("未找到合适图片") == 2  # 超限 2 处降级
+
+
+def test_sanitize_echarts_blocks_valid_kept():
+    md = "```echarts\n{\"series\": [{\"type\": \"line\", \"data\": [1, 2]}]}\n```"
+    assert sanitize_echarts_blocks(md) == md
+
+
+def test_sanitize_echarts_blocks_bad_downgrade():
+    md = "```echarts\nnot json\n```\n\n```echarts\n{\"series\": [{\"type\": \"sunburst\"}]}\n```"
+    out = sanitize_echarts_blocks(md)
+    assert "```json\nnot json\n```" in out  # 非法 JSON → 降级为 json 代码块
+    assert "```json\n{\"series\": [{\"type\": \"sunburst\"}]}\n```" in out  # 非法 series 类型 → 降级
+    assert out.count("```echarts") == 0
+
+
+def test_gen_report_execute_embeds_images(monkeypatch):
+    """happy：mock LLM 返回含 2 个标记 + 1 个 echarts 块的草稿 + mock requests → 终文图片替换、echarts 块保留。"""
+    draft = (
+        "# 报告\n\n{{IMG:牛顿|牛顿实验图}}\n\n"
+        "```echarts\n{\"series\": [{\"type\": \"bar\", \"data\": [1, 2]}]}\n```\n\n"
+        "{{IMG:开普勒|开普勒轨道图}}\n\n结论"
+    )
+    monkeypatch.setattr(FakeLLM, "chat_result", draft)
+    data = {"query": {"pages": _wm_page("1", "File:N.jpg", "http://x/n.jpg", 800)}}
+
+    def fake_get(url, **kwargs):
+        class R:
+            def raise_for_status(self): pass
+            def json(self): return data
+        return R()
+
+    monkeypatch.setattr("requests.get", fake_get)
+    r = GenReport().execute(content="牛顿力学")
+    assert r["content"].startswith("# 报告")
+    assert "![牛顿实验图](http://x/n.jpg)" in r["content"]
+    assert "![开普勒轨道图](http://x/n.jpg)" in r["content"]
+    assert "```echarts" in r["content"]  # 合法 echarts 块保留
+    assert "{{IMG:" not in r["content"]  # 无标记残留
+
+
+def test_gen_report_execute_search_fail_degrade(monkeypatch):
+    """failure：search_images 全返回 [] → 标记降级为「配图建议」引用块而非死链。"""
+    monkeypatch.setattr(FakeLLM, "chat_result", "# 报告\n\n{{IMG:不存在|示意图}}\n\n正文")
+
+    def fake_get(url, **kwargs):
+        class R:
+            def raise_for_status(self): pass
+            def json(self): return {"query": {"pages": {}}}
+        return R()
+
+    monkeypatch.setattr("requests.get", fake_get)
+    r = GenReport().execute(content="内容")
+    assert "> 配图建议：示意图（未找到合适图片）" in r["content"]
+    assert "![" not in r["content"]
 
 
 # ---------- list_capabilities ----------
