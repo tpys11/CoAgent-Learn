@@ -76,6 +76,8 @@ function App() {
   const [showProjectConfig, setShowProjectConfig] = useState(false)
   // 初次创建手动填写模式（仅首次可手动填写，保存后标记完成）
   const [manualSetupOnly, setManualSetupOnly] = useState(false)
+  // 资源上传后刷新左栏资源列表
+  const [kbRefreshKey, setKbRefreshKey] = useState(0)
   // 弹窗默认页签（记忆与进程 / 资源）
   const [projectConfigTab, setProjectConfigTab] = useState<'memory' | 'resource'>('memory')
   const [projectKBId, setProjectKBId] = useState<string | null>(null)
@@ -387,6 +389,7 @@ function App() {
             project={projects.find(p => p.id === currentProjectId) || null}
             dialogues={dialogues}
             currentDialogueId={currentDialogueId}
+            kbRefreshKey={kbRefreshKey}
             onHome={() => setChatOpen(false)}
             onSelectDialogue={handleSelectDialogue}
             onCreateDialogue={() => currentProjectId && handleCreateDialogue(currentProjectId)}
@@ -470,6 +473,7 @@ function App() {
           onRequestModify={handleRequestModify}
           onRequestAnalyze={handleRequestAnalyze}
           onClose={() => { setShowProjectConfig(false); setManualSetupOnly(false) }}
+          onUploaded={() => setKbRefreshKey(k => k + 1)}
         />
       )}
       {wizard && <ProfileWizard mode={wizard.mode} projectName={wizard.name} onClose={() => {

@@ -27,10 +27,11 @@ function KbTreeItem({ node, depth }: { node: KbTreeNode; depth: number }) {
     </div>
   )
 }
-export default function ProjectSidebar({ project, dialogues, currentDialogueId, onHome, onSelectDialogue, onCreateDialogue, onRenameDialogue, onDeleteDialogue, onOpenMemory, onOpenResource, onCollapse }: {
+export default function ProjectSidebar({ project, dialogues, currentDialogueId, kbRefreshKey = 0, onHome, onSelectDialogue, onCreateDialogue, onRenameDialogue, onDeleteDialogue, onOpenMemory, onOpenResource, onCollapse }: {
   project: { id: string; name: string } | null
   dialogues: Dialogue[]
   currentDialogueId: string | null
+  kbRefreshKey?: number
   onHome: () => void
   onSelectDialogue: (id: string) => void
   onCreateDialogue: () => void
@@ -67,7 +68,7 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
       .then(d => setMemSummary(d.memory || {})).catch(() => setMemSummary({}))
     api.getKb(project.id)
       .then(d => setKbDocs(Array.isArray(d) ? d : [])).catch(() => setKbDocs([]))
-  }, [project?.id])
+  }, [project?.id, kbRefreshKey])
 
   const memLines: Array<[string, string]> = []
   if (memSummary['目标']) memLines.push(['目标', String(memSummary['目标'])])

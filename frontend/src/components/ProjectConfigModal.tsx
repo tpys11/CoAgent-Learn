@@ -8,7 +8,7 @@ import { api } from '../api'
 /** 课程记忆与资源窗口：两个页签（记忆与进程 / 资源）可切换；initialTab 决定打开时默认页签。
  * 新建课程引导消息的「手动填写」按钮也复用此弹窗（initialOnly=true：仅初次创建可手动填写，
  * 记忆页顶部显示基本信息填写区，右上角「保存」→ 确认弹窗提示后续只能通过对话间接填写） */
-export default function ProjectConfigModal({ projectId, projectName, onRequestModify, onRequestAnalyze, onClose, initialTab = 'memory', initialOnly = false, onSaved }: {
+export default function ProjectConfigModal({ projectId, projectName, onRequestModify, onRequestAnalyze, onClose, initialTab = 'memory', initialOnly = false, onSaved, onUploaded }: {
   projectId: string | null
   projectName?: string
   onRequestModify?: (label: string, pid?: string) => void
@@ -17,6 +17,7 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
   initialTab?: 'memory' | 'resource'
   initialOnly?: boolean
   onSaved?: () => void
+  onUploaded?: () => void
 }) {
   const [tab, setTab] = useState<'memory' | 'resource'>(initialTab)
   useEffect(() => { setTab(initialTab) }, [initialTab])
@@ -85,7 +86,7 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
               <MemoryView projectId={projectId} projectOnly initialEdit onEditChange={setCollected}
                 onRequestModify={onRequestModify} onRequestAnalyze={onRequestAnalyze} />
               <div className="border-t hairline">
-                <ProjectResources projectId={projectId} naturalHeight />
+                <ProjectResources projectId={projectId} naturalHeight onUploaded={onUploaded} />
               </div>
             </div>
           ) : tab === 'memory' ? (
@@ -95,7 +96,7 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
                   onRequestModify={onRequestModify} onRequestAnalyze={onRequestAnalyze} />
               </div>
             </div>
-          ) : <ProjectResources projectId={projectId} />}
+          ) : <ProjectResources projectId={projectId} onUploaded={onUploaded} />}
         </div>
       </div>
       {/* 保存确认弹窗：仅初次创建支持手动填写，后续只能通过对话间接填写 */}
@@ -122,7 +123,7 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
 }
 
 /** 项目资源：栏目一为项目资源（可上传文件、拖入文件或系统资源），栏目二为系统内置资源（可拖入/加入） */
-function ProjectResources({ projectId, naturalHeight }: { projectId: string | null; naturalHeight?: boolean }) {
+function ProjectResources({ projectId, naturalHeight, onUploaded }: { projectId: string | null; naturalHeight?: boolean; onUploaded?: () => void }) {
   const [docs, setDocs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState('')
@@ -200,7 +201,8 @@ const d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, 
     if (dupCount) msgs.push(`${dupCount} 个内容已存在（已跳过重复入库）`)
     if (failed) msgs.push(`${failed} 个失败`)
     setDoneMsg(msgs.join('，') || '处理完成')
-    setTimeout(() => { load(); setRefreshKey(k => k + 1) }, 500)
+    load()
+    onUploaded?.()
   }
   /** 加入文件占位（按文件名去重） */
   const addFileItem = (fs: FileList | File[]) => {
