@@ -34,7 +34,8 @@ class SkillRegistry:
 
     def list_all(self) -> list[dict]:
         return [{"name": s.name, "description": s.description, "folder": s.__class__.__module__.split(".")[-1],
-                 "output_schema": s.output_schema, "retries": s.retries}
+                 "output_schema": s.output_schema, "retries": s.retries,
+                 "category": getattr(s, "category", "chat")}
                 for s in self._skills.values()]
 
     def form_router(self, state: dict) -> str | None:
