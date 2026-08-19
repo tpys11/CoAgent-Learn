@@ -38,6 +38,20 @@ CAPABILITIES: dict = {
         "output": "markdown",
         "skill": "gen_quiz",
     },
+    "guide": {
+        "key": "guide",
+        "label": "实操指南",
+        "desc": "把内容转化为可执行的分步实操指南",
+        "output": "markdown",
+        "skill": "gen_guide",
+    },
+    "diagnosis": {
+        "key": "diagnosis",
+        "label": "课程学情诊断",
+        "desc": "评估掌握程度并给出复习建议",
+        "output": "markdown",
+        "skill": "gen_diagnosis",
+    },
 }
 
 

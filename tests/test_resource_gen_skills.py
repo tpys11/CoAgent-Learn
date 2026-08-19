@@ -14,6 +14,8 @@ from skills.gen_quiz import GenQuiz, _validate_quiz
 from skills.gen_report import GenReport
 from skills.gen_flow import GenFlow
 from skills.gen_tree import GenTree
+from skills.gen_guide import GenGuide
+from skills.gen_diagnosis import GenDiagnosis
 
 
 class FakeLLM:
@@ -52,11 +54,13 @@ def _fake_llm(monkeypatch):
 
 def test_registry_discovers_gen_skills():
     names = {s["name"] for s in registry.list_all()}
-    assert {"gen_report", "gen_flow", "gen_tree", "gen_quiz"} <= names
+    assert {"gen_report", "gen_flow", "gen_tree", "gen_quiz", "gen_guide", "gen_diagnosis"} <= names
     assert GenQuiz.category == "resource"
     assert GenReport.category == "resource"
     assert GenFlow.category == "resource"
     assert GenTree.category == "resource"
+    assert GenGuide.category == "resource"
+    assert GenDiagnosis.category == "resource"
 
 
 # ---------- _validate_quiz ----------
@@ -182,11 +186,43 @@ def test_generate_skill_error(monkeypatch):
     assert "boom" in r["msg"]
 
 
+def test_generate_guide_ok(monkeypatch):
+    monkeypatch.setattr(FakeLLM, "chat_result", "# 实操指南\n1. 第一步")
+    r = generate_resource("k", "guide", "内容")
+    assert r["status"] == "ok"
+    assert r["key"] == "guide"
+    assert r["label"] == "实操指南"
+    assert r["output"] == "markdown"
+    assert r["content"] == "# 实操指南\n1. 第一步"
+
+
+def test_generate_guide_empty(monkeypatch):
+    monkeypatch.setattr(FakeLLM, "chat_result", "")
+    r = generate_resource("k", "guide", "内容")
+    assert r == {"status": "error", "msg": "模型未返回内容"}
+
+
+def test_generate_diagnosis_ok(monkeypatch):
+    monkeypatch.setattr(FakeLLM, "chat_result", "# 学情诊断\n- 已掌握：…")
+    r = generate_resource("k", "diagnosis", "内容")
+    assert r["status"] == "ok"
+    assert r["key"] == "diagnosis"
+    assert r["label"] == "课程学情诊断"
+    assert r["output"] == "markdown"
+    assert r["content"] == "# 学情诊断\n- 已掌握：…"
+
+
+def test_generate_diagnosis_empty(monkeypatch):
+    monkeypatch.setattr(FakeLLM, "chat_result", "  ")
+    r = generate_resource("k", "diagnosis", "内容")
+    assert r == {"status": "error", "msg": "模型未返回内容"}
+
+
 # ---------- list_capabilities ----------
 
 def test_list_capabilities_order_and_no_prompt():
     caps = list_capabilities()
-    assert [c["key"] for c in caps] == ["report", "flow", "tree", "quiz"]
+    assert [c["key"] for c in caps] == ["report", "flow", "tree", "quiz", "guide", "diagnosis"]
     assert all("prompt" not in c for c in caps)
 
 
@@ -195,4 +231,6 @@ def test_capabilities_skill_mapping():
     assert CAPABILITIES["flow"]["skill"] == "gen_flow"
     assert CAPABILITIES["tree"]["skill"] == "gen_tree"
     assert CAPABILITIES["quiz"]["skill"] == "gen_quiz"
+    assert CAPABILITIES["guide"]["skill"] == "gen_guide"
+    assert CAPABILITIES["diagnosis"]["skill"] == "gen_diagnosis"
     assert "prompt" not in CAPABILITIES["quiz"]
