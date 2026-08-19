@@ -148,10 +148,11 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
   }, [projectId])
   useEffect(() => { load() }, [load])
 
-  const uploadItems = async () => {
+const uploadItems = async () => {
     if (!projectId) return
     let total = 0
     let okCount = 0
+    let dupCount = 0
     const count = pendingItems.length
     for (const it of pendingItems) {
       setUploading(it.kind === 'file' ? it.file.name : it.title)
@@ -161,20 +162,29 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
           fd.append('project_id', projectId)
           fd.append('session_id', 'project-res')
           fd.append('api_key', lsGet(LS.apiKey, ''))
-          fd.append('wait', '1')  // 同步等待后端切块+向量化入库完成
+          fd.append('wait', '1')
           fd.append('file', it.file, it.file.name)
           const d = await api.uploadKnowledgeFile(fd)
-          if (d.status === 'ok') { total += (d.chunks || 0); okCount++ }
+          if (d.status === 'ok') {
+            if (d.duplicate) { dupCount++ }
+            else { total += (d.chunks || 0); okCount++ }
+          }
           else alert(`「${it.file.name}」接入失败：${d.msg || '处理失败'}`)
         } else if (it.kind === 'link') {
           // 链接资源：后端抓取网页正文入库（真实内容，非空转）
-          const d = await api.uploadKnowledgeUrl({ project_id: projectId, url: it.url, source: it.title, session_id: 'project-res', api_key: lsGet(LS.apiKey, '') })
-          if (d.status === 'ok') { total += (d.chunks || 0); okCount++ }
+const d = await api.uploadKnowledgeUrl({ project_id: projectId, url: it.url, source: it.title, session_id: 'project-res', api_key: lsGet(LS.apiKey, '') })
+          if (d.status === 'ok') {
+            if (d.duplicate) { dupCount++ }
+            else { total += (d.chunks || 0); okCount++ }
+          }
           else alert(`「${it.title}」接入失败：${d.msg || '处理失败'}`)
         } else {
           // wait 是后端 query 参数（非 body），必须放在 URL 上，否则走异步分支返回 processing
-          const d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, source: it.title, session_id: 'project-res', api_key: lsGet(LS.apiKey, '') })
-          if (d.status === 'ok') { total += (d.chunks || 0); okCount++ }
+const d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, source: it.title, session_id: 'project-res', api_key: lsGet(LS.apiKey, '') })
+          if (d.status === 'ok') {
+            if (d.duplicate) { dupCount++ }
+            else { total += (d.chunks || 0); okCount++ }
+          }
           else alert(`「${it.title}」接入失败：${d.msg || '处理失败'}`)
         }
       } catch (e) {
@@ -184,10 +194,12 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
     setUploading('')
     setPendingItems([])
     // 明确反馈（对齐 DeepTutor「资源已上传」）：持久显示，直到下次上传；失败不再误报成功
-    const failed = count - okCount
-    setDoneMsg(failed === 0
-      ? `资源已上传：${count} 个资源已接入课程知识库（${total} 个内容块）`
-      : `上传完成：${okCount} 个成功（${total} 个内容块），${failed} 个失败`)
+    const failed = count - okCount - dupCount
+    const msgs = []
+    if (okCount) msgs.push(`${okCount} 个新入库（${total} 个内容块）`)
+    if (dupCount) msgs.push(`${dupCount} 个内容已存在（已跳过重复入库）`)
+    if (failed) msgs.push(`${failed} 个失败`)
+    setDoneMsg(msgs.join('，') || '处理完成')
     setTimeout(() => { load(); setRefreshKey(k => k + 1) }, 500)
   }
   /** 加入文件占位（按文件名去重） */
