@@ -87,7 +87,7 @@ const GEN_CATS = [
 const GEN_MATCH: Record<string, string[]> = { '讲义': ['讲义'], '实操指南': ['实操指南'], '测试题': ['测试题'] }
 
 /** 资源界面：hyper.ai 风格——顶部 Hero + 领域/分类选择 + 分区卡片流（配色跟随主题变量） */
-export default function ResourceView({ projectId, onUseItem, refreshSignal }: { projectId: string | null; onUseItem?: (title: string, body: string, url?: string) => void; refreshSignal?: number }) {
+export default function ResourceView({ projectId, onUseItem, refreshSignal, embedded }: { projectId: string | null; onUseItem?: (title: string, body: string, url?: string) => void; refreshSignal?: number; embedded?: boolean }) {
   const [tab, setTab] = useState<Tab>('tutorials')
   const [artifacts, setArtifacts] = useState<Artifact[]>([])
   const [genProjects, setGenProjects] = useState<Array<{ id: string; name: string }>>([])
@@ -297,7 +297,8 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
 
   return (
     <div className="flex-1 h-full min-w-0 flex flex-col panel rounded-3xl overflow-hidden">
-      {/* 顶部 Hero：主题化配色（跟随 light/dark/warm） */}
+      {/* 顶部 Hero：主题化配色（跟随 light/dark/warm）；embedded（课程弹窗内嵌）时隐藏，直接展示系统教程内容 */}
+      {!embedded && (
       <div className="flex-shrink-0 px-8 pt-6 pb-6 bg-[var(--bg-panel)] border-b border-[var(--border-color)]">
           {/* 三个区域选择（系统教程 / 我的生成 / 其他） */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
@@ -324,6 +325,7 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
             ))}
           </div>
       </div>
+      )}
 
       {/* 主体：左侧分类栏 + 内容区 */}
       <div className="flex-1 flex min-h-0">

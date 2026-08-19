@@ -310,7 +310,7 @@ function ProjectResources({ projectId, naturalHeight }: { projectId: string | nu
       <div className="flex-1 min-h-0 flex flex-col gap-2.5 overflow-hidden">
         <p className="text-xs font-semibold text-dim uppercase tracking-wider flex items-center gap-1.5 flex-shrink-0"><BookOpen size={13} /> 系统内置资源{docs.length === 0 && <span className="font-normal text-[10px] text-dim">（卡片可拖入上方，或点卡片详情「加入课程」）</span>}</p>
         <div className={`border hairline rounded-2xl overflow-hidden ${naturalHeight ? 'h-[45vh]' : 'flex-1 min-h-0'}`}>
-          <ResourceView refreshSignal={refreshKey} projectId={projectId} onUseItem={addPreset} />
+          <ResourceView embedded refreshSignal={refreshKey} projectId={projectId} onUseItem={addPreset} />
         </div>
       </div>
       {/* 内部确认弹窗：删除已上传资源（不用浏览器原生 confirm） */}
