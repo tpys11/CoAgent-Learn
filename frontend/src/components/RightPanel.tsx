@@ -1,4 +1,4 @@
-﻿import { Map, Send, MessagesSquare, X, PanelRightClose, SlidersHorizontal, FileText, Activity } from 'lucide-react'
+﻿import { Map, Send, MessagesSquare, X, PanelRightClose, SlidersHorizontal, FileText } from 'lucide-react'
 import { useEffect, useRef, useState, Fragment } from 'react'
 import { KnowledgeTree } from './KbTree'
 import SpecialOutputPane from './SpecialOutputPane'
@@ -19,16 +19,15 @@ interface Props {
   onCollapse: () => void
 }
 
-type WinKey = 'flow' | 'graph' | 'chat' | 'special' | 'monitor'
+type WinKey = 'flow' | 'graph' | 'chat' | 'special'
 
 const WINDOWS: Array<{ key: WinKey; title: string; icon: any }> = [
   { key: 'graph', title: '知识图谱', icon: Map },
   { key: 'chat', title: '第二对话', icon: MessagesSquare },
   { key: 'special', title: '资源生成', icon: FileText },
-  { key: 'monitor', title: '运行监控', icon: Activity },
 ]
 
-const DEFAULT_HEIGHTS: Record<WinKey, number> = { flow: 200, graph: 190, chat: 240, special: 200, monitor: 180 }
+const DEFAULT_HEIGHTS: Record<WinKey, number> = { flow: 200, graph: 190, chat: 240, special: 200 }
 const MIN_H = 56
 const MAX_H = 800
 
@@ -76,7 +75,7 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
   const [heights, setHeights] = useState<Record<WinKey, number>>({ ...DEFAULT_HEIGHTS })
   // 右侧栏展示设置（可勾选要显示的窗口，持久化）
   const [visible, setVisible] = useState<Record<WinKey, boolean>>(() => {
-    return { flow: true, graph: true, chat: true, special: false, monitor: true, ...lsGetJSON<Record<string, boolean>>(LS.rpWindows, {}) }
+    return { flow: true, graph: true, chat: true, special: false, ...lsGetJSON<Record<string, boolean>>(LS.rpWindows, {}) }
   })
   const [showWinSettings, setShowWinSettings] = useState(false)
   const dragRef = useRef<{ a: WinKey; b: WinKey; isLast: boolean; startY: number; startHa: number; startHb: number } | null>(null)
@@ -280,11 +279,6 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
               </div>
             )}
             {w.key === 'special' && <SpecialOutputPane projectId={projectId} />}
-            {w.key === 'monitor' && (
-              <div className="w-full h-full overflow-y-auto px-3 py-2">
-                <p className="text-[11px] text-dim">运行监控（待接入：节点耗时 / LLM 调用次数 / token 估算）</p>
-              </div>
-            )}
           </Pane>
         </Fragment>
       ))}
