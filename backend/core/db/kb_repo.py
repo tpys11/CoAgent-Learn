@@ -98,6 +98,13 @@ class KbRepo:
     def get_kb_docs(self, project_id):
         return self._db.get_kb_docs(project_id)
 
+    def get_resources(self, project_id):
+        """resources 表：取项目全部已上传资源（name + content 长度）"""
+        return self._db.execute(
+            "SELECT name, length(content) as content_len FROM resources WHERE project_id = ?",
+            (project_id,),
+        )
+
     def list_project_ids(self):
         rows = self._db.execute("SELECT DISTINCT project_id FROM kb_vectors")
         return [r["project_id"] for r in rows]

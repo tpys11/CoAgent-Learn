@@ -457,10 +457,7 @@ def list_docs(project_id: str) -> list:
     同时查 resources 表（已上传原文）和 kb_vectors（向量块），
     未向量化的资源也显示（chunks=0, vectorized=false），前端可标注。"""
     # 从 resources 表取全部资源（原文已存）
-    res_rows = _db.execute(
-        "SELECT name, length(content) as content_len FROM resources WHERE project_id = ?",
-        (project_id,),
-    )
+    res_rows = _db.get_resources(project_id)
     # 从 kb_vectors 取已有向量块（按 source 聚合）
     vec_rows = _db.get_kb_docs(project_id)
     vec_map: dict[str, int] = {}
