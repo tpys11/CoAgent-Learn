@@ -55,7 +55,9 @@ def safe_get(page_url: str, timeout: int = 15) -> str:
 
 
 def fetch_site_text(base_url: str) -> str:
-    """链接上传抓取：sitemap 定位全部页面 → requests 并发抓取 → trafilatura 提取正文。"""
+    """链接上传抓取：sitemap 定位全部页面 → requests 并发抓取 → trafilatura 提取正文。
+    输出 markdown 格式：保留 h1-h6 标题层级（# / ##），代码块带 ``` 围栏——
+    供 _extract_tree 生成文档大纲树（标题=节点层级，围栏内 # 不再误判为标题）。"""
     import re as _re
     from urllib.parse import urlparse
     from concurrent.futures import ThreadPoolExecutor
@@ -64,7 +66,13 @@ def fetch_site_text(base_url: str) -> str:
     def _page_text(u: str) -> str:
         import trafilatura
         try:
-            return (trafilatura.extract(safe_get(u, timeout=15), url=u, include_comments=False, include_tables=True) or "").strip()
+            md = trafilatura.extract(safe_get(u, timeout=15), url=u, include_comments=False,
+                                     include_tables=True, output_format="markdown") or ""
+            # AsciiDoc 渲染的标题带 ¶ 锚点符号，逐行剥掉（仅标题行）
+            return "\n".join(
+                line.replace("¶", "").rstrip() if line.lstrip().startswith("#") else line
+                for line in md.splitlines()
+            ).strip()
         except Exception:
             return ""
 
@@ -77,6 +85,8 @@ def fetch_site_text(base_url: str) -> str:
         pass
     if base_url not in page_urls:
         page_urls.insert(0, base_url)
+    # 路径浅的页面优先（章节首页先于深层子页），大纲层级更完整
+    page_urls.sort(key=lambda u: u.count("/"))
 
     pages = page_urls[:MAX_LINK_PAGES]
     results: list[tuple[str, str]] = []

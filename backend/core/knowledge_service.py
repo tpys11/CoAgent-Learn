@@ -156,9 +156,22 @@ def _invalidate_bm25(project_id: str):
     _bm25_cache.pop(project_id, None)
 
 
+def _is_junk_heading(name: str) -> bool:
+    """垃圾标题判定：代码块外的残留代码行 / 过长的伪标题（如 ── xxx ──、=> 2、results = [）"""
+    n = name.strip()
+    if not (2 <= len(n) <= 60):
+        return True
+    if n.startswith(("──", "=>", "=", "|", "//", "#")):
+        return True
+    if "://" in n or n.count("_") > 4:
+        return True
+    return False
+
+
 def _extract_tree(text: str) -> list:
-    """从文档文本提取标题层级树（复用上传资料自身的形式分类逻辑：markdown 标题）
+    """从文档文本提取标题层级树（文档大纲：markdown 标题即章节层级）
     标题行开新节点；标题间的正文累积进节点 content（预览截断 2000 字）；
+    ``` 围栏内的 # 行（代码注释）跳过；垃圾标题过滤。
     文档开头（首个标题前）的正文不归属任何节点。无标题时返回空列表（前端显示空树占位）。"""
     def _append_content(node: dict, line: str):
         c = node.get("content", "")
@@ -173,11 +186,21 @@ def _extract_tree(text: str) -> list:
     tree = []
     stack: list[tuple[int, dict]] = []
     pending: dict | None = None  # 正在累积正文的节点（最近的标题）
+    in_fence = False  # ``` 代码块内：# 是注释不是标题
     for line in (text or "").splitlines():
-        m = re.match(r"^(#{1,6})\s+(.+)$", line.rstrip()) if line.strip().startswith("#") else None
+        s = line.strip()
+        if s.startswith("```"):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        m = re.match(r"^(#{1,6})\s+(.+)$", line.rstrip()) if s.startswith("#") else None
         if m:
             lvl = len(m.group(1))
-            node = {"name": m.group(2).strip(), "children": []}
+            name = m.group(2).strip()
+            if _is_junk_heading(name):
+                continue
+            node = {"name": name, "children": []}
             while stack and stack[-1][0] >= lvl:
                 stack.pop()
             if stack:

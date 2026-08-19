@@ -586,10 +586,10 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                             </div>
                           </div>
                         {/* 进度与细节（下） */}
-                        {/* 知识图谱：树状结构（复用资料章节层级，节点颜色=掌握状态）；初始化时不展示 */}
+                        {/* 文档大纲：树状结构（复用资料章节层级，节点颜色=掌握状态）；初始化时不展示 */}
                         {!initialEdit && (
                         <div className="flex flex-col gap-2 max-w-3xl">
-                          <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">知识图谱</p>
+                          <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">文档大纲</p>
                           <KnowledgeTree treeDocs={data?.treeDocs || []} progressItems={data?.progress.items || []} projectId={projectId} focus={focus} />
                         </div>
                         )}

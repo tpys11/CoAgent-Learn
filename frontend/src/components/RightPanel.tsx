@@ -1,4 +1,4 @@
-﻿import { Map, Send, MessagesSquare, X, PanelRightClose, SlidersHorizontal, FileText } from 'lucide-react'
+﻿import { ListTree, Send, MessagesSquare, X, PanelRightClose, SlidersHorizontal, FileText } from 'lucide-react'
 import { useEffect, useRef, useState, Fragment } from 'react'
 import { KnowledgeTree } from './KbTree'
 import SpecialOutputPane from './SpecialOutputPane'
@@ -22,7 +22,7 @@ interface Props {
 type WinKey = 'flow' | 'graph' | 'chat' | 'special'
 
 const WINDOWS: Array<{ key: WinKey; title: string; icon: any }> = [
-  { key: 'graph', title: '知识图谱', icon: Map },
+  { key: 'graph', title: '文档大纲', icon: ListTree },
   { key: 'chat', title: '第二对话', icon: MessagesSquare },
   { key: 'special', title: '资源生成', icon: FileText },
 ]
@@ -114,7 +114,7 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
   }, [])
 
-  // 知识图谱（树状）：基于上传资料标题层级
+  // 文档大纲（树状）：基于上传资料标题层级
   const [treeDocs, setTreeDocs] = useState<Array<{ source: string; tree: any[] }>>([])
   const [progressItems, setProgressItems] = useState<any[]>([])
   const loadKbTree = () => {
@@ -182,7 +182,7 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
     setSideLoading(false)
   }
 
-  // 加载课程知识图谱树（上传资料标题层级）
+  // 加载课程文档大纲树（上传资料标题层级）
   useEffect(() => {
     if (!projectId) return
     loadKbTree()
