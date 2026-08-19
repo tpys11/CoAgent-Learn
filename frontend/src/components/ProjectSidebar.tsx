@@ -97,13 +97,13 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
             </button>
           </div>
           {true && (
-            <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
-              <p className="text-[10px] leading-relaxed text-[var(--text-muted)]">
+            <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col h-[100px] overflow-hidden">
+              <p className="text-[10px] leading-relaxed text-[var(--text-muted)] line-clamp-3">
                 {memLines.length === 0
                   ? '暂无记忆，对话后自动分析生成。'
                   : memLines.map(([k, v]) => `${k}：${v}`).join('；')}
               </p>
-              <button onClick={onOpenMemory} className="text-[10px] font-semibold text-[var(--accent)] hover:underline ml-auto">
+              <button onClick={onOpenMemory} className="text-[10px] font-semibold text-[var(--accent)] hover:underline ml-auto mt-auto">
                 查看更多
               </button>
             </div>
@@ -120,13 +120,23 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
             </button>
           </div>
           {true && (
-            <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
-              <p className="text-[10px] leading-relaxed text-[var(--text-muted)]">
-                {kbDocs.length === 0
-                  ? '暂无资源，可在独立界面中上传文件或加入系统资源。'
-                  : `已收录 ${kbDocs.length} 份文档${kbDocs.length > 0 ? '：' + kbDocs.slice(0, 2).map(d => d.source).join('、') + (kbDocs.length > 2 ? ' 等' : '') : ''}，共 ${kbDocs.reduce((s, d) => s + (d.chunks || 0), 0)} 个内容块。`}
-              </p>
-              <button onClick={onOpenResource} className="text-[10px] font-semibold text-[var(--accent)] hover:underline ml-auto">
+            <div className="border hairline rounded-xl p-2 bg-[var(--bg-panel)] flex flex-col">
+              {kbDocs.length === 0 ? (
+                <p className="text-[10px] text-[var(--text-muted)] px-1.5 py-1">暂无资源，可上传文件或加入系统资源。</p>
+              ) : (
+                <>
+                  <div className="flex flex-col gap-0.5 max-h-[30vh] overflow-y-auto">
+                    {kbDocs.map(d => (
+                      <div key={d.source} className="flex items-center gap-1.5 px-1.5 py-1 rounded-lg text-[11px] hover:bg-[var(--bg-hover)] transition-colors" title={d.source}>
+                        <FileText size={12} className="text-dim flex-shrink-0" />
+                        <span className="truncate flex-1">{d.source}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[9px] text-dim px-1.5 pt-1">共 {kbDocs.length} 份文档</p>
+                </>
+              )}
+              <button onClick={onOpenResource} className="text-[10px] font-semibold text-[var(--accent)] hover:underline ml-auto mt-1">
                 查看更多
               </button>
             </div>
