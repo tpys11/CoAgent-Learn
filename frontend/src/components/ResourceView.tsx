@@ -330,7 +330,7 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal, embe
       {/* 主体：左侧分类栏 + 内容区 */}
       <div className="flex-1 flex min-h-0">
         {tab === 'tutorials' && (
-          <div className="w-40 flex-shrink-0 border-r hairline bg-[var(--bg-sidebar)] p-2.5 flex flex-col gap-1 overflow-y-auto">
+          <div className="w-[260px] flex-shrink-0 border-r hairline bg-[var(--bg-sidebar)] p-2.5 flex flex-col gap-1 overflow-y-auto">
             <p className="text-[10px] font-bold text-dim uppercase tracking-wider px-2.5 mt-1 mb-0.5">领域</p>
             {domains.map(d => {
               const c = domainColor(d)
