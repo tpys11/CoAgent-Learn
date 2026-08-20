@@ -475,24 +475,11 @@ def _get_reranker():
     return _reranker_local or None
 
 
-def _is_junk_autosave(name: str, content_len: int) -> bool:
-    """自动转存条目（对话生成·前缀）垃圾判定：报错/警告/系统提示/思维链泄露/过短寒暄。
-    用户手动上传的资源不受此过滤影响。"""
-    _prefix = "对话生成·"
-    if not name.startswith(_prefix):
-        return False
-    head = name[len(_prefix):]
-    _junk_heads = ("抱歉", "⚠️", "（系统", "你好", "我们", "好的", "我帮你", "你想")
-    if any(head.startswith(p) for p in _junk_heads):
-        return True
-    return content_len < 120
-
-
 def list_docs(project_id: str) -> list:
     """列出项目知识库的文档（按 source 聚合）。
     同时查 resources 表（已上传原文）和 kb_vectors（向量块），
     未向量化的资源也显示（chunks=0, vectorized=false），前端可标注。
-    自动转存的垃圾条目（报错/寒暄等）过滤不显示。"""
+    生成类（gen: 前缀 / 生成· / 对话生成·）条目过滤不显示（资源库保留，左栏不展示）。"""
     # 从 resources 表取全部资源（原文已存）
     res_rows = _db.get_resources(project_id)
     # 从 kb_vectors 取已有向量块（按 source 聚合）
@@ -507,7 +494,7 @@ def list_docs(project_id: str) -> list:
         src = r["name"]
         if not src:
             continue
-        if _is_junk_autosave(src, r["content_len"] or 0):
+        if (r.get("type") or "").startswith("gen:") or src.startswith("对话生成·") or src.startswith("生成·"):
             continue
         grouped[src] = {
             "source": src,
