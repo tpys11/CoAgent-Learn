@@ -2,8 +2,7 @@
 """gen_flow 资源生成技能：把流程步骤整理为 Mermaid 流程图。
 
 从 backend/services/resource_gen.py 迁移而来（Wave1 解耦）：prompt 逐字节一致。
-注意与 form_flowchart 的差异：本技能服务于资源面板，**保留** ```mermaid fence 输出（前端 renderMd 直接渲染），
-不做 form_flowchart 的 fence 剥离。
+本技能服务于资源面板，保留 ```mermaid fence 输出（前端 renderMd 直接渲染）。
 契约：成功 {"content": str} / 失败 {"error": str}——归一化由 resource_gen 层完成。
 """
 from skills import Skill

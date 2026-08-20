@@ -155,7 +155,7 @@ def test_generate_flow_keeps_fence(monkeypatch):
     r = generate_resource("k", "flow", "内容")
     assert r["status"] == "ok"
     assert r["output"] == "mermaid"
-    assert r["content"] == md  # 保留 fence（与 form_flowchart 不同，资源面板直接渲染）
+    assert r["content"] == md  # 保留 fence（资源面板直接渲染）
 
 
 def test_generate_tree_keeps_fence(monkeypatch):
