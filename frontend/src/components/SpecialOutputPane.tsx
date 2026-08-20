@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
-import { FileText, Workflow, Network, ClipboardList, Wrench, Stethoscope, Send, Loader2 } from 'lucide-react'
+import { FileText, Workflow, Network, ClipboardList, Wrench, Stethoscope, Send, Loader2, X } from 'lucide-react'
 import MarkdownIt from 'markdown-it'
 import mermaid from 'mermaid'
 import * as echarts from 'echarts'
 import { api } from '../api'
 import { LS, lsGet, lsGetJSON } from '../storage'
 import QuizViewer from './quiz/QuizViewer'
+import KbReaderModal from './KbReaderModal'
 
 mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', theme: 'default' })
 let mmdSeq = 0
@@ -167,21 +168,32 @@ export default function SpecialOutputPane({ projectId }: { projectId?: string | 
           </div>
         )}
 
-        {result ? (
-          <div className="mt-1 border hairline rounded-xl p-3 bg-[var(--bg-panel)]">
-            <p className="text-[10px] font-semibold text-dim mb-2 flex items-center gap-1">
-              <Icon size={12} /> {result.label}
-            </p>
-            {quizEl ?? <div className="md-answer-body text-[12px] leading-relaxed" dangerouslySetInnerHTML={{ __html: renderMd(result.content) }} />}
-          </div>
-        ) : (
-          <div className="flex-1 min-h-[120px] border-2 border-dashed hairline rounded-2xl flex flex-col items-center justify-center gap-2 text-dim">
-            <Icon size={28} strokeWidth={1.5} />
-            <p className="text-xs font-semibold text-[var(--text)]">{cur?.label || '资源生成'}</p>
-            <p className="text-[10px] text-center px-6 leading-relaxed">{cur?.desc || '从后端能力注册表加载…'}</p>
-          </div>
-        )}
+        {/* 虚线占位常驻：结果改居中弹窗展示（见下方 result 弹窗），不再内联 */}
+        <div className="flex-1 min-h-[120px] border-2 border-dashed hairline rounded-2xl flex flex-col items-center justify-center gap-2 text-dim">
+          <Icon size={28} strokeWidth={1.5} />
+          <p className="text-xs font-semibold text-[var(--text)]">{cur?.label || '资源生成'}</p>
+          <p className="text-[10px] text-center px-6 leading-relaxed">{cur?.desc || '从后端能力注册表加载…'}</p>
+        </div>
       </div>
+
+      {/* 生成结果弹窗：测验用模态壳包 QuizViewer（可交互），其余复用阅读器（标题自动成树） */}
+      {result && (form === 'quiz' ? (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setResult(null)}>
+          <div className="bg-[var(--bg-panel)] rounded-2xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-color)] flex-shrink-0">
+              <h3 className="text-base font-bold flex items-center gap-2">
+                <Icon size={16} /> {result.label}
+              </h3>
+              <button onClick={() => setResult(null)} className="p-1 hover:bg-[var(--bg-hover)] rounded"><X size={18} /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5">
+              {quizEl ?? <div className="md-answer-body text-[12px] leading-relaxed" dangerouslySetInnerHTML={{ __html: renderMd(result.content) }} />}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <KbReaderModal title={result.label} content={result.content} onClose={() => setResult(null)} />
+      ))}
 
       <style>{`
         .rp-mermaid { background: var(--bg-panel); border: 1px solid var(--border-color, #e5e5e5); border-radius: 10px; padding: 0.8em; text-align: center; overflow-x: auto; }
