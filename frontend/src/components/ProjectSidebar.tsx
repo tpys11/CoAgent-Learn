@@ -5,7 +5,7 @@ import { api } from '../api'
 
 interface Dialogue { id: string; name: string; archived?: boolean }
 interface KbDoc { source: string; chunks: number; preview: string; vectorized?: boolean }
-export default function ProjectSidebar({ project, dialogues, currentDialogueId, kbRefreshKey = 0, onHome, onSelectDialogue, onCreateDialogue, onRenameDialogue, onDeleteDialogue, onOpenMemory, onOpenResource, onCollapse }: {
+export default function ProjectSidebar({ project, dialogues, currentDialogueId, kbRefreshKey = 0, onHome, onSelectDialogue, onCreateDialogue, onRenameDialogue, onDeleteDialogue, onOpenMemory, onOpenResource, onCollapse, onOpenKbDoc }: {
   project: { id: string; name: string } | null
   dialogues: Dialogue[]
   currentDialogueId: string | null
@@ -18,6 +18,7 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
   onOpenMemory: () => void
   onOpenResource: () => void
   onCollapse: () => void
+  onOpenKbDoc?: (source: string) => void
 }) {
   const [memSummary, setMemSummary] = useState<Record<string, any>>({})
   const [kbDocs, setKbDocs] = useState<KbDoc[]>([])
@@ -127,7 +128,8 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
                 <>
                   <div className="flex flex-col max-h-[30vh] overflow-y-auto">
                     {kbDocs.map(d => (
-                      <div key={d.source} className="flex items-center gap-1.5 px-1.5 py-1 rounded-lg text-[11px] font-medium hover:bg-[var(--bg-hover)] transition-colors" title={d.source}>
+                      <div key={d.source} onClick={() => onOpenKbDoc && onOpenKbDoc(d.source)}
+                        className="flex items-center gap-1.5 px-1.5 py-1 rounded-lg text-[11px] font-medium hover:bg-[var(--bg-hover)] transition-colors cursor-pointer" title={d.source}>
                         <FileText size={12} className="text-dim flex-shrink-0" />
                         <span className="truncate flex-1">{d.source}</span>
                         {d.vectorized === false

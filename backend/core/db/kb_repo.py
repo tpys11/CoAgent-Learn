@@ -92,6 +92,13 @@ class KbRepo:
         )
         return rows[0]["content"] if rows else ""
 
+    def get_kb_chunks(self, project_id, source):
+        """按 source 取全部向量块（chunk 序），供阅读器全文重组。"""
+        return self._db.execute(
+            "SELECT chunk, content FROM kb_vectors WHERE project_id=? AND source=? ORDER BY chunk",
+            (project_id, source),
+        )
+
     def search_kb_vectors(self, *args, **kwargs):
         return self._db.search_kb_vectors(*args, **kwargs)
 
@@ -104,6 +111,14 @@ class KbRepo:
             "SELECT name, length(content) as content_len FROM resources WHERE project_id = ?",
             (project_id,),
         )
+
+    def get_resource_content(self, project_id, source):
+        """resources 表：按 name 取该资源原文（未向量化文档的兜底全文来源）"""
+        rows = self._db.execute(
+            "SELECT content FROM resources WHERE project_id=? AND name=?",
+            (project_id, source),
+        )
+        return rows[0]["content"] if rows else ""
 
     def count_kb_by_source(self, project_id, source):
         """按 source 统计向量块数（幽灵 hash 自愈判定用）"""

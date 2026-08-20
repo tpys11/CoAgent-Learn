@@ -140,6 +140,51 @@ def kb_node_content(project_id: str, source: str, path: str):
             "content": content, "chunk_index": chunk_index}
 
 
+def _strip_overlap(prev: str, cur: str, max_overlap: int = 60) -> str:
+    """相邻向量块拼接时剥除重叠尾巴：取 prev 的最长后缀（≤60 字符）且为 cur 的前缀，
+    从 cur 头部剥除后返回。无重叠时原样返回。"""
+    if not prev or not cur:
+        return cur
+    m = min(len(prev), len(cur), max_overlap)
+    for n in range(m, 0, -1):
+        if prev[-n:] == cur[:n]:
+            return cur[n:]
+    return cur
+
+
+@router.get("/api/kb/{project_id}/doc")
+def kb_doc(project_id: str, source: str):
+    """文档全文：kb_vectors 按 chunk 序重组（剥除相邻块重叠尾巴）。
+    无向量块时回退 resources 表原文（可能为截断版）；两者皆无返回 not_found。"""
+    from core.db import get_kb_repo
+    repo = get_kb_repo()
+    rows = repo.get_kb_chunks(project_id, source)
+    # 权威标题树：上传时从原文提取存于 kb_tree 表（重组内容换行被切块器折叠，不能按行提取）
+    tree = repo.get_kb_tree(project_id, source) or []
+    if rows:
+        parts = []
+        prev = ""
+        for r in rows:
+            cur = r.get("content") or ""
+            if prev:
+                stripped = _strip_overlap(prev, cur)
+                # 无重叠（如超长句截断边界）时以空格衔接，避免词语粘连
+                parts.append(stripped if stripped != cur else " " + cur)
+            else:
+                parts.append(cur)
+            prev = r.get("content") or ""
+        joined = "".join(parts)
+        # 换行恢复：切块器按句子折叠了换行，在 markdown 标题标记前补 \n，
+        # 让渲染器产出正确 h1-h6 层级（阅读器左树点击定位依赖 DOM 标题元素）
+        import re as _re
+        joined = _re.sub(r"(?<!\n)(#{1,6}\s)", r"\n\1", joined)
+        return {"status": "ok", "source": source, "content": joined, "tree": tree}
+    content = repo.get_resource_content(project_id, source)
+    if content:
+        return {"status": "ok", "source": source, "content": content, "tree": tree}
+    return {"status": "not_found", "source": source}
+
+
 @router.get("/api/kb/{project_id}/chunk-node")
 def kb_chunk_node(project_id: str, source: str, chunk: int):
     """审核引用跳转（5.2）：chunk 序号 → 所属章节节点 path。

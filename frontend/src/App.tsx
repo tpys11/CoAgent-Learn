@@ -22,6 +22,7 @@ import MemoryView from './components/MemoryView'
 import KnowledgeView from './components/KnowledgeView'
 import AgentsView from './components/AgentsView'
 import IntroPanel from './components/IntroPanel'
+import KbReaderModal from './components/KbReaderModal'
 import { initTheme } from './theme'
 import type { Project, Dialogue, AgentConfig, Message } from './types'
 import { DEFAULT_AGENTS } from './types'
@@ -308,6 +309,8 @@ function App() {
   }, [])
   // 对话删除：自定义确认弹窗（删除此处的对话记忆；课程记忆与生成的资源保留）
   const [deleteDialogueTarget, setDeleteDialogueTarget] = useState<{ id: string; name: string } | null>(null)
+  // 知识库阅读器弹窗（5.1）：左栏资源条目 / 引用跳转共用（content 直给时用于生成类内容）
+  const [reader, setReader] = useState<{ title?: string; content?: string; source?: string; projectId?: string | null; focusChunk?: number | null; seq: number } | null>(null)
   const handleDeleteDialogue = useCallback((id: string) => {
     const d = dialogues.find(x => x.id === id)
     setDeleteDialogueTarget({ id, name: (d && d.name) || '对话' })
@@ -398,6 +401,7 @@ function App() {
             onOpenMemory={() => { setProjectConfigTab('memory'); setShowProjectConfig(true) }}
             onOpenResource={() => { setProjectConfigTab('resource'); setShowProjectConfig(true) }}
             onCollapse={() => setSidebarCollapsed(true)}
+            onOpenKbDoc={(source) => setReader({ source, projectId: currentProjectId, title: source, seq: Date.now() })}
           />
         </div>
         {/* 左侧拖拽手柄 */}
@@ -492,6 +496,18 @@ function App() {
         }} />}
       {showApiKeyPrompt && <ApiKeyPrompt provider={lsGet(LS.provider, 'deepseek')} onClose={() => { setShowApiKeyPrompt(false); lsSet(LS.apiKeySkipped, '1') }} />}
       {showIntro && <IntroPanel onClose={() => { setShowIntro(false); lsSet(LS.introSeen, '1') }} />}
+      {/* 知识库阅读器弹窗（5.1）：左栏资源条目点击 / 引用跳转共用 */}
+      {reader && (
+        <KbReaderModal
+          title={reader.title}
+          content={reader.content}
+          projectId={reader.projectId}
+          source={reader.source}
+          focusChunk={reader.focusChunk}
+          seq={reader.seq}
+          onClose={() => setReader(null)}
+        />
+      )}
       {/* 删除对话确认弹窗 */}
       {deleteDialogueTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-6" onClick={() => setDeleteDialogueTarget(null)}>

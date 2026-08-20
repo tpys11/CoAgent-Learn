@@ -88,6 +88,8 @@ export const api = {
     apiFetch<any>('/api/kb/' + encodeURIComponent(pid) + '/content?source=' + encodeURIComponent(source) + '&path=' + encodeURIComponent(path), { cache: 'no-store' }),
   getKbChunkNode: (pid: string, source: string, chunk: number) =>
     apiFetch<any>('/api/kb/' + encodeURIComponent(pid) + '/chunk-node?source=' + encodeURIComponent(source) + '&chunk=' + chunk, { cache: 'no-store' }),
+  getKbDoc: (pid: string, source: string) =>
+    apiFetch<any>('/api/kb/' + encodeURIComponent(pid) + '/doc?source=' + encodeURIComponent(source), { cache: 'no-store' }),
   getKb: (projectId: string) =>
     apiFetch<any>('/api/kb/' + encodeURIComponent(projectId), { cache: 'no-store' }),
   queryKnowledge: (projectId: string, q: string, topK = 3) =>

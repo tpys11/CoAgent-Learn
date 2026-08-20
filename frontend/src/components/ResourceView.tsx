@@ -7,6 +7,7 @@ import { Tab, ListItem, TYPE_ICONS, fmtTime, exportItem } from './resource/commo
 import { ResourceCardGrid, ResourceEmpty } from './resource/ResourceCardGrid'
 import { ResourceDetailModal } from './resource/ResourceDetailModal'
 import { UploadPanel } from './resource/UploadPanel'
+import KbReaderModal from './KbReaderModal'
 
 interface Artifact {
   id: string
@@ -115,6 +116,8 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal, embe
   const [wikiTheme, setWikiTheme] = useState('all')
   const [loading, setLoading] = useState(false)
   const [detail, setDetail] = useState<ListItem | null>(null)
+  // 知识库阅读器（5.1）：「我的生成」卡片点开用阅读器（左树右文 + 渲染），tutorials/wiki 维持旧详情模态
+  const [reader, setReader] = useState<{ title?: string; content?: string; seq: number } | null>(null)
   // 我的生成：分类
   const [genCat, setGenCat] = useState('all')
 
@@ -420,7 +423,10 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal, embe
               {loading && <p className="text-xs text-dim text-center py-16">加载中…</p>}
               {!loading && list.length === 0 && <ResourceEmpty title="暂无生成物" hint="对话生成讲义 / 指南 / 测试题后自动收录到这里" />}
               {!loading && list.length > 0 && (
-                <ResourceCardGrid items={list} onOpen={setDetail} onUseItem={onUseItem}
+                <ResourceCardGrid items={list} onOpen={(item) => {
+                  if (item.kind === 'artifact') setReader({ title: item.title, content: item.body, seq: Date.now() })
+                  else setDetail(item)
+                }} onUseItem={onUseItem}
                   onDelete={removeItem} onExport={exportItem} />
               )}
             </>
@@ -437,6 +443,10 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal, embe
       {/* 详情模态 */}
       {detail && (
         <ResourceDetailModal detail={detail} onClose={() => setDetail(null)} onUseItem={onUseItem} onDelete={removeItem} />
+      )}
+      {/* 知识库阅读器（5.1）：生成物卡片打开 */}
+      {reader && (
+        <KbReaderModal title={reader.title} content={reader.content} onClose={() => setReader(null)} />
       )}
     </div>
   )
