@@ -14,7 +14,7 @@ const annotateCitations = (html: string) => html.replace(
   /\[来源:([^\]\n]+?)#chunk-(\d+)\]/g,
   (_m, src: string, ch: string) => {
     const safe = escapeHtml(src.trim())
-    return `<span class="citation-ref" data-src="${safe}" data-chunk="${ch}" title="查看知识库出处">来源:${safe} #chunk-${ch}</span>`
+    return `<span class="citation-ref" data-src="${safe}" data-chunk="${ch}" title="查看资源出处">来源:${safe} #chunk-${ch}</span>`
   },
 )
 

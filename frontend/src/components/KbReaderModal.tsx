@@ -157,11 +157,14 @@ export default function KbReaderModal({ title, content, projectId, source, focus
     }
   }
 
-  // chunk 定位（引用跳转 5.2）：seq 变化即重触发
+  // chunk 定位（引用跳转 5.2）：等待 doc 渲染就绪后再定位，避免 doc 未加载完时找不到标题元素。
+  // doc 从 null → content 会触发本 effect 重跑（依赖数组含 doc）。
   useEffect(() => {
     if (focusChunk == null || !source || !projectId) return
+    if (!doc) return
+    let cancelled = false
     api.getKbChunkNode(projectId, source, focusChunk).then(d => {
-      if (!d || d.status !== 'ok' || !d.path) return
+      if (cancelled || !d || d.status !== 'ok' || !d.path) return
       setSelPath(d.path)
       setCollapsed(prev => {
         const next = new Set(prev)
@@ -172,8 +175,9 @@ export default function KbReaderModal({ title, content, projectId, source, focus
       })
       setTimeout(() => locateHeading(d.path), 150)
     }).catch(() => {})
+    return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusChunk, seq])
+  }, [focusChunk, seq, doc])
 
   const renderTree = (nodes: TreeNode[], depth: number, prefix: string): ReactNode => (
     nodes.map(n => {

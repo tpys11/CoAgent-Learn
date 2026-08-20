@@ -24,13 +24,11 @@ const PROJECT_DIMS: Array<{ title: string; hint: string; keys: string[]; arrayKe
 /** 记忆系统：两级（个人全局性记忆 / 课程记忆）完整界面 */
 
 /** 迷你 Markdown 渲染：段落 / 有序/无序列表 / **加粗**（行级，够用即可） */
-export default function MemoryView({ projectId, onRequestModify, onRequestAnalyze, projectOnly, initialEdit, onEditChange, focus }: {
+export default function MemoryView({ projectId, onRequestModify, onRequestAnalyze, projectOnly, initialEdit, onEditChange }: {
   projectId: string | null
   onRequestModify?: (label: string, pid?: string) => void
   onRequestAnalyze?: (projectName: string) => void
   projectOnly?: boolean
-  /** 引用跳转目标（5.2）：{source, chunk}，由聊天里点击 [来源:...] 触发 */
-  focus?: { source: string; chunk: number; seq: number } | null
   /** 初次手动初始化：基本情况/目的/初始情况三个区域原地可编辑，编辑内容通过 onEditChange 上报 */
   initialEdit?: boolean
   onEditChange?: (f: Record<string, string>) => void
@@ -509,7 +507,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                         {!initialEdit && (
                         <div className="flex flex-col gap-2 max-w-3xl">
                           <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">文档大纲</p>
-                          <KnowledgeTree treeDocs={data?.treeDocs || []} progressItems={data?.progress.items || []} projectId={projectId} focus={focus} />
+                          <KnowledgeTree treeDocs={data?.treeDocs || []} progressItems={data?.progress.items || []} projectId={projectId} />
                         </div>
                         )}
 
