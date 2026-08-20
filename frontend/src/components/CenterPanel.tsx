@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Send, Bot, MessagesSquare, Coins, CheckCircle2, Check, ChevronDown, Upload, Cpu, SlidersHorizontal, AlertTriangle, Search, FileText, LayoutTemplate, Image as ImageIcon, Square, ArrowDownToLine, Timer } from 'lucide-react'
+import { Send, Bot, MessagesSquare, Coins, CheckCircle2, Check, ChevronDown, Upload, SlidersHorizontal, AlertTriangle, Search, FileText, LayoutTemplate, Image as ImageIcon, Square, ArrowDownToLine, Timer } from 'lucide-react'
 import type { Message, Project } from '../types'
 import { LS, lsGet, lsSet, lsGetJSON } from '../storage'
 import { api } from '../api'
@@ -10,12 +10,6 @@ const TEMPLATE_OPTIONS = [
   { name: '极速', desc: '最短响应（1 秒内首字，500-800 字）' },
   { name: '思考', desc: '完整流程 + 轻量单审（800-1200 字）' },
   { name: '研究', desc: '完整流程 + 严格检测（多轮搜索）' },
-]
-
-/** 模型厂家配置（仅保留最常用：DeepSeek / 智谱GLM） */
-const MODEL_PROVIDERS = [
-  { id: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', models: ['deepseek-v4-pro', 'deepseek-v4-flash'] },
-  { id: 'zhipu', name: '智谱GLM', baseUrl: 'https://open.bigmodel.cn/api/paas/v4', models: ['glm-4-plus', 'glm-4-flash'] },
 ]
 
 /** 时间范围选项（顶条统计） */
@@ -177,18 +171,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
     setAttachments(prev => prev.filter(a => a.name !== name))
   }
   const [time, setTime] = useState(new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }))
-  const [showModelModal, setShowModelModal] = useState(false)
-  const [selectedProvider, setSelectedProvider] = useState(() => lsGet(LS.provider, 'deepseek'))
-  const [selectedModel, setSelectedModel] = useState(() => {
-    const m = lsGet(LS.model, 'deepseek-v4-flash')
-    const alias: Record<string, string> = {
-      'deepseek-chat': 'deepseek-v4-pro',
-      'deepseek-reasoner': 'deepseek-v4-pro',
-      'deepseek-pro': 'deepseek-v4-pro',
-      'deepseek-flash': 'deepseek-v4-flash',
-    }
-    return alias[m] || m
-  })
   // 模板模式（与模板与编排预设一致）
   const [templateMode, setTemplateMode] = useState(() => {
     const t = lsGet(LS.template, '思考')
@@ -199,17 +181,12 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   })
   // Auto：AI 根据输入自动选择模板/模式（开启后手动设置按钮禁用）
   const [autoMode, setAutoMode] = useState(() => lsGet(LS.auto, '0') === '1')
-  // 模型 Auto：AI 根据输入自动选择模型（模型选择上拉栏内开关）
-  const [modelAuto, setModelAuto] = useState(() => lsGet(LS.modelAuto, '0') === '1')
   // 档位上拉框
   const [showTplMenu, setShowTplMenu] = useState(false)
   const tplRef = useRef<HTMLDivElement>(null)
-  // 模型选择上拉小窗
-  const modelRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const close = (e: MouseEvent) => {
       if (tplRef.current && !tplRef.current.contains(e.target as Node)) setShowTplMenu(false)
-      if (modelRef.current && !modelRef.current.contains(e.target as Node)) setShowModelModal(false)
     }
     document.addEventListener('mousedown', close)
     return () => document.removeEventListener('mousedown', close)
@@ -256,7 +233,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
       image: image,
       template: templateMode,
       auto: autoMode,
-      modelAuto: modelAuto,
     })
     setInput('')
     setAttachments([])
@@ -267,7 +243,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
     onSendMessage(q, {
       template: templateMode,
       auto: autoMode,
-      modelAuto: modelAuto,
     })
   }
 
@@ -455,6 +430,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                 <Upload size={15} />
               </button>
               {/* 档位选择（豆包式：胶囊显示当前档位 + 弹出选项面板） */}
+              <span className="flex-1" />
               <div className="relative" ref={tplRef}>
                 <button
                   onClick={() => setShowTplMenu(!showTplMenu)}
@@ -463,7 +439,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                   <LayoutTemplate size={13} /> {templateMode} <ChevronDown size={10} />
                 </button>
                 {showTplMenu && (
-                  <div className="absolute bottom-full left-0 mb-1.5 card-lift p-1.5 z-10 flex flex-col gap-0.5" style={{ width: 120 }}>
+                  <div className="absolute bottom-full right-0 mb-1.5 card-lift p-1.5 z-10 flex flex-col gap-0.5" style={{ width: 120 }}>
                     {TEMPLATE_OPTIONS.map(t => (
                       <button key={t.name}
                         onClick={() => { setTemplateMode(t.name); lsSet(LS.template, t.name); setShowTplMenu(false) }}
@@ -472,42 +448,6 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
                         {templateMode === t.name && <Check size={12} className="text-[var(--accent)] ml-auto" />}
                       </button>
                     ))}
-                  </div>
-                )}
-              </div>
-              <span className="w-px h-4 bg-[#e5e5e5] mx-1" />
-              <span className="flex-1" />
-              <div className="relative" ref={modelRef}>
-                <button
-                  onClick={() => setShowModelModal(!showModelModal)}
-                  className="h-9 px-3 rounded-xl input-surface text-[11px] flex items-center gap-1.5 hover:opacity-90 transition-colors"
-                  title="模型选择">
-                  <Cpu size={14} /> 模型 <ChevronDown size={9} />
-                </button>
-                {showModelModal && (
-                  <div className="absolute bottom-full right-0 mb-1 card-lift p-2 z-10" style={{ width: 175 }}>
-                    <div className="flex items-center justify-between gap-2 px-1 py-1.5 mb-1 border-b border-[#e5e5e5]">
-                      <span className="text-[11px] font-medium">Auto</span>
-                      <button onClick={() => { const next = !modelAuto; setModelAuto(next); lsSet(LS.modelAuto, next ? '1' : '0') }}
-                        className={`w-9 h-5 rounded-full relative transition-colors flex-shrink-0 ${modelAuto ? 'bg-[#1a1a1a]' : 'bg-[#d9d9d9]'}`}
-                        title="Auto 开关（自动选择模型）">
-                        <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${modelAuto ? 'translate-x-4' : ''}`} />
-                      </button>
-                    </div>
-                    {/* 模型并列平铺（不按厂家分组） */}
-                    <div className="flex flex-col gap-0.5">
-                      {MODEL_PROVIDERS.flatMap(p => p.models.map(m => ({ name: m, provider: p.id }))).map(x => (
-                        <button key={x.name}
-                          onClick={() => { setSelectedProvider(x.provider); setSelectedModel(x.name); lsSet(LS.provider, x.provider); lsSet(LS.model, x.name) }}
-                          className={`text-[11px] px-2 py-1.5 rounded-lg text-left ${selectedProvider === x.provider && selectedModel === x.name ? 'row-active text-[#1a1a1a]' : 'row-hover'}`}>
-                          <span className="font-medium">{x.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                    <button onClick={() => { setShowModelModal(false); onOpenSettings && onOpenSettings() }}
-                      className="w-full mt-1.5 pt-2 border-t border-[#e5e5e5] text-[10px] text-[var(--accent)] hover:underline flex items-center justify-center gap-1">
-                      API 配置
-                    </button>
                   </div>
                 )}
               </div>
