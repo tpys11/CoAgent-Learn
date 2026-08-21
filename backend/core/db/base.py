@@ -77,29 +77,19 @@ class SQLiteClient:
     # ── 向量操作（sqlite-vec）──
 
     def create_vector_tables(self):
-        """知识库向量表 + 记忆向量表；维度跟随 EMBEDDING_DIM，避免与模型输出不匹配。"""
-        from core.config import config as _cfg
-        _dim = int(getattr(_cfg, "EMBEDDING_DIM", 1024) or 1024)
-        _vl_dim = int(getattr(_cfg, "VL_EMBEDDING_DIM", 4096) or 4096)
+        """知识库向量表 + 图片跨模态向量表；维度统一 1024（Qwen3-VL-Embedding-8B MRL 实测输出）。
+        2026-08-21：移除 memory_vectors/message_vectors 死表——对话记忆以文本形式承载
+        （dialogues.summary + compressed_upto 游标），不再做向量存储/召回。"""
         self.execute(
-            f"CREATE VIRTUAL TABLE IF NOT EXISTS kb_vectors USING vec0("
-            f"doc_id TEXT, project_id TEXT, source TEXT, chunk INTEGER, session_id TEXT,"
-            f"has_context INTEGER, content TEXT, embedding float[{_dim}])"
+            "CREATE VIRTUAL TABLE IF NOT EXISTS kb_vectors USING vec0("
+            "doc_id TEXT, project_id TEXT, source TEXT, chunk INTEGER, session_id TEXT,"
+            "has_context INTEGER, content TEXT, embedding float[1024])"
         )
+        # 图片跨模态向量表：与文字共用 Qwen3-VL-Embedding-8B@1024（文本/图片同空间）
         self.execute(
-            f"CREATE VIRTUAL TABLE IF NOT EXISTS memory_vectors USING vec0("
-            f"scope TEXT, content TEXT, embedding float[{_dim}])"
-        )
-        # 会话消息向量表（上下文压缩后的历史召回：压缩不物理删除，细节可检索找回）
-        self.execute(
-            f"CREATE VIRTUAL TABLE IF NOT EXISTS message_vectors USING vec0("
-            f"dialogue_id TEXT, role TEXT, content TEXT, embedding float[{_dim}])"
-        )
-        # 图片跨模态向量表：Qwen3-VL-Embedding 输出维度（独立于文字 embedding 维度）
-        self.execute(
-            f"CREATE VIRTUAL TABLE IF NOT EXISTS image_vectors USING vec0("
-            f"doc_id TEXT, project_id TEXT, source TEXT, content TEXT, file_path TEXT,"
-            f"mime TEXT, embedding float[{_vl_dim}])"
+            "CREATE VIRTUAL TABLE IF NOT EXISTS image_vectors USING vec0("
+            "doc_id TEXT, project_id TEXT, source TEXT, content TEXT, file_path TEXT,"
+            "mime TEXT, embedding float[1024])"
         )
         # 知识库文档标题树（上传时提取 markdown 标题层级，供项目记忆知识图谱使用）
         self.execute(
@@ -303,35 +293,6 @@ class SQLiteClient:
             "ON CONFLICT(project_id, source) DO UPDATE SET tree=excluded.tree, updated_at=datetime('now')",
             (project_id, source, _json.dumps(tree, ensure_ascii=False)),
         )
-
-    def insert_message_vector(self, dialogue_id: str, role: str, content: str, embedding: list):
-        """会话消息向量（上下文压缩的历史召回）"""
-        import sqlite_vec as _sv
-        with self._lock:
-            conn = self._new_conn()
-            try:
-                conn.execute(
-                    "INSERT INTO message_vectors(rowid, dialogue_id, role, content, embedding) VALUES (?,?,?,?,?)",
-                    (None, dialogue_id, role, content, _sv.serialize_float32(embedding)),
-                )
-                conn.commit()
-            finally:
-                conn.close()
-
-    def search_message_vectors(self, dialogue_id: str, vec: list, k: int = 3) -> list:
-        """按对话检索历史消息向量（余弦距离排序）"""
-        import sqlite_vec as _sv
-        with self._lock:
-            conn = self._new_conn()
-            try:
-                rows = conn.execute(
-                    "SELECT role, content, vec_distance_cosine(embedding, ?) AS d FROM message_vectors "
-                    "WHERE dialogue_id=? ORDER BY d LIMIT ?",
-                    (_sv.serialize_float32(vec), dialogue_id, k),
-                ).fetchall()
-            finally:
-                conn.close()
-        return [{"role": r[0], "content": r[1], "distance": r[2]} for r in rows]
 
     def get_kb_tree(self, project_id: str, source: str) -> list:
         """读取文档标题树（无则空列表）"""

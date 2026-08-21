@@ -47,12 +47,12 @@ def _embed_local(texts: list[str]) -> list[list[float]]:
 
 
 def _embed_api(texts: list[str]) -> list[list[float]]:
-    """OpenAI 兼容 embedding API（如硅基流动 bge-m3）"""
+    """OpenAI 兼容 embedding API（Qwen3-VL-Embedding-8B，MRL dimensions=1024）"""
     import requests as _req
     from core.config import config as _cfg
     url = (_cfg.EMBEDDING_BASE_URL or "").rstrip("/") + "/embeddings"
     h = {"Authorization": "Bearer " + _cfg.EMBEDDING_API_KEY, "Content-Type": "application/json"}
-    resp = _req.post(url, json={"model": _cfg.EMBEDDING_MODEL, "input": list(texts)}, headers=h, timeout=60)
+    resp = _req.post(url, json={"model": _cfg.EMBEDDING_MODEL, "input": list(texts), "dimensions": int(_cfg.EMBEDDING_DIM)}, headers=h, timeout=60)
     resp.raise_for_status()
     data = resp.json().get("data") or []
     data.sort(key=lambda d: d.get("index", 0))  # 部分服务乱序返回，按 index 复原
@@ -94,9 +94,10 @@ def _embed_vl(inputs: list) -> list[list[float]]:
     from core.config import config as _cfg
     url = (getattr(_cfg, "VL_BASE_URL", "https://api.siliconflow.cn/v1") or "").rstrip("/") + "/embeddings"
     model = getattr(_cfg, "VL_MODEL", "Qwen/Qwen3-VL-Embedding-8B")
+    dim = int(getattr(_cfg, "VL_EMBEDDING_DIM", 1024) or 1024)
     resp = _req.post(
         url,
-        json={"model": model, "input": inputs},
+        json={"model": model, "input": inputs, "dimensions": dim},
         headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"},
         timeout=120,
     )
@@ -104,7 +105,6 @@ def _embed_vl(inputs: list) -> list[list[float]]:
     data = resp.json().get("data") or []
     data.sort(key=lambda d: d.get("index", 0))
     vecs = [d["embedding"] for d in data]
-    dim = int(getattr(_cfg, "VL_EMBEDDING_DIM", 4096) or 4096)
     for v in vecs:
         if len(v) != dim:
             raise RuntimeError(

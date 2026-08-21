@@ -15,16 +15,14 @@ class Config:
     # 数据目录（SQLite app.db 所在目录）
     SQLITE_DIR: str = os.getenv("SQLITE_DIR", "./data")
 
-    # ── embedding / rerank 后端（local=本地部署模型，api=OpenAI 兼容服务，如硅基流动）──
-    # 切换方式：改 EMBEDDING_BACKEND=api 并填 API key 即可无缝切换；
-    # 注意 API embedding 维度（如 bge-m3=1024）与本地 bge-small-zh=512 不同，
-    # 切换后需清空知识库重新入库（向量表维度固定）。
-    EMBEDDING_BACKEND: str = os.getenv("EMBEDDING_BACKEND", "api")   # local | api
-    EMBEDDING_BASE_URL: str = os.getenv("EMBEDDING_BASE_URL", "https://api.siliconflow.cn/v1")  # bge-m3 统一接口
+    # ── embedding / rerank 后端（统一 Qwen3-VL-Embedding-8B@1024，MRL 实测支持 256~4096）──
+    # 配置源唯一：前端设置界面（settings 表）优先，.env 仅作首次默认。切换维度需清空知识库重新入库。
+    EMBEDDING_BACKEND: str = os.getenv("EMBEDDING_BACKEND", "api")   # api（唯一后端）
+    EMBEDDING_BASE_URL: str = os.getenv("EMBEDDING_BASE_URL", "https://api.siliconflow.cn/v1")
     EMBEDDING_API_KEY: str = os.getenv("EMBEDDING_API_KEY", "")
-    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")   # API 模型名（用户自填）
-    EMBEDDING_LOCAL_MODEL: str = os.getenv("EMBEDDING_LOCAL_MODEL", "BAAI/bge-small-zh-v1.5")  # 本地部署模型名/路径
-    EMBEDDING_DIM: int = int(os.getenv("EMBEDDING_DIM", "1024"))       # bge-m3=1024
+    EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "Qwen/Qwen3-VL-Embedding-8B")   # 统一向量化模型
+    EMBEDDING_LOCAL_MODEL: str = os.getenv("EMBEDDING_LOCAL_MODEL", "")  # 已废弃本地通道，字段保留兼容旧调用
+    EMBEDDING_DIM: int = int(os.getenv("EMBEDDING_DIM", "1024"))       # Qwen3-VL-Embedding MRL 输出 1024
     RERANK_BACKEND: str = os.getenv("RERANK_BACKEND", "api")         # local | api | none
     RERANK_BASE_URL: str = os.getenv("RERANK_BASE_URL", "")            # 如 https://api.siliconflow.cn/v1
     RERANK_API_KEY: str = os.getenv("RERANK_API_KEY", "")
@@ -39,8 +37,8 @@ class Config:
     VL_API_KEY: str = os.getenv("VL_API_KEY", "")
     VL_MODEL: str = os.getenv("VL_MODEL", "Qwen/Qwen3-VL-Embedding-8B")
     VL_BASE_URL: str = os.getenv("VL_BASE_URL", "https://api.siliconflow.cn/v1")
-    # Qwen3-VL-Embedding 输出维度（文本/图片同一 4096 维空间，跨模态检索依赖此对齐）
-    VL_EMBEDDING_DIM: int = int(os.getenv("VL_EMBEDDING_DIM", "4096"))
+    # Qwen3-VL-Embedding 输出维度：文本/图片同一模型同一 1024 维空间（MRL 实测）
+    VL_EMBEDDING_DIM: int = int(os.getenv("VL_EMBEDDING_DIM", "1024"))
     # 图片描述（多模态对话）：走硅基流动视觉模型（复用硅基流动 key），模型可换
     IMAGE_DESC_MODEL: str = os.getenv("IMAGE_DESC_MODEL", "Qwen/Qwen3.5-4B")
     # 知识库服务档位：light=仅文字向量化+重排；full=再加图片向量化/跨模态检索

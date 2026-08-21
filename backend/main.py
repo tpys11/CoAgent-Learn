@@ -263,16 +263,7 @@ def _build_preloaded(pid: str, did: str, user_input: str) -> dict:
             _used += _t
         _recent.reverse()
         _hist["recent"] = _recent
-        # 历史向量召回：有已压缩历史时捞回原文细节（压缩不丢信息）
-        if _hist["compressed_upto"] > 0:
-            try:
-                from core.knowledge_service import _embed
-                _qv = _embed([(user_input or "")[:500]])[0]
-                _hits = _dbx.search_message_vectors(did, _qv, k=2)
-                if _hits:
-                    _hist["vector_hits"] = [str(h.get("content"))[:300] for h in _hits if h.get("distance", 1.0) < 0.6]
-            except Exception:
-                logger.exception("预查历史向量召回失败")
+        # 历史向量召回已移除（2026-08-21）：message_vectors 死表删除，压缩历史以 summary 文本承载
         out["history"] = _hist
     except Exception:
         logger.exception("预查历史失败")

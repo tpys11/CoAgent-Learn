@@ -130,17 +130,8 @@ def compress_dialogue(api_key: str, dialogue_id: str, db) -> bool:
             t = _est_tokens(str(msgs[keep_from_idx].get("content") or ""))
             total_after -= t
             keep_from_idx += 1
-        # 压缩区间消息向量化（历史召回）
-        try:
-            from core.knowledge_service import _embed
-            texts = [str(m.get("content") or "")[:500] for m in to_compress]
-            texts = [t for t in texts if t and t != "（系统未生成内容）"]
-            if texts:
-                embs = _embed(texts)
-                for t, e in zip(texts, embs):
-                    db.insert_message_vector(dialogue_id, "user", t, e)
-        except Exception:
-            logger.exception("压缩消息向量化失败 dialogue_id=%s", dialogue_id)
+        # 压缩区间消息向量化（历史召回）已移除（2026-08-21）：message_vectors 死表删除，
+        # 对话记忆以文本形式承载（summary + compressed_upto 游标），不再做向量召回。
         last_compressed_id = to_compress[-1].get("id", upto)
         db.execute("UPDATE dialogues SET summary=%s, compressed_upto=%s WHERE id=%s",
                    (new_summary.strip()[: summary_budget * 2], last_compressed_id, dialogue_id))
