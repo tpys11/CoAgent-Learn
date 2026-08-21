@@ -1,14 +1,16 @@
-/**
- * 文档大纲节点树状图 v2（右栏「文档大纲」窗口专用）——抄 DeepTutor MemoryGraph 架构：
+﻿/**
+ * 文档大纲节点树状图 v2.1（右栏「文档大纲」窗口专用）——抄 DeepTutor MemoryGraph 架构：
  * 布局引擎（纯函数算坐标）与 SVG 渲染/交互分离，全部手写、无图形库依赖。
  * 水平 tidy-tree：x = depth×LEVEL_W；叶子 y 按序排布，父节点 y = 子树叶子区间中点。
+ * 整书渲染时注入虚拟根节点（书名主干），章节向右扇出，树形层级一目了然。
  * 节点 fill = 进度亮度（retrievability → accent/bg 线性混色）；
- * 交互：滚轮以光标为中心缩放 / pointer 拖拽平移 / hover 高亮祖先链+子树 / fit 按钮；
- * 点击节点 → getKbNodeContent → 复用 KbReaderModal 居中弹窗看章节正文。
- * MemoryView 仍用 KbTree 的 KnowledgeTree 缩进列表，本组件不替代它。
+ * 交互：滚轮以光标为中心缩放 / pointer 拖拽平移 / hover 高亮祖先链+子树 / 画布右上角缩放控件；
+ * 有子节点的点右侧带 ChevronRight 展开收起（折叠子树不参与布局，状态驱动重排）；
+ * 卡片右上角 Maximize2 → 独立大弹窗（同生成资源弹窗模式）查看与操作整棵树。
+ * 点击叶子/章节节点 → getKbNodeContent → 复用 KbReaderModal 居中弹窗看正文。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { FolderTree, Maximize2, ZoomIn, ZoomOut } from 'lucide-react'
+import { FolderTree, Maximize2, ZoomIn, ZoomOut, Maximize, X } from 'lucide-react'
 import { api } from '../api'
 import KbReaderModal from './KbReaderModal'
 
@@ -18,6 +20,7 @@ interface LayoutNode {
   id: string
   name: string
   label: string
+  /** 空串 = 虚拟根节点（不参与正文定位） */
   path: string
   depth: number
   parent: string | null
@@ -57,13 +60,17 @@ export function layoutTree(tree: any[], collapsedPaths?: Set<string>): LayoutRes
     let first = -1
     let last = -1
     for (const item of items || []) {
-      const name = String(item?.name || '').trim()
-      if (!name) continue
+      const rawName = String(item?.name || '').trim()
+      if (!rawName) continue
       const id = 'n' + (++seq)
-      const path = prefix ? prefix + '/' + name : name
       const allKids = Array.isArray(item?.children) ? item.children.filter((k: any) => k && String(k.name || '').trim()) : []
-      const folded = collapsedPaths?.has(path)
+      // 虚拟根（__vroot）不进路径前缀，其子节点路径从零级开始；折叠键与节点 path 一致
+      const isVRoot = !!(item as any).__vroot
+      const nodePath = prefix ? prefix + '/' + rawName : rawName
+      const foldKey = isVRoot ? '' : nodePath
+      const folded = collapsedPaths?.has(foldKey)
       const kids = folded ? [] : allKids
+      const path = foldKey
       parentMap.set(id, parent)
       if (parent) {
         const arr = childrenMap.get(parent) || []
@@ -82,7 +89,10 @@ export function layoutTree(tree: any[], collapsedPaths?: Set<string>): LayoutRes
         if (first < 0) first = y
         last = y
       }
-      nodes.push({ id, name, label: sanitizeLabel(name), path, depth, parent, hasKids: allKids.length > 0, x: depth * LEVEL_W + 10, y })
+      nodes.push({
+        id, name: rawName, label: sanitizeLabel(rawName), path, depth,
+        parent, hasKids: allKids.length > 0 || isVRoot, x: depth * LEVEL_W + 10, y,
+      })
       if (parent) edges.push({ a: parent, b: id })
     }
     return [first, last]
@@ -141,9 +151,9 @@ function brightnessFill(name: string, progressItems: any[]): { fill: string; col
 interface ViewState { scale: number; tx: number; ty: number }
 const INITIAL_VIEW: ViewState = { scale: 1, tx: 0, ty: 0 }
 
-// ── 单份文档一棵图 ────────────────────────────────────────────────────
+// ── 树画布：SVG 渲染 + 全部交互（mini/modal 两处复用，实例各自独立视口与缩放控件） ──
 
-function DocGraph({ source, tree, progressItems, projectId, onOpen }: {
+function TreeCanvas({ source, tree, progressItems, projectId, onOpen }: {
   source: string; tree: any[]; progressItems?: any[]; projectId?: string | null
   onOpen: (title: string, content: string) => void
 }) {
@@ -152,11 +162,11 @@ function DocGraph({ source, tree, progressItems, projectId, onOpen }: {
   const [view, setView] = useState<ViewState>(INITIAL_VIEW)
   const [hoverId, setHoverId] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  // 展开/收起：collapsedPaths 里的路径按叶子布局（默认收起全部一级，点箭头逐层展开）
-  const [collapsedPaths, setCollapsedPaths] = useState<Set<string>>(() =>
-    new Set((tree || []).map(n => String(n?.name || '').trim()).filter(Boolean)))
+  // 展开/收起：折叠路径按叶子布局；默认全展开呈现完整树状（可点箭头收起聚焦）
+  const [collapsedPaths, setCollapsedPaths] = useState<Set<string>>(new Set())
 
   const layout = useMemo(() => layoutTree(tree, collapsedPaths), [tree, collapsedPaths])
+  const nodeById = useMemo(() => new Map(layout.nodes.map(n => [n.id, n])), [layout])
   const togglePath = useCallback((p: string) => {
     setCollapsedPaths(prev => {
       const nx = new Set(prev)
@@ -165,9 +175,8 @@ function DocGraph({ source, tree, progressItems, projectId, onOpen }: {
       return nx
     })
   }, [])
-  const nodeById = useMemo(() => new Map(layout.nodes.map(n => [n.id, n])), [layout])
 
-  // 高亮集合：active 节点 + 祖先链 + 全部子孙（BFS 两层语义的树版=整条血脉）
+  // 高亮集合：active 节点 + 祖先链 + 全部子孙
   const highlight = useMemo(() => {
     const active = selectedId ?? hoverId
     if (!active) return null
@@ -201,7 +210,7 @@ function DocGraph({ source, tree, progressItems, projectId, onOpen }: {
     })
   }, [layout])
 
-  useEffect(() => { fit() }, [fit]) // 布局变化（含首次）自动 fit
+  useEffect(() => { fit() }, [fit])
 
   const zoomBy = useCallback((factor: number) => {
     const el = containerRef.current
@@ -233,7 +242,7 @@ function DocGraph({ source, tree, progressItems, projectId, onOpen }: {
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     // 只在背景按下时开始拖拽——让节点点击冒泡不受影响
-    if ((e.target as HTMLElement).closest('[data-node]')) return
+    if ((e.target as HTMLElement).closest('[data-node],[data-toggle]')) return
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId)
     dragRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, origTx: view.tx, origTy: view.ty }
     setSelectedId(null)
@@ -250,7 +259,7 @@ function DocGraph({ source, tree, progressItems, projectId, onOpen }: {
   const nodeClick = useCallback((id: string) => {
     setSelectedId(id)
     const node = nodeById.get(id)
-    if (!node || !projectId) return
+    if (!node || !projectId || !node.path) return // 虚拟根/无路径不查正文
     api.getKbNodeContent(projectId, source, node.path)
       .then(d => onOpen(node.path, (d && d.content) || '该章节暂无正文'))
       .catch(() => onOpen(node.path, '该章节暂无正文'))
@@ -267,89 +276,132 @@ function DocGraph({ source, tree, progressItems, projectId, onOpen }: {
   }, [layout, progressItems])
 
   return (
-    <div className="border hairline rounded-xl bg-[var(--bg-input)] flex flex-col overflow-hidden" data-docgraph={source}>
-      <div className="flex items-center justify-between px-3 pt-2 flex-shrink-0">
-        <span className="flex items-center gap-1.5 text-[10px] font-semibold text-dim min-w-0">
-          <FolderTree size={11} className="flex-shrink-0" /> <span className="truncate">{source}</span>
-        </span>
-        <span className="inline-flex items-center rounded-lg border hairline flex-shrink-0">
-          <button onClick={() => zoomBy(1.25)} title="放大" className="w-6 h-6 grid place-items-center text-dim hover:text-[var(--text)]"><ZoomIn size={12} /></button>
-          <button onClick={() => zoomBy(1 / 1.25)} title="缩小" className="w-6 h-6 grid place-items-center text-dim hover:text-[var(--text)]"><ZoomOut size={12} /></button>
-          <button onClick={fit} title="适配窗口" className="w-6 h-6 grid place-items-center text-dim hover:text-[var(--text)]"><Maximize2 size={11} /></button>
-        </span>
-      </div>
-      <div
-        ref={containerRef}
-        onWheel={onWheel}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
-        className="relative w-full h-[240px] cursor-grab touch-none select-none active:cursor-grabbing"
-      >
-        <svg width="100%" height="100%" style={{ position: 'absolute', inset: 0 }}>
-          <g transform={`translate(${view.tx} ${view.ty}) scale(${view.scale})`}>
-            {/* 边：水平贝塞尔 */}
-            <g pointerEvents="none">
-              {layout.edges.map(e => {
-                const s = nodeIndex.get(e.a)
-                const t = nodeIndex.get(e.b)
-                if (!s || !t) return null
-                const dim = highlight !== null && !(highlight.has(e.a) && highlight.has(e.b))
-                const mx = (s.x + t.x) / 2
-                return (
-                  <path
-                    key={e.a + '>' + e.b}
-                    d={`M ${s.x} ${s.y} C ${mx} ${s.y}, ${mx} ${t.y}, ${t.x} ${t.y}`}
-                    stroke="var(--border-color, #c8c8c8)"
-                    strokeWidth={dim ? 0.8 : 1.4}
-                    strokeOpacity={dim ? 0.18 : 0.75}
-                    fill="none"
-                  />
-                )
-              })}
-            </g>
-            {/* 节点：圆点 + 展开收起箭头（有子节点时）+ 标签 */}
-            <g>
-              {layout.nodes.map(n => {
-                const f = fills.get(n.id)
-                const isActive = n.id === (selectedId ?? hoverId)
-                const dim = highlight !== null && !highlight.has(n.id)
-                const isCollapsed = collapsedPaths.has(n.path) && n.hasKids
-                return (
-                  <g key={n.id} data-node={n.id} opacity={dim ? 0.16 : 1}>
-                    <circle cx={n.x} cy={n.y} r={isActive ? 7 : 5} fill={f ? f.fill : 'var(--bg-panel)'}
-                      stroke={f ? 'transparent' : 'var(--text-dim, #9ca3af)'} strokeWidth={f ? 0 : 1.2}
-                      pointerEvents="all" style={{ cursor: 'pointer' }}
+    <div
+      ref={containerRef}
+      onWheel={onWheel}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+      className="absolute inset-0 cursor-grab touch-none select-none active:cursor-grabbing"
+    >
+      <svg width="100%" height="100%" style={{ position: 'absolute', inset: 0 }}>
+        <g transform={`translate(${view.tx} ${view.ty}) scale(${view.scale})`}>
+          {/* 边：水平贝塞尔 */}
+          <g pointerEvents="none">
+            {layout.edges.map(e => {
+              const s = nodeIndex.get(e.a)
+              const t = nodeIndex.get(e.b)
+              if (!s || !t) return null
+              const dim = highlight !== null && !(highlight.has(e.a) && highlight.has(e.b))
+              const mx = (s.x + t.x) / 2
+              return (
+                <path
+                  key={e.a + '>' + e.b}
+                  d={`M ${s.x} ${s.y} C ${mx} ${s.y}, ${mx} ${t.y}, ${t.x} ${t.y}`}
+                  stroke="var(--border-color, #c8c8c8)"
+                  strokeWidth={dim ? 0.8 : 1.4}
+                  strokeOpacity={dim ? 0.18 : 0.75}
+                  fill="none"
+                />
+              )
+            })}
+          </g>
+          {/* 节点：圆点 + 展开收起箭头（有子节点时）+ 标签 */}
+          <g>
+            {layout.nodes.map(n => {
+              const f = fills.get(n.id)
+              const isActive = n.id === (selectedId ?? hoverId)
+              const dim = highlight !== null && !highlight.has(n.id)
+              const isCollapsed = collapsedPaths.has(n.path) && n.hasKids
+              return (
+                <g key={n.id} data-node={n.id} opacity={dim ? 0.16 : 1}>
+                  <circle cx={n.x} cy={n.y} r={isActive ? 7 : 5} fill={f ? f.fill : 'var(--bg-panel)'}
+                    stroke={f ? 'transparent' : 'var(--text-dim, #9ca3af)'} strokeWidth={f ? 0 : 1.2}
+                    pointerEvents="all" style={{ cursor: 'pointer' }}
+                    onPointerEnter={() => setHoverId(n.id)}
+                    onPointerLeave={() => setHoverId(cur => (cur === n.id ? null : cur))}
+                    onClick={() => nodeClick(n.id)} />
+                  {n.hasKids && (
+                    <g data-toggle={n.path} style={{ cursor: 'pointer' }}
+                      onPointerDown={e => e.stopPropagation()}
                       onPointerEnter={() => setHoverId(n.id)}
                       onPointerLeave={() => setHoverId(cur => (cur === n.id ? null : cur))}
-                      onClick={() => nodeClick(n.id)} />
-                    {n.hasKids && (
-                      <g data-toggle={n.path} style={{ cursor: 'pointer' }}
-                        onPointerDown={e => e.stopPropagation()}
-                        onPointerEnter={() => setHoverId(n.id)}
-                        onPointerLeave={() => setHoverId(cur => (cur === n.id ? null : cur))}
-                        onClick={e => { e.stopPropagation(); togglePath(n.path) }}>
-                        <rect x={n.x + 5} y={n.y - 8} width={15} height={16} fill="transparent" />
-                        <path d={`M ${n.x + 9} ${n.y - 3.5} L ${n.x + 13} ${n.y} L ${n.x + 9} ${n.y + 3.5}`}
-                          stroke="var(--text-dim)" strokeWidth={1.6} fill="none"
-                          strokeLinecap="round" strokeLinejoin="round"
-                          transform={isCollapsed ? '' : `rotate(90 ${(n.x + 11).toFixed(1)} ${n.y})`} />
-                      </g>
-                    )}
-                    <text x={n.hasKids ? n.x + 22 : n.x + 10} y={n.y} fontSize={11.5}
-                      fontWeight={isActive ? 600 : 400}
-                      fill={isActive ? 'var(--accent)' : 'var(--text)'} dominantBaseline="central"
-                      style={{ userSelect: 'none', cursor: 'pointer' }}
-                      onClick={() => nodeClick(n.id)}>{n.label}</text>
-                  </g>
-                )
-              })}
-            </g>
+                      onClick={e => { e.stopPropagation(); togglePath(n.path) }}>
+                      <rect x={n.x + 5} y={n.y - 8} width={15} height={16} fill="transparent" />
+                      <path d={`M ${n.x + 9} ${n.y - 3.5} L ${n.x + 13} ${n.y} L ${n.x + 9} ${n.y + 3.5}`}
+                        stroke="var(--text-dim)" strokeWidth={1.6} fill="none"
+                        strokeLinecap="round" strokeLinejoin="round"
+                        transform={isCollapsed ? '' : `rotate(90 ${(n.x + 11).toFixed(1)} ${n.y})`} />
+                    </g>
+                  )}
+                  <text x={n.hasKids ? n.x + 22 : n.x + 10} y={n.y} fontSize={11.5}
+                    fontWeight={isActive ? 600 : 400}
+                    fill={isActive ? 'var(--accent)' : 'var(--text)'} dominantBaseline="central"
+                    style={{ userSelect: 'none', cursor: 'pointer' }}
+                    onClick={() => nodeClick(n.id)}>{n.label}</text>
+                </g>
+              )
+            })}
           </g>
-        </svg>
+        </g>
+      </svg>
+      {/* 缩放控件：画布右上角 */}
+      <div className="absolute right-2 top-2 flex flex-col gap-0.5 rounded-lg border hairline bg-[var(--bg-panel)]/95 p-0.5 shadow-sm">
+        <button onClick={() => zoomBy(1.25)} title="放大" className="w-6 h-6 grid place-items-center text-dim hover:text-[var(--text)]"><ZoomIn size={12} /></button>
+        <button onClick={() => zoomBy(1 / 1.25)} title="缩小" className="w-6 h-6 grid place-items-center text-dim hover:text-[var(--text)]"><ZoomOut size={12} /></button>
+        <button onClick={fit} title="适配窗口" className="w-6 h-6 grid place-items-center text-dim hover:text-[var(--text)]"><Maximize size={11} /></button>
       </div>
     </div>
+  )
+}
+
+// ── 单份文档一棵图：卡片头（标题+放大按钮） + 迷你画布 + 独立大弹窗 ──
+
+function DocGraph({ source, tree, progressItems, projectId, onOpen }: {
+  source: string; tree: any[]; progressItems?: any[]; projectId?: string | null
+  onOpen: (title: string, content: string) => void
+}) {
+  const [maximized, setMaximized] = useState(false)
+  // 虚拟根：书名作主干，章节向右扇出成树形（根路径为空串，不参与正文定位）
+  const vTree = useMemo(() => [{ name: source, children: tree || [], __vroot: true }], [tree, source])
+
+  return (
+    <>
+      <div className="border hairline rounded-xl bg-[var(--bg-input)] flex flex-col overflow-hidden" data-docgraph={source}>
+        <div className="flex items-center justify-between px-3 pt-2 pb-1 flex-shrink-0">
+          <span className="flex items-center gap-1.5 text-[10px] font-semibold text-dim min-w-0">
+            <FolderTree size={11} className="flex-shrink-0" /> <span className="truncate">{source}</span>
+          </span>
+          <button onClick={() => setMaximized(true)} title="放大查看"
+            className="w-6 h-6 grid place-items-center rounded-lg border hairline text-dim hover:text-[var(--text)] flex-shrink-0">
+            <Maximize2 size={11} />
+          </button>
+        </div>
+        <div className="relative w-full h-[240px]">
+          <TreeCanvas source={source} tree={vTree} progressItems={progressItems} projectId={projectId} onOpen={onOpen} />
+        </div>
+      </div>
+
+      {/* 放大弹窗：独立大画布，查看与操作整棵树 */}
+      {maximized && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-6" onClick={() => setMaximized(false)}>
+          <div className="bg-[var(--bg-panel)] rounded-2xl shadow-xl w-full max-w-6xl h-[88vh] flex flex-col overflow-hidden relative"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b hairline flex-shrink-0">
+              <h3 className="text-base font-bold flex items-center gap-2 min-w-0">
+                <FolderTree size={16} className="flex-shrink-0" />
+                <span className="truncate">文档大纲 · {source}</span>
+              </h3>
+              <button onClick={() => setMaximized(false)} title="关闭" className="p-1 hover:bg-[var(--bg-hover)] rounded flex-shrink-0"><X size={18} /></button>
+            </div>
+            <div className="flex-1 min-h-0 relative">
+              <TreeCanvas source={source} tree={vTree} progressItems={progressItems} projectId={projectId} onOpen={onOpen} />
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
