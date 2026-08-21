@@ -498,9 +498,9 @@ async def chat(req: ChatRequest):
                                     _rid = _hl.md5((_nm + pid).encode()).hexdigest()[:16]
                                     _has = _pg3.execute("SELECT id FROM resources WHERE id=%s", (_rid,))
                                     if _has:
-                                        _pg3.execute("UPDATE resources SET content=%s WHERE id=%s", (_fr[:6000], _rid))
+                                        _pg3.execute("UPDATE resources SET content=%s WHERE id=%s", (_fr, _rid))
                                     else:
-                                        _pg3.execute("INSERT INTO resources (id, name, content, project_id) VALUES (%s,%s,%s,%s)", (_rid, _nm, _fr[:6000], pid))
+                                        _pg3.execute("INSERT INTO resources (id, name, content, project_id) VALUES (%s,%s,%s,%s)", (_rid, _nm, _fr, pid))
                             except Exception as _e:
                                 logger.exception("自动保存生成物失败 did=%s", _did)
                     submit(_persist)
