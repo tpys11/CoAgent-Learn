@@ -84,6 +84,95 @@ function isJunkHeading(name: string): boolean {
   return false
 }
 
+// ---- 上传文档清洗管道（仅 API 拉取的 chunk 重组全文；生成类 props.content 直给不清洗） ----
+const NOISE_RES = [
+  /^第\s*[0-9一二三四五六七八九十百]+\s*页$/, // 独立页码行
+  /^[0-9]{1,4}$/, // 纯数字行（页眉页脚残留）
+  /^https?:\/\/\S+$/, // 纯 URL 行
+  /^[─━=_\-•·*~\s]{4,}$/, // 分隔装饰行
+]
+function isNoiseLine(s: string): boolean {
+  const t = s.trim()
+  if (!t) return false
+  if (/[\uFFFD]/.test(t)) return true // 乱码替换符
+  if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(t)) return true // 控制字符
+  return NOISE_RES.some(re => re.test(t))
+}
+function isProseLine(s: string): boolean {
+  const t = s.trim()
+  if (!t) return false
+  if (/^(#{1,6}\s|[-*+]\s|>\s|\||```)/.test(t)) return false // 标题/列表/引用/表格/围栏
+  if (/^\d+[.)]\s/.test(t)) return false // 有序列表
+  return true
+}
+/** 去噪行 + 散文每 ≤3 句强制分段（标题/列表/表格/围栏原样保留） */
+function cleanContent(text: string): string {
+  const out: string[] = []
+  let inFence = false
+  let proseBuf: string[] = []
+  const flushProse = () => {
+    if (!proseBuf.length) return
+    const joined = proseBuf.join('')
+    const sentences = joined.split(/(?<=[。！？!?；;])/).filter(s => s.length > 0)
+    for (let i = 0; i < sentences.length; i += 3) {
+      out.push(sentences.slice(i, i + 3).join(''))
+      out.push('')
+    }
+    proseBuf = []
+  }
+  for (const line of (text || '').split('\n')) {
+    if (line.trim().startsWith('```')) { flushProse(); inFence = !inFence; out.push(line); continue }
+    if (inFence) { out.push(line); continue }
+    if (isNoiseLine(line)) continue
+    // 巨型伪标题：切块器把整段内容粘进标题行（>150 字符的 # 行），剥掉无意义的 # 让其按散文分段
+    const tt = line.trim()
+    if (/^#{1,6}\s/.test(tt) && tt.length > 150) { flushProse(); proseBuf.push(tt.replace(/^#{1,6}\s/, '').trim()); continue }
+    if (isProseLine(line)) { proseBuf.push(line.trim()); continue }
+    flushProse()
+    out.push(line)
+  }
+  flushProse()
+  return out.join('\n').replace(/\n{3,}/g, '\n\n')
+}
+
+/** 语义分块：真实标题（≤150 字符的 h1/h2）开新块；无标题/超大块时按段落体积分块兜底
+ * （切块器会把换行折叠、整节内容粘成一行，纯标题切分会产生空壳块，故必须体积兜底） */
+const CHUNK_TARGET = 900
+function splitSections(text: string): Array<{ title: string; body: string }> {
+  const chunks: Array<{ title: string; body: string }> = []
+  let cur: { title: string; lines: string[]; len: number } | null = null
+  let inFence = false
+  const close = () => {
+    if (!cur) return
+    const body = cur.lines.join('\n').replace(/\n{3,}/g, '\n\n').trim()
+    let title = cur.title
+    cur = null
+    if (!body) return
+    if (!title) {
+      const first = body.split('\n').find(l => l.trim()) || ''
+      title = first.replace(/^[#>\-*+\d.)\s"']*/, '').trim().slice(0, 26) || '正文'
+    }
+    chunks.push({ title, body })
+  }
+  const open = (title: string) => { close(); cur = { title, lines: [], len: 0 } }
+  for (const line of (text || '').split('\n')) {
+    const t = line.trim()
+    if (t.startsWith('```')) {
+      inFence = !inFence
+      if (!cur) cur = { title: '', lines: [], len: 0 }
+      cur.lines.push(line); cur.len += line.length
+      continue
+    }
+    if (!inFence && /^#{1,2}\s+\S/.test(t) && t.length <= 150) { open(t.replace(/^#{1,2}\s+/, '').trim()); continue }
+    if (!cur) cur = { title: '', lines: [], len: 0 }
+    cur.lines.push(line); cur.len += line.length
+    if (!t && cur.len >= CHUNK_TARGET) close()
+    else if (cur.len >= CHUNK_TARGET * 3) close()
+  }
+  close()
+  return chunks
+}
+
 /** 标题归一化：去 markdown 链接/强调符号后比较（树名来自原文，DOM 标题来自渲染结果） */
 const normHeading = (s: string) => (s || '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_`~]/g, '').trim()
 
@@ -114,7 +203,7 @@ export default function KbReaderModal({ title, content, projectId, source, focus
       .then(d => {
         if (cancelled) return
         if (d && d.status === 'ok') {
-          setDoc(d.content || '')
+          setDoc(cleanContent(d.content || ''))
           // 权威标题树（上传时从原文提取）；无则保留空，回退前端按行提取
           setBackendTree(Array.isArray(d.tree) && d.tree.length > 0 ? d.tree : null)
         } else setError(d && d.status === 'not_found' ? '文档不存在' : '加载失败')
@@ -131,12 +220,20 @@ export default function KbReaderModal({ title, content, projectId, source, focus
   // （滚动位置被重置、已加的高亮类被销毁）。doc 不变则复用同一对象，React 跳过 innerHTML 更新。
   const mdHtml = useMemo(() => ({ __html: renderMd(doc || '') }), [doc])
 
+  // API 拉取路径：按 h1/h2 语义分节折叠面板（首个默认展开）；生成类直给路径保持单块渲染
+  const isDirect = content != null
+  const [expandedSections, setExpandedSections] = useState<Set<number>>(new Set([0]))
+  const sections = useMemo(() => (doc == null || isDirect) ? [] : splitSections(doc), [doc, isDirect])
+  const sectionHtmls = useMemo(() => sections.map(s => ({ __html: renderMd(s.body) })), [sections])
+  const toggleSection = (i: number) => setExpandedSections(prev => { const nx = new Set(prev); if (nx.has(i)) nx.delete(i); else nx.add(i); return nx })
+
   /** 树路径 → 右侧标题元素（双指针：树先序遍历 × DOM 标题文档序，名称归一化前缀匹配——
-   * 切块折叠使标题行可能带正文尾巴，DOM 标题文本是树名的超集） */
-  const locateHeading = (path: string) => {
+   * 切块折叠使标题行可能带正文尾巴，DOM 标题文本是树名的超集。
+   * 分节面板把 h1/h2 变成了面板头按钮（data-sec-title），一并纳入文档序匹配） */
+  const locateHeading = (path: string): boolean => {
     const body = bodyRef.current
-    if (!body) return
-    const headings = Array.from(body.querySelectorAll('h1,h2,h3,h4,h5,h6')) as HTMLElement[]
+    if (!body) return false
+    const headings = Array.from(body.querySelectorAll('h1,h2,h3,h4,h5,h6,[data-sec-title]')) as HTMLElement[]
     const map = new Map<string, HTMLElement>()
     let hi = 0
     const walk = (nodes: TreeNode[], prefix: string) => {
@@ -149,12 +246,24 @@ export default function KbReaderModal({ title, content, projectId, source, focus
     }
     walk(tree, '')
     const el = map.get(path)
-    if (el) {
-      el.scrollIntoView({ block: 'start', behavior: 'smooth' })
-      el.classList.remove('kr-heading-flash')
-      void el.offsetWidth // 重启动画
-      el.classList.add('kr-heading-flash')
+    if (!el) return false
+    el.scrollIntoView({ block: 'start', behavior: 'smooth' })
+    el.classList.remove('kr-heading-flash')
+    void el.offsetWidth // 重启动画
+    el.classList.add('kr-heading-flash')
+    return true
+  }
+
+  /** 全展开后定位：大文档分节渲染耗时可能超过单次延时，轮询重试直到标题挂载（上限 ~3s） */
+  const expandAllAndLocate = (path: string) => {
+    setExpandedSections(new Set(sections.map((_, i) => i)))
+    let attempts = 0
+    const tryLocate = () => {
+      attempts++
+      if (locateHeading(path)) return
+      if (attempts < 20) setTimeout(tryLocate, 150)
     }
+    setTimeout(tryLocate, 100)
   }
 
   // chunk 定位（引用跳转 5.2）：等待 doc 渲染就绪后再定位，避免 doc 未加载完时找不到标题元素。
@@ -173,7 +282,15 @@ export default function KbReaderModal({ title, content, projectId, source, focus
         for (const p of parts) { acc = acc ? acc + '/' + p : p; next.delete(acc) }
         return next
       })
-      setTimeout(() => locateHeading(d.path), 150)
+      // 折叠面板全展开后再定位（重渲染耗时不确定，轮询直到标题挂载）
+      setExpandedSections(new Set(sections.map((_, i) => i)))
+      let attempts = 0
+      const tryLocate = () => {
+        attempts++
+        if (locateHeading(d.path)) return
+        if (attempts < 20) setTimeout(tryLocate, 150)
+      }
+      setTimeout(tryLocate, 100)
     }).catch(() => {})
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -188,7 +305,7 @@ export default function KbReaderModal({ title, content, projectId, source, focus
       return (
         <div key={path}>
           <button
-            onClick={() => { setSelPath(path); locateHeading(path) }}
+            onClick={() => { setSelPath(path); expandAllAndLocate(path) }}
             className={`w-full flex items-center gap-1 text-left px-1.5 py-1 rounded-lg text-[11px] transition-colors ${active ? 'bg-[#1a1a1a] text-white' : 'hover:bg-[var(--bg-hover)]'}`}
             style={{ paddingLeft: 6 + depth * 12 }}
           >
@@ -230,9 +347,33 @@ export default function KbReaderModal({ title, content, projectId, source, focus
                 <p className="text-[10px] text-dim px-1 py-2">无标题结构</p>
               ) : renderTree(tree, 0, '')}
             </div>
-            {/* 右侧原文 */}
+            {/* 右侧原文：生成类直给单块渲染；上传文档按 h1/h2 折叠面板分块 */}
             <div className="flex-1 overflow-y-auto p-5" ref={bodyRef}>
-              <div className="md-answer-body text-[12px] leading-relaxed" dangerouslySetInnerHTML={mdHtml} />
+              {isDirect ? (
+                <div className="md-answer-body text-[12px] leading-relaxed" dangerouslySetInnerHTML={mdHtml} />
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {sections.map((s, i) => (
+                    <div key={i} className="border hairline rounded-xl overflow-hidden bg-[var(--bg-panel)]">
+                      {s.title && (
+                        <button
+                          data-sec-title={s.title}
+                          onClick={() => toggleSection(i)}
+                          className="w-full flex items-center gap-1.5 px-3 py-2 text-left text-[12px] font-semibold hover:bg-[var(--bg-hover)] transition-colors"
+                        >
+                          <span className={`flex-shrink-0 transition-transform ${expandedSections.has(i) ? 'rotate-90' : ''}`}>
+                            <ChevronRight size={12} />
+                          </span>
+                          <span className="truncate">{s.title}</span>
+                        </button>
+                      )}
+                      {expandedSections.has(i) && (
+                        <div className="px-3 pb-2 md-answer-body text-[12px] leading-relaxed" dangerouslySetInnerHTML={sectionHtmls[i]} />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         ) : null}
