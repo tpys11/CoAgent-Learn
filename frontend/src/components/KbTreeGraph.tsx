@@ -21,6 +21,7 @@ interface LayoutNode {
   path: string
   depth: number
   parent: string | null
+  hasKids: boolean
   x: number
   y: number
 }
@@ -42,8 +43,9 @@ function sanitizeLabel(name: string): string {
   return cleaned.length > 24 ? cleaned.slice(0, 24) + '…' : cleaned
 }
 
-/** 水平 tidy-tree：后序遍历，叶子按序占一行，内部节点 y=子树叶子区间中点 */
-export function layoutTree(tree: any[]): LayoutResult {
+/** 水平 tidy-tree：后序遍历，叶子按序占一行，内部节点 y=子树叶子区间中点。
+ * collapsedPaths 中的路径视为叶子（其子树不参与布局）——展开/收起驱动重排。 */
+export function layoutTree(tree: any[], collapsedPaths?: Set<string>): LayoutResult {
   const nodes: LayoutNode[] = []
   const edges: LayoutEdge[] = []
   const parentMap = new Map<string, string | null>()
@@ -59,7 +61,9 @@ export function layoutTree(tree: any[]): LayoutResult {
       if (!name) continue
       const id = 'n' + (++seq)
       const path = prefix ? prefix + '/' + name : name
-      const kids = Array.isArray(item?.children) ? item.children.filter((k: any) => k && String(k.name || '').trim()) : []
+      const allKids = Array.isArray(item?.children) ? item.children.filter((k: any) => k && String(k.name || '').trim()) : []
+      const folded = collapsedPaths?.has(path)
+      const kids = folded ? [] : allKids
       parentMap.set(id, parent)
       if (parent) {
         const arr = childrenMap.get(parent) || []
@@ -78,7 +82,7 @@ export function layoutTree(tree: any[]): LayoutResult {
         if (first < 0) first = y
         last = y
       }
-      nodes.push({ id, name, label: sanitizeLabel(name), path, depth, parent, x: depth * LEVEL_W + 10, y })
+      nodes.push({ id, name, label: sanitizeLabel(name), path, depth, parent, hasKids: allKids.length > 0, x: depth * LEVEL_W + 10, y })
       if (parent) edges.push({ a: parent, b: id })
     }
     return [first, last]
@@ -148,8 +152,19 @@ function DocGraph({ source, tree, progressItems, projectId, onOpen }: {
   const [view, setView] = useState<ViewState>(INITIAL_VIEW)
   const [hoverId, setHoverId] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // 展开/收起：collapsedPaths 里的路径按叶子布局（默认收起全部一级，点箭头逐层展开）
+  const [collapsedPaths, setCollapsedPaths] = useState<Set<string>>(() =>
+    new Set((tree || []).map(n => String(n?.name || '').trim()).filter(Boolean)))
 
-  const layout = useMemo(() => layoutTree(tree), [tree])
+  const layout = useMemo(() => layoutTree(tree, collapsedPaths), [tree, collapsedPaths])
+  const togglePath = useCallback((p: string) => {
+    setCollapsedPaths(prev => {
+      const nx = new Set(prev)
+      if (nx.has(p)) nx.delete(p)
+      else nx.add(p)
+      return nx
+    })
+  }, [])
   const nodeById = useMemo(() => new Map(layout.nodes.map(n => [n.id, n])), [layout])
 
   // 高亮集合：active 节点 + 祖先链 + 全部子孙（BFS 两层语义的树版=整条血脉）
@@ -252,7 +267,7 @@ function DocGraph({ source, tree, progressItems, projectId, onOpen }: {
   }, [layout, progressItems])
 
   return (
-    <div className="border hairline rounded-xl bg-[var(--bg-input)] flex flex-col overflow-hidden">
+    <div className="border hairline rounded-xl bg-[var(--bg-input)] flex flex-col overflow-hidden" data-docgraph={source}>
       <div className="flex items-center justify-between px-3 pt-2 flex-shrink-0">
         <span className="flex items-center gap-1.5 text-[10px] font-semibold text-dim min-w-0">
           <FolderTree size={11} className="flex-shrink-0" /> <span className="truncate">{source}</span>
@@ -294,24 +309,39 @@ function DocGraph({ source, tree, progressItems, projectId, onOpen }: {
                 )
               })}
             </g>
-            {/* 节点：圆点 + 右侧标签 */}
+            {/* 节点：圆点 + 展开收起箭头（有子节点时）+ 标签 */}
             <g>
               {layout.nodes.map(n => {
                 const f = fills.get(n.id)
                 const isActive = n.id === (selectedId ?? hoverId)
                 const dim = highlight !== null && !highlight.has(n.id)
+                const isCollapsed = collapsedPaths.has(n.path) && n.hasKids
                 return (
-                  <g key={n.id} data-node={n.id} style={{ cursor: 'pointer' }} opacity={dim ? 0.16 : 1}>
+                  <g key={n.id} data-node={n.id} opacity={dim ? 0.16 : 1}>
                     <circle cx={n.x} cy={n.y} r={isActive ? 7 : 5} fill={f ? f.fill : 'var(--bg-panel)'}
                       stroke={f ? 'transparent' : 'var(--text-dim, #9ca3af)'} strokeWidth={f ? 0 : 1.2}
-                      pointerEvents="all"
+                      pointerEvents="all" style={{ cursor: 'pointer' }}
                       onPointerEnter={() => setHoverId(n.id)}
                       onPointerLeave={() => setHoverId(cur => (cur === n.id ? null : cur))}
                       onClick={() => nodeClick(n.id)} />
-                    <text x={n.x + 10} y={n.y} fontSize={11.5}
+                    {n.hasKids && (
+                      <g data-toggle={n.path} style={{ cursor: 'pointer' }}
+                        onPointerDown={e => e.stopPropagation()}
+                        onPointerEnter={() => setHoverId(n.id)}
+                        onPointerLeave={() => setHoverId(cur => (cur === n.id ? null : cur))}
+                        onClick={e => { e.stopPropagation(); togglePath(n.path) }}>
+                        <rect x={n.x + 5} y={n.y - 8} width={15} height={16} fill="transparent" />
+                        <path d={`M ${n.x + 9} ${n.y - 3.5} L ${n.x + 13} ${n.y} L ${n.x + 9} ${n.y + 3.5}`}
+                          stroke="var(--text-dim)" strokeWidth={1.6} fill="none"
+                          strokeLinecap="round" strokeLinejoin="round"
+                          transform={isCollapsed ? '' : `rotate(90 ${(n.x + 11).toFixed(1)} ${n.y})`} />
+                      </g>
+                    )}
+                    <text x={n.hasKids ? n.x + 22 : n.x + 10} y={n.y} fontSize={11.5}
                       fontWeight={isActive ? 600 : 400}
                       fill={isActive ? 'var(--accent)' : 'var(--text)'} dominantBaseline="central"
-                      style={{ userSelect: 'none' }}>{n.label}</text>
+                      style={{ userSelect: 'none', cursor: 'pointer' }}
+                      onClick={() => nodeClick(n.id)}>{n.label}</text>
                   </g>
                 )
               })}
