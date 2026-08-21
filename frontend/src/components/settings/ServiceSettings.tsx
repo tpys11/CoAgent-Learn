@@ -30,7 +30,6 @@ const inputCls = 'w-full px-3 py-2 input-surface rounded-lg text-xs outline-none
 /** AI 服务配置：硅基流动 Key / 知识库服务 / 图片描述 / 独立审核模型（后端存 SQLite settings 表） */
 export default function ServiceSettings() {
   const [svc, setSvc] = useState({
-    kb_mode: 'full',
     embedding_key_set: false, embedding_key_hint: '',
     review_enabled: false,
     review_model: 'Qwen/Qwen2.5-72B-Instruct',
@@ -44,7 +43,6 @@ export default function ServiceSettings() {
   useEffect(() => {
     api.getSettings().then(d => {
       setSvc({
-        kb_mode: d.kb_mode === 'light' ? 'light' : 'full',
         embedding_key_set: !!d.embedding?.api_key_set,
         embedding_key_hint: d.embedding?.api_key_hint || '',
         review_enabled: !!d.review?.enabled,
@@ -55,20 +53,18 @@ export default function ServiceSettings() {
 
   const flash = (msg: string) => { setFeedback(msg); setTimeout(() => setFeedback(''), 2000) }
 
-  // 构造后端 SettingsSave 提交体（显式下划线字段，避免 spread 驼峰/多余字段不匹配）
+  // 构造后端 SettingsSave 提交体（统一向量化模型固定 Qwen3-VL-Embedding-8B@1024）
   const buildSvcBody = () => ({
-    vector_model: 'bge',
+    vector_model: 'qwen',
     embedding_backend: 'api',
     embedding_base_url: 'https://api.siliconflow.cn/v1',
     embedding_api_key: svcKeys.embedding_api_key,
-    embedding_model: 'BAAI/bge-m3',
-    embedding_local_model: 'BAAI/bge-small-zh-v1.5',
+    embedding_model: 'Qwen/Qwen3-VL-Embedding-8B',
     embedding_dim: 1024,
     rerank_backend: 'api',
     rerank_base_url: '',
     rerank_api_key: '',
     rerank_model: 'BAAI/bge-reranker-v2-m3',
-    rerank_local_model: 'BAAI/bge-reranker-base',
     image_backend: 'api',
     image_base_url: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
     image_api_key: '',
@@ -76,7 +72,7 @@ export default function ServiceSettings() {
     vl_api_key: '',
     zhipu_api_key: '',
     image_desc_model: 'Qwen/Qwen3.5-4B',
-    kb_mode: svc.kb_mode,
+    kb_mode: 'full',
     review_enabled: svc.review_enabled,
     review_model: svc.review_model,
   })
@@ -122,25 +118,12 @@ export default function ServiceSettings() {
           <p className="text-[10px] text-dim">该 key 可实现多种模型调用</p>
         </div>
 
-        {/* 知识库服务 */}
-        <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2.5">
+        {/* 知识库服务：统一向量化模型只读展示（不可选） */}
+        <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2">
           <p className="text-sm font-semibold">知识库服务</p>
-          <div className="flex flex-col gap-2">
-            {[
-              { mode: 'light', name: 'bge-reranker-v2-m3', desc: '知识库上传时实现文字向量化、重排，模型轻、高效' },
-              { mode: 'full', name: 'Qwen3-VL-Embedding-8B', desc: '知识库上传时实现文字向量化、重排、图片向量化、跨模态检索，模型中、全面' },
-            ].map(o => (
-              <button key={o.mode} onClick={() => { setSvc(s => ({ ...s, kb_mode: o.mode })); setSvcSaved(false) }}
-                className={`flex flex-col gap-0.5 text-left px-3 py-2.5 rounded-xl transition-colors ${svc.kb_mode === o.mode ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] hover:bg-[var(--bg-panel)]'}`}>
-                <span className="text-[12px] font-semibold flex items-center gap-1.5">
-                  <span className={`w-3 h-3 rounded-full border flex items-center justify-center flex-shrink-0 ${svc.kb_mode === o.mode ? 'border-white' : 'border-[var(--text)]/40'}`}>
-                    {svc.kb_mode === o.mode && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
-                  </span>
-                  {o.name}
-                </span>
-                <span className={`text-[10px] pl-[18px] ${svc.kb_mode === o.mode ? 'text-white/70' : 'text-dim'}`}>{o.desc}</span>
-              </button>
-            ))}
+          <div className="flex flex-col gap-0.5 px-3 py-2.5 rounded-xl bg-[var(--bg-hover)]">
+            <span className="text-[12px] font-semibold">Qwen/Qwen3-VL-Embedding-8B</span>
+            <span className="text-[10px] text-dim">统一向量化模型 · 1024 维 · 文字与图片同一向量空间（上传自动切块向量化 + 重排 + 跨模态检索）</span>
           </div>
         </div>
 
