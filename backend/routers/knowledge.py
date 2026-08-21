@@ -42,10 +42,11 @@ def _process_upload(project_id, text, source, session_id, api_key, skip_context:
         from core.postgres_client import pg_client as _pg0
         _rid = hashlib.md5((source + project_id).encode()).hexdigest()[:16]
         _has = _pg0.execute("SELECT id FROM resources WHERE id=%s", (_rid,))
+        # 存全量原文（此前 text[:6000] 截断导致大文档阅读器只能拿到残片）
         if _has:
-            _pg0.execute("UPDATE resources SET content=%s WHERE id=%s", (text[:6000], _rid))
+            _pg0.execute("UPDATE resources SET content=%s WHERE id=%s", (text, _rid))
         else:
-            _pg0.execute("INSERT INTO resources (id, name, content, project_id, type) VALUES (%s,%s,%s,%s,'text')", (_rid, source, text[:6000], project_id))
+            _pg0.execute("INSERT INTO resources (id, name, content, project_id, type) VALUES (%s,%s,%s,%s,'text')", (_rid, source, text, project_id))
     except Exception:
         logger.warning("保存原文到资源表失败", exc_info=True)
     try:
@@ -154,14 +155,19 @@ def _strip_overlap(prev: str, cur: str, max_overlap: int = 60) -> str:
 
 @router.get("/api/kb/{project_id}/doc")
 def kb_doc(project_id: str, source: str):
-    """文档全文：kb_vectors 按 chunk 序重组（剥除相邻块重叠尾巴）。
-    无向量块时回退 resources 表原文（可能为截断版）；两者皆无返回 not_found。"""
+    """文档全文。优先级：
+    1) resources 表原始全文（markdown 换行完好，origin="original"）——2026-08-21 起上传不再截断；
+    2) 无原文或原文疑似残片（旧数据 6000 字符截断版，长度远小于重组版）时回退 kb_vectors
+       按 chunk 序重组（origin="reassembled"），重组文本换行被切块器折叠，前端走清洗+折叠面板兜底；
+    3) 两者皆无返回 not_found。"""
+    import re as _re
     from core.db import get_kb_repo
     repo = get_kb_repo()
     rows = repo.get_kb_chunks(project_id, source)
-    # 权威标题树：上传时从原文提取存于 kb_tree 表（重组内容换行被切块器折叠，不能按行提取）
+    # 权威标题树：上传时从原文提取存于 kb_trees 表（重组内容换行被切块器折叠，不能按行提取）
     tree = repo.get_kb_tree(project_id, source) or []
-    if rows:
+
+    def _reassemble() -> str:
         parts = []
         prev = ""
         for r in rows:
@@ -176,12 +182,15 @@ def kb_doc(project_id: str, source: str):
         joined = "".join(parts)
         # 换行恢复：切块器按句子折叠了换行，在 markdown 标题标记前补 \n，
         # 让渲染器产出正确 h1-h6 层级（阅读器左树点击定位依赖 DOM 标题元素）
-        import re as _re
-        joined = _re.sub(r"(?<!\n)(#{1,6}\s)", r"\n\1", joined)
-        return {"status": "ok", "source": source, "content": joined, "tree": tree}
-    content = repo.get_resource_content(project_id, source)
-    if content:
-        return {"status": "ok", "source": source, "content": content, "tree": tree}
+        return _re.sub(r"(?<!\n)(#{1,6}\s)", r"\n\1", joined)
+
+    reassembled = _reassemble() if rows else ""
+    original = repo.get_resource_content(project_id, source) or ""
+    # 原文优先：非空且不是明显残片（旧截断版长度远小于重组版）→ 直接返回原文
+    if original and (not reassembled or len(original) * 10 >= len(reassembled)):
+        return {"status": "ok", "source": source, "content": original, "tree": tree, "origin": "original"}
+    if reassembled:
+        return {"status": "ok", "source": source, "content": reassembled, "tree": tree, "origin": "reassembled"}
     return {"status": "not_found", "source": source}
 
 

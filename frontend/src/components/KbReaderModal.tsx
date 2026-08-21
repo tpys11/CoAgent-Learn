@@ -203,7 +203,10 @@ export default function KbReaderModal({ title, content, projectId, source, focus
       .then(d => {
         if (cancelled) return
         if (d && d.status === 'ok') {
-          setDoc(cleanContent(d.content || ''))
+          // original=上传原文（markdown 换行完好，排版原样呈现）；reassembled=chunk 重组脏文本（清洗+折叠兜底）
+          const og = d.origin === 'original' ? 'original' : 'reassembled'
+          setOrigin(og)
+          setDoc(og === 'original' ? (d.content || '') : cleanContent(d.content || ''))
           // 权威标题树（上传时从原文提取）；无则保留空，回退前端按行提取
           setBackendTree(Array.isArray(d.tree) && d.tree.length > 0 ? d.tree : null)
         } else setError(d && d.status === 'not_found' ? '文档不存在' : '加载失败')
@@ -220,10 +223,12 @@ export default function KbReaderModal({ title, content, projectId, source, focus
   // （滚动位置被重置、已加的高亮类被销毁）。doc 不变则复用同一对象，React 跳过 innerHTML 更新。
   const mdHtml = useMemo(() => ({ __html: renderMd(doc || '') }), [doc])
 
-  // API 拉取路径：按 h1/h2 语义分节折叠面板（首个默认展开）；生成类直给路径保持单块渲染
+  // API 拉取路径：reassembled（重组脏文本）按 h1/h2 分节折叠面板（首个默认展开）；
+  // original（上传原文）与生成类直给路径保持单块渲染，作者排版原样呈现
   const isDirect = content != null
+  const [origin, setOrigin] = useState<'original' | 'reassembled'>('reassembled')
   const [expandedSections, setExpandedSections] = useState<Set<number>>(new Set([0]))
-  const sections = useMemo(() => (doc == null || isDirect) ? [] : splitSections(doc), [doc, isDirect])
+  const sections = useMemo(() => (doc == null || isDirect || origin !== 'reassembled') ? [] : splitSections(doc), [doc, isDirect, origin])
   const sectionHtmls = useMemo(() => sections.map(s => ({ __html: renderMd(s.body) })), [sections])
   const toggleSection = (i: number) => setExpandedSections(prev => { const nx = new Set(prev); if (nx.has(i)) nx.delete(i); else nx.add(i); return nx })
 
@@ -347,9 +352,9 @@ export default function KbReaderModal({ title, content, projectId, source, focus
                 <p className="text-[10px] text-dim px-1 py-2">无标题结构</p>
               ) : renderTree(tree, 0, '')}
             </div>
-            {/* 右侧原文：生成类直给单块渲染；上传文档按 h1/h2 折叠面板分块 */}
+            {/* 右侧原文：original/生成类直给单块渲染；reassembled（重组脏文本）按 h1/h2 折叠面板分块 */}
             <div className="flex-1 overflow-y-auto p-5" ref={bodyRef}>
-              {isDirect ? (
+              {isDirect || origin === 'original' ? (
                 <div className="md-answer-body text-[12px] leading-relaxed" dangerouslySetInnerHTML={mdHtml} />
               ) : (
                 <div className="flex flex-col gap-2">
