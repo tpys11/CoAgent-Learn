@@ -1,6 +1,6 @@
 ﻿import { ListTree, Send, MessagesSquare, X, PanelRightClose, SlidersHorizontal, FileText } from 'lucide-react'
 import { useEffect, useRef, useState, Fragment } from 'react'
-import { KnowledgeTree } from './KbTree'
+import { KnowledgeTreeGraph } from './KbTreeGraph'
 import SpecialOutputPane from './SpecialOutputPane'
 import MarkdownIt from 'markdown-it'
 import { streamChatResponse } from '../sse'
@@ -231,7 +231,7 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
           <Pane title={w.title} icon={w.icon} height={heights[w.key]} flex={i === shown.length - 1} onClose={() => toggleWin(w.key)}>
             {w.key === 'graph' && (
               <div className="w-full h-full overflow-y-auto px-2 py-1.5">
-                <KnowledgeTree treeDocs={treeDocs} progressItems={progressItems} projectId={projectId} />
+                <KnowledgeTreeGraph treeDocs={treeDocs} progressItems={progressItems} projectId={projectId} />
               </div>
             )}
             {w.key === 'chat' && (
