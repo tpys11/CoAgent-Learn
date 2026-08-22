@@ -21,6 +21,22 @@ _IMG_MIME = {
 }
 
 
+def _describe_image_main(image_b64: str, prompt: str, mime: str, api_key: str = "") -> str:
+    """用视觉主模型生成图片描述（2026-08-22 移除独立视觉服务，图片理解统一走主模型）。
+    非流式一次调用（thinking=False 秒级返回）；失败抛异常由调用方转为错误响应。"""
+    from core.config import config as _cfg
+    from core.base_llm import DeepSeekLLM
+    key = api_key or getattr(_cfg, "DEEPSEEK_API_KEY", "")
+    if not key:
+        raise RuntimeError("未配置主模型 API Key（请求未携带且 .env 无 DEEPSEEK_API_KEY）")
+    llm = DeepSeekLLM(api_key=key, model="deepseek-v4-flash-vision-exp", thinking=False)
+    messages = [{"role": "user", "content": [
+        {"type": "text", "text": prompt},
+        {"type": "image_url", "image_url": {"url": f"data:{mime};base64," + image_b64}},
+    ]}]
+    return llm.chat(messages, temperature=0.2)
+
+
 def _process_upload(project_id, text, source, session_id, api_key, skip_context: bool = False, skip_graph: bool = False, content_hash: str = "") -> int:
     """处理上传：存原文到资源表 + 切块向量化入库，返回入库块数。
     后台线程调用时忽略返回值；同步模式（wait=1）用它拿到块数反馈给前端。
@@ -319,11 +335,17 @@ async def knowledge_upload_file(
     _ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
     if _ext in _IMG_EXTS:
         import base64 as _b64
-        from core.vision_service import describe_image
         _b64str = _b64.b64encode(data).decode()
-        desc = describe_image(_b64str, "请详细描述这张图片的内容，包括文字、图表、概念，用于知识库检索。")
-        if desc.startswith("[视觉服务]"):
-            return {"status": "error", "msg": desc}
+        try:
+            desc = _describe_image_main(
+                _b64str,
+                "请详细描述这张图片的内容，包括文字、图表、概念，用于知识库检索。",
+                _IMG_MIME.get(_ext, "image/png"),
+                api_key,
+            )
+        except Exception as e:
+            logger.warning("图片描述失败 fname=%s", fname, exc_info=True)
+            return {"status": "error", "msg": "图片描述失败：" + str(e)[:150]}
         text = "【图片内容】" + desc
     else:
         text = parse_file(fname, data)
