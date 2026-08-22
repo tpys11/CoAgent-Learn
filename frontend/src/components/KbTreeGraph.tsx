@@ -210,7 +210,16 @@ function TreeCanvas({ source, tree, progressItems, projectId, onOpen }: {
     })
   }, [layout])
 
-  useEffect(() => { fit() }, [fit])
+  // 仅首次成功布局时自动 fit；此后展开/收起不重置用户视角（视角完全由用户掌控）
+  const didFitRef = useRef(false)
+  useEffect(() => {
+    if (didFitRef.current) return
+    const el = containerRef.current
+    if (!el) return
+    if (el.getBoundingClientRect().width === 0) return // 容器尚未完成布局，等下一轮
+    fit()
+    didFitRef.current = true
+  }, [layout, fit])
 
   const zoomBy = useCallback((factor: number) => {
     const el = containerRef.current
