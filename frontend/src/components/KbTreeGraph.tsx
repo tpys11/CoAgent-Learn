@@ -162,8 +162,28 @@ function TreeCanvas({ source, tree, progressItems, projectId, onOpen }: {
   const [view, setView] = useState<ViewState>(INITIAL_VIEW)
   const [hoverId, setHoverId] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  // 展开/收起：折叠路径按叶子布局；默认全展开呈现完整树状（可点箭头收起聚焦）
+  // 展开/收起：折叠路径按叶子布局；初始只展示根节点与第一层（挂载后初始化折叠集）
   const [collapsedPaths, setCollapsedPaths] = useState<Set<string>>(new Set())
+  const didInitCollapseRef = useRef(false)
+  useEffect(() => {
+    if (didInitCollapseRef.current || !tree.length) return
+    didInitCollapseRef.current = true
+    const s = new Set<string>()
+    const walk = (nodes: any[], prefix: string) => {
+      for (const item of nodes || []) {
+        const rawName = String(item?.name || '').trim()
+        if (!rawName) continue
+        const isVRoot = !!(item.__vroot)
+        const kids = Array.isArray(item?.children) ? item.children.filter((k: any) => k && String(k.name || '').trim()) : []
+        // 与 layoutTree 的 foldKey 语义严格一致：虚拟根路径为空串，且根自身不折叠
+        const path = isVRoot ? '' : (prefix ? prefix + '/' + rawName : rawName)
+        if (kids.length && !isVRoot) s.add(path)
+        walk(kids, path)
+      }
+    }
+    walk(tree || [], '')
+    setCollapsedPaths(s)
+  }, [tree])
 
   const layout = useMemo(() => layoutTree(tree, collapsedPaths), [tree, collapsedPaths])
   const nodeById = useMemo(() => new Map(layout.nodes.map(n => [n.id, n])), [layout])
@@ -448,3 +468,5 @@ export function KnowledgeTreeGraph({ treeDocs, progressItems, projectId }: {
     </div>
   )
 }
+
+
