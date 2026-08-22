@@ -8,7 +8,7 @@ load_dotenv()
 class Config:
     DEEPSEEK_API_KEY: str = os.getenv("DEEPSEEK_API_KEY", "")
     DEEPSEEK_BASE_URL: str = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-    # 智谱 GLM-4V（图片描述入库，多模态）
+    # 智谱（备用厂家通道 key；主对话模型 key 由前端请求携带）
     ZHIPU_API_KEY: str = os.getenv("ZHIPU_API_KEY", "")
     LLM_MAX_CONCURRENCY: int = int(os.getenv("LLM_MAX_CONCURRENCY", "3"))
     LLM_REQUEST_TIMEOUT: int = int(os.getenv("LLM_REQUEST_TIMEOUT", "120"))
@@ -28,19 +28,13 @@ class Config:
     RERANK_API_KEY: str = os.getenv("RERANK_API_KEY", "")
     RERANK_MODEL: str = os.getenv("RERANK_MODEL", "BAAI/bge-reranker-v2-m3")  # API 重排模型（用户自填）
     RERANK_LOCAL_MODEL: str = os.getenv("RERANK_LOCAL_MODEL", "BAAI/bge-reranker-base")  # 本地重排模型名/路径
-    # 图片处理（多模态）：none | api（通用 OpenAI 兼容视觉接口，用户自填地址/key/模型）
-    IMAGE_BACKEND: str = os.getenv("IMAGE_BACKEND", "none")
-    IMAGE_BASE_URL: str = os.getenv("IMAGE_BASE_URL", "https://open.bigmodel.cn/api/paas/v4/chat/completions")
-    IMAGE_API_KEY: str = os.getenv("IMAGE_API_KEY", "")
-    IMAGE_MODEL: str = os.getenv("IMAGE_MODEL", "glm-4v-flash")
+    # 图片描述服务已移除（2026-08-22）：主模型 deepseek-v4-flash-vision-exp 自带识图，图片理解统一走主模型
     # Qwen3-VL-Embedding（视觉/跨模态向量，BGE 卡同级）：文本向量化优先 BGE，此 key 供视觉通道
     VL_API_KEY: str = os.getenv("VL_API_KEY", "")
     VL_MODEL: str = os.getenv("VL_MODEL", "Qwen/Qwen3-VL-Embedding-8B")
     VL_BASE_URL: str = os.getenv("VL_BASE_URL", "https://api.siliconflow.cn/v1")
     # Qwen3-VL-Embedding 输出维度：文本/图片同一模型同一 1024 维空间（MRL 实测）
     VL_EMBEDDING_DIM: int = int(os.getenv("VL_EMBEDDING_DIM", "1024"))
-    # 图片描述（多模态对话）：走硅基流动视觉模型（复用硅基流动 key），模型可换
-    IMAGE_DESC_MODEL: str = os.getenv("IMAGE_DESC_MODEL", "Qwen/Qwen3.5-4B")
     # 知识库服务档位：light=仅文字向量化+重排；full=再加图片向量化/跨模态检索
     KB_MODE: str = os.getenv("KB_MODE", "full")
     # 独立审核模型（走硅基流动）：开关 + 模型；关闭时审核回退主模型快模型（deepseek v4 flash）

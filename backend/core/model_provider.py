@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """统一模型 provider 配置（先只做配置层抽象，后续逐步把调用方切过来）。
 
-主模型：DeepSeek / 智谱（用户在对话右下角选，key 在设置→基础填）。
-辅助模型：硅基流动（embedding / rerank / VL / review / 图片描述），在设置→AI 服务配。
+主模型：DeepSeek / 智谱（用户在对话右下角选，key 在设置→基础填）；DeepSeek 默认视觉版 deepseek-v4-flash-vision-exp。
+辅助模型：硅基流动（embedding / rerank / VL / review），在设置→AI 服务配。图片理解由视觉主模型直接处理。
 """
 from core.config import config
 
@@ -76,13 +76,6 @@ class ModelProvider:
             "base_url": config.VL_BASE_URL,
             "model": config.REVIEW_MODEL,
             "key": config.EMBEDDING_API_KEY or self.api_key,
-        }
-
-    def image_desc(self):
-        return {
-            "base_url": config.VL_BASE_URL,
-            "model": config.IMAGE_DESC_MODEL,
-            "key": config.VL_API_KEY or config.EMBEDDING_API_KEY,
         }
 
 

@@ -27,7 +27,8 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 
 const inputCls = 'w-full px-3 py-2 input-surface rounded-lg text-xs outline-none focus:border-[var(--accent)]'
 
-/** AI 服务配置：硅基流动 Key / 知识库服务 / 图片描述 / 独立审核模型（后端存 SQLite settings 表） */
+/** AI 服务配置：硅基流动 Key / 知识库服务 / 独立审核模型（后端存 SQLite settings 表）
+ *  图片理解由视觉主模型直接处理，无独立描述服务（2026-08-22 移除）。 */
 export default function ServiceSettings() {
   const [svc, setSvc] = useState({
     embedding_key_set: false, embedding_key_hint: '',
@@ -65,13 +66,8 @@ export default function ServiceSettings() {
     rerank_base_url: '',
     rerank_api_key: '',
     rerank_model: 'BAAI/bge-reranker-v2-m3',
-    image_backend: 'api',
-    image_base_url: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
-    image_api_key: '',
-    image_model: 'glm-4v-flash',
     vl_api_key: '',
     zhipu_api_key: '',
-    image_desc_model: 'Qwen/Qwen3.5-4B',
     kb_mode: 'full',
     review_enabled: svc.review_enabled,
     review_model: svc.review_model,
@@ -124,15 +120,6 @@ export default function ServiceSettings() {
           <div className="flex flex-col gap-0.5 px-3 py-2.5 rounded-xl bg-[var(--bg-hover)]">
             <span className="text-[12px] font-semibold">Qwen/Qwen3-VL-Embedding-8B</span>
             <span className="text-[10px] text-dim">统一向量化模型 · 1024 维 · 文字与图片同一向量空间（上传自动切块向量化 + 重排 + 跨模态检索）</span>
-          </div>
-        </div>
-
-        {/* 图片描述 */}
-        <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2">
-          <p className="text-sm font-semibold">图片描述</p>
-          <div className="flex flex-col gap-0.5 px-3 py-2.5 rounded-xl bg-[var(--bg-hover)]">
-            <span className="text-[12px] font-semibold">Qwen3.5-4B</span>
-            <span className="text-[10px] text-dim">主模型缺乏多模态能力时自动调用</span>
           </div>
         </div>
 

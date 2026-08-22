@@ -401,15 +401,6 @@ async def knowledge_delete(project_id: str = "default", source: str = ""):
     return {"status": "ok", "deleted": n, "graph_relations": 0}
 
 
-@router.post("/api/vision")
-async def vision_understand(req: dict):
-    from core.vision_service import describe_image
-    image = req.get("image", "")
-    prompt = req.get("prompt", "请描述这张图片的内容")
-    desc = describe_image(image, prompt)
-    return {"status": "ok", "description": desc}
-
-
 @router.post("/api/file-to-text")
 async def file_to_text(file: UploadFile = File(...)):
     from core.file_parser import parse_file

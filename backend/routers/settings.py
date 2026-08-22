@@ -51,13 +51,8 @@ class SettingsSave(BaseModel):
     rerank_api_key: str = ""
     rerank_model: str = "BAAI/bge-reranker-v2-m3"
     rerank_local_model: str = "BAAI/bge-reranker-base"
-    image_backend: str = "none"   # none | api（通用 OpenAI 兼容视觉接口）
-    image_base_url: str = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
-    image_api_key: str = ""
-    image_model: str = "glm-4v-flash"
     vl_api_key: str = ""          # Qwen3-VL-Embedding 卡（视觉/跨模态，文本优先 BGE）
     zhipu_api_key: str = ""
-    image_desc_model: str = "Qwen/Qwen3.5-4B"   # 图片描述模型
     kb_mode: str = "full"         # 知识库服务：light=文字向量化+重排；full=再加图片向量/跨模态
     review_enabled: bool = False  # 独立审核模型开关（默认关，审核走 deepseek v4 flash）
     review_model: str = "Qwen/Qwen2.5-72B-Instruct"
@@ -70,7 +65,6 @@ async def get_settings():
     from core.db import get_settings_repo
     _embed_key = getattr(_cfg, "EMBEDDING_API_KEY", "")
     _vl_key = getattr(_cfg, "VL_API_KEY", "")
-    _image_eff = getattr(_cfg, "IMAGE_API_KEY", "") or _vl_key or _embed_key or getattr(_cfg, "ZHIPU_API_KEY", "")
     return {
         "vector_model": get_settings_repo().get_setting("VECTOR_MODEL") or "bge",
         "kb_mode": getattr(_cfg, "KB_MODE", "full"),
@@ -90,13 +84,6 @@ async def get_settings():
             "local_model": getattr(_cfg, "RERANK_LOCAL_MODEL", "BAAI/bge-reranker-base"),
             "api_key_set": bool(getattr(_cfg, "RERANK_API_KEY", "") or _embed_key),
             "api_key_hint": _mask_key(getattr(_cfg, "RERANK_API_KEY", "") or _embed_key),
-        },
-        "image": {
-            "backend": getattr(_cfg, "IMAGE_BACKEND", "none"),
-            "base_url": getattr(_cfg, "IMAGE_BASE_URL", ""),
-            "model": getattr(_cfg, "IMAGE_DESC_MODEL", "Qwen/Qwen3.5-4B"),
-            "api_key_set": bool(_image_eff),
-            "api_key_hint": _mask_key(_image_eff),
         },
         "vl": {
             "model": getattr(_cfg, "VL_MODEL", "Qwen/Qwen3-VL-Embedding-8B"),
@@ -134,13 +121,6 @@ async def save_settings(req: SettingsSave):
         _s.set_setting("RERANK_API_KEY", req.rerank_api_key)
     _s.set_setting("RERANK_MODEL", req.rerank_model)
     _s.set_setting("RERANK_LOCAL_MODEL", req.rerank_local_model)
-    _s.set_setting("IMAGE_BACKEND", req.image_backend)
-    _s.set_setting("IMAGE_BASE_URL", req.image_base_url)
-    if req.image_api_key:
-        _s.set_setting("IMAGE_API_KEY", req.image_api_key)
-    _s.set_setting("IMAGE_MODEL", req.image_model)
-    if req.image_desc_model:
-        _s.set_setting("IMAGE_DESC_MODEL", req.image_desc_model)
     if req.vl_api_key:
         _s.set_setting("VL_API_KEY", req.vl_api_key)
     if req.zhipu_api_key:
