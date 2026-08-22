@@ -259,11 +259,13 @@ function TreeCanvas({ source, tree, progressItems, projectId, onOpen }: {
   const nodeClick = useCallback((id: string) => {
     setSelectedId(id)
     const node = nodeById.get(id)
-    if (!node || !projectId || !node.path) return // 虚拟根/无路径不查正文
+    if (!node) return
+    if (node.hasKids) { togglePath(node.path); return } // 分支节点（含虚拟根）：点击=展开/收起该分支
+    if (!projectId || !node.path) return // 叶子无路径不查正文
     api.getKbNodeContent(projectId, source, node.path)
       .then(d => onOpen(node.path, (d && d.content) || '该章节暂无正文'))
       .catch(() => onOpen(node.path, '该章节暂无正文'))
-  }, [nodeById, projectId, source, onOpen])
+  }, [nodeById, projectId, source, onOpen, togglePath])
 
   const nodeIndex = useMemo(() => new Map(layout.nodes.map(n => [n.id, n])), [layout])
   const fills = useMemo(() => {
