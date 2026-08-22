@@ -190,7 +190,8 @@ export default function KbReaderModal({ title, content, projectId, source, focus
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [selPath, setSelPath] = useState<string | null>(null)
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  // 左树折叠语义（反向）：expandedPaths=显式展开的路径；有子节点的点默认收起，点章名逐层展开
+  const [expandedTree, setExpandedTree] = useState<Set<string>>(new Set())
   const bodyRef = useRef<HTMLDivElement>(null)
 
   // 拉取全文（content 已提供时直接使用，不再请求）；带竞态保护：快速切换 source 时丢弃旧响应
@@ -259,9 +260,8 @@ export default function KbReaderModal({ title, content, projectId, source, focus
     return true
   }
 
-  /** 全展开后定位：大文档分节渲染耗时可能超过单次延时，轮询重试直到标题挂载（上限 ~3s） */
-  const expandAllAndLocate = (path: string) => {
-    setExpandedSections(new Set(sections.map((_, i) => i)))
+  /** 定位（带轮询重试）：内容标题恒在 DOM（单流渲染），轮询只为等首次渲染完成 */
+  const locateWithRetry = (path: string) => {
     let attempts = 0
     const tryLocate = () => {
       attempts++
@@ -280,15 +280,7 @@ export default function KbReaderModal({ title, content, projectId, source, focus
     api.getKbChunkNode(projectId, source, focusChunk).then(d => {
       if (cancelled || !d || d.status !== 'ok' || !d.path) return
       setSelPath(d.path)
-      setCollapsed(prev => {
-        const next = new Set(prev)
-        const parts = d.path.split('/')
-        let acc = ''
-        for (const p of parts) { acc = acc ? acc + '/' + p : p; next.delete(acc) }
-        return next
-      })
-      // 折叠面板全展开后再定位（重渲染耗时不确定，轮询直到标题挂载）
-      setExpandedSections(new Set(sections.map((_, i) => i)))
+      // 定位（内容标题恒在 DOM，轮询只为等首次渲染完成）
       let attempts = 0
       const tryLocate = () => {
         attempts++
@@ -305,17 +297,22 @@ export default function KbReaderModal({ title, content, projectId, source, focus
     nodes.map(n => {
       const path = prefix ? prefix + '/' + n.name : n.name
       const hasKids = n.children.length > 0
-      const isCollapsed = collapsed.has(path)
+      const isCollapsed = hasKids && !expandedTree.has(path)
       const active = selPath === path
       return (
         <div key={path}>
           <button
-            onClick={() => { setSelPath(path); expandAllAndLocate(path) }}
+            onClick={() => {
+              setSelPath(path)
+              // 分支节点：点章名=展开/收起子标题，同时定位正文
+              if (hasKids) setExpandedTree(prev => { const nx = new Set(prev); if (nx.has(path)) nx.delete(path); else nx.add(path); return nx })
+              locateWithRetry(path)
+            }}
             className={`w-full flex items-center gap-1 text-left px-1.5 py-1 rounded-lg text-[11px] transition-colors ${active ? 'bg-[#1a1a1a] text-white' : 'hover:bg-[var(--bg-hover)]'}`}
             style={{ paddingLeft: 6 + depth * 12 }}
           >
             <span
-              onClick={(e) => { e.stopPropagation(); setCollapsed(prev => { const nx = new Set(prev); if (nx.has(path)) nx.delete(path); else nx.add(path); return nx }) }}
+              onClick={(e) => { e.stopPropagation(); setExpandedTree(prev => { const nx = new Set(prev); if (nx.has(path)) nx.delete(path); else nx.add(path); return nx }) }}
               className={`flex-shrink-0 transition-transform ${isCollapsed ? '' : 'rotate-90'} ${hasKids ? 'cursor-pointer' : 'opacity-0'}`}
             >
               <ChevronRight size={12} />
