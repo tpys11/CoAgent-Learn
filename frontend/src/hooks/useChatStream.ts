@@ -170,12 +170,13 @@ export function useChatStream(args: UseChatStreamArgs) {
       const provKeys = lsGetJSON<Record<string, string>>(LS.providerKeys, {})
       const provider = lsGet(LS.provider, 'deepseek')
       const model = (() => {
-        const m = lsGet(LS.model, 'deepseek-v4-flash')
+        const m = lsGet(LS.model, 'deepseek-v4-flash-vision-exp')
         const alias: Record<string, string> = {
           'deepseek-chat': 'deepseek-v4-pro',
           'deepseek-reasoner': 'deepseek-v4-pro',
           'deepseek-pro': 'deepseek-v4-pro',
-          'deepseek-flash': 'deepseek-v4-flash',
+          'deepseek-flash': 'deepseek-v4-flash-vision-exp',
+          'deepseek-v4-flash': 'deepseek-v4-flash-vision-exp',   // 老用户存量 localStorage 迁移到视觉版
         }
         return alias[m] || m
       })()

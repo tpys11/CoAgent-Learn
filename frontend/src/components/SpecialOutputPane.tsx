@@ -95,7 +95,7 @@ export default function SpecialOutputPane({ projectId }: { projectId?: string | 
     const apiKey = keys[prov] || lsGet(LS.apiKey, '')
     if (!apiKey) { alert('请先在设置中填写主模型 API Key'); return }
     const baseUrl = prov === 'zhipu' ? 'https://open.bigmodel.cn/api/paas/v4' : 'https://api.deepseek.com/v1'
-    const model = prov === 'zhipu' ? 'glm-4-flash' : 'deepseek-v4-flash'
+    const model = prov === 'zhipu' ? 'glm-4-flash' : 'deepseek-v4-flash-vision-exp'
     setLoading(true)
     try {
       const r = await api.generateResource({ key: form, content: source, api_key: apiKey, base_url: baseUrl, model })

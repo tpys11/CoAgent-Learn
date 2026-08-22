@@ -12,7 +12,7 @@ MAIN_PROVIDERS = {
     "deepseek": {
         "name": "DeepSeek",
         "base_url": "https://api.deepseek.com/v1",
-        "models": ["deepseek-v4-flash", "deepseek-v4-pro"],
+        "models": ["deepseek-v4-flash-vision-exp", "deepseek-v4-flash", "deepseek-v4-pro"],
         "fast_model": "deepseek-v4-flash",
     },
     "zhipu": {

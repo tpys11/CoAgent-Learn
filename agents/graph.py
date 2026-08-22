@@ -440,15 +440,11 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         cfg = _agent_cfg("main")
         NL = chr(10)
         context = f"用户问题: {state['user_input']}" + NL
-        # AI 回答时调用视觉分析（用户上传了图片）
-        if state.get("image"):
-            try:
-                from core.vision_service import describe_image
-                img_desc = describe_image(state["image"], "请详细描述这张图片的内容，包括其中的文字、物体、图表等")
-                context += "【用户上传的图片内容（已调用视觉分析）】" + NL + img_desc + NL
-                new_mc.append({"agent": "视觉分析", "content": "已调用 glm-4v-flash 分析用户图片：" + img_desc[:150]})
-            except Exception as e:
-                context += "【用户上传了图片，但视觉分析失败：" + str(e)[:100] + "】" + NL
+        # 用户上传图片：不再外调独立视觉模型转文字，图片以多模态格式随消息直达视觉主模型
+        has_image = bool(state.get("image"))
+        if has_image:
+            context += "【用户上传了一张图片，图片本体已随本消息提供（你具备视觉能力），请直接读取并结合图片内容回答。】" + NL
+            new_mc.append({"agent": "视觉理解", "content": "图片已随消息直达视觉主模型 deepseek-v4-flash-vision-exp"})
         # 档位时间期望（写入提示词）：极速必快、思考视情况、研究至少思考半分钟
         if TIER_TIME_EXPECT.get(tpl):
             context += TIER_TIME_EXPECT[tpl] + NL
@@ -546,9 +542,17 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             # 同样推 step 让前端如实显示"已开始生成"（避免长时间停在"正在等待模型响应"）
             if on_token and (not _is_simple or tpl == "极速"):
                 on_token("学习助手·生成", "")  # 触发 step：状态"正在思考生成…"
+            # 有图时 user content 升级为 OpenAI 多模态数组（文本 + image_url），BaseLLM 原样透传
+            _user_text = _append_example(cfg, context)
+            _user_msg: dict = {"role": "user", "content": _user_text}
+            if has_image:
+                _user_msg["content"] = [
+                    {"type": "text", "text": _user_text},
+                    {"type": "image_url", "image_url": {"url": "data:image/png;base64," + (state.get("image") or "")}},
+                ]
             _gen_llm.chat_stream(
                 [{"role": "system", "content": _gen_sys},
-                 {"role": "user", "content": _append_example(cfg, context)}],
+                 _user_msg],
                 (lambda _c: None),  # 通用通道不推（避免回答内容混入思维链）
                 on_reasoning=_gen_think if not _is_simple else None,  # 仅思考（reasoning_content）流式进思维链
                 on_content=lambda piece: (_gen_collect(piece), _gen_answer(piece)),  # 仅回答 token：收集 + 直推对话区

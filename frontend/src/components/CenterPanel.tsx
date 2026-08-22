@@ -253,7 +253,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
     if (!apiKey) { onRequestKey?.(); return }
     const prov = lsGet(LS.provider, 'deepseek')
     const baseUrl = prov === 'zhipu' ? 'https://open.bigmodel.cn/api/paas/v4' : 'https://api.deepseek.com/v1'
-    const model = prov === 'zhipu' ? 'glm-4-flash' : 'deepseek-v4-flash'
+    const model = prov === 'zhipu' ? 'glm-4-flash' : 'deepseek-v4-flash-vision-exp'
     const done: string[] = []
     for (const key of keys) {
       try {
