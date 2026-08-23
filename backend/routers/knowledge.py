@@ -324,10 +324,11 @@ async def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
 
     text = ""
     # 缓存键须包含范围选项指纹：同一 URL 不同勾选（如只要中文/只要某目录）是不同内容
+    # v3：大纲去重修复后旧组装文本作废，强制重新抓取
     _opts_fp = json.dumps(
         {"i": sorted(set(req.include_groups)), "e": sorted(set(req.exclude_groups)),
          "m": req.max_files}, ensure_ascii=False, sort_keys=True)
-    _cache_key = "v2|" + hashlib.sha1(_opts_fp.encode("utf-8")).hexdigest()[:10] + "|" + url
+    _cache_key = "v3|" + hashlib.sha1(_opts_fp.encode("utf-8")).hexdigest()[:10] + "|" + url
     try:
         import asyncio
         from core.db import get_kb_repo

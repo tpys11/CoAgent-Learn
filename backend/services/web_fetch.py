@@ -450,9 +450,35 @@ def demote_headings(md: str, levels: int = 1) -> str:
     return "\n".join(out)
 
 
+def _strip_leading_title(md: str, title: str) -> str:
+    """若正文首个标题行与页面标题同源（页面标题本就取自该首标题），剥除这一行——
+    否则组装后「页面 H2 + 原 H1 降级 H2」形成同名字兄弟节点，大纲每章重复两次。
+    归一化比较（去全部空白）；标题可能被截断至 40 字，故接受前缀匹配。围栏内不动。"""
+    t_norm = re.sub(r"\s+", "", title or "")
+    if not t_norm:
+        return md
+    in_fence = False
+    decided = False
+    out: list[str] = []
+    for line in md.splitlines():
+        s = line.strip()
+        if s.startswith("```"):
+            in_fence = not in_fence
+            out.append(line)
+            continue
+        if not decided and not in_fence and re.match(r"^#{1,6}\s+\S", s):
+            decided = True  # 只裁决第一个标题，其余一律保留
+            h_norm = re.sub(r"\s+", "", re.sub(r"^#+\s*", "", s))
+            if h_norm == t_norm or h_norm.startswith(t_norm):
+                continue
+        out.append(line)
+    return "\n".join(out)
+
+
 def assemble_hierarchical(site_title: str, pages: list[dict]) -> str:
     """组装「站点(H1) → 页面(H2) → 页内标题(降一级后)」的标准 Markdown。
-    页面标题去重（同名追加序号）；页内容含 ``` 时降级自动跳过围栏行。"""
+    页面标题去重（同名追加序号）；页内容含 ``` 时降级自动跳过围栏行；
+    与页面标题同源的正文首标题先行剥除（大纲去重）。"""
     parts: list[str] = [f"# {site_title}"]
     used: set[str] = set()
     for idx, p in enumerate(pages):
@@ -463,7 +489,7 @@ def assemble_hierarchical(site_title: str, pages: list[dict]) -> str:
             i += 1
         used.add(title)
         parts.append(f"\n\n## {title}\n\n")
-        parts.append(demote_headings(p.get("markdown") or "", 1))
+        parts.append(demote_headings(_strip_leading_title(p.get("markdown") or "", title), 1))
     return "".join(parts).strip()
 
 
