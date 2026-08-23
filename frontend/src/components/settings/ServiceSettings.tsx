@@ -220,33 +220,70 @@ export default function ServiceSettings() {
         <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2.5">
           <p className="text-sm font-semibold">切块与检索参数</p>
           <p className="text-[10px] text-dim">改动仅影响之后入库的内容；已有文档需删除重传才会按新参数重切</p>
-          <label className="flex flex-col gap-1 px-3 py-2 rounded-xl bg-[var(--bg-hover)]">
-            <span className="text-[10px] text-dim">切块模式</span>
-            <select value={svc.chunk_mode}
-              onChange={e => { setSvc(s => ({ ...s, chunk_mode: e.target.value })); setSvcSaved(false) }}
-              className="w-full bg-transparent text-xs outline-none">
-              <option value="auto">自动（有标题走结构，无标题走窗口）</option>
-              <option value="markdown">按标题结构（每节一块，自带标题路径）</option>
-              <option value="window">固定窗口（句子累积+重叠）</option>
-            </select>
-          </label>
-          <div className="grid grid-cols-2 gap-2.5">
-            {([
-              { key: 'chunk_size', label: '切块大小（字符）', min: 100, max: 4000 },
-              { key: 'chunk_overlap', label: '相邻块重叠', min: 0, max: 500 },
-              { key: 'rrf_k', label: 'RRF 融合常数 K', min: 1, max: 200 },
-              { key: 'fetch_mult', label: '召回倍数 ×top_k', min: 1, max: 10 },
-            ] as const).map(f => (
-              <label key={f.key} className="flex flex-col gap-1 px-3 py-2 rounded-xl bg-[var(--bg-hover)]">
-                <span className="text-[10px] text-dim">{f.label}</span>
-                <input type="number" min={f.min} max={f.max} value={svc[f.key]}
+          {([
+            { id: 'auto', name: '自动', tag: '推荐', desc: '有标题走按标题结构，无标题走固定窗口' },
+            { id: 'markdown', name: '按标题结构', tag: '教材 Markdown', desc: '每个标题小节一块并携带章节路径；超长节自动细分' },
+            { id: 'window', name: '固定窗口', tag: '经典', desc: '句子累积 + 字符窗口 + 重叠，适合无结构纯文本' },
+          ] as const).map(opt => (
+            svc.chunk_mode === opt.id ? (
+              <div key={opt.id} className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-[var(--bg-hover)] border border-[var(--accent)]">
+                <span className="text-[12px] font-semibold">{opt.name}</span>
+                <span className="text-[10px] text-dim">{opt.tag}</span>
+              </div>
+            ) : (
+              <button key={opt.id}
+                className="flex items-center justify-between px-3 py-2 rounded-xl border hairline bg-[var(--bg-panel)] hover:bg-[var(--bg-hover)] text-left"
+                onClick={() => { setSvc(s => ({ ...s, chunk_mode: opt.id })); setSvcSaved(false) }}>
+                <span className="text-[12px] font-medium">{opt.name}</span>
+                <span className="text-[10px] text-dim">{opt.tag}</span>
+              </button>
+            )
+          ))}
+          {svc.chunk_mode === 'markdown' && (
+            <p className="text-[10px] text-dim px-1">超长小节将按固定窗口自动细分，无需额外填写</p>
+          )}
+          {svc.chunk_mode === 'window' && (
+            <div className="grid grid-cols-2 gap-2.5">
+              <label className="flex flex-col gap-1 px-3 py-2 rounded-xl bg-[var(--bg-hover)]">
+                <span className="text-[10px] text-dim">切块大小（字符）</span>
+                <input type="number" min={100} max={4000} value={svc.chunk_size}
                   onChange={e => {
-                    const v = Math.max(f.min, Math.min(f.max, parseInt(e.target.value || String(f.min), 10) || f.min))
-                    setSvc(s => ({ ...s, [f.key]: v })); setSvcSaved(false)
+                    const v = Math.max(100, Math.min(4000, parseInt(e.target.value || '512', 10) || 512))
+                    setSvc(s => ({ ...s, chunk_size: v })); setSvcSaved(false)
                   }}
                   className="w-full bg-transparent text-xs outline-none" />
               </label>
-            ))}
+              <label className="flex flex-col gap-1 px-3 py-2 rounded-xl bg-[var(--bg-hover)]">
+                <span className="text-[10px] text-dim">相邻块重叠</span>
+                <input type="number" min={0} max={500} value={svc.chunk_overlap}
+                  onChange={e => {
+                    const v = Math.max(0, Math.min(500, parseInt(e.target.value || '0', 10) || 0))
+                    setSvc(s => ({ ...s, chunk_overlap: v })); setSvcSaved(false)
+                  }}
+                  className="w-full bg-transparent text-xs outline-none" />
+              </label>
+            </div>
+          )}
+          <p className="text-[10px] text-dim px-1 pt-1">检索融合（对所有模式生效）</p>
+          <div className="grid grid-cols-2 gap-2.5">
+            <label className="flex flex-col gap-1 px-3 py-2 rounded-xl bg-[var(--bg-hover)]">
+              <span className="text-[10px] text-dim">RRF 融合常数 K</span>
+              <input type="number" min={1} max={200} value={svc.rrf_k}
+                onChange={e => {
+                  const v = Math.max(1, Math.min(200, parseInt(e.target.value || '60', 10) || 60))
+                  setSvc(s => ({ ...s, rrf_k: v })); setSvcSaved(false)
+                }}
+                className="w-full bg-transparent text-xs outline-none" />
+            </label>
+            <label className="flex flex-col gap-1 px-3 py-2 rounded-xl bg-[var(--bg-hover)]">
+              <span className="text-[10px] text-dim">召回倍数 ×top_k</span>
+              <input type="number" min={1} max={10} value={svc.fetch_mult}
+                onChange={e => {
+                  const v = Math.max(1, Math.min(10, parseInt(e.target.value || '3', 10) || 3))
+                  setSvc(s => ({ ...s, fetch_mult: v })); setSvcSaved(false)
+                }}
+                className="w-full bg-transparent text-xs outline-none" />
+            </label>
           </div>
           <button onClick={saveService}
             className={`self-start px-4 py-1.5 text-[11px] rounded-lg font-semibold ${svcSaved ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#1a1a1a] text-white'}`}>保存参数</button>
