@@ -78,11 +78,11 @@ class TestMergeStats:
 # ---------- _resolve_plan_targets：档位路由目标判定 ----------
 
 class TestResolvePlanTargets:
-    def test_speed_mode_always_generate(self):
-        """极速档：无论 plan 如何，都不做知识库检索/联网搜索，直接生成"""
-        assert _resolve_plan_targets("极速", []) == ["generate"]
-        assert _resolve_plan_targets("极速", ["知识库管理"]) == ["generate"]
-        assert _resolve_plan_targets("极速", ["搜索增强"]) == ["generate"]
+    def test_speed_mode_always_kb(self):
+        """极速档：固定做知识库检索（全局降幻觉·纯工具调用保持极速），跳过联网搜索/子Agent整理"""
+        assert _resolve_plan_targets("极速", []) == ["kb"]
+        assert _resolve_plan_targets("极速", ["知识库管理"]) == ["kb"]
+        assert _resolve_plan_targets("极速", ["搜索增强"]) == ["kb"]
 
     def test_think_mode_no_plan_generates(self):
         """思考档：plan 为空 → 直接生成（知识库/搜索按需，非必选）"""

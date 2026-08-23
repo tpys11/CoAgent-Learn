@@ -29,30 +29,13 @@
       - "8000:8000"
     env_file:
       - ../.env
-    command: sh -c "pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --quiet sqlite-vec python-multipart neo4j pypdf python-docx python-pptx rank_bm25 jieba pytest mcp && uvicorn main:app --host 0.0.0.0 --port 8000"
+    command: sh -c "pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --quiet sqlite-vec python-multipart pypdf python-docx python-pptx rank_bm25 jieba pytest mcp && uvicorn main:app --host 0.0.0.0 --port 8000"
     volumes:
       - ../backend:/app
       - ../agents:/app/agents
       - ../skills:/app/skills
       - ../tests:/app/tests
       - ../data:/app/data
-    depends_on:
-      neo4j:
-        condition: service_started
-    networks:
-      - guashuai-network
-
-  neo4j:
-    image: neo4j:latest
-    container_name: guashuai-neo4j
-    ports:
-      - "7474:7474"
-      - "7687:7687"
-    environment:
-      NEO4J_AUTH: neo4j/neo4j123
-    volumes:
-      - ./data/neo4j/data:/data
-      - ./data/neo4j/logs:/logs
     networks:
       - guashuai-network
 

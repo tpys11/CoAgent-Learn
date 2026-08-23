@@ -1,10 +1,10 @@
+import { LS, lsGet, lsSet } from './storage'
+
 // 主题工具：日间(light) / 夜间(dark) / 均衡(warm) / 跟随系统(system)
 export type ThemePref = 'light' | 'dark' | 'warm' | 'system'
 
-const KEY = 'coagent-theme'
-
 export function getThemePref(): ThemePref {
-  return (localStorage.getItem(KEY) as ThemePref) || 'warm'
+  return (lsGet(LS.theme, 'warm') as ThemePref) || 'warm'
 }
 
 export function resolveTheme(pref: ThemePref): 'light' | 'dark' | 'warm' {
@@ -19,7 +19,7 @@ export function applyTheme(pref: ThemePref) {
 }
 
 export function setThemePref(pref: ThemePref) {
-  localStorage.setItem(KEY, pref)
+  lsSet(LS.theme, pref)
   applyTheme(pref)
 }
 

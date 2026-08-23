@@ -1,26 +1,16 @@
 ﻿import { useState, useEffect } from 'react'
 import { X, Sun, Moon, Monitor, Type, LampDesk, Sliders, Zap, MessageSquare, Key, Timer, Database, Plug, Bug, Check, Trash2, Plus, Download, Github } from 'lucide-react'
 import { getThemePref, setThemePref, type ThemePref } from '../theme'
+import { LS, lsGet, lsSet, lsGetJSON, lsSetJSON, lsRemove } from '../storage'
+import { api } from '../api'
+import ServiceSettings from './settings/ServiceSettings'
 
 interface Props {
   onClose: () => void
   projectId: string | null
 }
 
-/** 多厂家 API Key 管理 */
-const PROVIDERS = [
-  { id: 'deepseek', name: 'DeepSeek' },
-  { id: 'openai', name: 'OpenAI' },
-  { id: 'qwen', name: '通义千问' },
-  { id: 'zhipu', name: '智谱 GLM' },
-  { id: 'moonshot', name: '月之暗面' },
-  { id: 'doubao', name: '豆包' },
-]
-
 interface McpServer { id: string; name: string; type: 'stdio' | 'http' | 'sse'; target: string }
-
-const get = (k: string, d: string) => { try { return localStorage.getItem(k) || d } catch { return d } }
-const getJSON = <T,>(k: string, d: T): T => { try { return JSON.parse(localStorage.getItem(k) || 'null') ?? d } catch { return d } }
 
 /** 当前版本号（与 package.json 同步） */
 const APP_VERSION = '0.2.0'
@@ -28,6 +18,7 @@ const APP_VERSION = '0.2.0'
 /** 设置分组（左侧只排 4 个大按钮，点开后右侧展示该组全部内容） */
 const GROUPS: Array<{ key: string; label: string; icon: any }> = [
   { key: 'base', label: '基础', icon: Sliders },
+  { key: 'services', label: 'AI 服务', icon: Database },
   { key: 'chat', label: '对话', icon: MessageSquare },
   { key: 'advanced', label: '高级', icon: Plug },
   { key: 'other', label: '其他', icon: LampDesk },
@@ -36,6 +27,7 @@ const GROUPS: Array<{ key: string; label: string; icon: any }> = [
 /** 分组 → 其下设置项 */
 const GROUP_TABS: Record<string, string[]> = {
   base: ['font', 'theme', 'keys', 'timeout', 'data', 'reset'],
+  services: ['service'],
   chat: ['actions', 'cleanup'],
   advanced: ['mcp', 'debug'],
   other: ['about'],
@@ -90,74 +82,89 @@ function SwitchRow({ label, desc, checked, onChange }: { label: string; desc?: s
 }
 
 export default function SettingsModal({ onClose, projectId }: Props) {
-  const [fontSize, setFontSize] = useState(() => parseInt(get('coagent-fontSize', '15')))
+  const [fontSize, setFontSize] = useState(() => parseInt(lsGet(LS.fontSize, '15')))
   const [theme, setTheme] = useState<ThemePref>(() => getThemePref())
   const [feedback, setFeedback] = useState('')
   const [settingsGroup, setSettingsGroup] = useState('base')
 
   // 生成后动作
-  const [postActions, setPostActions] = useState(() => getJSON('coagent-post-actions', { autoFollowups: true }))
-  // 模型与 Key
-  const [provider, setProvider] = useState(() => get('coagent-provider', 'deepseek'))
-  const [provKeys, setProvKeys] = useState<Record<string, string>>(() => getJSON('coagent-provider-keys', {}))
-  const [mainKey, setMainKey] = useState(() => get('coagent-apikey', ''))
+  const [postActions, setPostActions] = useState(() => lsGetJSON(LS.postActions, { autoFollowups: true }))
+// 模型与 Key（仅 DeepSeek，localStorage 单一配置）
+  const [savedDsKey, setSavedDsKey] = useState(() => {
+    const keys = lsGetJSON<Record<string, string>>(LS.providerKeys, {})
+    return keys['deepseek'] || lsGet(LS.apiKey, '')
+  })
+  const [dsKey, setDsKey] = useState('')
+  const [dsEditing, setDsEditing] = useState(false)
+  const [dsSaved, setDsSaved] = useState(false)
   // 超时（1-30s）
-  const [timeoutSec, setTimeoutSec] = useState(() => Math.min(30, Math.max(1, parseInt(get('coagent-timeout', '30')) || 30)))
+  const [timeoutSec, setTimeoutSec] = useState(() => Math.min(30, Math.max(1, parseInt(lsGet(LS.timeout, '30')) || 30)))
   // MCP 配置
-  const [mcpServers, setMcpServers] = useState<McpServer[]>(() => getJSON('coagent-mcp-servers', []))
+  const [mcpServers, setMcpServers] = useState<McpServer[]>(() => lsGetJSON(LS.mcpServers, []))
   const [mcpShow, setMcpShow] = useState(false)
   const [mcpName, setMcpName] = useState('')
   const [mcpType, setMcpType] = useState<'stdio' | 'http' | 'sse'>('http')
   const [mcpTarget, setMcpTarget] = useState('')
   // 调试
-  const [debug, setDebug] = useState(() => get('coagent-debug', '0') === '1')
+  const [debug, setDebug] = useState(() => lsGet(LS.debug, '0') === '1')
   // 对话自动清理（0 = 关闭）
-  const [dialogueLimit, setDialogueLimit] = useState(() => parseInt(get('coagent-dialogue-limit', '0')))
+  const [dialogueLimit, setDialogueLimit] = useState(() => parseInt(lsGet(LS.dialogueLimit, '0')))
   // 检查更新
   const [updateState, setUpdateState] = useState<'idle' | 'checking' | 'latest' | 'new' | 'error'>('idle')
   const [latestVersion, setLatestVersion] = useState('')
 
   useEffect(() => {
     document.documentElement.style.setProperty('--ui-font', `${fontSize}px`)
-    localStorage.setItem('coagent-fontSize', String(fontSize))
+    lsSet(LS.fontSize, String(fontSize))
   }, [fontSize])
   useEffect(() => { setThemePref(theme) }, [theme])
-  useEffect(() => { localStorage.setItem('coagent-post-actions', JSON.stringify(postActions)) }, [postActions])
-  useEffect(() => { localStorage.setItem('coagent-provider', provider) }, [provider])
-  useEffect(() => { localStorage.setItem('coagent-provider-keys', JSON.stringify(provKeys)) }, [provKeys])
-  useEffect(() => {
-    if (mainKey.trim()) localStorage.setItem('coagent-apikey', mainKey.trim())
-  }, [mainKey])
-  useEffect(() => { localStorage.setItem('coagent-timeout', String(timeoutSec)) }, [timeoutSec])
-  useEffect(() => { localStorage.setItem('coagent-debug', debug ? '1' : '0') }, [debug])
-  useEffect(() => { localStorage.setItem('coagent-dialogue-limit', String(dialogueLimit)) }, [dialogueLimit])
+useEffect(() => { lsSetJSON(LS.postActions, postActions) }, [postActions])
+  // 仅保留 DeepSeek：清理历史遗留的厂家选择（CenterPanel / SpecialOutputPane 仍读取 LS.provider）
+  useEffect(() => { lsRemove(LS.provider) }, [])
+  useEffect(() => { lsSet(LS.timeout, String(timeoutSec)) }, [timeoutSec])
+  useEffect(() => { lsSet(LS.debug, debug ? '1' : '0') }, [debug])
+  useEffect(() => { lsSet(LS.dialogueLimit, String(dialogueLimit)) }, [dialogueLimit])
 
   /** 恢复默认设置：清除设置类键（保留 API Key / 模型 / 数据）后刷新 */
   const resetSettings = () => {
     if (!window.confirm('确定恢复默认设置？字体、主题、默认参数等将还原（API Key、对话与记忆数据不受影响）。')) return
-    ;['coagent-fontSize', 'coagent-post-actions', 'coagent-context-settings',
-      'coagent-timeout', 'coagent-debug', 'coagent-provider', 'coagent-mcp-servers', 'coagent-dialogue-limit',
-      'coagent-last-settings', 'coagent-tutorial-cats', 'coagent-tutorials'].forEach(k => localStorage.removeItem(k))
+    ;[LS.fontSize, LS.postActions, LS.contextSettings, LS.timeout, LS.debug, LS.provider,
+      LS.mcpServers, LS.dialogueLimit, LS.lastSettings, LS.tutorialCats, LS.tutorials].forEach(lsRemove)
     window.location.reload()
   }
 
   const flash = (msg: string) => { setFeedback(msg); setTimeout(() => setFeedback(''), 2000) }
 
+  /** DeepSeek key 部分展示（sk-****后4位） */
+  const maskKey = (k: string) => (k.length > 8 ? k.slice(0, 3) + '****' + k.slice(-4) : 'sk-****')
+
+  /** 保存 DeepSeek key：写 providerKeys.deepseek（主存储）+ apiKey（兼容旧读取点） */
+  const saveDsKey = () => {
+    const k = dsKey.trim()
+    if (!k) return
+    const keys = lsGetJSON<Record<string, string>>(LS.providerKeys, {})
+    keys['deepseek'] = k
+    lsSetJSON(LS.providerKeys, keys)
+    lsSet(LS.apiKey, k)
+    setSavedDsKey(k)
+    setDsSaved(true)
+    setDsEditing(false)
+  }
+
   const doClearDialogues = async () => {
     if (!projectId) { flash('暂无课程'); return }
     if (!window.confirm('确定清空当前课程的全部对话？消息将不可恢复（课程与记忆保留）。')) return
-    const r = await fetch('/api/projects/' + encodeURIComponent(projectId) + '/dialogues', { method: 'DELETE' })
-    if (r.ok) flash('对话已清空') ; else flash('清空失败')
+    await api.clearProjectDialogues(projectId)
+    flash('对话已清空')
   }
   const doClearMemories = async () => {
     if (!window.confirm('确定清空全部记忆（个人全局 / 课程 / 对话记忆）？')) return
-    const r = await fetch('/api/memories', { method: 'DELETE' })
-    if (r.ok) flash('记忆已清空') ; else flash('清空失败')
+    await api.clearMemories()
+    flash('记忆已清空')
   }
   const doExport = async () => {
     try {
-      const r = await fetch('/api/export?project_id=' + encodeURIComponent(projectId || 'default'), { cache: 'no-store' })
-      const j = await r.json()
+      const j = await api.exportData(projectId || 'default')
       const blob = new Blob([JSON.stringify(j, null, 2)], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a'); a.href = url; a.download = 'coagent-data-export.json'; a.click()
@@ -170,13 +177,13 @@ export default function SettingsModal({ onClose, projectId }: Props) {
     if (!mcpName.trim() || !mcpTarget.trim()) return
     const next = [...mcpServers, { id: 'mcp-' + Date.now(), name: mcpName.trim(), type: mcpType, target: mcpTarget.trim() }]
     setMcpServers(next)
-    localStorage.setItem('coagent-mcp-servers', JSON.stringify(next))
+    lsSetJSON(LS.mcpServers, next)
     setMcpName(''); setMcpTarget(''); setMcpShow(false)
   }
   const removeMcp = (id: string) => {
     const next = mcpServers.filter(s => s.id !== id)
     setMcpServers(next)
-    localStorage.setItem('coagent-mcp-servers', JSON.stringify(next))
+    lsSetJSON(LS.mcpServers, next)
   }
 
   const inputCls = 'w-full px-3 py-2 input-surface rounded-lg text-xs outline-none focus:border-[var(--accent)]'
@@ -272,35 +279,34 @@ export default function SettingsModal({ onClose, projectId }: Props) {
               </Section>
             )}
 
-            {/* 模型与 API Key */}
+            {/* 模型与 API Key（仅 DeepSeek） */}
             {show('keys') && (
-              <Section icon={Key} title="模型与 API Key" desc="与模型卡共用同一份配置（localStorage）">
-                <div className="flex flex-col gap-4">
+              <Section icon={Key} title="模型与 API Key">
+                <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2.5">
+                  <p className="text-sm font-semibold">DeepSeek API Key</p>
                   <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-dim w-20 flex-shrink-0">默认厂家</span>
-                    <select value={provider} onChange={e => setProvider(e.target.value)} className={inputCls}>
-                      {PROVIDERS.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
+                    {savedDsKey && !dsEditing ? (
+                      <>
+                        <span className="flex-1 text-xs font-medium text-green-700">✓ 已配置：{maskKey(savedDsKey)}</span>
+                        <button onClick={() => { setDsEditing(true); setDsKey(''); setDsSaved(false) }}
+                          className="text-[10px] text-dim hover:text-[var(--text)] flex-shrink-0">修改</button>
+                      </>
+                    ) : (
+                      <input type="password" name="deepseek-api-key" autoComplete="new-password" value={dsKey} placeholder="sk-...（DeepSeek）"
+                        onChange={e => { setDsKey(e.target.value); setDsSaved(false) }} className={inputCls} />
+                    )}
+                    {(!savedDsKey || dsEditing) && (
+                      <button onClick={saveDsKey}
+                        className={`px-4 py-1.5 text-[11px] rounded-lg font-semibold flex-shrink-0 ${dsSaved ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#1a1a1a] text-white'}`}>保存</button>
+                    )}
                   </div>
-                  <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-4">
-                    {PROVIDERS.map(p => (
-                      <div key={p.id} className="flex items-center gap-2">
-                        <span className="text-[11px] text-dim w-20 flex-shrink-0">{p.name}</span>
-                        <input type="password" value={provKeys[p.id] || ''} placeholder={p.id === 'deepseek' ? 'sk-...' : '可选'}
-                          onChange={e => setProvKeys({ ...provKeys, [p.id]: e.target.value })}
-                          className={inputCls} />
-                        {(provKeys[p.id] || '').length > 8 && <span className="text-[10px] text-green-600 flex-shrink-0">✓ 已配置</span>}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-dim w-20 flex-shrink-0">主 Key</span>
-                    <input type="password" value={mainKey} placeholder="coagent-apikey（兼容旧配置）"
-                      onChange={e => setMainKey(e.target.value)} className={inputCls} />
-                  </div>
+                  <p className="text-[10px] text-dim">该 key 用于对话与全部模型调用</p>
                 </div>
               </Section>
             )}
+
+            {/* AI 服务配置（已拆至 settings/ServiceSettings.tsx） */}
+            {show('service') && <ServiceSettings />}
 
             {/* 请求超时 */}
             {show('timeout') && (
@@ -439,12 +445,16 @@ export default function SettingsModal({ onClose, projectId }: Props) {
   )
 }
 
-export function ApiKeyPrompt({ onClose }: { onClose: () => void }) {
+export function ApiKeyPrompt({ onClose, provider = 'deepseek' }: { onClose: () => void; provider?: string }) {
   const [key, setKey] = useState('')
+  const label = provider === 'zhipu' ? '智谱 GLM' : 'DeepSeek'
 
   const handleSave = () => {
     if (key.trim()) {
-      localStorage.setItem('coagent-apikey', key.trim())
+      const keys = lsGetJSON<Record<string, string>>(LS.providerKeys, {})
+      keys[provider] = key.trim()
+      lsSetJSON(LS.providerKeys, keys)
+      lsSet(LS.apiKey, key.trim())
     }
     onClose()
   }
@@ -453,7 +463,7 @@ export function ApiKeyPrompt({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
       <div className="card-lift w-full max-w-md mx-4 p-6">
         <h2 className="font-display text-lg mb-2">配置 API Key</h2>
-        <p className="text-sm text-dim mb-4">请输入 DeepSeek API Key 以启用 Agent 功能。后续可在设置中修改。</p>
+        <p className="text-sm text-dim mb-4">请输入 {label} API Key 以启用 Agent 功能。后续可在设置中修改。</p>
         <input
           autoFocus
           type="password"

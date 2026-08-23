@@ -7,13 +7,19 @@ python-dotenv>=1.0.1
 pydantic>=2.10.4
 httpx>=0.28.1
 
+# 文件解析（markitdown 统一转 markdown，照 DeepTutor 解析引擎）
+markitdown[pdf,docx,pptx,xlsx]>=0.0.1a2
+
 # 数据库连接
-neo4j>=5.23.0
 rank_bm25>=0.2.2
 jieba>=0.42.1
+# embedding/rerank 模型（torch 走 CPU 版，避免拉取 ~2.5GB 的 CUDA 包）
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.2.0
 sentence-transformers>=3.0.0
 pypdf>=6.0.0
 python-docx>=1.1.0
 python-pptx>=1.0.0
 python-multipart>=0.0.9
 sqlite-vec>=0.1.6
+trafilatura>=2.0.0

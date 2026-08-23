@@ -9,11 +9,30 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 import json
+import logging
 
 load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+
+logger = logging.getLogger("coagent")
+
+from routers.settings import router as settings_router, _apply_dynamic_settings
+from routers.projects import router as projects_router, _ensure_default_project
+from routers.knowledge import router as knowledge_router
+from routers.resources import router as resources_router
+from routers.memory import router as memory_router
+from routers.skills import router as skills_router
+from core.helpers import _as_dict, extract_json_obj
+from services.special_forms import suggest_special_forms
+from services.memory_edit import memory_edit, memory_chat as _memory_chat_service
 
 
 @asynccontextmanager
@@ -24,9 +43,13 @@ async def lifespan(app: FastAPI):
     if missing:
         warnings.warn(f"缺少环境变量: {', '.join(missing)}。Agent 功能不可用。")
     try:
+        _apply_dynamic_settings()
+    except Exception:
+        logger.exception("启动时应用动态设置失败")
+    try:
         _ensure_default_project()
     except Exception:
-        pass
+        logger.exception("启动时确保默认项目失败")
     yield
 
 
@@ -46,22 +69,27 @@ app.add_middleware(
 )
 
 
-@app.get("/health")
-async def health_check():
-    return {"status": "ok", "version": "0.3.0"}
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request, exc):
+    """全局兜底：任何未捕获异常都记录完整堆栈并返回统一 500，避免静默失败。"""
+    logger.exception("未处理异常: %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500, content={"detail": "服务器内部错误"})
 
 
-def _as_dict(data):
-    """SQLite 存的 JSON 字符串转 dict"""
-    import json as _json
-    if isinstance(data, dict):
-        return data
-    if isinstance(data, str):
-        try:
-            return _json.loads(data)
-        except Exception:
-            return {}
-    return {}
+# 图片等上传文件静态回显（跨模态检索命中图片后前端可直接取图）
+_UPLOADS_DIR = "/app/data/uploads"
+try:
+    os.makedirs(_UPLOADS_DIR, exist_ok=True)
+    app.mount("/uploads", StaticFiles(directory=_UPLOADS_DIR), name="uploads")
+except Exception:
+    logger.exception("挂载上传目录失败")
+
+app.include_router(settings_router)
+app.include_router(projects_router)
+app.include_router(knowledge_router)
+app.include_router(resources_router)
+app.include_router(memory_router)
+app.include_router(skills_router)
 
 
 def _mindchain_display_name(name):
@@ -86,1279 +114,20 @@ def _merge_mindchain(mc):
             continue
         name = it.get("agent", "")
         content = it.get("content", "") or ""
-        if not content.strip() and not it.get("clarify"):
+        if not content.strip():
             continue  # 空内容（无实际产出）条目不展示
         dn = _mindchain_display_name(name)
         if out and _mindchain_display_name(out[-1].get("agent", "")) == dn and dn:
-            # 连续同名：内容拼接进上一条（保留 clarify 优先）
-            if it.get("clarify"):
-                out[-1]["clarify"] = it["clarify"]
+            # 连续同名：内容拼接进上一条
             if content:
                 out[-1]["content"] = (out[-1].get("content", "") + "\n" + content).strip()
         else:
-            out.append({"agent": name, "content": content, **({"clarify": it["clarify"]} if it.get("clarify") else {})})
+            out.append({"agent": name, "content": content})
     return out
 
 
-@app.get("/api/global-profile")
-async def get_global_profile(session_id: str = "default"):
-    from core.postgres_client import pg_client
-    # 记忆永久化：不按 session 过滤，取最新一条（刷新后保留）
-    rows = pg_client.execute("SELECT data FROM global_profile ORDER BY updated_at DESC LIMIT 1")
-    return {"profile": _as_dict(rows[0]["data"]) if rows else {}}
-
-@app.get("/api/project-memory/{project_id}")
-async def get_project_memory(project_id: str, session_id: str = "default"):
-    from core.postgres_client import pg_client
-    # 记忆永久化：按项目取最新一条（不按 session，刷新后保留）
-    rows = pg_client.execute("SELECT data FROM project_memories WHERE project_id = %s ORDER BY updated_at DESC LIMIT 1", (project_id,))
-    return {"memory": _as_dict(rows[0]["data"]) if rows else {}}
-
-
-
-# ---------- 知识库 API ----------
-
-import threading as _threading
-
 # 手动停止注册表：request_id -> cancel_event（POST /api/chat/stop 置位，run_workflow 检查后中断生成）
 _active_cancels: dict = {}
-
-
-def _process_upload(project_id, text, source, session_id, api_key):
-    """后台处理上传：存原文到资源表 + 切块入库 + 抽取图谱"""
-    try:
-        # 存原文到资源表（"我的上传/保存的资料"保留一份原文，与知识库独立）
-        from core.postgres_client import pg_client as _pg0
-        import hashlib as _hl0
-        _rid = _hl0.md5((source + project_id).encode()).hexdigest()[:16]
-        _has = _pg0.execute("SELECT id FROM resources WHERE id=%s", (_rid,))
-        if _has:
-            _pg0.execute("UPDATE resources SET content=%s WHERE id=%s", (text[:6000], _rid))
-        else:
-            _pg0.execute("INSERT INTO resources (id, name, content, project_id, type) VALUES (%s,%s,%s,%s,'text')", (_rid, source, text[:6000], project_id))
-    except Exception:
-        pass
-    try:
-        from core.knowledge_service import add_document
-        add_document(project_id, text, source, session_id, api_key)
-    except Exception:
-        pass
-    try:
-        from core.graph_service import extract_relations, store_relations
-        rels = extract_relations(text, api_key)
-        store_relations(project_id, rels, source)
-    except Exception:
-        pass
-
-
-
-
-class KnowledgeUpload(BaseModel):
-    project_id: str = "default"
-    text: str = ""
-    source: str = "未命名"
-    session_id: str = "default"
-    api_key: str = ""
-
-
-@app.post("/api/knowledge/upload")
-async def knowledge_upload(req: KnowledgeUpload):
-    _threading.Thread(target=_process_upload, args=(req.project_id, req.text, req.source, req.session_id, req.api_key), daemon=True).start()
-    return {"status": "processing", "msg": "正在处理，稍后刷新查看"}
-
-
-@app.post("/api/knowledge/upload-file")
-async def knowledge_upload_file(
-    project_id: str = Form("default"),
-    session_id: str = Form("default"),
-    api_key: str = Form(""),
-    file: UploadFile = File(...),
-):
-    from core.file_parser import parse_file
-    data = await file.read()
-    text = parse_file(file.filename or "file", data)
-    if not text.strip():
-        return {"status": "error", "msg": "无法解析该文件内容（可能为空或格式不支持）"}
-    _threading.Thread(target=_process_upload, args=(project_id, text, file.filename or "file", session_id, api_key), daemon=True).start()
-    return {"status": "processing", "msg": "正在处理，稍后刷新查看"}
-
-
-@app.get("/api/knowledge/list")
-async def knowledge_list(project_id: str = "default"):
-    from core.knowledge_service import list_docs
-    return {"docs": list_docs(project_id)}
-
-
-@app.get("/api/knowledge/list-all")
-async def knowledge_list_all():
-    """我的上传：聚合所有项目的知识库文档（带项目名）"""
-    from core.knowledge_service import list_docs
-    from core.postgres_client import pg_client
-    proj_names = {r["id"]: r["name"] for r in pg_client.execute("SELECT id, name FROM projects")}
-    pids = pg_client.execute("SELECT DISTINCT project_id FROM kb_vectors")
-    all_docs = []
-    for p in pids:
-        pid = p["project_id"]
-        for d in list_docs(pid):
-            all_docs.append({**d, "project_id": pid, "project_name": proj_names.get(pid, pid)})
-    return {"docs": all_docs}
-
-
-@app.get("/api/kb/{project_id}")
-async def kb_list(project_id: str):
-    """前端项目资源区/首页/记忆/侧栏通用：直接返回知识库文档列表（数组）"""
-    from core.knowledge_service import list_docs
-    return list_docs(project_id)
-
-
-@app.delete("/api/knowledge/delete")
-async def knowledge_delete(project_id: str = "default", source: str = ""):
-    from core.knowledge_service import delete_doc
-    n = delete_doc(project_id, source)
-    graph_n = 0
-    try:
-        from core.graph_service import delete_relations_by_source
-        graph_n = delete_relations_by_source(project_id, source)
-    except Exception:
-        pass
-    return {"status": "ok", "deleted": n, "graph_relations": graph_n}
-
-
-@app.post("/api/vision")
-async def vision_understand(req: dict):
-    from core.vision_service import describe_image
-    image = req.get("image", "")
-    prompt = req.get("prompt", "请描述这张图片的内容")
-    desc = describe_image(image, prompt)
-    return {"status": "ok", "description": desc}
-
-@app.post("/api/file-to-text")
-async def file_to_text(file: UploadFile = File(...)):
-    from core.file_parser import parse_file
-    data = await file.read()
-    text = parse_file(file.filename or "file", data)
-    if not text.strip():
-        return {"status": "error", "msg": "无法解析该文件内容"}
-    return {"status": "ok", "text": text[:50000], "chars": len(text)}
-
-
-@app.get("/api/graph")
-async def get_graph(project_id: str = "default"):
-    from fastapi.responses import JSONResponse
-    from core.graph_service import get_graph
-    resp = JSONResponse(get_graph(project_id))
-    resp.headers["Cache-Control"] = "no-store"
-    return resp
-
-
-@app.get("/api/graph/node")
-async def get_graph_node(project_id: str = "default", name: str = ""):
-    """节点详情：该实体的关系 + 知识库相关原文"""
-    from core.neo4j_client import neo4j_client
-    from core.knowledge_service import search
-    result = {"relations": [], "kb_refs": []}
-    if not name:
-        return result
-    try:
-        rows = neo4j_client.run(
-            "MATCH (a:Entity {project_id:$p, name:$n})-[r:REL {project_id:$p}]->(b:Entity) RETURN r.type AS rel, b.name AS to UNION MATCH (a:Entity {project_id:$p})-[r:REL {project_id:$p}]->(b:Entity {project_id:$p, name:$n}) RETURN r.type AS rel, a.name AS to",
-            {"p": project_id, "n": name})
-        for r in rows:
-            result["relations"].append({"rel": r.get("rel", ""), "target": r.get("to", "")})
-    except Exception:
-        pass
-    try:
-        refs = search(project_id, name, top_k=3)
-        result["kb_refs"] = [{"content": x["content"][:200], "source": (x.get("metadata") or {}).get("source", "")} for x in refs]
-    except Exception:
-        pass
-    return result
-
-
-@app.get("/api/knowledge/query")
-async def knowledge_query(project_id: str = "default", q: str = "", top_k: int = 3):
-    from core.knowledge_service import search
-    return {"results": search(project_id, q, top_k)}
-
-
-# ---------- 资源 API ----------
-
-class ResourceSave(BaseModel):
-    name: str
-    content: str = ""
-    project_id: str = "default"
-
-
-class GenerateDomainReq(BaseModel):
-    domain: str
-    api_key: str = ""
-    base_url: str = "https://api.deepseek.com/v1"
-    model: str = "deepseek-v4-flash"
-
-
-class GenerateSpecialReq(BaseModel):
-    content: str
-    forms: list = []
-    api_key: str = ""
-    base_url: str = "https://api.deepseek.com/v1"
-    model: str = "deepseek-v4-flash"
-
-
-@app.post("/api/generate-domain")
-async def generate_domain(req: GenerateDomainReq):
-    """新建领域：AI 生成该领域的系统学习教程 + 百科词条"""
-    import requests as _req
-    from core.memory_analysis import _extract_json
-    name = (req.domain or "").strip()
-    if not name:
-        return {"status": "error", "msg": "领域名称不能为空"}
-    prompt = (
-        "请为领域「" + name + "」生成学习资源内容，严格输出 JSON（不要 markdown 代码块，不要额外文字）：\n"
-        "{\n"
-        "  \"tutorials\": [\n"
-        "    {\"title\": \"教程名称\", \"category\": \"系统学习 或 技术工具\", \"desc\": \"一句话简介\", \"url\": \"\"}\n"
-        "  ],\n"
-        "  \"wiki\": [\n"
-        "    {\"name\": \"词条名称\", \"theme\": \"主题分组\", \"intro\": \"一句话简介\", \"detail\": \"详细介绍（100字左右）\"}\n"
-        "  ]\n"
-        "}\n"
-        "要求：tutorials 生成 3-4 篇（覆盖系统学习和技术工具两类）；wiki 生成 5-8 个该领域核心词条。"
-    )
-    try:
-        h = {"Authorization": "Bearer " + (req.api_key or ""), "Content-Type": "application/json"}
-        resp = _req.post(
-            req.base_url.rstrip("/") + "/chat/completions",
-            json={"model": req.model, "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]},
-            headers=h, timeout=90,
-        )
-        if resp.status_code != 200:
-            return {"status": "error", "msg": "模型调用失败（HTTP " + str(resp.status_code) + "），请检查 API Key"}
-        content = resp.json()["choices"][0]["message"]["content"] or ""
-        data = _extract_json(content)
-        if not data:
-            return {"status": "error", "msg": "AI 返回内容无法解析"}
-        return {"status": "ok", "tutorials": data.get("tutorials") or [], "wiki": data.get("wiki") or []}
-    except Exception as e:
-        return {"status": "error", "msg": str(e)[:200]}
-
-
-@app.post("/api/generate-special")
-async def generate_special(req: GenerateSpecialReq):
-    """特殊形式生成：把回答内容转换成指定形式（表格/流程图/树状图/报告/测试题）
-    用 response_format=json_object 保证合法 JSON（内容含换行也不会解析失败）"""
-    if not (req.content or "").strip() or not req.forms:
-        return {"status": "error", "msg": "参数不完整"}
-    # 学习导向形式：text=文本/markdown，array=结构化数组
-    FORM_SPECS = {
-        "summary": {"label": "总结", "kind": "text", "desc": "markdown 结构化总结，分小节概括整个对话"},
-        "flashcards": {"label": "闪卡", "kind": "array", "desc": "5-8 张闪卡，每张是 {front: 问题, back: 答案} 的对象"},
-        "quiz": {"label": "测验", "kind": "array", "desc": "3-5 道题，每道是 {question: 题目, options: [4个选项], answer: 正确选项字母} 的对象"},
-        "mindmap": {"label": "思维导图", "kind": "text", "desc": "markdown 无序列表（- 根节点，子节点缩进2空格），用于思维导图渲染"},
-        "table": {"label": "表格", "kind": "text", "desc": "markdown 表格"},
-
-    }
-    supported = [k for k in req.forms if k in FORM_SPECS]
-    if not supported:
-        return {"status": "error", "msg": "没有支持的形式"}
-    selected = chr(10).join("- " + k + "（" + FORM_SPECS[k]["label"] + "）：" + FORM_SPECS[k]["desc"] for k in supported)
-    _f = supported[0]
-    _spec = FORM_SPECS[_f]
-    if _spec["kind"] == "text":
-        prompt = chr(10).join([
-            "把下面的学习内容转换成「" + _spec["label"] + "」，直接输出内容本身（markdown 文本）：",
-            "内容：",
-            (req.content or "")[:6000],
-            "",
-            "要求：" + _spec["desc"] + "。不要 JSON 包装、不要代码块围栏、不要额外解释、不要提知识库检索。",
-        ])
-    else:
-        prompt = chr(10).join([
-            "把下面的学习内容转换成 JSON 数组，数组每一项是：" + _spec["desc"],
-            "内容：",
-            (req.content or "")[:6000],
-            "",
-            "只输出 JSON 数组，不要额外解释、不要提知识库检索。",
-        ])
-    import queue as _queue
-    import threading as _threading
-    import json as _json2
-    import re as _re2
-    from fastapi.responses import StreamingResponse
-
-    def _run():
-        try:
-            from core.base_llm import DeepSeekLLM
-            llm = DeepSeekLLM(api_key=req.api_key or None, model=req.model, base_url=req.base_url, thinking=False)
-            _collected = []
-            def _on_token(chunk):
-                _collected.append(chunk)
-                _q.put(("token", chunk))
-            if _spec["kind"] == "text":
-                # 文本形式：流式纯 markdown（不带 response_format），前端边收边显示
-                llm.chat_stream([{"role": "user", "content": prompt}], _on_token, temperature=0.3)
-                _q.put(("done", _f, "".join(_collected)))
-            else:
-                # 数组形式：流式 JSON，前端拼完解析渲染
-                llm.chat_stream([{"role": "user", "content": prompt}], _on_token, temperature=0.3, response_format={"type": "json_object"})
-                _raw = "".join(_collected)
-                _data = []
-                try:
-                    _data = _json2.loads(_raw)
-                except Exception:
-                    _m = _re2.search(r"\[[\s\S]*\]", _raw)
-                    if _m:
-                        try:
-                            _data = _json2.loads(_m.group())
-                        except Exception:
-                            pass
-                _q.put(("done", _f, _data))
-        except Exception as _e:
-            _q.put(("error", str(_e)[:200]))
-
-    _q = _queue.Queue()
-    _threading.Thread(target=_run, daemon=True).start()
-
-    def _gen():
-        yield "data: " + _json2.dumps({"type": "start"}) + chr(10) + chr(10)
-        while True:
-            _msg = _q.get()
-            if _msg[0] == "token":
-                yield "data: " + _json2.dumps({"type": "token", "chunk": _msg[1]}) + chr(10) + chr(10)
-            elif _msg[0] == "done":
-                yield "data: " + _json2.dumps({"type": "done", "form": _msg[1], "result": _msg[2]}) + chr(10) + chr(10)
-                break
-            elif _msg[0] == "error":
-                yield "data: " + _json2.dumps({"type": "error", "message": _msg[1]}) + chr(10) + chr(10)
-                break
-
-    return StreamingResponse(_gen(), media_type="text/event-stream")
-
-
-@app.get("/api/resources")
-async def list_resources(project_id: str = "default"):
-    from core.postgres_client import pg_client
-    rows = pg_client.execute("SELECT id, name, content, type, file_ext, file_size, created_at FROM resources WHERE project_id=%s ORDER BY created_at DESC", (project_id,))
-    return {"resources": rows}
-
-
-@app.post("/api/special-creations")
-async def save_special_creation(req: dict):
-    """保存特殊形式创作（后端持久化，替代 localStorage）"""
-    import json as _json
-    from core.postgres_client import pg_client
-    form = req.get("form", "")
-    content = req.get("content")
-    project_id = req.get("project_id", "default")
-    if not form or content is None:
-        return {"status": "error", "msg": "参数不完整"}
-    if isinstance(content, (list, dict)):
-        content = _json.dumps(content, ensure_ascii=False)
-    else:
-        content = str(content)
-    pg_client.execute("INSERT INTO special_creations (project_id, form, content) VALUES (%s,%s,%s)", (project_id, form, content))
-    return {"status": "ok"}
-
-
-@app.get("/api/special-creations")
-async def list_special_creations(project_id: str = "default"):
-    """列出特殊形式创作"""
-    import json as _json
-    from core.postgres_client import pg_client
-    rows = pg_client.execute("SELECT id, project_id, form, content, created_at FROM special_creations WHERE project_id=%s ORDER BY id DESC", (project_id,))
-    for r in rows:
-        try:
-            r["content"] = _json.loads(r["content"])
-        except Exception:
-            pass
-    return {"creations": rows}
-
-
-@app.delete("/api/special-creations/{cid}")
-async def delete_special_creation(cid: int):
-    """删除特殊形式创作"""
-    from core.postgres_client import pg_client
-    pg_client.execute("DELETE FROM special_creations WHERE id=%s", (cid,))
-    return {"status": "ok"}
-
-
-@app.get("/api/resources/all")
-async def list_resources_all():
-    """我的上传：聚合所有项目的资源（带项目名）"""
-    from core.postgres_client import pg_client
-    proj_names = {r["id"]: r["name"] for r in pg_client.execute("SELECT id, name FROM projects")}
-    rows = pg_client.execute("SELECT id, name, content, type, file_ext, file_size, project_id, created_at FROM resources ORDER BY created_at DESC")
-    for r in rows:
-        r["project_name"] = proj_names.get(r.get("project_id", ""), r.get("project_id", ""))
-    return {"resources": rows}
-
-
-@app.post("/api/resources")
-async def save_resource(req: ResourceSave):
-    import time, hashlib
-    from core.postgres_client import pg_client
-    rid = hashlib.md5((req.name + req.project_id).encode()).hexdigest()[:16]
-    has = pg_client.execute("SELECT id FROM resources WHERE id=%s", (rid,))
-    if has:
-        pg_client.execute("UPDATE resources SET content=%s WHERE id=%s", (req.content, rid))
-    else:
-        pg_client.execute("INSERT INTO resources (id, name, content, project_id) VALUES (%s,%s,%s,%s)",
-                          (rid, req.name, req.content, req.project_id))
-    return {"status": "ok", "id": rid}
-
-
-@app.post("/api/resources/upload")
-async def upload_resource(
-    project_id: str = Form("default"),
-    file: UploadFile = File(...),
-):
-    """我的上传：上传文件存资源表（解析文本存 content，文件本体存 data/uploads）"""
-    import time, hashlib
-    from core.postgres_client import pg_client
-    from core.file_parser import parse_file
-    data = await file.read()
-    name = file.filename or "file"
-    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
-    text = parse_file(name, data)
-    rid = hashlib.md5((name + project_id + str(time.time())).encode()).hexdigest()[:16]
-    up_dir = "/app/data/uploads"
-    os.makedirs(up_dir, exist_ok=True)
-    fname = rid + (("." + ext) if ext else "")
-    fpath = os.path.join(up_dir, fname)
-    try:
-        with open(fpath, "wb") as f:
-            f.write(data)
-    except Exception:
-        fpath = ""
-    pg_client.execute(
-        "INSERT INTO resources (id, name, content, project_id, type, file_ext, file_size, file_path) VALUES (%s,%s,%s,%s,'file',%s,%s,%s)",
-        (rid, name, text, project_id, ext, len(data), fpath),
-    )
-    return {"status": "ok", "id": rid, "name": name, "preview": text[:80]}
-
-
-@app.delete("/api/resources/{rid}")
-async def delete_resource(rid: str):
-    from core.postgres_client import pg_client
-    pg_client.execute("DELETE FROM resources WHERE id=%s", (rid,))
-    return {"status": "ok"}
-
-
-@app.get("/api/dialogues/{did}/followups")
-async def get_followups(did: str):
-    from core.postgres_client import pg_client
-    import json as _json
-    rows = pg_client.execute("SELECT questions, updated_at FROM followups WHERE dialogue_id=%s", (did,))
-    if not rows:
-        return {"questions": []}
-    try:
-        qs = _json.loads(rows[0]["questions"] or "[]")
-    except Exception:
-        qs = []
-    return {"questions": qs, "updated_at": rows[0].get("updated_at")}
-
-
-@app.get("/api/artifacts")
-async def list_artifacts(project_id: str = "default"):
-    """扫描项目对话消息，解析生成物（定制讲义/实操指南/分阶测试题）"""
-    import re
-    from core.postgres_client import pg_client
-    dialogs = pg_client.execute("SELECT id, name FROM dialogues WHERE project_id=%s", (project_id,))
-    if not dialogs:
-        return {"artifacts": []}
-    d_ids = [d["id"] for d in dialogs]
-    d_names = {d["id"]: d["name"] for d in dialogs}
-    ph = ",".join(["%s"] * len(d_ids))
-    msgs = pg_client.execute(
-        "SELECT dialogue_id, content, created_at FROM messages WHERE role='assistant' AND dialogue_id IN (" + ph + ") ORDER BY created_at",
-        tuple(d_ids))
-    # 生成物小节标题（graph.py 新输出格式：正文即讲解、无板块标题；"## 📝 分阶测试题" 按需出现；
-    # 正则同时兼容旧格式 ## 📘 定制讲义 / ## 🛠 实操指南 / ## 溯源 历史数据）
-    section_re = re.compile(r"^##\s*(?:📘|🛠|📝|🔍)?\s*(定制讲义|讲义|实操指南|分阶测试题|测试题|溯源)\s*$", re.M)
-    artifacts = []
-    for m in msgs:
-        content = str(m["content"] or "")
-        marks = list(section_re.finditer(content))
-        # 测试题：按 "## 分阶测试题" 标题截取（新格式按需出现）
-        quiz_m = next((mk for mk in marks if mk.group(1) in ("分阶测试题", "测试题")), None)
-        if quiz_m:
-            body = content[quiz_m.end():]
-            body = re.sub(r"_溯源：.*$", "", body, flags=re.S).strip()
-            if body:
-                artifacts.append({
-                    "id": str(m["dialogue_id"]) + "-quiz",
-                    "dialogue_id": m["dialogue_id"],
-                    "dialogue_name": d_names.get(m["dialogue_id"], ""),
-                    "type": "测试题",
-                    "title": "分阶测试题",
-                    "content": body,
-                    "created_at": m["created_at"],
-                })
-        # 讲解正文：新格式无板块标题直接全篇；旧格式取"定制讲义"段；去掉残留板块标题/溯源行
-        lec_m = next((mk for mk in marks if mk.group(1) in ("定制讲义", "讲义")), None)
-        if lec_m:
-            lecture = content[lec_m.end():quiz_m.start() if quiz_m else len(content)]
-        else:
-            lecture = content[:quiz_m.start() if quiz_m else len(content)]
-        lecture = section_re.sub("", lecture)
-        lecture = re.sub(r"_溯源：.*$", "", lecture, flags=re.S).strip()
-        if len(lecture) >= 100:
-            artifacts.append({
-                "id": str(m["dialogue_id"]) + "-lec",
-                "dialogue_id": m["dialogue_id"],
-                "dialogue_name": d_names.get(m["dialogue_id"], ""),
-                "type": "讲义",
-                "title": "讲义",
-                "content": lecture,
-                "created_at": m["created_at"],
-            })
-    return {"artifacts": artifacts}
-
-
-# ---------- 反馈/统计 API ----------
-
-class FeedbackReq(BaseModel):
-    dialogue_id: str = ""
-    project_id: str = "default"
-    resource_type: str = ""
-    feedback: str = ""
-    note: str = ""
-
-
-@app.post("/api/feedback")
-async def add_feedback(req: FeedbackReq):
-    from core.postgres_client import pg_client
-    pg_client.execute("INSERT INTO feedback (dialogue_id, project_id, resource_type, feedback, note) VALUES (%s,%s,%s,%s,%s)",
-                      (req.dialogue_id, req.project_id, req.resource_type, req.feedback, req.note))
-    # 反馈并入对话画像：难度类反馈调整水平
-    if req.dialogue_id and req.feedback in ("太难", "太简单"):
-        try:
-            rows = pg_client.execute("SELECT profile_data FROM dialogue_memories WHERE dialogue_id=%s", (req.dialogue_id,))
-            if rows:
-                import json as _json
-                p = dict(rows[0]["profile_data"] or {})
-                level_map = {"零基础": 1, "有基础": 2, "熟练": 3, "精通": 4}
-                cur = level_map.get(p.get("selfLevel", "有基础"), 2)
-                if req.feedback == "太难":
-                    cur = max(1, cur - 1)
-                else:
-                    cur = min(4, cur + 1)
-                rev = {v: k for k, v in level_map.items()}
-                p["selfLevel"] = rev[cur]
-                pg_client.execute("UPDATE dialogue_memories SET profile_data=%s WHERE dialogue_id=%s",
-                                  (_json.dumps(p, ensure_ascii=False), req.dialogue_id))
-        except Exception:
-            pass
-    return {"status": "ok"}
-
-
-@app.get("/api/stats")
-async def get_stats(project_id: str = "default"):
-    from core.postgres_client import pg_client
-    # 对话数、消息数、token估算、最近学习时间
-    d = pg_client.execute("SELECT count(*) AS c FROM dialogues WHERE project_id=%s", (project_id,))
-    m = pg_client.execute("SELECT count(*) AS c, COALESCE(SUM(LENGTH(content)),0) AS chars FROM messages", ())
-    s = pg_client.execute("SELECT metrics FROM stats WHERE project_id=%s ORDER BY updated_at DESC LIMIT 1", (project_id,))
-    metrics = s[0]["metrics"] if s else {}
-    ds = pg_client.execute("SELECT COALESCE(SUM(duration_seconds),0) AS s FROM stats WHERE project_id=%s", (project_id,))
-    # 专注时长·最近30天（按天聚合 focus_log；project_id=all 聚合全部项目，主页趋势图用）
-    daily_focus = []
-    try:
-        if project_id in ("all", ""):
-            rows = pg_client.execute(
-                "SELECT substr(created_at,1,10) AS d, SUM(duration_seconds) AS s FROM focus_log WHERE created_at >= datetime('now','-30 days') GROUP BY d ORDER BY d",
-                ())
-        else:
-            rows = pg_client.execute(
-                "SELECT substr(created_at,1,10) AS d, SUM(duration_seconds) AS s FROM focus_log WHERE project_id=%s AND created_at >= datetime('now','-30 days') GROUP BY d ORDER BY d",
-                (project_id,))
-        daily_focus = [{"date": r["d"], "seconds": int(r["s"] or 0)} for r in (rows or [])]
-    except Exception:
-        pass
-    return {
-        "dialogue_count": d[0]["c"] if d else 0,
-        "message_count": m[0]["c"] if m else 0,
-        "total_chars": m[0]["chars"] if m else 0,
-        "tokens_estimate": int((m[0]["chars"] if m else 0) / 2),
-        "metrics": metrics,
-        # 专注时长（秒）：stats 表累计，用户侧可视化反馈（专注时长+token用量）
-        "total_duration_seconds": int(ds[0]["s"]) if ds else 0,
-        # 最近30天每日专注时长（秒）：主页趋势图
-        "daily_focus": daily_focus,
-    }
-
-
-@app.get("/api/task-stats")
-async def get_task_stats(project_id: str = "default", limit: int = 20):
-    """Agent 运行监控：最近 N 次任务的各节点耗时/调用次数/token 估算"""
-    import json as _json
-    from core.postgres_client import pg_client
-    rows = pg_client.execute(
-        "SELECT dialogue_id, data, created_at FROM task_stats WHERE project_id=%s ORDER BY id DESC LIMIT %s",
-        (project_id, min(max(limit, 1), 100)))
-    out = []
-    for r in rows:
-        d = r.get("data") or "{}"
-        try:
-            data = _json.loads(d) if isinstance(d, str) else (d or {})
-        except Exception:
-            data = {}
-        out.append({"dialogue_id": r.get("dialogue_id"), "created_at": r.get("created_at"), "data": data})
-    return {"tasks": out}
-
-
-# ---------- 数据管理 ----------
-
-@app.delete("/api/memories")
-async def clear_memories():
-    """清空全部记忆：全局画像 / 项目记忆 / 对话记忆"""
-    from core.postgres_client import pg_client
-    pg_client.execute("DELETE FROM global_profile", ())
-    pg_client.execute("DELETE FROM project_memories", ())
-    pg_client.execute("DELETE FROM dialogue_memories", ())
-    return {"status": "ok"}
-
-
-@app.post("/api/memory/rebuild")
-async def memory_rebuild(req: dict):
-    """重新分析对话生成记忆（前端携带有效 api_key 调用）：
-    - project_id 为空 → 全部项目；否则只分析指定项目
-    - 后台异步执行，不阻塞请求
-    """
-    import threading
-    from core.memory_analysis import update_memories
-    from core.postgres_client import pg_client
-    api_key = (req or {}).get("api_key") or ""
-    project_id = (req or {}).get("project_id") or ""
-    if project_id:
-        threading.Thread(target=update_memories, args=(api_key, project_id, None, pg_client, "default"), daemon=True).start()
-    else:
-        rows = pg_client.execute("SELECT id FROM projects WHERE archived = FALSE")
-        for r in rows or []:
-            threading.Thread(target=update_memories, args=(api_key, r["id"], None, pg_client, "default"), daemon=True).start()
-    return {"status": "ok", "message": "记忆分析已启动，稍后刷新查看"}
-
-
-@app.delete("/api/projects/{pid}/dialogues")
-async def clear_project_dialogues(pid: str):
-    """清空指定项目的全部对话（消息 + 对话画像级联删除，保留项目与项目记忆）"""
-    from core.postgres_client import pg_client
-    dialogs = pg_client.execute("SELECT id FROM dialogues WHERE project_id=%s", (pid,))
-    for d in dialogs or []:
-        pg_client.execute("DELETE FROM messages WHERE dialogue_id=%s", (d["id"],))
-        pg_client.execute("DELETE FROM dialogue_memories WHERE dialogue_id=%s", (d["id"],))
-    pg_client.execute("DELETE FROM dialogues WHERE project_id=%s", (pid,))
-    return {"status": "ok", "deleted": len(dialogs or [])}
-
-
-@app.get("/api/export")
-async def export_all(project_id: str = "default"):
-    """导出全部数据（JSON 备份）：项目/对话/消息/记忆/资源/知识库"""
-    import json as _json
-    from core.postgres_client import pg_client
-    def _q(sql, args=()):
-        return pg_client.execute(sql, args)
-    out = {
-        "projects": _q("SELECT id, name, is_default, simple, domain, created_at FROM projects WHERE archived = FALSE"),
-        "dialogues": _q("SELECT id, project_id, session_id, name, created_at FROM dialogues"),
-        "messages": _q("SELECT dialogue_id, role, content, created_at FROM messages ORDER BY created_at"),
-        "global_profile": _q("SELECT data, updated_at FROM global_profile"),
-        "project_memories": _q("SELECT project_id, data, updated_at FROM project_memories"),
-        "dialogue_memories": _q("SELECT dialogue_id, project_id, profile_data, updated_at FROM dialogue_memories"),
-        "resources": _q("SELECT id, name, content, project_id, created_at FROM resources WHERE project_id=%s", (project_id,)),
-        "stats": _q("SELECT project_id, tokens, duration_seconds, metrics FROM stats"),
-    }
-    return {"exported_at": __import__("datetime").datetime.now().isoformat(), "data": out}
-
-
-# ---------- 学习时间线 ----------
-
-@app.get("/api/learning-log")
-async def get_learning_log(project_id: str = ""):
-    """按日期聚合的学习时间线：每次对话的名称/主题/产出（project_id 为空=全部项目）"""
-    import json as _json
-    from core.postgres_client import pg_client
-    if project_id:
-        dialogs = pg_client.execute("SELECT id, project_id, name, created_at FROM dialogues WHERE project_id=%s AND archived=FALSE", (project_id,))
-    else:
-        dialogs = pg_client.execute("SELECT id, project_id, name, created_at FROM dialogues WHERE archived=FALSE")
-    projs = pg_client.execute("SELECT id, name FROM projects")
-    pname = {p["id"]: p.get("name", p["id"]) for p in projs or []}
-    days: dict = {}
-    for d in dialogs or []:
-        date = (d.get("created_at") or "")[:10] or "未知日期"
-        topic = ""
-        try:
-            dm = pg_client.execute("SELECT profile_data FROM dialogue_memories WHERE dialogue_id=%s", (d["id"],))
-            if dm and dm[0].get("profile_data"):
-                pd = dm[0]["profile_data"]
-                if isinstance(pd, str):
-                    try: pd = _json.loads(pd)
-                    except Exception: pd = {}
-                topic = pd.get("topic", "") if isinstance(pd, dict) else ""
-        except Exception:
-            pass
-        arts: list = []
-        try:
-            from core.sqlite_client import get_db
-            msgs = get_db().execute("SELECT content FROM messages WHERE dialogue_id=%s ORDER BY created_at", (d["id"],))
-            for m in msgs or []:
-                c = str(m.get("content") or "")
-                # 新格式：正文即讲解（无板块标题）→ 讲义；"## 📝 分阶测试题" 按需出现 → 测试题（兼容旧标题）
-                if "## 📝 分阶测试题" in c and not any(a["type"] == "测试题" for a in arts):
-                    arts.append({"type": "测试题", "title": "分阶测试题"})
-                if len(c) >= 100 and not any(a["type"] == "讲义" for a in arts):
-                    arts.append({"type": "讲义", "title": "讲义"})
-        except Exception:
-            pass
-        item = {
-            "project_id": d.get("project_id"), "project_name": pname.get(d.get("project_id"), d.get("project_id")),
-            "dialogue_id": d["id"], "dialogue_name": d.get("name") or "对话",
-            "topic": topic, "artifacts": arts, "created_at": d.get("created_at"),
-        }
-        days.setdefault(date, []).append(item)
-    out = [{"date": k, "items": v} for k, v in sorted(days.items(), key=lambda x: x[0], reverse=True)]
-    return {"days": out}
-
-
-@app.get("/api/memory/progress")
-async def memory_progress(project_id: str = "default"):
-    """学习效果分析（基于对话内容）：知识点掌握度（遗忘曲线衰减 R=exp(-Δt/S)）+ 每日推进节奏
-    - 知识点提及统计：知识点名称出现在对话消息中的日期
-    - 记忆强度 S：按提及天数估计（提及越多越稳定）；可检索性 R 随时间指数衰减
-    - 掌握度 = 基础分 × R（久未复习的颜色变淡，即"遗忘"）
-    """
-    import math, datetime
-    from collections import defaultdict
-    from core.postgres_client import pg_client as _pg
-    # 知识点/难点：来自项目记忆
-    rows = _pg.execute("SELECT data FROM project_memories WHERE project_id=%s", (project_id,))
-    mem = _as_dict(rows[0]["data"]) if rows and rows[0]["data"] else {}
-    names: list = []
-    kind_map: dict = {}
-    for k in ["知识点", "难点"]:
-        v = mem.get(k) or []
-        if isinstance(v, list):
-            parts = [str(x).strip() for x in v if str(x).strip()]
-        elif isinstance(v, str):
-            parts = [s.strip() for s in v.split(",") if s.strip()]
-        else:
-            parts = []
-        for p in parts:
-            if p and p not in kind_map:
-                names.append(p)
-                kind_map[p] = k
-    names = names[:20]
-    # 对话列表（用于每日节奏）
-    dialogs = _pg.execute("SELECT id, created_at FROM dialogues WHERE project_id=%s ORDER BY created_at", (project_id,)) or []
-    # 消息（提及统计）
-    seen_days: dict = defaultdict(set)
-    try:
-        from core.sqlite_client import get_db
-        d_ids = [d["id"] for d in dialogs]
-        msgs: list = []
-        if d_ids and names:
-            ph = ",".join(["%s"] * len(d_ids))
-            msgs = get_db().execute("SELECT content, created_at FROM messages WHERE dialogue_id IN (" + ph + ") ORDER BY created_at LIMIT 500", tuple(d_ids)) or []
-        for m in msgs:
-            c = str(m.get("content") or "")
-            d = str(m.get("created_at") or "")[:10]
-            if not d:
-                continue
-            for n in names:
-                if n and n in c:
-                    seen_days[n].add(d)
-    except Exception:
-        pass
-    today = datetime.date.today()
-    items = []
-    for n in names:
-        days = sorted(seen_days.get(n, set()))
-        last = days[-1] if days else None
-        dt = 999
-        if last:
-            try:
-                dt = (today - datetime.date.fromisoformat(last)).days
-            except Exception:
-                dt = 999
-        mentions = len(days)
-        # 记忆稳定性 S（天）：提及越多越稳定，上限 30 天
-        stability = min(30, mentions * 2 + 3)
-        R = 0.0 if dt >= 999 else math.exp(-dt / max(stability, 1))
-        mastery = int(min(95, 20 + mentions * 10) * R)
-        items.append({
-            "name": n,
-            "kind": kind_map.get(n, "知识点"),
-            "mastery": mastery,
-            "retrievability": round(R, 2),
-            "lastSeen": last,
-            "daysSince": 999 if dt >= 999 else dt,
-            "mentions": mentions,
-            "stability": stability,
-            "forgotten": dt >= 999 or R < 0.7,
-        })
-    items.sort(key=lambda x: -x["mastery"])
-    # 每日推进节奏：最近 14 天对话数
-    day_counts: dict = defaultdict(int)
-    for dlg in dialogs:
-        d = str(dlg.get("created_at") or "")[:10]
-        if d:
-            day_counts[d] += 1
-    daily = []
-    for i in range(13, -1, -1):
-        d = (today - datetime.timedelta(days=i)).isoformat()
-        daily.append({"date": d, "count": day_counts.get(d, 0)})
-    # 节奏总结（规则）：近7天 vs 前7天
-    def _sum(arr, start, end):
-        return sum(x["count"] for x in arr[start:end])
-    w7 = _sum(daily, 7, 14)
-    prev7 = max(1, _sum(daily, 0, 7))
-    ratio = w7 / prev7
-    pace = "↗ 变快" if ratio > 1.3 else ("↘ 变慢" if ratio < 0.7 else "→ 平稳")
-    return {"items": items, "daily": daily, "pace": pace, "total_dialogues": len(dialogs)}
-
-
-# ---------- 画像 API ----------
-
-class ProfileData(BaseModel):
-    profile: dict = {}
-
-
-class DialogueUpdate(BaseModel):
-    name: str | None = None
-    archived: bool | None = None
-
-
-@app.post("/api/dialogues/{did}/update")
-async def update_dialogue(did: str, req: DialogueUpdate):
-    """更新对话信息：改名 / 归档（自动命名、自动清理用）"""
-    from core.postgres_client import pg_client
-    if req.name is not None:
-        pg_client.execute("UPDATE dialogues SET name=%s WHERE id=%s", (req.name, did))
-    if req.archived is not None:
-        pg_client.execute("UPDATE dialogues SET archived=%s WHERE id=%s", (1 if req.archived else 0, did))
-    return {"status": "ok"}
-
-
-@app.post("/api/global-profile")
-async def save_global_profile(req: ProfileData):
-    """个人全局性记忆：保存简历式自由要点（upsert 最新一条，单行表 id=1）"""
-    import json
-    from core.postgres_client import pg_client
-    data = json.dumps(req.profile, ensure_ascii=False)
-    rows = pg_client.execute("SELECT id FROM global_profile LIMIT 1")
-    if rows:
-        pg_client.execute("UPDATE global_profile SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE id=%s", (data, rows[0]["id"]))
-    else:
-        pg_client.execute("INSERT INTO global_profile (session_id, data) VALUES (%s,%s)", ("default", data))
-    return {"status": "ok"}
-
-
-@app.post("/api/project-memory/{project_id}")
-async def save_project_memory(project_id: str, req: ProfileData):
-    """项目记忆全字段保存：合并写入 project_memories（保留对话概要/对话摘要等系统字段）"""
-    import json
-    from core.postgres_client import pg_client
-    rows = pg_client.execute("SELECT session_id, data FROM project_memories WHERE project_id=%s", (project_id,))
-    proj = _as_dict(rows[0]["data"]) if rows and rows[0]["data"] else {}
-    p = req.profile
-    if isinstance(p, dict):
-        for k in ["抽象目的", "抽象项目情况", "起点", "当前水平", "目标", "偏好", "知识点", "难点", "薄弱点", "兴趣", "里程碑", "课程结束时间", "平均每日投入时间", "其他"]:
-            if k in p:
-                proj[k] = p[k]
-        # 前端置空的单值字段允许清理
-        for k in ["抽象目的", "抽象项目情况", "起点", "当前水平", "目标", "课程结束时间", "平均每日投入时间", "其他"]:
-            if k in p and not p[k]:
-                proj.pop(k, None)
-    data = json.dumps(proj, ensure_ascii=False)
-    if rows:
-        pg_client.execute("UPDATE project_memories SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE project_id=%s", (data, project_id))
-    else:
-        pg_client.execute("INSERT INTO project_memories (session_id, project_id, data) VALUES (%s,%s,%s)", ("project", project_id, data))
-    return {"status": "ok"}
-
-
-@app.post("/api/projects/{pid}/profile")
-async def save_project_profile(pid: str, req: ProfileData):
-    import json
-    from core.postgres_client import pg_client
-    # 项目画像写入 project_memories：合并（不覆盖对话生成的记忆），字段映射成前端可显示键
-    rows = pg_client.execute("SELECT session_id, data FROM project_memories WHERE project_id=%s", (pid,))
-    proj = _as_dict(rows[0]["data"]) if rows and rows[0]["data"] else {}
-    p = req.profile
-    if isinstance(p, dict):
-        if p.get("domain"): proj["抽象项目情况"] = p["domain"]
-        if p.get("background"): proj["抽象项目情况"] = p["background"] or proj.get("抽象项目情况", "")
-        if p.get("prefer"): proj["偏好"] = p["prefer"]
-        if p.get("goal"): proj["目标"] = p["goal"]
-    data = json.dumps(proj, ensure_ascii=False)
-    if rows:
-        pg_client.execute("UPDATE project_memories SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE project_id=%s", (data, pid))
-    else:
-        pg_client.execute("INSERT INTO project_memories (session_id, project_id, data) VALUES (%s,%s,%s)", ("project", pid, data))
-    return {"status": "ok"}
-
-
-@app.get("/api/projects/{pid}/profile")
-async def get_project_profile(pid: str):
-    from core.postgres_client import pg_client
-    rows = pg_client.execute("SELECT data FROM project_memories WHERE project_id=%s", (pid,))
-    return {"profile": rows[0]["data"] if rows else {}}
-
-
-@app.post("/api/dialogues/{did}/profile")
-async def save_dialogue_profile(did: str, req: ProfileData):
-    import json
-    from core.postgres_client import pg_client
-    pid_row = pg_client.execute("SELECT project_id FROM dialogues WHERE id=%s", (did,))
-    pid = pid_row[0]["project_id"] if pid_row else "default"
-    data = json.dumps(req.profile, ensure_ascii=False)
-    has = pg_client.execute("SELECT dialogue_id FROM dialogue_memories WHERE dialogue_id=%s", (did,))
-    if has:
-        pg_client.execute("UPDATE dialogue_memories SET profile_data=%s, updated_at=CURRENT_TIMESTAMP WHERE dialogue_id=%s", (data, did))
-    else:
-        pg_client.execute("INSERT INTO dialogue_memories (dialogue_id, project_id, profile_data) VALUES (%s,%s,%s)", (did, pid, data))
-    # 汇总对话画像进项目画像：以"对话概要"形式挂项目下，不污染项目字段
-    try:
-        rows = pg_client.execute("SELECT data FROM project_memories WHERE project_id=%s", (pid,))
-        proj = _as_dict(rows[0]["data"]) if rows and rows[0]["data"] else {}
-        # 对话名
-        dname = "对话"
-        try:
-            nrow = pg_client.execute("SELECT name FROM dialogues WHERE id=%s", (did,))
-            if nrow and nrow[0].get("name"):
-                dname = nrow[0]["name"]
-        except Exception:
-            pass
-        # 概要：对话画像的核心字段
-        summary = {
-            "topic": req.profile.get("topic", ""),
-            "selfLevel": req.profile.get("selfLevel", ""),
-            "target": req.profile.get("target", ""),
-        }
-        dlist = proj.get("对话概要", [])
-        updated = False
-        for i, d in enumerate(dlist):
-            if d.get("dialogue_id") == did:
-                dlist[i] = {"dialogue_id": did, "name": dname, "概要": summary}
-                updated = True
-                break
-        if not updated:
-            dlist.append({"dialogue_id": did, "name": dname, "概要": summary})
-        proj["对话概要"] = dlist
-        pg_client.execute("UPDATE project_memories SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE project_id=%s",
-                          (json.dumps(proj, ensure_ascii=False), pid))
-    except Exception:
-        pass
-    return {"status": "ok"}
-
-
-@app.get("/api/dialogues/{did}/profile")
-async def get_dialogue_profile(did: str):
-    from core.postgres_client import pg_client
-    rows = pg_client.execute("SELECT profile_data FROM dialogue_memories WHERE dialogue_id=%s", (did,))
-    return {"profile": rows[0]["profile_data"] if rows else {}}
-
-
-# ---------- 评估 API ----------
-
-@app.post("/api/evaluate")
-async def run_evaluate(project_id: str = "default", api_key: str = ""):
-    from core.evaluator import hallucination_rate, adaptation_accuracy, knowledge_coverage
-    from core.knowledge_service import list_docs
-    from core.postgres_client import pg_client
-    import json
-    # 1. 读项目知识库作为"标准答案"
-    kb_texts = []
-    try:
-        docs = list_docs(project_id)
-        for d in docs:
-            for b in d.get("blocks", []):
-                kb_texts.append(b.get("content", ""))
-    except Exception:
-        pass
-    # 2. 预置测试题 + 3组画像 + 知识点（垂直领域可换）
-    questions = [
-        "什么是牛顿第二定律？",
-        "欧姆定律的公式是什么？",
-        "简述能量守恒定律。",
-        "什么是动量守恒？",
-        "热力学第二定律讲了什么？",
-    ]
-    profiles = [
-        {"level": "beginner", "topic": "牛顿第一定律"},
-        {"level": "beginner", "topic": "电路基础"},
-        {"level": "intermediate", "topic": "牛顿第二定律的应用"},
-        {"level": "advanced", "topic": "麦克斯韦方程组"},
-        {"level": "advanced", "topic": "相对论质能方程"},
-    ]
-    knowledge_points = ["牛顿第一定律", "牛顿第二定律", "牛顿第三定律", "万有引力", "动量守恒", "能量守恒", "欧姆定律", "楞次定律", "热力学第二定律"]
-    # 3. 跑指标
-    h = hallucination_rate(questions, kb_texts, api_key)
-    a = adaptation_accuracy(profiles, api_key)
-    k = knowledge_coverage(knowledge_points, "经典力学", api_key)
-    result = {"hallucination": h, "adaptation": a, "coverage": k}
-    # 4. 写 stats
-    try:
-        pg_client.execute(
-            "INSERT INTO stats (project_id, metrics) VALUES (%s,%s) ON CONFLICT DO NOTHING",
-            (project_id, json.dumps(result, ensure_ascii=False)))
-    except Exception:
-        pass
-    return result
-
-
-# ---------- 项目/对话持久化 API ----------
-
-class ProjectCreate(BaseModel):
-    name: str = "新项目"
-    domain: str = ""
-    simple: bool = False
-
-
-@app.get("/api/projects")
-async def list_projects():
-    from core.postgres_client import pg_client
-    rows = pg_client.execute("SELECT id, name, is_default, simple, domain, created_at FROM projects WHERE archived = FALSE ORDER BY created_at")
-    return {"projects": rows}
-
-
-@app.post("/api/projects")
-async def create_project(req: ProjectCreate):
-    import time
-    from core.postgres_client import pg_client
-    pid = time.strftime("%Y%m%d%H%M%S") + str(int(time.time() * 1000))[-4:]
-    pg_client.execute("INSERT INTO projects (id, name, is_default, simple, domain) VALUES (%s,%s,%s,%s,%s)",
-                      (pid, req.name, False, req.simple, req.domain))
-    return {"id": pid, "name": req.name, "is_default": False, "simple": req.simple, "domain": req.domain}
-
-
-@app.patch("/api/projects/{pid}")
-async def update_project(pid: str, req: ProjectCreate):
-    from core.postgres_client import pg_client
-    pg_client.execute("UPDATE projects SET name=%s, domain=%s, simple=%s WHERE id=%s", (req.name, req.domain, req.simple, pid))
-    return {"status": "ok"}
-
-
-@app.delete("/api/projects/{pid}")
-async def delete_project(pid: str):
-    """级联删除项目：对话+消息+画像+知识库+图谱"""
-    from core.postgres_client import pg_client
-    # 查该项目对话
-    dialogs = pg_client.execute("SELECT id FROM dialogues WHERE project_id=%s", (pid,))
-    d_ids = [d["id"] for d in dialogs]
-    try:
-        # 删消息
-        for d in d_ids:
-            pg_client.execute("DELETE FROM messages WHERE dialogue_id=%s", (d,))
-        # 删对话画像
-        for d in d_ids:
-            pg_client.execute("DELETE FROM dialogue_memories WHERE dialogue_id=%s", (d,))
-        # 删对话
-        pg_client.execute("DELETE FROM dialogues WHERE project_id=%s", (pid,))
-        # 删项目画像
-        pg_client.execute("DELETE FROM project_memories WHERE project_id=%s", (pid,))
-        # 删反馈
-        pg_client.execute("DELETE FROM feedback WHERE project_id=%s", (pid,))
-        # 删项目行
-        pg_client.execute("DELETE FROM projects WHERE id=%s", (pid,))
-    except Exception as e:
-        return {"status": "error", "msg": str(e)}
-    # 删知识库（SQLite 向量表）
-    kb_deleted = 0
-    try:
-        from core.knowledge_service import delete_project_kb
-        kb_deleted = delete_project_kb(pid)
-    except Exception:
-        pass
-    # 删图谱（Neo4j）
-    try:
-        from core.neo4j_client import neo4j_client
-        neo4j_client.run("MATCH (n:Entity {project_id:$p}) DETACH DELETE n", {"p": pid})
-    except Exception:
-        pass
-    return {"status": "ok", "dialogues": len(d_ids), "kb": kb_deleted}
-
-
-@app.get("/api/projects/{pid}/dialogues")
-async def list_dialogues(pid: str):
-    from core.postgres_client import pg_client
-    rows = pg_client.execute("SELECT id, name, created_at FROM dialogues WHERE project_id=%s AND archived=FALSE ORDER BY created_at", (pid,))
-    return {"dialogues": rows}
-
-
-@app.post("/api/dialogues")
-async def create_dialogue(req: dict):
-    """创建对话（落库，前端本地 id 与后端一致：用前端生成 id 或后端生成）"""
-    from core.postgres_client import pg_client
-    pid = req.get("project_id") or "default"
-    name = req.get("name") or "对话"
-    did = req.get("id") or ("dlg-" + str(int(time.time() * 1000)) + "-" + str(abs(hash(name)) % 10000))
-    pg_client.execute("INSERT OR IGNORE INTO dialogues (id, name, project_id) VALUES (%s,%s,%s)", (did, name, pid))
-    return {"id": did, "name": name}
-
-
-@app.get("/api/dialogues/{did}/messages")
-async def get_dialogue_messages(did: str):
-    import json as _json
-    from core.sqlite_client import get_db
-    rows = get_db().execute("SELECT role, content, think, created_at FROM messages WHERE dialogue_id=%s ORDER BY created_at ASC", (did,))
-    for r in rows or []:
-        t = r.get("think") or ""
-        r["think"] = _json.loads(t) if t else []
-    return {"messages": rows or []}
-
-
-@app.post("/api/dialogues/{did}/messages")
-async def post_dialogue_message(did: str, req: dict):
-    """写入一条对话消息（静态引导等），保证 dialogue 存在"""
-    from core.postgres_client import pg_client
-    from core.sqlite_client import get_db
-    role = req.get("role") if req.get("role") in ("user", "assistant", "thinking") else "assistant"
-    content = str(req.get("content") or "")
-    if not content:
-        return {"status": "ok"}
-    pg_client.execute("INSERT OR IGNORE INTO dialogues (id, name, project_id) VALUES (%s,%s,%s)", (did, "对话", "default"))
-    get_db().execute("INSERT INTO messages (dialogue_id, role, content) VALUES (%s,%s,%s)", (did, role, content))
-    return {"status": "ok"}
-
-
-@app.delete("/api/dialogues/{did}")
-async def delete_dialogue(did: str):
-    """级联删除对话：消息+对话画像；并作为一次事件更新项目记忆（移除该对话概要）"""
-    import json as _json
-    from core.postgres_client import pg_client
-    # 先查对话所属项目
-    rows = pg_client.execute("SELECT project_id FROM dialogues WHERE id=%s", (did,))
-    pid = rows[0]["project_id"] if rows else None
-    pg_client.execute("DELETE FROM messages WHERE dialogue_id=%s", (did,))
-    pg_client.execute("DELETE FROM dialogue_memories WHERE dialogue_id=%s", (did,))
-    pg_client.execute("DELETE FROM dialogues WHERE id=%s", (did,))
-    # 更新项目记忆：从"对话概要"移除该对话（把删除当作一次事件）
-    if pid:
-        try:
-            proj_rows = pg_client.execute("SELECT data FROM project_memories WHERE project_id=%s", (pid,))
-            if proj_rows and proj_rows[0]["data"]:
-                proj = _as_dict(proj_rows[0]["data"])
-                dlist = proj.get("对话概要", [])
-                proj["对话概要"] = [d for d in dlist if d.get("dialogue_id") != did]
-                pg_client.execute("UPDATE project_memories SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE project_id=%s",
-                                  (_json.dumps(proj, ensure_ascii=False), pid))
-        except Exception:
-            pass
-    return {"status": "ok", "project_id": pid}
-
-
-# 启动时确保有默认项目
-import time as _time
-
-def _ensure_default_project():
-    from core.postgres_client import pg_client
-    rows = pg_client.execute("SELECT id FROM projects WHERE is_default=TRUE")
-    if rows:
-        return rows[0]["id"]
-    pid = _time.strftime("%Y%m%d%H%M%S") + "default"
-    pg_client.execute("INSERT INTO projects (id, name, is_default) VALUES (%s,%s,%s)", (pid, "默认项目", True))
-    return pid
-
-
-# ---------- Skill 管理 API ----------
-
-@app.get("/api/skills")
-async def list_skills():
-    from skills.registry import registry
-    return {"skills": registry.list_all()}
-
-
-@app.get("/api/skills/{name}/source")
-async def skill_source(name: str):
-    """Skill 实现源码（详情弹层展示具体实现）"""
-    import os as _os
-    try:
-        from skills.registry import registry
-        for s in registry.list_all():
-            if s["name"] == name:
-                p = _os.path.join("/app/skills", s["folder"], "__init__.py")
-                if _os.path.exists(p):
-                    src = open(p, encoding="utf-8").read()
-                    return {"name": name, "source": src[:6000], "path": f"skills/{s['folder']}/__init__.py"}
-    except Exception:
-        pass
-    return {"name": name, "source": "", "path": ""}
-
-
-class SkillUpload(BaseModel):
-    name: str
-    code: str
-
-
-@app.post("/api/skills")
-async def upload_skill(req: SkillUpload):
-    """上传新 Skill：代码写入 skills/ 目录 + 动态加载"""
-    import os as _os
-    import re as _re
-    name = (req.name or "").strip()
-    code = req.code or ""
-    if not name or not _re.fullmatch(r"[a-z_][a-z0-9_]*", name):
-        return {"status": "error", "msg": "skill 名称需为小写字母/数字/下划线（如 my_skill）"}
-    if not code.strip():
-        return {"status": "error", "msg": "代码不能为空"}
-    skill_dir = "/app/skills"
-    folder = _os.path.join(skill_dir, name)
-    _os.makedirs(folder, exist_ok=True)
-    with open(_os.path.join(folder, "__init__.py"), "w", encoding="utf-8") as f:
-        f.write(code)
-    from skills.registry import registry
-    result = registry.reload_skill(name)
-    if result.get("status") == "error":
-        return {"status": "error", "msg": "加载失败：" + result.get("msg", "")}
-    return {"status": "ok", "name": result.get("name", name)}
-
-
-@app.delete("/api/skills/{name}")
-async def delete_skill(name: str):
-    """删除 Skill：删 skills/ 目录 + 移除注册"""
-    import os as _os
-    import shutil as _sh
-    from skills.registry import registry
-    folder = _os.path.join("/app/skills", name)
-    if _os.path.isdir(folder):
-        _sh.rmtree(folder)
-    registry.remove_skill(name)
-    return {"status": "ok", "name": name}
-
-
-@app.post("/api/mcp/tools")
-async def mcp_list_tools(req: dict):
-    """连接 MCP Server，返回其工具列表"""
-    from core.mcp_client import list_tools
-    stype = req.get("type", "stdio")
-    target = req.get("target", "")
-    if not target:
-        return {"status": "error", "msg": "连接目标不能为空"}
-    try:
-        tools = await list_tools(stype, target)
-        return {"status": "ok", "tools": tools}
-    except Exception as e:
-        return {"status": "error", "msg": str(e)[:300]}
-
-
-@app.post("/api/mcp/call")
-async def mcp_call_tool(req: dict):
-    """调用 MCP Server 的某个工具"""
-    from core.mcp_client import call_tool
-    stype = req.get("type", "stdio")
-    target = req.get("target", "")
-    tool = req.get("tool", "")
-    args = req.get("args", {})
-    if not target or not tool:
-        return {"status": "error", "msg": "参数不完整"}
-    try:
-        result = await call_tool(stype, target, tool, args)
-        return {"status": "ok", "result": result}
-    except Exception as e:
-        return {"status": "error", "msg": str(e)[:300]}
-
-
 # ---------- API 接口 ----------
 
 class ChatRequest(BaseModel):
@@ -1376,8 +145,6 @@ class ChatRequest(BaseModel):
     followup_focus: str | None = None  # 追问风格：purpose=目的推进（默认）/ expand=横向拓展闲聊
     extra_followup_did: str | None = None  # 额外生成追问的目标对话（主对话完成后同步给第二对话）
     extra_followup_focus: str | None = None  # 额外追问风格（默认 expand）
-    clarified: bool = False  # 需求澄清后继续：用户已在思维链内选择，跳过再次澄清（同一轮流程内继续）
-
 class StopRequest(BaseModel):
     request_id: str  # /api/chat 的 start 事件返回的生成请求 id（用户手动停止时置位取消）
 
@@ -1386,29 +153,6 @@ class ChatStep(BaseModel):
     status: str
     detail: str | None = None
 
-
-
-# ---------- 记忆修改（AI 分析修改记忆：[模块名] 引用） ----------
-
-GLOBAL_MEM_KEYS = ["身份", "学习目标", "擅长领域", "学习方式", "兴趣方向", "补充信息"]
-PROJECT_MEM_KEYS = ["抽象目的", "抽象项目情况", "起点", "当前水平", "目标", "偏好", "知识点", "难点", "薄弱点", "兴趣"]
-
-
-def _extract_json_obj(text: str) -> dict:
-    """提取文本中的 JSON 对象（容错：裸 JSON 或花括号片段）"""
-    try:
-        d = json.loads(text)
-        return d if isinstance(d, dict) else {}
-    except Exception:
-        pass
-    m = re.search(r"\{[\s\S]*\}", text)
-    if m:
-        try:
-            d = json.loads(m.group(0))
-            return d if isinstance(d, dict) else {}
-        except Exception:
-            pass
-    return {}
 
 
 def _auto_settings(api_key: str, message: str, template: str = "思考", infer_model: bool = False) -> dict:
@@ -1434,7 +178,7 @@ def _auto_settings(api_key: str, message: str, template: str = "思考", infer_m
         if resp.status_code != 200:
             return {}
         raw = resp.json()["choices"][0]["message"]["content"] or ""
-        d = _extract_json_obj(raw)
+        d = extract_json_obj(raw)
         if not d:
             return {}
         # 只接受合法取值，非法字段丢弃（template 由用户选择，不参与推断）
@@ -1468,160 +212,138 @@ def _apply_template(agents, tpl: str):
     return out
 
 
-def _memory_edit(api_key: str, message: str, project_id: str, session_id: str) -> dict | None:
-    """检测 [模块名] 引用 → AI 分析并修改记忆；返回 {"reply":..., "steps":...}，非引用消息返回 None"""
-    m = re.search(r"\[([^\[\]]{1,16})\]", message)
-    if not m:
-        return None
-    key = m.group(1).strip()
-    rest = message[m.end():].strip()
-    is_global = key in GLOBAL_MEM_KEYS
-    is_project = key in PROJECT_MEM_KEYS
-    if not (is_global or is_project):
-        return None
-    from core.postgres_client import pg_client as _pg
-    from core.config import config as _cfg
-    # 读当前内容
-    cur = ""
-    if is_global:
-        rows = _pg.execute("SELECT data FROM global_profile ORDER BY updated_at DESC LIMIT 1")
-        d = _as_dict(rows[0]["data"]) if rows and rows[0]["data"] else {}
-        v = d.get(key, "")
-        cur = v if isinstance(v, str) else (", ".join(v) if isinstance(v, list) else str(v))
-    else:
-        rows = _pg.execute("SELECT data FROM project_memories WHERE project_id=%s", (project_id,))
-        d = _as_dict(rows[0]["data"]) if rows and rows[0]["data"] else {}
-        v = d.get(key, "")
-        cur = v if isinstance(v, str) else (", ".join(v) if isinstance(v, list) else str(v))
-    # LLM 分析修改
-    prompt = (
-        f"你是记忆管理 Agent。用户希望对记忆模块「{key}」进行修改。\n"
-        f"当前内容：{cur or '（空）'}\n"
-        f"用户的修改想法：{rest or '（未说明，请自行判断是否需要修改）'}\n"
-        f"请分析并给出修改后的内容（可保留、细化或重写，须符合用户想法且不与已有内容矛盾）。\n"
-        f"只输出 JSON：{{\"reason\": \"修改理由（一两句）\", \"content\": \"修改后的内容（支持段落、- 列表、1. 列表）\"}}"
-    )
-    h = {"Authorization": "Bearer " + (api_key or _cfg.DEEPSEEK_API_KEY), "Content-Type": "application/json"}
-    try:
-        import requests as _req
-        resp = _req.post(_cfg.DEEPSEEK_BASE_URL + "/chat/completions",
-                         json={"model": "deepseek-v4-flash", "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]},
-                         headers=h, timeout=60)
-        if resp.status_code != 200:
-            return {"reply": f"⚠️ 修改失败：LLM 调用错误（{resp.status_code}）", "steps": [{"agent": "记忆管理", "status": "done", "detail": "修改失败"}]}
-        raw = resp.json()["choices"][0]["message"]["content"] or ""
-        data = _extract_json_obj(raw)
-        content = str(data.get("content") or "").strip()
-        reason = str(data.get("reason") or "").strip()
-        if not content:
-            return {"reply": "⚠️ 修改失败：AI 未能生成修改内容", "steps": [{"agent": "记忆管理", "status": "done", "detail": "解析失败"}]}
-    except Exception as e:
-        return {"reply": f"⚠️ 修改失败：{str(e)[:120]}", "steps": [{"agent": "记忆管理", "status": "done", "detail": "调用异常"}]}
-    # 写回
-    try:
-        if is_global:
-            rows = _pg.execute("SELECT id FROM global_profile LIMIT 1")
-            if rows:
-                old = _pg.execute("SELECT data FROM global_profile WHERE id=%s", (rows[0]["id"],))
-                d2 = _as_dict(old[0]["data"]) if old and old[0]["data"] else {}
-                d2[key] = content
-                _pg.execute("UPDATE global_profile SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE id=%s", (json.dumps(d2, ensure_ascii=False), rows[0]["id"]))
-            else:
-                _pg.execute("INSERT INTO global_profile (session_id, data) VALUES (%s,%s)", (session_id or "default", json.dumps({key: content}, ensure_ascii=False)))
-        else:
-            newv: object = content
-            if key in ["偏好", "知识点", "难点", "薄弱点", "兴趣"]:
-                newv = [s.strip() for s in re.split(r"[,，、\n]+", content) if s.strip()]
-            rows = _pg.execute("SELECT session_id, data FROM project_memories WHERE project_id=%s", (project_id,))
-            if rows:
-                d2 = _as_dict(rows[0]["data"]) if rows[0]["data"] else {}
-                d2[key] = newv
-                _pg.execute("UPDATE project_memories SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE project_id=%s", (json.dumps(d2, ensure_ascii=False), project_id))
-            else:
-                _pg.execute("INSERT INTO project_memories (session_id, project_id, data) VALUES (%s,%s,%s)", (session_id or "default", project_id, json.dumps({key: newv}, ensure_ascii=False)))
-    except Exception as e:
-        return {"reply": f"⚠️ 修改失败（写入）：{str(e)[:120]}", "steps": [{"agent": "记忆管理", "status": "done", "detail": "写入异常"}]}
-    return {"reply": f"✅ 已更新记忆模块「{key}」\n\n**修改理由**：{reason}\n\n**新内容**：\n{content}", "steps": [{"agent": "记忆管理", "status": "done", "detail": f"分析并更新「{key}」"}]}
-
-
 @app.post("/api/memory-chat")
 async def memory_chat(req: ChatRequest):
     """记忆对话：根据用户输入直接更新记忆（只更新明确提到的字段），返回一句话确认。
     project_id 为 'global'（或空）时操作个人全局性记忆，否则操作课程记忆。"""
-    import json
-    from core.postgres_client import pg_client
-    from core.memory_analysis import _as_dict
-    pid = (req.project_id or "").strip()
-    if not pid or pid == "global":
-        pid = "global"
-        rows = pg_client.execute("SELECT id, data FROM global_profile ORDER BY updated_at DESC LIMIT 1")
-        mem = _as_dict(rows[0]["data"]) if rows and rows[0].get("data") else {}
-        ALLOW = ["身份", "学习目标", "擅长领域", "学习方式", "兴趣方向", "补充信息"]
-    else:
-        rows = pg_client.execute("SELECT session_id, data FROM project_memories WHERE project_id=%s", (pid,))
-        mem = _as_dict(rows[0]["data"]) if rows and rows[0].get("data") else {}
-        ALLOW = ["抽象目的", "抽象项目情况", "起点", "当前水平", "目标", "偏好", "知识点", "难点", "薄弱点", "兴趣"]
-    prompt = (
-        "你是记忆更新助手。以下是当前记忆字段，以及用户想要修改的内容。"
-        "请只输出 JSON：{\"update\": {字段名: 新值}, \"reply\": \"一句话确认（说明更新了哪些字段；若无变更则说明原因）\"}\n"
-        "规则：字段名只能是：" + "、".join(ALLOW) + "。数组字段（偏好/知识点/难点/薄弱点/兴趣）给字符串数组，其余给字符串。"
-        "用户没有提到的字段不要出现在 update 中；若用户只是询问，update 可为空对象。\n"
-        f"当前记忆：{json.dumps(mem, ensure_ascii=False)}\n"
-        f"用户输入：{req.message[:1500]}"
-    )
-    h = {"Authorization": "Bearer " + (req.api_key or _cfg.DEEPSEEK_API_KEY), "Content-Type": "application/json"}
+    from starlette.concurrency import run_in_threadpool
+    return await run_in_threadpool(_memory_chat_service, req.api_key, req.message, req.project_id)
+
+
+def _build_preloaded(pid: str, did: str, user_input: str) -> dict:
+    """生成节点上下文预查（main.py 预取 → 塞 state["preloaded"]，generate_node 不再直接查库）。
+    各段独立容错：单段失败不影响其他段，生成节点按 preloaded 有无决定注入。"""
+    import json as _json
+    out = {"dialogue_profile_cache": None, "history": None, "kb_overview": None}
+    # 对话学情画像（1.5 合成缓存）：对话全程用合成画像，不再注入个人/课程记忆
     try:
-        import requests as _req
-        resp = _req.post(_cfg.DEEPSEEK_BASE_URL + "/chat/completions",
-                         json={"model": "deepseek-v4-flash", "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]},
-                         headers=h, timeout=90)
-        if resp.status_code != 200:
-            return {"reply": "⚠️ 记忆更新失败：模型调用出错（检查 API Key 是否有效）。"}
-        raw = resp.json()["choices"][0]["message"]["content"] or ""
-        d = _extract_json_obj(raw)
-        if not d:
-            return {"reply": "⚠️ 没有理解你的输入，请换一种说法，例如：「学习目标改为掌握 RAG 原理」。"}
-        update = d.get("update") if isinstance(d.get("update"), dict) else {}
-        reply = str(d.get("reply") or "已处理。")
-        changed = []
-        if update:
-            merged = dict(mem)
-            for k, v in update.items():
-                if k in ALLOW and v not in (None, ""):
-                    merged[k] = v
-                    changed.append(k)
-            if changed:
-                if pid == "global":
-                    rows = pg_client.execute("SELECT id FROM global_profile LIMIT 1")
-                    if rows:
-                        pg_client.execute("UPDATE global_profile SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE id=%s",
-                                          (json.dumps(merged, ensure_ascii=False), rows[0]["id"]))
-                    else:
-                        pg_client.execute("INSERT INTO global_profile (session_id, data) VALUES (%s,%s)",
-                                          ("default", json.dumps(merged, ensure_ascii=False)))
-                else:
-                    _rows = pg_client.execute("SELECT session_id FROM project_memories WHERE project_id=%s", (pid,))
-                    if _rows:
-                        pg_client.execute(
-                            "UPDATE project_memories SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE project_id=%s",
-                            (json.dumps(merged, ensure_ascii=False), pid))
-                    else:
-                        pg_client.execute(
-                            "INSERT INTO project_memories (session_id, project_id, data) VALUES (%s,%s,%s)",
-                            ("project", pid, json.dumps(merged, ensure_ascii=False)))
-        if not changed and not reply.strip():
-            reply = "⚠️ 没有需要更新的字段。"
-        return {"reply": reply, "changed": changed}
-    except Exception as e:
-        return {"reply": f"⚠️ 记忆更新失败：{str(e)[:120]}"}
+        from core.sqlite_client import get_db
+        _drow = get_db().execute("SELECT profile FROM dialogues WHERE id=%s", (did,))
+        if _drow and _drow[0].get("profile"):
+            _p = _json.loads(_drow[0]["profile"])
+            if isinstance(_p, dict):
+                out["dialogue_profile_cache"] = _p
+    except Exception:
+        logger.exception("预查对话画像失败")
+    try:
+        from core.sqlite_client import get_db
+        from core.helpers import estimate_tokens
+        from core.compress import HISTORY_TOKEN_BUDGET
+        _dbx = get_db()
+        _drow = _dbx.execute("SELECT summary, compressed_upto FROM dialogues WHERE id=%s", (did,))
+        _hist = {
+            "summary": (_drow[0].get("summary") or "") if _drow else "",
+            "compressed_upto": int((_drow[0].get("compressed_upto") or 0) if _drow else 0),
+            "recent": [], "vector_hits": [],
+        }
+        _rows = _dbx.execute(
+            "SELECT role, content FROM messages WHERE dialogue_id=%s AND id > %s ORDER BY created_at DESC LIMIT 200",
+            (did, _hist["compressed_upto"]))
+        # 从最新往回累加，保留到预算为止（与 generate_node 原逻辑一致）
+        _recent = []
+        _used = 0
+        for _r in _rows:
+            _c = str(_r.get("content") or "")
+            if not _c or _c == "（系统未生成内容）":
+                continue
+            _t = estimate_tokens(_c)
+            if _recent and _used + _t > HISTORY_TOKEN_BUDGET:
+                break
+            _recent.append({"role": _r.get("role"), "content": _c})
+            _used += _t
+        _recent.reverse()
+        _hist["recent"] = _recent
+        # 历史向量召回已移除（2026-08-21）：message_vectors 死表删除，压缩历史以 summary 文本承载
+        out["history"] = _hist
+    except Exception:
+        logger.exception("预查历史失败")
+    try:
+        from core.knowledge_service import list_docs
+        _docs = list_docs(pid)
+        if _docs:
+            out["kb_overview"] = "；".join(f"{d.get('source', '')}({d.get('chunks', 0)}块)" for d in _docs[:20])
+    except Exception:
+        logger.exception("预查知识库概述失败")
+    return out
+
+
+def _parse_special_inputs(message: str) -> str:
+    """特殊格式并行解析：检出消息中的 URL（最多 5 个）并行抓取正文并合并进消息（20s 超时降级，不阻塞主流程）。
+    附件（doc/docx/pdf/md）由前端解析为文本内联进消息（【用户上传文件: xx】+内容），此处不再处理；
+    若标记后无内容（解析失败未内联），保持原文不动，由模型按原样处理。"""
+    import re as _re
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FTimeout
+    urls = _re.findall(r"https?://[^\s\u4e00-\u9fff()（）\[\]【】，。！？、；：\"'”’]+", message or "")
+    urls = [u.rstrip(".,;:)") for u in urls][:5]
+    if not urls:
+        return message or ""
+    from skills.registry import registry
+    def _fetch(u):
+        try:
+            r = registry.execute("fetch_web", url=u, max_chars=3000)
+            if r.get("results"):
+                return "【网页内容: " + u + "】\n" + str(r["results"][0].get("content") or "")[:3000]
+        except Exception:
+            pass
+        raise RuntimeError("fetch failed: " + u)
+    parts = []
+    logger.info("特殊格式并行解析启动：%d 个 URL", len(urls))
+    with ThreadPoolExecutor(max_workers=len(urls)) as _ex:
+        _futs = {_ex.submit(_fetch, u): u for u in urls}
+        for _f, _u in _futs.items():
+            try:
+                _txt = _f.result(timeout=20)
+                if _txt:
+                    parts.append(_txt)
+            except _FTimeout:
+                logger.warning("URL 解析超时（>20s）：%s", _u)
+                parts.append("（链接 " + _u + " 解析超时，未获取内容）")
+            except Exception:
+                logger.warning("URL 解析失败：%s", _u)
+                parts.append("（链接 " + _u + " 解析失败，未获取内容）")
+    return (message or "") + "\n\n" + "\n\n".join(parts)
+
+
+def _five_round_hook(pid: str, did: str):
+    """单窗口每五轮对话 → 课程记忆 + 进度条（4.2）：轮数按 messages 表 COUNT(role='user') 计（不加列），
+    %5==0 时调 transfer_dialogue_to_project（内含概要入课程记忆 + update_progress + 变更计数）。
+    幂等：transfer 内部按 last_transferred 游标判定（COUNT 未超过游标直接跳过），钩子重复调用安全。"""
+    try:
+        from core.postgres_client import pg_client as _pg5
+        _n = _pg5.execute("SELECT COUNT(*) AS n FROM messages WHERE dialogue_id=%s AND role='user'", (did,))
+        _cnt = int(_n[0]["n"]) if _n else 0
+        if _cnt > 0 and _cnt % 5 == 0:
+            from core.memory_service import transfer_dialogue_to_project
+            transfer_dialogue_to_project(pid, did)
+            logger.info("五轮对话传递：did=%s 第%d轮 → 课程记忆+进度条", did, _cnt)
+    except Exception:
+        logger.exception("五轮对话传递失败 did=%s", did)
 
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
+    # 画像守卫：新对话画像未合成完成时禁发（前端同步禁用发送按钮）——必须在 SSE 流开始前检查
+    if req.dialogue_id:
+        from core.db.project_repo import get_project_repo
+        _pst = get_project_repo().get_dialogue_status(req.dialogue_id)
+        if _pst == "pending":
+            from fastapi import HTTPException
+            raise HTTPException(status_code=409, detail="profile_pending")
     async def stream():
         try:
             from agents.graph import create_workflow
             import queue, threading, asyncio
+            from core.background import submit
             token_queue = queue.Queue()
             # 生成请求 id + 取消事件：前端点"停止"时 POST /api/chat/stop 置位，run_workflow 各 LLM 调用尽早中断
             import uuid as _uuid
@@ -1643,12 +365,10 @@ async def chat(req: ChatRequest):
                 try:
                     # Auto / 模型 Auto：AI 读取输入自动推断设置（模型 Auto 同时推断模型）
                     _settings = dict(req.settings or {})
-                    # 需求澄清后继续：用户已在思维链内选择，plan 跳过再次澄清（同一轮流程内继续）
-                    if req.clarified:
-                        _settings["clarified"] = True
                     _model = req.model
                     _tpl0 = _settings.get("template") or "思考"
                     if _settings.get("modelAuto") or _settings.get("auto"):
+                        # run_workflow 在独立线程执行：同步 LLM 调用不阻塞事件循环，无需 run_in_threadpool
                         _auto = _auto_settings(req.api_key, req.message, _tpl0, infer_model=bool(_settings.get("modelAuto")))
                         if _auto:
                             _settings.update(_auto)
@@ -1668,40 +388,37 @@ async def chat(req: ChatRequest):
                         if not _exist:
                             _pg.execute("INSERT INTO dialogues(id,project_id,session_id,name) VALUES(%s,%s,%s,%s)",(_did,pid,req.session_id or "default","新对话"))
                         _pg.execute("INSERT INTO messages(dialogue_id,role,content) VALUES(%s,%s,%s)",(_did,"user",req.message))
-                    except Exception as _e:
-                        print("[存储]",_e)
+                    except Exception:
+                        logger.exception("保存用户消息失败 did=%s", _did)
                     # 记忆修改分支：[模块名] 引用 → 由 AI 分析修改记忆，不走多 Agent 流程
                     try:
-                        _edit = _memory_edit(req.api_key, req.message, pid, req.session_id or "default")
-                    except Exception as _e:
+                        _edit = memory_edit(req.api_key, req.message, pid, req.session_id or "default")
+                    except Exception:
                         _edit = None
-                        print("[记忆修改]", _e)
+                        logger.exception("记忆修改分析失败")
                     if _edit:
                         _reply2 = _edit["reply"]
                         try:
                             from core.postgres_client import pg_client as _pg2
                             _pg2.execute("INSERT INTO messages(dialogue_id,role,content,think) VALUES(%s,%s,%s,%s)", (_did, "assistant", _reply2, ""))
-                        except Exception as _e:
-                            print("[存储]", _e)
+                        except Exception:
+                            logger.exception("保存记忆修改回复失败 did=%s", _did)
+                        _five_round_hook(pid, _did)
                         token_queue.put(("done", {"final_reply": _reply2, "steps": _edit["steps"], "mindchain": [], "task_stats": {}}))
                         return
                     import time as _time
                     _t0 = _time.time()
-                    result = wf.invoke({"user_input": req.message, "project_id": pid, "dialogue_id": _did, "session_id": req.session_id or "default", "mode": req.mode or "kb", "image": req.image or "", "steps": [], "mindchain": []})
+                    _msg = _parse_special_inputs(req.message)
+                    _pre = _build_preloaded(pid, _did, _msg)
+                    result = wf.invoke({"user_input": _msg, "project_id": pid, "dialogue_id": _did, "session_id": req.session_id or "default", "mode": req.mode or "kb", "image": req.image or "", "steps": [], "mindchain": [], "preloaded": _pre})
                     # 用户手动停止：不落库、不执行记忆/追问等后处理（前端已保留流式显示内容；避免旧线程与新消息乱序/竞态）
                     # 必须发一个带空 reply 的 done 让 SSE 主循环 break，否则主循环无限心跳、前端永久卡"正在输出回答…"
                     if cancel_evt.is_set():
                         token_queue.put(("done", {"final_reply": "", "steps": [], "mindchain": [], "task_stats": {}}))
                         return
-                    # 需求澄清（reasonix 式）：plan 判定用户需求不明确 → 发 clarify 事件中断流程，前端弹选项；
-                    # 不落库、不后处理（用户选择后作为新消息重发，走完整流程）
-                    _clarify = result.get("clarify") if isinstance(result, dict) else None
-                    if _clarify and _clarify.get("options"):
-                        token_queue.put(("clarify", {"question": _clarify.get("question", ""), "options": _clarify.get("options", [])}))
-                        return
-                    # 特殊形式输出建议（M10 触发条件-模型判断）：normal 未取消时 flash 判断回答适合哪些形式；simple/失败返回 []
+                    # 资源生成建议（M10 触发条件-模型判断）：normal 未取消时 flash 判断回答适合哪些形式；simple/失败返回 []
                     if result.get("complexity") != "simple":
-                        result["special_suggestions"] = _suggest_special_forms(req.api_key, result.get("final_reply", ""), req.base_url)
+                        result["special_suggestions"] = suggest_special_forms(req.api_key, result.get("final_reply", ""), req.base_url)
                     else:
                         result["special_suggestions"] = []
                     # 思维链处理：合并同名 agent 的连续条目（同一 agent 规划→生成只显示一个标题）；
@@ -1709,9 +426,15 @@ async def chat(req: ChatRequest):
                     result["mindchain"] = _merge_mindchain(result.get("mindchain") or [])
                     # 立即发 done（回复已完整）：stats/focus_log/task_stats/落库等写入移到后台线程，
                     # 避免 Windows 挂载卷上 SQLite 瞬时锁阻塞 done → 前端状态卡"正在输出回答"、发送键不复位
+                    # （task_stats/messages 落库 + autoSaveResource 已由下方后台 _persist() 线程承担）
                     token_queue.put(("done", result))
                     def _persist():
                         import time as _time2
+                        # 五轮对话→课程记忆钩子（4.2）：COUNT 用户消息 %5==0 触发传递+进度条（进度条唯一更新逻辑）
+                        try:
+                            _five_round_hook(pid, _did)
+                        except Exception:
+                            logger.exception("五轮对话传递钩子异常 did=%s", _did)
                         # 专注时长：本次任务完成，累加进项目 stats（可视化反馈：专注时长 + token 用量）
                         try:
                             from core.postgres_client import pg_client as _pg4
@@ -1726,7 +449,7 @@ async def chat(req: ChatRequest):
                             if _dur > 0:
                                 _pg4.execute("INSERT INTO focus_log(project_id, dialogue_id, duration_seconds) VALUES(%s,%s,%s)", (pid, _did, _dur))
                         except Exception as _e:
-                            print("[stats-duration]", _e)
+                            logger.exception("累计专注时长失败 did=%s", _did)
                         # 记录本次任务的运行统计（Agent 界面·运行监控）
                         try:
                             import json as _json2
@@ -1736,7 +459,7 @@ async def chat(req: ChatRequest):
                                 _pg2.execute("INSERT INTO task_stats(project_id,dialogue_id,data) VALUES(%s,%s,%s)",
                                              (pid, _did, _json2.dumps(_ts, ensure_ascii=False)))
                         except Exception as _e:
-                            print("[task_stats]", _e)
+                            logger.exception("保存运行统计失败 did=%s", _did)
                         # invoke 后存 AI 回复（含思维链 mindchain 落库，刷新后保留）
                         try:
                             import json as _json3
@@ -1746,45 +469,51 @@ async def chat(req: ChatRequest):
                                 _think = _json3.dumps(result.get("mindchain") or [], ensure_ascii=False)
                                 _pg.execute("INSERT INTO messages(dialogue_id,role,content,think) VALUES(%s,%s,%s,%s)",(_did,"assistant",_reply,_think))
                         except Exception as _e:
-                            print("[存储]",_e)
+                            logger.exception("保存 AI 回复失败 did=%s", _did)
                         # 自动保存生成物到"我的上传"（设置开关 autoSaveResource）
                         if req.settings and req.settings.get('autoSaveResource') and result.get("final_reply"):
                             try:
                                 import hashlib as _hl
                                 from core.postgres_client import pg_client as _pg3
                                 _fr = result.get("final_reply","")
-                                _nm = "对话生成·" + _fr.strip()[:14]
-                                _rid = _hl.md5((_nm + pid).encode()).hexdigest()[:16]
-                                _has = _pg3.execute("SELECT id FROM resources WHERE id=%s", (_rid,))
-                                if _has:
-                                    _pg3.execute("UPDATE resources SET content=%s WHERE id=%s", (_fr[:6000], _rid))
-                                else:
-                                    _pg3.execute("INSERT INTO resources (id, name, content, project_id) VALUES (%s,%s,%s,%s)", (_rid, _nm, _fr[:6000], pid))
+                                # 垃圾过滤：报错/系统提示/太短的寒暄不入资源表
+                                _head = _fr.strip()[:40]
+                                _junk = (
+                                    "生成内容时出现错误" in _head
+                                    or _head.startswith("⚠️")
+                                    or _head.startswith("（系统未生成内容）")
+                                    or len(_fr.strip()) < 120
+                                )
+                                if not _junk:
+                                    _nm = "对话生成·" + _fr.strip()[:14]
+                                    _rid = _hl.md5((_nm + pid).encode()).hexdigest()[:16]
+                                    _has = _pg3.execute("SELECT id FROM resources WHERE id=%s", (_rid,))
+                                    if _has:
+                                        _pg3.execute("UPDATE resources SET content=%s WHERE id=%s", (_fr, _rid))
+                                    else:
+                                        _pg3.execute("INSERT INTO resources (id, name, content, project_id) VALUES (%s,%s,%s,%s)", (_rid, _nm, _fr, pid))
                             except Exception as _e:
-                                print("[auto-save]", _e)
-                    threading.Thread(target=_persist, daemon=True).start()
-                    # 后台异步分析记忆 + 生成追问（开关可配）
+                                logger.exception("自动保存生成物失败 did=%s", _did)
+                    submit(_persist)
+# 后台异步分析记忆 + 生成追问（开关可配）
                     try:
                         reply = result.get("final_reply", "")
                         if reply:
-                            from core.memory_analysis import update_memories
-                            from core.compress import compress_dialogue
+                            from core.memory_service import compress_dialogue, distill_memory, generate_followups
                             from core.postgres_client import pg_client
-                            import threading
-                            threading.Thread(target=update_memories, args=(req.api_key, pid, _did, pg_client, req.session_id or "default"), daemon=True).start()
-                            # 上下文自动压缩：每满 30 条压缩最早 30%（后台，用户无感知；未满 30 条直接返回）
-                            threading.Thread(target=compress_dialogue, args=(req.api_key, _did, pg_client), daemon=True).start()
+                            submit(distill_memory, req.api_key, pid, _did, pg_client, req.session_id or "default")
+                            # 上下文自动压缩：token 预算制（后台，用户无感知）
+                            submit(compress_dialogue, req.api_key, _did, pg_client)
                             if not (req.settings and req.settings.get('autoFollowups') is False):
-                                from core.followups import generate_followups
-                                threading.Thread(target=generate_followups, args=(req.api_key, pid, _did, pg_client, req.followup_focus or "purpose"), daemon=True).start()
+                                submit(generate_followups, req.api_key, pid, _did, pg_client, req.followup_focus or "purpose")
                             # 主对话完成后同步为第二对话生成横向拓展/闲聊追问（第二对话发送时不会带 extra 字段，互不影响）
                             if req.extra_followup_did:
                                 try:
-                                    threading.Thread(target=generate_followups, args=(req.api_key, pid, req.extra_followup_did, pg_client, req.extra_followup_focus or "expand"), daemon=True).start()
-                                except Exception as _e:
-                                    print("[extra-followups]", _e)
-                    except Exception as e:
-                        print("[记忆] err:", e)
+                                    submit(generate_followups, req.api_key, pid, req.extra_followup_did, pg_client, req.extra_followup_focus or "expand")
+                                except Exception:
+                                    logger.exception("启动第二对话追问失败 did=%s", req.extra_followup_did)
+                    except Exception:
+                        logger.exception("启动后台记忆/压缩/追问任务失败 did=%s", _did)
                 except Exception as e:
                     token_queue.put(("error", str(e)))
                 finally:
@@ -1807,12 +536,20 @@ async def chat(req: ChatRequest):
                     yield f"data: {json.dumps({'type': 'thought_token', 'agent': agent, 'chunk': chunk})}\n\n"
                 elif msg[0] == "answer":
                     yield f"data: {json.dumps({'type': 'answer_token', 'chunk': msg[1]})}\n\n"
-                elif msg[0] == "clarify":
-                    yield f"data: {json.dumps({'type': 'clarify', 'question': msg[1].get('question', ''), 'options': msg[1].get('options', [])})}\n\n"
-                    break
                 elif msg[0] == "done":
                     result = msg[1]
-                    yield f"data: {json.dumps({'type': 'done', 'reply': result.get('final_reply', '处理完成'), 'steps': result.get('steps', []), 'mindchain': result.get('mindchain', []), 'task_stats': result.get('task_stats', {}), 'special_suggestions': result.get('special_suggestions', [])})}\n\n"
+                    # 跨模态检索命中的图片：随 done 回传前端渲染（图片本体已落盘 /uploads 静态目录）
+                    retrieved_images = []
+                    for _k in (result.get("knowledge") or []):
+                        if isinstance(_k, dict) and _k.get("kind") == "image":
+                            _meta = _k.get("metadata") or {}
+                            retrieved_images.append({
+                                "source": _meta.get("source", ""),
+                                "content": (_k.get("content") or "")[:240],
+                                "file_path": _meta.get("file_path", ""),
+                                "mime": _meta.get("mime", ""),
+                            })
+                    yield f"data: {json.dumps({'type': 'done', 'reply': result.get('final_reply', '处理完成'), 'steps': result.get('steps', []), 'mindchain': result.get('mindchain', []), 'task_stats': result.get('task_stats', {}), 'special_suggestions': result.get('special_suggestions', []), 'retrieved_images': retrieved_images, 'review': result.get('reviewed')})}\n\n"
                     break
                 elif msg[0] == "error":
                     yield f"data: {json.dumps({'type': 'error', 'message': msg[1]})}\n\n"
@@ -1833,33 +570,3 @@ async def chat_stop(req: StopRequest):
     return {"status": "ok"}
 
 
-# ---------- 特殊形式输出建议（M10 触发条件：模型判断） ----------
-
-_SPECIAL_FORM_KEYS = {"report": "报告", "flow": "流程图", "tree": "树状图", "table": "表格", "chart": "统计图", "audio": "音频", "quiz": "测试题"}
-
-_SPECIAL_SUGGEST_PROMPT = """你是内容形式分析师。分析下面的学习内容，判断它适合转换/补充为哪些特殊输出形式（可多选，最多 3 个，选最合适的）：
-- report=报告（汇总讲解内容）
-- flow=流程图（内容含步骤/流程/时序）
-- tree=树状图（内容有层级/分类结构）
-- table=表格（内容含多对象对比/数据维度）
-- chart=统计图（内容含数据/趋势）
-- audio=音频（播客/朗读，讲解类内容均可）
-- quiz=测试题（适合检验理解的知识点）
-
-按 JSON Schema 输出 {"keys": ["形式key数组"]}；没有合适的输出 {"keys": []}。"""
-
-
-def _suggest_special_forms(api_key, content, base_url=None):
-    """模型判断回答适合哪些特殊输出形式（flash 一次调用；失败返回 []）"""
-    try:
-        from core.base_llm import DeepSeekLLM
-        llm = DeepSeekLLM(api_key=api_key, model="deepseek-v4-flash", base_url=base_url, thinking=False)
-        res = llm.chat_with_json(
-            [{"role": "user", "content": _SPECIAL_SUGGEST_PROMPT + "\n\n内容：\n" + (content or "")[:2500]}],
-            {"keys": ["string"]},
-        )
-        arr = (res or {}).get("keys") or []
-        return [k for k in arr if k in _SPECIAL_FORM_KEYS][:3]
-    except Exception as e:
-        print("[special-suggest]", e)
-        return []

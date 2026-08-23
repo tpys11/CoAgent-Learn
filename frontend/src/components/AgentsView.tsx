@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
-import { Settings, Upload, Folder, Download, Layers, Wrench, ExternalLink, Plus, Trash2, LayoutTemplate, X, Workflow, Brain, Database, Scale, Code2 } from 'lucide-react'
+import { Upload, Folder, Download, Layers, Wrench, ExternalLink, Plus, Trash2, LayoutTemplate, X, Workflow, Brain, Database, Scale, Code2 } from 'lucide-react'
 import type { AgentConfig } from '../types'
-import { DEFAULT_AGENTS } from '../types'
-
-interface SkillInfo { name: string; description: string; folder: string }
+import { LS, lsGetJSON, lsSetJSON } from '../storage'
+import { api } from '../api'
+import { SkillInfo, Block, PRESET_TEMPLATES, DEFAULT_GLOBAL_CARDS, TEMPLATE_LEVELS, MODEL_LABEL, MARKET_SKILLS, MCP_PLATFORMS, SKILL_TEMPLATE, SKILL_TABS, SKILL_COVER, coverOf, SKILL_CATS, SKILL_CAT_MAP, BLOCKS } from './agentsView/data'
 
 interface Props {
   agents: AgentConfig[]
@@ -11,145 +11,6 @@ interface Props {
   onReplace: (next: AgentConfig[]) => void
   projectId: string | null
 }
-
-type Block = 'agents' | 'skills' | 'templates'
-
-/** 预设档位库（极速 / 思考 / 研究），intro=档位概述，detail=预设内部细节（只读展示） */
-const PRESET_TEMPLATES: Array<{ name: string; desc: string; intro: string; detail: Array<[string, string]>; agents: AgentConfig[] }> = [
-  {
-    name: '极速', desc: '最短响应（1 秒内首字）',
-    intro: '档位概述：面向一般对话环节——概念确认、即兴提问、碎片化学习，用户希望时间尽可能短。\n**效果**\n- 时间：绝大多数时候 1 秒内输出首字，最长不超过 3 秒\n- 内容总量：字数偏少，大多数 500-800 字，最多不超过 1000 字',
-    detail: [
-      ['编排流程', '学习助手（快模型）→ 输出（跳过审核；不做知识库检索）'],
-      ['知识库检索', '按需：用户要求基于资料回答时由学习助手规划调用'],
-      ['生成模型', '快模型（flash，保 1 秒内首字）'],
-      ['检测机制', '无（跳过审核保秒回）'],
-    ],
-    agents: DEFAULT_AGENTS.map(a => a.id === 'main' ? { ...a, model: 'fast' } : { ...a }),
-  },
-  {
-    name: '思考', desc: '完整流程 + 轻量单审',
-    intro: '档位概述：面向需要认真一点的回答——知识库无对应内容但对精确度要求不高。\n**效果**\n- 内容增强：联网搜索一轮（搜索机制见全局设定）\n- 内容总量：大部分 800-1200 字，最多不超过 1500 字\n- 检测机制：flash 轻量单审',
-    detail: [
-      ['编排流程', '规划（按需调用知识库管理）→ 生成 → flash 单审 → 输出（学情画像：后台文档注入）'],
-      ['内容增强', '按需联网搜索（学习助手判定并派发搜索子 Agent）+ 子 Agent 整理（来源→核心观点→关键数据）'],
-      ['生成模型', '强模型（质量优先）'],
-      ['检测机制', 'flash 轻量单审（三维度：符实性/难度适配/规范性）'],
-    ],
-    agents: DEFAULT_AGENTS,
-  },
-  {
-    name: '研究', desc: '完整流程 + 严格检测',
-    intro: '档位概述：面向对内容精确度要求极高的任务——知识库无对应内容且需要严谨。\n**效果**\n- 内容增强：联网搜索可多轮（1-5 轮，每轮总结、不足续搜；多轮待实现当前一轮）\n- 内容总量：不做限制\n- 独立检测机制：用其他模型厂商的模型作为独立检测阶段（待实现，当前为 flash 单审）',
-    detail: [
-      ['编排流程', '与思考档一致：规划（研究档需详细查阅时必调知识库管理）→ 生成 → 单审 → 输出（学情画像：后台文档注入）'],
-      ['内容增强', '联网搜索一轮（多轮搜索待实现：1-5 轮，每轮总结、不足续搜）'],
-      ['生成模型', '强模型（质量优先）'],
-      ['检测机制', 'flash 单审（其他模型厂商独立检测待实现）'],
-    ],
-    agents: DEFAULT_AGENTS,
-  },
-]
-
-const SKILL_ENABLED_KEY = 'coagent-skill-enabled'
-const CUSTOM_TEMPLATES_KEY = 'coagent-custom-templates'
-
-/** 全局性基础设定卡片（默认文案；用户可在前端编辑，localStorage 持久化覆盖） */
-const DEFAULT_GLOBAL_CARDS: Array<[string, string]> = [
-  ['搜索机制', '固定搜索规则：优质信息源（优质社区、官方信息），并行搜索 agent 返回 10-20 条优质内容（思考/研究档共享）'],
-  ['知识库管理', '后台入库（切片/向量化）；对话中按主 Agent 判定按需检索；联网搜索由主 Agent 派发搜索子 Agent 执行'],
-  ['学情画像', '后台提炼画像文档（基本情况/学习情况/阅读偏好），生成时直接注入（0 对话时间）'],
-  ['上下文自动压缩', '每满 30 条后台压缩最早 30% 为会话摘要；历史细节可向量召回'],
-  ['特殊形式输出', '回答完成后模型判断适合的形式并建议（与档位无关）'],
-]
-
-/** 各模板的节点颜色深浅分布：按模板编排的基础逻辑标注各节点职责负载（0-5，越深负载越高） */
-const TEMPLATE_LEVELS: Record<string, Record<string, number>> = {
-  '极速': { plan: 1, study_memory: 1, kb: 1, generate: 2, review: 1 },
-  '思考': { plan: 1, study_memory: 2, kb: 3, generate: 4, review: 3 },
-  '研究': { plan: 1, study_memory: 2, kb: 4, generate: 5, review: 5 },
-}
-
-/** 模型选择中文标签 */
-const MODEL_LABEL: Record<string, string> = { global: '跟随全局', main: '强模型', fast: '快模型' }
-
-/** 推荐 Skill 市场（内置，后端已实现，勾选即在该 Agent 的 Skill 卡片中可选） */
-const MARKET_SKILLS = [
-  { name: 'fetch_web', desc: '抓取指定网页内容并提取正文文本', category: '信息获取' },
-  { name: 'calculator', desc: '安全计算数学表达式（幂/根/三角等）', category: '计算工具' },
-  { name: 'execute_code', desc: '在受限 Python 沙箱中执行代码并返回输出', category: '开发工具' },
-  { name: 'pdf_parse', desc: '解析 PDF 文件提取文本（按页）', category: '文档处理' },
-  { name: 'doc_parse', desc: '解析 Word 文档提取文本（段落+表格）', category: '文档处理' },
-]
-
-/** MCP 聚合平台 */
-const MCP_PLATFORMS = [
-  { name: 'mcp.so', url: 'https://mcp.so', desc: 'MCP 服务器搜索引擎' },
-  { name: 'Smithery', url: 'https://smithery.ai', desc: 'MCP 服务器注册与发现平台' },
-  { name: 'PulseMCP', url: 'https://www.pulsemcp.com', desc: 'MCP 服务器列表与评测' },
-  { name: 'Glama', url: 'https://glama.ai/mcp/servers', desc: 'MCP 服务器目录' },
-]
-
-/** Skill 开发模板（下载用） */
-const SKILL_TEMPLATE = `# Skill 开发模板（Python）
-
-将你的 Skill 文件夹放入后端 skills/ 目录（或上传目录）后刷新即自动注册。
-
-skills/your_skill_name/__init__.py:
-
-from skills import Skill
-
-class YourSkill(Skill):
-    name = "your_skill"           # 唯一标识（小写+下划线）
-    description = "技能的一句话说明"  # 展示给用户与模型
-    input_schema = {               # 入参说明（可选）
-        "keyword": {"type": "string", "description": "参数说明"}
-    }
-
-    def execute(self, keyword="", **kwargs) -> dict:
-        # 在这里实现你的能力，返回 dict
-        return {"results": [{"content": f"处理 {keyword} 的结果"}], "total": 1}
-`
-
-const SKILL_TABS: Array<{ key: string; label: string }> = [
-  { key: 'installed', label: '已安装' },
-  { key: 'market', label: '推荐市场' },
-  { key: 'mcp', label: 'MCP 市场' },
-  { key: 'dev', label: '开发者' },
-]
-
-/** 系统预设 Skill 封面图（public/skill-covers/） */
-const SKILL_COVER: Record<string, string> = {
-  fetch_web: '/skill-covers/fetch-web.jpg',
-  calculator: '/skill-covers/calculator.jpg',
-  execute_code: '/skill-covers/execute-code.jpg',
-  pdf_parse: '/skill-covers/pdf-parse.jpg',
-  doc_parse: '/skill-covers/doc-parse.jpg',
-}
-const coverOf = (name: string) => SKILL_COVER[name] || '/skill-covers/generic.jpg'
-
-/** Skill 分类（已安装视图左侧栏） */
-const SKILL_CATS = [
-  { key: 'all', label: '全部' },
-  { key: '检索', label: '检索与信息' },
-  { key: '记忆', label: '记忆与画像' },
-  { key: '视觉', label: '视觉理解' },
-  { key: '计算', label: '计算与执行' },
-  { key: '文档', label: '文档处理' },
-]
-const SKILL_CAT_MAP: Record<string, string> = {
-  knowledge_retrieval: '检索', web_search: '检索', fetch_web: '检索',
-  memory_ops: '记忆', user_diagnosis: '记忆',
-  vision: '视觉',
-  calculator: '计算', execute_code: '计算',
-  pdf_parse: '文档', doc_parse: '文档',
-}
-
-const BLOCKS: Array<{ key: Block; icon: any; label: string }> = [
-  { key: 'agents', icon: Settings, label: 'Agent 管理' },
-  { key: 'skills', icon: Layers, label: 'Skill 管理' },
-  { key: 'templates', icon: LayoutTemplate, label: '对话' },
-]
 
 /** 格式化文本：**标题** → 主题色加粗标题；「- 名称：内容」→ 加粗名称 + 正文；普通行 → 正文段落（与 Agent 提示词展示一致） */
 function FormattedText({ text }: { text: string }) {
@@ -308,7 +169,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   const [linkedSkills, setLinkedSkills] = useState<string[]>([])
   // Skill 全局启用开关（localStorage）
   const [skillEnabled, setSkillEnabled] = useState<Record<string, boolean>>(() => {
-    try { return JSON.parse(localStorage.getItem(SKILL_ENABLED_KEY) || '{}') } catch { return {} }
+    return lsGetJSON<Record<string, boolean>>(LS.skillEnabled, {})
   })
   // Skill 详情弹窗（独立小窗口）
   const [skillDetail, setSkillDetail] = useState<{ name: string; description: string; folder: string; category: string } | null>(null)
@@ -317,12 +178,11 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   const [skillSrcLoading, setSkillSrcLoading] = useState(false)
   // 对话设定（项目介绍可编辑，localStorage 持久化；缺省用内置默认）
   const [globalCards, setGlobalCards] = useState<Array<[string, string]>>(() => {
-    try { const s = localStorage.getItem('coagent-intro-global'); if (s) { const a = JSON.parse(s); if (Array.isArray(a) && a.length) return a } } catch { /* 忽略 */ }
-    return DEFAULT_GLOBAL_CARDS
+    const saved = lsGetJSON<Array<[string, string]>>(LS.introGlobal, [])
+    return Array.isArray(saved) && saved.length ? saved : DEFAULT_GLOBAL_CARDS
   })
   const [tierOverrides, setTierOverrides] = useState<Record<string, { intro: string; detail: Array<[string, string]> }>>(() => {
-    try { const s = localStorage.getItem('coagent-intro-tiers'); if (s) { const o = JSON.parse(s); if (o && typeof o === 'object') return o } } catch { /* 忽略 */ }
-    return {}
+    return lsGetJSON<Record<string, { intro: string; detail: Array<[string, string]> }>>(LS.introTiers, {})
   })
   const [editingGlobal, setEditingGlobal] = useState(false)
   const [editingTier, setEditingTier] = useState<string | null>(null)
@@ -331,7 +191,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   // 对话流程：选中模板（展开详情）、自定义模板、保存名称
   const [selectedTpl, setSelectedTpl] = useState<string | null>(null)
   const [customTemplates, setCustomTemplates] = useState<Array<{ name: string; desc: string; agents: AgentConfig[] }>>(() => {
-    try { return JSON.parse(localStorage.getItem(CUSTOM_TEMPLATES_KEY) || '[]') } catch { return [] }
+    return lsGetJSON<Array<{ name: string; desc: string; agents: AgentConfig[] }>>(LS.customTemplates, [])
   })
   const [saveTplName, setSaveTplName] = useState('')
   const [showNewTplModal, setShowNewTplModal] = useState(false)
@@ -357,7 +217,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   const [mcpType, setMcpType] = useState<'stdio' | 'http' | 'sse'>('http')
   const [mcpTarget, setMcpTarget] = useState('')
   const [mcpList, setMcpList] = useState<Array<{ id: string; name: string; type: string; target: string }>>(() => {
-    try { return JSON.parse(localStorage.getItem('coagent-mcp-servers') || '[]') } catch { return [] }
+    return lsGetJSON<Array<{ id: string; name: string; type: string; target: string }>>(LS.mcpServers, [])
   })
   const [mcpTools, setMcpTools] = useState<Record<string, Array<{ name: string; description: string }>>>({})
   const [mcpTesting, setMcpTesting] = useState<Record<string, boolean>>({})
@@ -390,7 +250,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
 
     setPrompt(agent?.systemPrompt || '')
     setSubIntroOpen(false)
-    fetch('/api/skills').then(r => r.json()).then(d => {
+    api.listSkills().then(d => {
       setAllSkills(d.skills || [])
       const names = (agent?.skill || '').match(/[a-z_]+/g) || []
       setLinkedSkills(names.filter((n: string) => (d.skills || []).some((s: SkillInfo) => s.name === n)))
@@ -422,20 +282,20 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   const toggleSkillEnabled = (name: string) => {
     const next = { ...skillEnabled, [name]: !(skillEnabled[name] ?? true) }
     setSkillEnabled(next)
-    localStorage.setItem(SKILL_ENABLED_KEY, JSON.stringify(next))
+    lsSetJSON(LS.skillEnabled, next)
   }
 
   const addMcpServer = () => {
     if (!mcpName.trim() || !mcpTarget.trim()) return
     const next = [...mcpList, { id: 'mcp-' + Date.now(), name: mcpName.trim(), type: mcpType, target: mcpTarget.trim() }]
     setMcpList(next)
-    localStorage.setItem('coagent-mcp-servers', JSON.stringify(next))
+    lsSetJSON(LS.mcpServers, next)
     setMcpName(''); setMcpTarget(''); setMcpStep(1)
   }
   const removeMcpServer = (id: string) => {
     const next = mcpList.filter(s => s.id !== id)
     setMcpList(next)
-    localStorage.setItem('coagent-mcp-servers', JSON.stringify(next))
+    lsSetJSON(LS.mcpServers, next)
     setMcpTools(prev => { const n = { ...prev }; delete n[id]; return n })
   }
 
@@ -492,7 +352,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
     if (!name) return
     const next = [...customTemplates, { name, desc: '自定义模板', agents }]
     setCustomTemplates(next)
-    localStorage.setItem(CUSTOM_TEMPLATES_KEY, JSON.stringify(next))
+    lsSetJSON(LS.customTemplates, next)
     setSelectedTpl(name)
     setSaveTplName('')
     setShowNewTplModal(false)
@@ -500,7 +360,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   const removeCustomTemplate = (name: string) => {
     const next = customTemplates.filter(t => t.name !== name)
     setCustomTemplates(next)
-    localStorage.setItem(CUSTOM_TEMPLATES_KEY, JSON.stringify(next))
+    lsSetJSON(LS.customTemplates, next)
     if (selectedTpl === name) setSelectedTpl(null)
   }
 
@@ -913,12 +773,12 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                 ))}
               </div>
               {editingGlobal && (
-                <button onClick={() => { try { localStorage.setItem('coagent-intro-global', JSON.stringify(globalCards)) } catch { /* 忽略 */ } setEditingGlobal(false) }}
+<button onClick={() => { lsSetJSON(LS.introGlobal, globalCards); setEditingGlobal(false) }}
                   className="w-fit px-3 py-1.5 rounded-lg bg-[#1a1a1a] text-white text-[11px] font-medium hover:bg-[#333333] transition-colors">
                   保存全局设定
                 </button>
               )}
-              <p className="text-[10px] text-dim leading-relaxed">以下机制对所有对话模式生效：搜索、知识库、学情、压缩、特殊形式输出在后台或按需运行，不随档位变化。模式之间的差异（响应速度、内容量、检测强度）由下方模式按钮决定。</p>
+               <p className="text-[10px] text-dim leading-relaxed">以下机制对所有对话模式生效：搜索、知识库、学情、压缩、资源生成在后台或按需运行，不随档位变化。模式之间的差异（响应速度、内容量、检测强度）由下方模式按钮决定。</p>
             </div>
 
             {/* 具体模式：三个按钮，点击展示详情 */}
@@ -958,7 +818,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                     const setOv = (patch: { intro?: string; detail?: Array<[string, string]> }) => {
                       const next = { ...tierOverrides, [tpl.name]: { intro: patch.intro ?? ov.intro, detail: patch.detail ?? ov.detail } }
                       setTierOverrides(next)
-                      try { localStorage.setItem('coagent-intro-tiers', JSON.stringify(next)) } catch { /* 忽略 */ }
+lsSetJSON(LS.introTiers, next)
                     }
                     return (
                       <div className="flex flex-col gap-3">
@@ -1131,8 +991,8 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                 onClick={() => {
                   if (skillSource !== null) { setSkillSource(null); return }
                   setSkillSrcLoading(true)
-                  fetch('/api/skills/' + encodeURIComponent(skillDetail.name) + '/source', { cache: 'no-store' })
-                    .then(r => r.json()).then(d => { setSkillSource(d.source || '（无源码）') })
+                  api.getSkillSource(skillDetail.name)
+                    .then(d => { setSkillSource(d.source || '（无源码）') })
                     .catch(() => setSkillSource('（加载失败）'))
                     .finally(() => setSkillSrcLoading(false))
                 }}

@@ -1,301 +1,205 @@
-import { useState, useEffect, useRef } from 'react'
-import { FileText, Network, Table as TableIcon, Volume2, ClipboardList, Sparkles, X, Save, Trash2, Eye, Layers, History } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { FileText, Workflow, Network, ClipboardList, Wrench, Stethoscope, Send, Loader2, X } from 'lucide-react'
 import MarkdownIt from 'markdown-it'
-import { Transformer } from 'markmap-lib'
-import { Markmap } from 'markmap-view'
-import type { Message } from '../types'
+import mermaid from 'mermaid'
+import * as echarts from 'echarts'
+import { api } from '../api'
+import { LS, lsGet, lsGetJSON } from '../storage'
+import QuizViewer from './quiz/QuizViewer'
+import KbReaderModal from './KbReaderModal'
+
+mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', theme: 'default' })
+let mmdSeq = 0
+let ecSeq = 0
 
 const md = new MarkdownIt({ html: false, linkify: true, breaks: true })
-const renderMd = (text: string) => md.render(String(text || ''))
-
-type FormKey = 'summary' | 'flashcards' | 'quiz' | 'mindmap' | 'table' | 'simulator' | 'audio'
-
-const FORMS: Array<{ key: FormKey; label: string; icon: any; desc: string }> = [
-  { key: 'summary', label: '总结', icon: FileText, desc: '汇总整个对话生成结构化总结' },
-  { key: 'flashcards', label: '闪卡', icon: Layers, desc: '一问一答的抽认卡，点击翻面' },
-  { key: 'quiz', label: '测验', icon: ClipboardList, desc: '选择题，交互式作答' },
-  { key: 'mindmap', label: '思维导图', icon: Network, desc: '知识层级思维导图' },
-  { key: 'table', label: '表格', icon: TableIcon, desc: '知识点/维度对比表格' },
-  { key: 'simulator', label: '模拟器', icon: History, desc: '交互式仿真场景（待实现）' },
-  { key: 'audio', label: '音频', icon: Volume2, desc: '音频概览（朗读 / 播客）' },
-]
-
-const SUPPORTED: FormKey[] = ['summary', 'flashcards', 'quiz', 'mindmap', 'table']
-const TEXT_FORMS: FormKey[] = ['summary', 'table']  // 文本形式：可边收边显示（mindmap 是整体图，不能分段，单独处理）
-const SAVED_KEY = 'coagent-special-saved'
-
-type SavedItem = { id: number; form: FormKey; label: string; content: any; time: string }
-
-/** 闪卡：翻面卡片 */
-function FlashcardsView({ items }: { items: Array<{ front: string; back: string }> }) {
-  const [flipped, setFlipped] = useState<Set<number>>(new Set())
-  const toggle = (i: number) => setFlipped(prev => { const n = new Set(prev); if (n.has(i)) n.delete(i); else n.add(i); return n })
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-      {items.map((c, i) => (
-        <div key={i} className="cursor-pointer" onClick={() => toggle(i)}>
-          <div className={`border rounded-xl p-4 min-h-[110px] flex items-center justify-center text-center transition-all ${flipped.has(i) ? 'bg-[#1a1a1a] text-white border-transparent' : 'bg-[var(--bg-hover)]'}`}>
-            <span className="text-sm leading-relaxed">{flipped.has(i) ? c.back : c.front}</span>
-          </div>
-          <p className="text-[10px] text-dim text-center mt-1.5">{flipped.has(i) ? '点击查看问题' : '点击翻面看答案'}</p>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-/** 测验：交互式选择题 */
-function QuizView({ items }: { items: Array<{ question: string; options: string[]; answer: string }> }) {
-  const [picked, setPicked] = useState<Record<number, string>>({})
-  return (
-    <div className="space-y-5">
-      {items.map((q, i) => {
-        const p = picked[i]
-        return (
-          <div key={i} className="border hairline rounded-xl p-4">
-            <p className="text-sm font-semibold mb-2">{i + 1}. {q.question}</p>
-            <div className="space-y-1.5">
-              {(q.options || []).map((opt, oi) => {
-                const letter = String.fromCharCode(65 + oi)
-                const isPicked = p === letter
-                const isRight = q.answer === letter
-                let cls = 'border hairline text-left'
-                if (p) {
-                  if (isRight) cls = 'border-green-400 bg-green-50 text-left'
-                  else if (isPicked) cls = 'border-red-300 bg-red-50 text-left'
-                }
-                return (
-                  <button key={oi} disabled={!!p} onClick={() => setPicked(prev => ({ ...prev, [i]: letter }))}
-                    className={`w-full px-3 py-2 rounded-lg text-xs transition-colors ${cls}`}>
-                    <span className="font-semibold mr-1.5">{letter}.</span>{opt}
-                  </button>
-                )
-              })}
-            </div>
-            {p && (
-              <p className={`text-xs mt-2 ${p === q.answer ? 'text-green-600' : 'text-red-500'}`}>
-                {p === q.answer ? '✓ 回答正确' : '✗ 正确答案：' + q.answer}
-              </p>
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-/** 思维导图：markmap 渲染 markdown 列表 */
-function MindmapView({ markdown }: { markdown: string }) {
-  const ref = useRef<SVGSVGElement>(null)
-  useEffect(() => {
-    if (!ref.current) return
-    try {
-      const transformer = new Transformer()
-      const { root } = transformer.transform(String(markdown || '- 空'))
-      const mm = Markmap.create(ref.current, { autoFit: true }, root)
-      return () => { try { mm.destroy() } catch {} }
-    } catch {
-      if (ref.current) ref.current.innerHTML = ''
-    }
-  }, [markdown])
-  return <svg ref={ref} className="w-full" style={{ height: 420 }} />
-}
-
-/** 时间线 */
-function TimelineView({ items }: { items: Array<{ time: string; event: string }> }) {
-  return (
-    <div className="pl-1">
-      {(items || []).map((t, i) => (
-        <div key={i} className="relative pl-5 pb-5 border-l-2 border-[var(--border-strong)] last:border-transparent">
-          <span className="absolute left-[-7px] top-0.5 w-3 h-3 rounded-full bg-[#1a1a1a] ring-4 ring-[var(--bg-panel)]" />
-          <p className="text-xs font-semibold text-[var(--accent)]">{t.time}</p>
-          <p className="text-sm mt-1">{t.event}</p>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function renderResult(form: FormKey, content: any) {
-  if (form === 'flashcards') return <FlashcardsView items={Array.isArray(content) ? content : []} />
-  if (form === 'quiz') return <QuizView items={Array.isArray(content) ? content : []} />
-  if (form === 'timeline') return <TimelineView items={Array.isArray(content) ? content : []} />
-  if (form === 'mindmap') return <MindmapView markdown={String(content || '')} />
-  return <div className="text-sm md-answer-body" dangerouslySetInnerHTML={{ __html: renderMd(String(content || '')) }} />
-}
-
-export default function SpecialOutputPane({ messages, projectId }: { messages: Message[]; projectId?: string | null }) {
-  const [form, setForm] = useState<FormKey>('summary')
-  const [generating, setGenerating] = useState(false)
-  const [result, setResult] = useState<any>(null)
-  const [modalForm, setModalForm] = useState<FormKey>('summary')
-  const [showModal, setShowModal] = useState(false)
-  const [saved, setSaved] = useState<SavedItem[]>([])
-  const abortRef = useRef<AbortController | null>(null)
-
-  const loadSaved = () => {
-    fetch('/api/special-creations?project_id=' + encodeURIComponent(projectId || 'default'), { cache: 'no-store' })
-      .then(r => r.json())
-      .then(d => setSaved((d.creations || []).map((x: any) => ({
-        id: x.id, form: x.form, label: FORMS.find(f => f.key === x.form)?.label || x.form, content: x.content, time: x.created_at || '',
-      }))))
-      .catch(() => {})
-  }
-  useEffect(() => { loadSaved() }, [projectId])
-
-  const doGenerate = async (f: FormKey) => {
-    const convo = messages
-      .filter(m => m.role !== 'thinking' && m.content && String(m.content).trim())
-      .map(m => (m.role === 'user' ? '用户：' : 'AI：') + m.content)
-      .join('\n').slice(-4000)
-    if (!convo.trim()) { alert('当前对话还没有内容'); return }
-    const ctrl = new AbortController()
-    abortRef.current = ctrl
-    setModalForm(f)
-    setResult(null)
-    setShowModal(true)
-    setGenerating(true)
-    try {
-      const r = await fetch('/api/generate-special', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: convo, forms: [f], api_key: localStorage.getItem('coagent-apikey') || '' }),
-        signal: ctrl.signal,
+const _fence = md.renderer.rules.fence!
+md.renderer.rules.fence = (tokens, idx, options, env, slf) => {
+  const t = tokens[idx]
+  if (t.info.trim() === 'mermaid') {
+    const id = 'rp-mmd-' + (++mmdSeq)
+    setTimeout(() => {
+      mermaid.render(id, t.content).then(({ svg }) => {
+        const el = document.getElementById(id)
+        if (el) el.innerHTML = svg
+      }).catch(() => {
+        const el = document.getElementById(id)
+        if (el) el.innerHTML = '<div class="text-red-500 text-[11px]">图表渲染失败</div>'
       })
-      if (!r.ok || !r.body) throw new Error('HTTP ' + r.status)
-      const reader = r.body.getReader()
-      const decoder = new TextDecoder()
-      let buf = ''
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buf += decoder.decode(value, { stream: true })
-        const parts = buf.split('\n\n')
-        buf = parts.pop() || ''
-        for (const part of parts) {
-          if (!part.startsWith('data: ')) continue
-          const d = JSON.parse(part.slice(6))
-          if (d.type === 'token') {
-            // 文本形式：边收边显示（打字机效果）；数组形式不实时显示
-            if (TEXT_FORMS.includes(f)) {
-              setResult(prev => (typeof prev === 'string' ? prev : '') + d.chunk)
-            }
-          } else if (d.type === 'done') {
-            // done 带 form + result（text 是字符串，array 是数组）
-            setResult(d.result ?? null)
-          } else if (d.type === 'error') {
-            alert('生成失败：' + (d.message || '未知'))
-          }
-        }
+    }, 0)
+    return `<pre id="${id}" class="rp-mermaid">加载图表…</pre>`
+  }
+  if (t.info.trim() === 'echarts') {
+    const id = 'rp-ec-' + (++ecSeq)
+    setTimeout(() => {
+      const el = document.getElementById(id)
+      if (!el) return
+      try {
+        const option = JSON.parse(t.content)
+        const old = echarts.getInstanceByDom(el)
+        if (old) old.dispose()
+        const chart = echarts.init(el)
+        chart.setOption(option)
+      } catch {
+        el.innerHTML = '<pre class="text-[11px] overflow-x-auto">图表配置无法解析</pre>'
       }
-    } catch (e: any) {
-      if (e && e.name === 'AbortError') { /* 停止 */ }
-      else alert('生成失败：' + e)
-    } finally {
-      setGenerating(false)
-      abortRef.current = null
-    }
+    }, 0)
+    return `<div id="${id}" class="rp-echarts" style="height:320px"></div>`
   }
+  return _fence(tokens, idx, options, env, slf)
+}
+const renderMd = (t: string) => md.render(t || '')
 
-  const stopGenerate = () => { if (abortRef.current) abortRef.current.abort() }
+const ICONS: Record<string, any> = {
+  report: FileText,
+  flow: Workflow,
+  tree: Network,
+  quiz: ClipboardList,
+  guide: Wrench,
+  diagnosis: Stethoscope,
+}
 
-  const saveResult = async () => {
+interface Capability { key: string; label: string; desc: string; output: string }
+interface GenResult { key: string; label: string; output: string; content: string }
+interface GenItem { id: string; name: string; content: string; created_at?: string }
+
+/** 资源生成：能力注册表驱动的生成器（从后端 /api/resources/capabilities 拉取能力清单） */
+export default function SpecialOutputPane({ projectId }: { projectId?: string | null }) {
+  const [caps, setCaps] = useState<Capability[]>([])
+  const [form, setForm] = useState('report')
+  const [source, setSource] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState<GenResult | null>(null)
+  const [history, setHistory] = useState<GenItem[]>([])
+
+  useEffect(() => {
+    api.listCapabilities().then(d => {
+      const list: Capability[] = (d.capabilities || [])
+      setCaps(list)
+      if (list.length && !list.some(c => c.key === form)) setForm(list[0].key)
+    }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (!projectId) { setHistory([]); return }
+    api.listResources(projectId).then(d => {
+      const rows: GenItem[] = (d.resources || []).filter(r => (r.type || '') === ('gen:' + form)).map(r => ({ id: r.id, name: r.name, content: r.content || '', created_at: r.created_at }))
+      setHistory(rows)
+    }).catch(() => setHistory([]))
+  }, [form, projectId])
+
+  const generate = async () => {
+    if (!source.trim()) { alert('请先粘贴或输入源内容'); return }
+    const prov = lsGet(LS.provider, 'deepseek')
+    const keys = lsGetJSON<Record<string, string>>(LS.providerKeys, {})
+    const apiKey = keys[prov] || lsGet(LS.apiKey, '')
+    if (!apiKey) { alert('请先在设置中填写主模型 API Key'); return }
+    const baseUrl = prov === 'zhipu' ? 'https://open.bigmodel.cn/api/paas/v4' : 'https://api.deepseek.com/v1'
+    const model = prov === 'zhipu' ? 'glm-4-flash' : 'deepseek-v4-flash'
+    setLoading(true)
     try {
-      await fetch('/api/special-creations', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ project_id: projectId || 'default', form: modalForm, content: result }),
-      })
-      loadSaved()
-      setShowModal(false)
-      setResult(null)
-    } catch (e) {
-      alert('保存失败：' + e)
+      const r = await api.generateResource({ key: form, content: source, api_key: apiKey, base_url: baseUrl, model })
+      if (r?.status === 'ok') {
+        setResult(r)
+        if (projectId) {
+          try {
+            await api.saveResource({ name: `生成·${r.label}`, content: r.content, project_id: projectId, type: 'gen:' + form, append: true })
+            api.listResources(projectId).then(d => {
+              const rows: GenItem[] = (d.resources || []).filter(x => (x.type || '') === ('gen:' + form)).map(x => ({ id: x.id, name: x.name, content: x.content || '', created_at: x.created_at }))
+              setHistory(rows)
+            }).catch(() => {})
+          } catch {}
+        }
+      } else {
+        alert('生成失败：' + (r?.msg || '未知'))
+      }
+    } catch {
+      alert('生成失败，请检查后端服务')
+    } finally {
+      setLoading(false)
     }
   }
 
-  const viewSaved = (item: SavedItem) => {
-    setModalForm(item.form)
-    setResult(item.content)
-    setShowModal(true)
-  }
-
-  const removeSaved = (id: number) => {
-    fetch('/api/special-creations/' + id, { method: 'DELETE' }).then(() => loadSaved()).catch(() => {})
-  }
+  const Icon = ICONS[form] || FileText
+  const cur = caps.find(c => c.key === form)
+  // 交互式测验优先组件渲染；组件解析失败（null）时回退 Markdown（兼容存量静态测试题）
+  const quizEl = result && form === 'quiz' ? <QuizViewer content={result.content} /> : null
 
   return (
     <div className="w-full h-full flex flex-col min-h-0">
-      {/* 形式宫格 */}
-      <div className="grid grid-cols-4 gap-1.5 px-3 pt-2.5 flex-shrink-0">
-        {FORMS.map(f => {
-          const unsupported = !SUPPORTED.includes(f.key)
+      <div className="grid grid-cols-3 gap-1.5 px-3 pt-2.5 flex-shrink-0">
+        {caps.map(c => {
+          const CIcon = ICONS[c.key] || FileText
           return (
-            <button key={f.key} onClick={() => { if (!unsupported) doGenerate(f.key) }} title={f.desc}
-              className={`flex flex-col items-center justify-center gap-1.5 rounded-xl aspect-square transition-colors ${form === f.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] text-dim hover:opacity-80'} ${unsupported ? 'opacity-40 cursor-not-allowed' : ''}`}>
-              <f.icon size={18} strokeWidth={1.8} />
-              <span className="text-[9px] leading-none">{f.label}</span>
+            <button key={c.key} onClick={() => { setForm(c.key); setResult(null) }} title={c.desc}
+              className={`flex flex-col items-center justify-center gap-1.5 rounded-xl aspect-[5/4] transition-colors ${form === c.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] text-dim hover:opacity-80'}`}>
+              <CIcon size={18} strokeWidth={1.8} />
+              <span className="text-[9px] leading-none">{c.label}</span>
             </button>
           )
         })}
       </div>
 
-      {/* 已保存的制作 */}
-      <div className="flex-1 min-h-0 flex flex-col p-3">
-        <p className="text-[10px] font-bold text-dim uppercase tracking-wider mb-2 flex-shrink-0">已保存的制作</p>
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          {saved.length === 0 ? (
-            <div className="text-[11px] text-dim text-center py-10 leading-relaxed">点击上方形式生成，保存后会显示在这里</div>
-          ) : (
-            saved.map(item => (
-              <div key={item.id} className="group flex items-center gap-2 border hairline rounded-xl px-3 py-2 mb-1.5 bg-[var(--bg-panel)]">
-                <span className="text-[11px] font-semibold flex-1 truncate">{item.label}</span>
-                <span className="text-[9px] text-dim flex-shrink-0">{item.time}</span>
-                <button onClick={() => viewSaved(item)} title="查看" className="opacity-0 group-hover:opacity-100 p-1 rounded text-dim hover:text-[var(--accent)]"><Eye size={12} /></button>
-                <button onClick={() => removeSaved(item.id)} title="删除" className="opacity-0 group-hover:opacity-100 p-1 rounded text-dim hover:text-red-500"><Trash2 size={12} /></button>
-              </div>
-            ))
-          )}
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 flex flex-col gap-2">
+        <textarea
+          value={source}
+          onChange={e => setSource(e.target.value)}
+          placeholder="粘贴或输入要转换的源内容（例如一段讲解、一个流程、一组数据）…"
+          rows={4}
+          className="w-full px-2.5 py-2 input-surface rounded-xl text-xs outline-none resize-none"
+        />
+        <button onClick={generate} disabled={loading}
+          className="self-end px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-[#1a1a1a] text-white disabled:opacity-50 flex items-center gap-1.5">
+          {loading ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+          生成 {cur?.label || ''}
+        </button>
+
+        {history.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <p className="text-[10px] font-semibold text-dim">已生成 · {cur?.label || ''}（{history.length}）</p>
+            {history.map(h => (
+              <button key={h.id}
+                onClick={() => setResult({ key: form, label: cur?.label || form, output: cur?.output || 'markdown', content: h.content })}
+                className="text-left px-2.5 py-1.5 rounded-lg border hairline text-[11px] hover:bg-[var(--bg-hover)] truncate">
+                {h.name}
+                {h.created_at ? <span className="text-[9px] text-dim ml-1.5">{(h.created_at || '').slice(0, 10)}</span> : null}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* 虚线占位常驻：结果改居中弹窗展示（见下方 result 弹窗），不再内联 */}
+        <div className="flex-1 min-h-[120px] border-2 border-dashed hairline rounded-2xl flex flex-col items-center justify-center gap-2 text-dim">
+          <Icon size={28} strokeWidth={1.5} />
+          <p className="text-xs font-semibold text-[var(--text)]">{cur?.label || '资源生成'}</p>
+          <p className="text-[10px] text-center px-6 leading-relaxed">{cur?.desc || '从后端能力注册表加载…'}</p>
         </div>
       </div>
 
-      {/* 弹窗 */}
-      {showModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-6" onClick={() => setShowModal(false)}>
-          <div className="w-[82vw] max-w-4xl max-h-[85vh] flex flex-col bg-[var(--bg-panel)] rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-3 border-b hairline flex-shrink-0">
-              <span className="text-sm font-semibold flex items-center gap-2">
-                {(() => { const F = FORMS.find(f => f.key === modalForm); const I = F?.icon; return I ? <I size={15} /> : null })()}
-                {FORMS.find(f => f.key === modalForm)?.label}
-              </span>
-              <div className="flex items-center gap-2">
-                {generating ? (
-                  <button onClick={stopGenerate} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-500 text-white text-xs font-semibold hover:bg-red-600 transition-colors">停止</button>
-                ) : result != null ? (
-                  <button onClick={saveResult} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-[#1a1a1a] text-white text-xs font-semibold hover:bg-[#333333] transition-colors"><Save size={13} /> 保存</button>
-                ) : null}
-                <button onClick={() => setShowModal(false)} className="p-1.5 rounded-lg text-dim hover:bg-[var(--bg-hover)]"><X size={16} /></button>
-              </div>
+      {/* 生成结果弹窗：测验用模态壳包 QuizViewer（可交互），其余复用阅读器（标题自动成树） */}
+      {result && (form === 'quiz' ? (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setResult(null)}>
+          <div className="bg-[var(--bg-panel)] rounded-2xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col mx-4" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border-color)] flex-shrink-0">
+              <h3 className="text-base font-bold flex items-center gap-2">
+                <Icon size={16} /> {result.label}
+              </h3>
+              <button onClick={() => setResult(null)} className="p-1 hover:bg-[var(--bg-hover)] rounded"><X size={18} /></button>
             </div>
-            <div className="flex-1 min-h-0 overflow-y-auto p-4">
-              {generating ? (
-                TEXT_FORMS.includes(modalForm) && typeof result === 'string' && result ? (
-                  <div className="text-sm md-answer-body" dangerouslySetInnerHTML={{ __html: renderMd(result) }} />
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-20 gap-3 text-dim">
-                    <span className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" />
-                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }} />
-                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }} />
-                    </span>
-                    <span className="text-xs">正在生成「{FORMS.find(f => f.key === modalForm)?.label}」…</span>
-                  </div>
-                )
-              ) : result != null ? renderResult(modalForm, result) : (
-                <div className="text-xs text-dim text-center py-16">生成结果为空</div>
-              )}
+            <div className="flex-1 overflow-y-auto p-5">
+              {quizEl ?? <div className="md-answer-body text-[12px] leading-relaxed" dangerouslySetInnerHTML={{ __html: renderMd(result.content) }} />}
             </div>
           </div>
         </div>
-      )}
+      ) : (
+        <KbReaderModal title={result.label} content={result.content} onClose={() => setResult(null)} />
+      ))}
+
+      <style>{`
+        .rp-mermaid { background: var(--bg-panel); border: 1px solid var(--border-color, #e5e5e5); border-radius: 10px; padding: 0.8em; text-align: center; overflow-x: auto; }
+        .rp-echarts { width: 100%; }
+        .md-answer-body img { max-width: 100%; border-radius: 10px; margin: 6px 0; }
+      `}</style>
     </div>
   )
 }

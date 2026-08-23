@@ -192,3 +192,7 @@ body { font-size: var(--ui-font); }
 .md-answer-body th { background: var(--bg-hover); font-weight: 600; }
 .md-answer-body a { color: var(--accent); text-decoration: underline; }
 .md-answer-body hr { border: none; border-top: 1px solid var(--border-strong); margin: 1em 0; }
+
+/* 审核引用标注（5.2）：[来源:xxx#chunk-N] 可点击，跳知识库 focus 该 chunk */
+.citation-ref { color: var(--accent); font-weight: 500; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; white-space: nowrap; }
+.citation-ref:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }

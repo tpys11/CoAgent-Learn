@@ -28,7 +28,7 @@ class BaseLLM:
         """去除 DeepSeek 的思考标签 <｜end▁of▁thinking｜> ... """
         return re.sub(r"█████.*?█████", "", content, flags=re.DOTALL).strip()
 
-    def chat(self, messages: list[dict], temperature: float = 0.7) -> str:
+    def chat(self, messages: list[dict], temperature: float = 0.7, max_tokens: int | None = None) -> str:
         """普通对话，返回文本"""
         kwargs = {}
         if getattr(self, "thinking", None) is not None:
@@ -36,6 +36,8 @@ class BaseLLM:
             kwargs["extra_body"] = {"thinking": {"type": "enabled" if self.thinking else "disabled"}}
             if self.thinking and self.effort:
                 kwargs["reasoning_effort"] = self.effort
+        if max_tokens is not None:
+            kwargs["max_tokens"] = max_tokens
         for attempt in range(1, self.max_retries + 1):
             try:
                 resp = self.client.chat.completions.create(
@@ -188,8 +190,10 @@ class DeepSeekLLM(BaseLLM):
         super().__init__()
 
     def _create_client(self) -> OpenAI:
+        if not self._api_key:
+            raise RuntimeError("未配置 API Key（请在设置→基础→模型与 API Key 中填写）")
         return OpenAI(
-            api_key=self._api_key or config.DEEPSEEK_API_KEY,
+            api_key=self._api_key,
             base_url=self._base_url or config.DEEPSEEK_BASE_URL,
             timeout=120,
         )

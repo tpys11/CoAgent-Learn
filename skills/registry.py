@@ -29,7 +29,9 @@ class SkillRegistry:
                 print(f"[SkillRegistry] 加载 {folder} 失败: {e}")
 
     def list_all(self) -> list[dict]:
-        return [{"name": s.name, "description": s.description, "folder": s.__class__.__module__.split(".")[-1]}
+        return [{"name": s.name, "description": s.description, "folder": s.__class__.__module__.split(".")[-1],
+                 "output_schema": s.output_schema, "retries": s.retries,
+                 "category": getattr(s, "category", "chat")}
                 for s in self._skills.values()]
 
     def execute(self, name: str, **kwargs) -> dict:

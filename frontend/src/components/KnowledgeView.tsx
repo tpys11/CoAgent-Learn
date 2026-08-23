@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect } from 'react'
 import { Database, Clock, X } from 'lucide-react'
 import DragDropInput from './DragDropInput'
+import { api } from '../api'
 
 /** 课程配置（知识库 + 课程记忆）：居中显示、占主区域 90%、左侧列表导航，右上角可关闭 */
 export default function KnowledgeView({ projectId, onClose }: { projectId: string | null; onClose: () => void }) {
@@ -16,8 +17,7 @@ export default function KnowledgeView({ projectId, onClose }: { projectId: strin
   // 加载课程记忆（永久化：按课程取最新一条）并解析对话概要列表
   useEffect(() => {
     if (!projectId) return
-    fetch('/api/project-memory/' + encodeURIComponent(projectId), { cache: 'no-store' })
-      .then(r => r.json())
+    api.getProjectMemory(projectId)
       .then((d) => {
         if (d && d.memory) {
           const NL = String.fromCharCode(10)

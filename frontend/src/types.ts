@@ -49,8 +49,19 @@ export interface AgentConfig {
 export interface MindchainItem {
   agent: string
   content: string
-  /** 需求澄清条目（reasonix 式）：在思维链内直接提问，用户选择后同一轮流程内继续 */
-  clarify?: { question: string; options: string[] }
+}
+
+export interface ReviewIssue {
+  problem: string
+  fix?: string
+}
+
+export interface ReviewResult {
+  passed: boolean
+  score: number
+  issues?: ReviewIssue[]
+  suggestion?: string
+  verdict?: string
 }
 
 export interface Message {
@@ -58,14 +69,75 @@ export interface Message {
   content: string
   steps?: ChatStep[]
   think?: MindchainItem[] | string[]
-  /** 特殊形式输出建议（模型判断）：{key, label} 列表，消息完成时由 done 事件注入 */
+  /** 资源生成建议（模型判断）：{key, label} 列表，消息完成时由 done 事件注入 */
   special?: Array<{ key: string; label: string }>
+  /** 跨模态检索命中的图片（知识库图片向量命中）：随 done 事件注入 */
+  retrievedImages?: Array<{ source: string; content: string; file_path: string; mime: string }>
+  /** 审核报告（三维度审查结果）：随 done 事件注入 */
+  review?: ReviewResult
 }
 
 export interface ChatStep {
   agent: string
   status: string
   detail?: string
+}
+
+// ===== 后端响应包装类型（api.ts 返回类型用） =====
+
+export interface ProjectList {
+  projects: Project[]
+}
+
+export interface DialogueList {
+  dialogues: Dialogue[]
+}
+
+export interface MessagesData {
+  messages: Message[]
+}
+
+/** 画像类接口（个人全局 / 项目记忆 / 对话画像）返回的松散结构。 */
+export type ProfileData = Record<string, any>
+
+export interface ResourceItem {
+  id: string
+  name: string
+  content?: string
+  type?: string
+  file_ext?: string
+  file_size?: number
+  file_path?: string
+  project_id?: string
+  project_name?: string
+  created_at?: string
+}
+
+export interface ResourceList {
+  resources: ResourceItem[]
+}
+
+export interface StatsData {
+  dialogue_count: number
+  tokens_estimate: number
+  total_duration_seconds: number
+  metrics: any
+  [key: string]: any
+}
+
+export interface SettingsData {
+  kb_mode?: string
+  embedding?: { api_key_set?: boolean; api_key_hint?: string }
+  review?: { enabled?: boolean; model?: string }
+  [key: string]: any
+}
+
+export interface CapabilityList {
+  capabilities: Array<{ key: string; label: string; desc: string; output: string }>
+}
+
+export interface SkillList {
+  skills: Array<{ name: string; description: string; folder: string }>
 }
 
 /** 预设 Agent 配置（4-Agent 结构） */
@@ -154,4 +226,3 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
     example: '',
   },
 ]
-

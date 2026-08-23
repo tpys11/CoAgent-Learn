@@ -1,30 +1,43 @@
 import { useState } from 'react'
-import { FolderTree, ChevronRight, ChevronDown } from 'lucide-react'
+import { FolderTree, ChevronRight, ChevronDown, FileText, Loader2 } from 'lucide-react'
+import { api } from '../api'
+import { MiniMD } from './memoryView/MiniMD'
 
 /**
- * 知识图谱（树状）：基于上传资料自身的标题层级（kb_tree，上传文档时从 markdown 标题提取）。
+ * 文档大纲（树状）：基于上传资料自身的标题层级（kb_tree，上传文档时从 markdown 标题提取）。
  * 节点颜色 = 基于对话估计的掌握状态：绿=掌握良好(≥0.9) 黄=一般(≥0.7) 红=薄弱/待复习；未提及节点灰色。
+ * 节点点击 → 调节点正文接口 → 行下方展开内容面板（复用 MiniMD）。
  * 记忆界面与右侧栏共用。
  */
-function TreeNodeRow({ node, colorOf, depth, defaultOpen }: { node: any; colorOf: (name: string) => string; depth: number; defaultOpen: boolean }) {
+function TreeNodeRow({ node, colorOf, depth, defaultOpen, path, selPath, onSelect }: {
+  node: any; colorOf: (name: string) => string; depth: number; defaultOpen: boolean
+  path: string; selPath?: string | null; onSelect?: (p: string) => void
+}) {
   const [open, setOpen] = useState(defaultOpen || depth < 1)
   const hasKids = (node.children || []).length > 0
   const c = colorOf(node.name || '')
+  const selected = selPath === path
   return (
-    <div className="flex flex-col">
-      <div className="flex items-center gap-1.5 py-0.5 min-h-[22px]" style={{ paddingLeft: depth * 16 }}>
+    <div className="flex flex-col" data-kb-path={path}>
+      <div className="flex items-center gap-1.5 py-0.5 min-h-[22px] group" style={{ paddingLeft: depth * 16 }}>
         {hasKids ? (
           <button onClick={() => setOpen(!open)} className="flex-shrink-0 text-dim hover:text-[var(--text)]">
             {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
           </button>
         ) : <span className="w-[11px] flex-shrink-0" />}
         <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: c }} />
-        <span className="text-[11px] leading-snug truncate" style={{ color: c === 'var(--text-dim)' ? 'var(--text-muted)' : 'var(--text)' }}>{node.name}</span>
+        <button
+          onClick={() => onSelect && onSelect(path)}
+          className={"text-[11px] leading-snug truncate text-left hover:underline flex-1 min-w-0" + (selected ? " font-semibold" : "")}
+          style={{ color: c === 'var(--text-dim)' ? 'var(--text-muted)' : 'var(--text)' }}
+          title="查看章节正文"
+        >{node.name}</button>
       </div>
       {hasKids && open && (
         <div className="flex flex-col">
           {(node.children || []).map((kid: any, i: number) => (
-            <TreeNodeRow key={i} node={kid} colorOf={colorOf} depth={depth + 1} defaultOpen={defaultOpen} />
+            <TreeNodeRow key={i} node={kid} colorOf={colorOf} depth={depth + 1} defaultOpen={defaultOpen}
+              path={path + '/' + kid.name} selPath={selPath} onSelect={onSelect} />
           ))}
         </div>
       )}
@@ -32,13 +45,26 @@ function TreeNodeRow({ node, colorOf, depth, defaultOpen }: { node: any; colorOf
   )
 }
 
-export function KnowledgeTree({ treeDocs, progressItems }: { treeDocs: Array<{ source: string; tree: any[] }>; progressItems?: any[] }) {
+export function KnowledgeTree({ treeDocs, progressItems, projectId }: {
+  treeDocs: Array<{ source: string; tree: any[] }>; progressItems?: any[]; projectId?: string | null
+}) {
   // 掌握度颜色：节点名与知识点/难点名双向包含匹配；掌握越好颜色越深（主题色深浅），未提及灰色
   const colorOf = (name: string) => {
     const hit = (progressItems || []).find((it: any) => it.name && name && (name.includes(it.name) || it.name.includes(name)))
     if (!hit) return 'var(--text-dim)'
     const r = hit.retrievability || 0
     return `color-mix(in srgb, var(--accent) ${Math.round(30 + r * 70)}%, var(--bg-panel))`
+  }
+  // 选中节点内容面板
+  const [sel, setSel] = useState<{ source: string; path: string } | null>(null)
+  const [panel, setPanel] = useState<{ content: string; chunkIndex: number | null; loading: boolean } | null>(null)
+  const selectNode = (source: string, path: string) => {
+    setSel({ source, path })
+    if (!projectId) { setPanel(null); return }
+    setPanel({ content: '', chunkIndex: null, loading: true })
+    api.getKbNodeContent(projectId, source, path)
+      .then(d => setPanel({ content: (d && d.content) || '', chunkIndex: (d && d.chunk_index != null) ? d.chunk_index : null, loading: false }))
+      .catch(() => setPanel({ content: '', chunkIndex: null, loading: false }))
   }
   const hasAny = (treeDocs || []).some(d => (d.tree || []).length > 0)
   if (!hasAny) {
@@ -63,8 +89,30 @@ export function KnowledgeTree({ treeDocs, progressItems }: { treeDocs: Array<{ s
             <FolderTree size={11} /> {d.source}
           </div>
           {(d.tree || []).map((n: any, i: number) => (
-            <TreeNodeRow key={i} node={n} colorOf={colorOf} depth={0} defaultOpen={false} />
+            <TreeNodeRow key={i} node={n} colorOf={colorOf} depth={0} defaultOpen={false}
+              path={n.name}
+              selPath={sel ? sel.source === d.source ? sel.path : null : null}
+              onSelect={(p) => selectNode(d.source, p)} />
           ))}
+          {sel && sel.source === d.source && (
+            <div className="mt-1.5 border-t hairline pt-1.5">
+              {panel && panel.loading ? (
+                <div className="flex items-center gap-1.5 text-[10px] text-dim py-1">
+                  <Loader2 size={11} className="animate-spin" /> 章节正文加载中…
+                </div>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-1.5 text-[10px] text-dim">
+                    <FileText size={11} /> {sel.path}
+                    {panel && panel.chunkIndex != null && <span className="text-[9px]">chunk #{panel.chunkIndex}</span>}
+                  </div>
+                  <div className="max-h-40 overflow-auto pr-1">
+                    {panel && panel.content ? <MiniMD text={panel.content} /> : <span className="text-[10px] text-dim">该章节暂无正文</span>}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       ))}
     </div>

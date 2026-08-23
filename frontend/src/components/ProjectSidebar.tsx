@@ -1,13 +1,15 @@
 ﻿import { useEffect, useState } from 'react'
-import { ArrowLeft, MessageSquare, FileText, X, Plus, SlidersHorizontal, Pencil, PanelLeftClose } from 'lucide-react'
+import { ArrowLeft, MessageSquare, FileText, X, SlidersHorizontal, Pencil, PanelLeftClose } from 'lucide-react'
+import { LS, lsGetJSON, lsSetJSON } from '../storage'
+import { api } from '../api'
 
 interface Dialogue { id: string; name: string; archived?: boolean }
-
-/** 课程专属侧栏：课程记忆 / 课程资源 / 对话（不再与其他课程并列） */
-export default function ProjectSidebar({ project, dialogues, currentDialogueId, onHome, onSelectDialogue, onCreateDialogue, onRenameDialogue, onDeleteDialogue, onOpenMemory, onOpenResource, onCollapse }: {
+interface KbDoc { source: string; chunks: number; preview: string; vectorized?: boolean }
+export default function ProjectSidebar({ project, dialogues, currentDialogueId, kbRefreshKey = 0, onHome, onSelectDialogue, onCreateDialogue, onRenameDialogue, onDeleteDialogue, onOpenMemory, onOpenResource, onCollapse, onOpenKbDoc }: {
   project: { id: string; name: string } | null
   dialogues: Dialogue[]
   currentDialogueId: string | null
+  kbRefreshKey?: number
   onHome: () => void
   onSelectDialogue: (id: string) => void
   onCreateDialogue: () => void
@@ -16,12 +18,13 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
   onOpenMemory: () => void
   onOpenResource: () => void
   onCollapse: () => void
+  onOpenKbDoc?: (source: string) => void
 }) {
   const [memSummary, setMemSummary] = useState<Record<string, any>>({})
-  const [kbDocs, setKbDocs] = useState<Array<{ source: string; chunks: number }>>([])
+  const [kbDocs, setKbDocs] = useState<KbDoc[]>([])
   // 栏目展示开关（与右侧栏一致，持久化）
   const [visible, setVisible] = useState<Record<'memory' | 'resource' | 'chat', boolean>>(() => {
-    try { return { memory: true, resource: true, chat: true, ...(JSON.parse(localStorage.getItem('coagent-project-sidebar-v') || '{}')) } } catch { return { memory: true, resource: true, chat: true } }
+    return { memory: true, resource: true, chat: true, ...lsGetJSON<Record<string, boolean>>(LS.projectSidebarV, {}) }
   })
   const [showSettings, setShowSettings] = useState(false)
   // 正在行内重命名的对话 id
@@ -29,7 +32,7 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
   const toggleVisible = (k: 'memory' | 'resource' | 'chat') => {
     setVisible(prev => {
       const next = { ...prev, [k]: !prev[k] }
-      localStorage.setItem('coagent-project-sidebar-v', JSON.stringify(next))
+      lsSetJSON(LS.projectSidebarV, next)
       return next
     })
   }
@@ -40,11 +43,11 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
   ]
   useEffect(() => {
     if (!project) { setMemSummary({}); setKbDocs([]); return }
-    fetch('/api/project-memory/' + encodeURIComponent(project.id), { cache: 'no-store' })
-      .then(r => r.json()).then(d => setMemSummary(d.memory || {})).catch(() => setMemSummary({}))
-    fetch('/api/kb/' + encodeURIComponent(project.id), { cache: 'no-store' })
-      .then(r => r.json()).then(d => setKbDocs(Array.isArray(d) ? d : [])).catch(() => setKbDocs([]))
-  }, [project?.id])
+    api.getProjectMemory(project.id)
+      .then(d => setMemSummary(d.memory || {})).catch(() => setMemSummary({}))
+    api.getKb(project.id)
+      .then(d => setKbDocs(Array.isArray(d) ? d : [])).catch(() => setKbDocs([]))
+  }, [project?.id, kbRefreshKey])
 
   const memLines: Array<[string, string]> = []
   if (memSummary['目标']) memLines.push(['目标', String(memSummary['目标'])])
@@ -95,13 +98,13 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
             </button>
           </div>
           {true && (
-            <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
-              <p className="text-[10px] leading-relaxed text-[var(--text-muted)]">
+            <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col h-[100px] overflow-hidden">
+              <p className="text-[10px] leading-relaxed text-[var(--text-muted)] line-clamp-3">
                 {memLines.length === 0
                   ? '暂无记忆，对话后自动分析生成。'
                   : memLines.map(([k, v]) => `${k}：${v}`).join('；')}
               </p>
-              <button onClick={onOpenMemory} className="text-[10px] font-semibold text-[var(--accent)] hover:underline ml-auto">
+              <button onClick={onOpenMemory} className="text-[10px] font-semibold text-[var(--accent)] hover:underline ml-auto mt-auto">
                 查看更多
               </button>
             </div>
@@ -118,13 +121,27 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
             </button>
           </div>
           {true && (
-            <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col gap-2">
-              <p className="text-[10px] leading-relaxed text-[var(--text-muted)]">
-                {kbDocs.length === 0
-                  ? '暂无资源，可在独立界面中上传文件或加入系统资源。'
-                  : `已收录 ${kbDocs.length} 份文档${kbDocs.length > 0 ? '：' + kbDocs.slice(0, 2).map(d => d.source).join('、') + (kbDocs.length > 2 ? ' 等' : '') : ''}，共 ${kbDocs.reduce((s, d) => s + (d.chunks || 0), 0)} 个内容块。`}
-              </p>
-              <button onClick={onOpenResource} className="text-[10px] font-semibold text-[var(--accent)] hover:underline ml-auto">
+            <div className="border hairline rounded-xl p-2 bg-[var(--bg-panel)] flex flex-col">
+              {kbDocs.length === 0 ? (
+                <p className="text-[10px] text-[var(--text-muted)] px-1.5 py-1">暂无资源，可上传文件或加入系统资源。</p>
+              ) : (
+                <>
+                  <div className="flex flex-col max-h-[30vh] overflow-y-auto">
+                    {kbDocs.map(d => (
+                      <div key={d.source} onClick={() => onOpenKbDoc && onOpenKbDoc(d.source)}
+                        className="flex items-center gap-1.5 px-1.5 py-1 rounded-lg text-[11px] font-medium hover:bg-[var(--bg-hover)] transition-colors cursor-pointer" title={d.source}>
+                        <FileText size={12} className="text-dim flex-shrink-0" />
+                        <span className="truncate flex-1">{d.source}</span>
+                        {d.vectorized === false
+                          ? <span className="text-[9px] text-amber-500/80 flex-shrink-0">未向量化</span>
+                          : <span className="text-[9px] text-dim flex-shrink-0">{d.chunks}</span>}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[9px] text-dim px-1.5 pt-1">共 {kbDocs.length} 份文档</p>
+                </>
+              )}
+              <button onClick={onOpenResource} className="text-[10px] font-semibold text-[var(--accent)] hover:underline ml-auto mt-1">
                 查看更多
               </button>
             </div>

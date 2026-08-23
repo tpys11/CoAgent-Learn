@@ -37,7 +37,7 @@ def _search_one(query: str, max_results: int) -> list:
     import subprocess
     try:
         cmd = ["python", cli, "search", str(query), "--max_results", str(max_results)]
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=40)
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=40)
         text = (r.stdout or "").strip()
         if not text:
             return []
@@ -57,7 +57,7 @@ class WebSearch(Skill):
             query = str(query or "").strip()
             if not query:
                 return {"results": [], "total": 0}
-            per = max(5, min(int(max_results or 5), 12))
+            per = max(5, min(int(max_results or 5), 20))
             # 并行查询集合：原始问题 + 按关键词拆解的子查询（覆盖多角度，提升召回与优质源命中）
             queries = _expand_queries(query)
             seen: dict = {}

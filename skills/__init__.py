@@ -8,8 +8,10 @@ class Skill:
     name: str = ""
     description: str = ""
     input_schema: dict = {}
+    output_schema: dict = {}
     resources: dict = {}
     prompts: dict = {}
+    retries: int = 0
 
     def execute(self, **kwargs) -> dict:
         raise NotImplementedError
