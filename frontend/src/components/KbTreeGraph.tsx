@@ -1,12 +1,14 @@
 ﻿/**
- * 文档大纲节点树状图 v2.1（右栏「文档大纲」窗口专用）——抄 DeepTutor MemoryGraph 架构：
+ * 文档大纲节点树状图 v2.2（右栏「文档大纲」窗口专用）——抄 DeepTutor MemoryGraph 架构：
  * 布局引擎（纯函数算坐标）与 SVG 渲染/交互分离，全部手写、无图形库依赖。
- * 水平 tidy-tree：x = depth×LEVEL_W；叶子 y 按序排布，父节点 y = 子树叶子区间中点。
+ * 水平 tidy-tree：列宽按该层最宽盒子动态分配；叶子 y 按序排布，父节点 y=子树叶子区间中点。
+ * 节点 = 圆角矩形包裹标签（宽度随文本估算），连线从父盒右缘中点连到子盒左缘中点。
  * 整书渲染时注入虚拟根节点（书名主干），章节向右扇出，树形层级一目了然。
  * 节点 fill = 进度亮度（retrievability → accent/bg 线性混色）；
  * 交互：滚轮以光标为中心缩放 / pointer 拖拽平移 / hover 高亮祖先链+子树 / 画布右上角缩放控件；
- * 有子节点的点右侧带 ChevronRight 展开收起（折叠子树不参与布局，状态驱动重排）；
- * 卡片右上角 Maximize2 → 独立大弹窗（同生成资源弹窗模式）查看与操作整棵树。
+ * 有子节点的盒内右侧带 ChevronRight 展开收起（折叠子树不参与布局，状态驱动重排）；
+ * 首次 fit 在折叠初始化之后执行，并按内容包围盒真实居中（修复初始过小且偏移）；
+ * 卡片右上角 Maximize2 → 独立大弹窗（同生成资源弹窗模式），展开状态两视图共享。
  * 点击叶子/章节节点 → getKbNodeContent → 复用 KbReaderModal 居中弹窗看正文。
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -25,8 +27,10 @@ interface LayoutNode {
   depth: number
   parent: string | null
   hasKids: boolean
+  /** 盒子几何：左上角 (x, y-BOX_H/2)，宽 w */
   x: number
   y: number
+  w: number
 }
 interface LayoutEdge { a: string; b: string }
 interface LayoutResult {
@@ -38,8 +42,16 @@ interface LayoutResult {
   childrenMap: Map<string, string[]>
 }
 
-const LEVEL_W = 190 // 层间距（水平方向）
-const ROW_H = 34    // 叶子行高（垂直方向）
+const COL_GAP = 42   // 列间距（水平方向）
+const ROW_H = 36     // 叶子行高（垂直方向）
+const BOX_H = 26     // 节点盒高
+
+/** 估算标签渲染宽度（中文全宽 / 半角约 0.58 倍） */
+function estTextW(s: string, fontSize = 11.5): number {
+  let w = 0
+  for (const ch of s) w += ch.charCodeAt(0) > 0x2e80 ? fontSize : fontSize * 0.58
+  return w
+}
 
 function sanitizeLabel(name: string): string {
   const cleaned = (name || '').replace(/["'`[\]{}<>]/g, ' ').replace(/\s+/g, ' ').trim()
@@ -47,7 +59,8 @@ function sanitizeLabel(name: string): string {
 }
 
 /** 水平 tidy-tree：后序遍历，叶子按序占一行，内部节点 y=子树叶子区间中点。
- * collapsedPaths 中的路径视为叶子（其子树不参与布局）——展开/收起驱动重排。 */
+ * collapsedPaths 中的路径视为叶子（其子树不参与布局）——展开/收起驱动重排。
+ * 列 x 按各层最宽盒子动态推进，长标签不会侵入下一列。 */
 export function layoutTree(tree: any[], collapsedPaths?: Set<string>): LayoutResult {
   const nodes: LayoutNode[] = []
   const edges: LayoutEdge[] = []
@@ -84,14 +97,17 @@ export function layoutTree(tree: any[], collapsedPaths?: Set<string>): LayoutRes
         if (first < 0) first = range[0]
         last = range[1]
       } else {
-        y = leafCursor * ROW_H + ROW_H / 2 + 8
+        y = leafCursor * ROW_H + ROW_H / 2 + 10
         leafCursor++
         if (first < 0) first = y
         last = y
       }
+      const label = sanitizeLabel(rawName)
+      const w = Math.max(46, Math.ceil(estTextW(label)) + 20 + (allKids.length > 0 || isVRoot ? 15 : 5))
       nodes.push({
-        id, name: rawName, label: sanitizeLabel(rawName), path, depth,
-        parent, hasKids: allKids.length > 0 || isVRoot, x: depth * LEVEL_W + 10, y,
+        id, name: rawName, label, path, depth,
+        parent, hasKids: allKids.length > 0 || isVRoot,
+        x: depth * 200 + 12, y, w,
       })
       if (parent) edges.push({ a: parent, b: id })
     }
@@ -99,9 +115,19 @@ export function layoutTree(tree: any[], collapsedPaths?: Set<string>): LayoutRes
   }
   walk(tree || [], 0, null, '')
 
-  const maxDepth = nodes.reduce((m, n) => Math.max(m, n.depth), 0)
-  const width = maxDepth * LEVEL_W + LEVEL_W + 60
-  const height = Math.max(leafCursor * ROW_H + 20, 80)
+  // 列 x 动态分配：每列起点 = 前列起点 + 前列最宽盒 + 列间距
+  const byDepth = new Map<number, number>()
+  for (const n of nodes) byDepth.set(n.depth, Math.max(byDepth.get(n.depth) || 0, n.w))
+  const colX = new Map<number, number>()
+  let cur = 12
+  for (const d of Array.from(byDepth.keys()).sort((a, b) => a - b)) {
+    colX.set(d, cur)
+    cur += (byDepth.get(d) || 0) + COL_GAP
+  }
+  for (const n of nodes) n.x = colX.get(n.depth) ?? 12
+
+  const width = Math.max(cur - COL_GAP + 12, 240)
+  const height = Math.max(leafCursor * ROW_H + BOX_H, 96)
   return { nodes, edges, width, height, parentMap, childrenMap }
 }
 
@@ -153,48 +179,24 @@ const INITIAL_VIEW: ViewState = { scale: 1, tx: 0, ty: 0 }
 
 // ── 树画布：SVG 渲染 + 全部交互（mini/modal 两处复用，实例各自独立视口与缩放控件） ──
 
-function TreeCanvas({ source, tree, progressItems, projectId, onOpen }: {
+function TreeCanvas({ source, tree, progressItems, projectId, onOpen, collapsedPaths, onTogglePath }: {
   source: string; tree: any[]; progressItems?: any[]; projectId?: string | null
   onOpen: (title: string, content: string) => void
+  /** null = 折叠集尚未按当前树初始化（fit 门控用） */
+  collapsedPaths: Set<string> | null
+  onTogglePath: (p: string) => void
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{ pointerId: number; startX: number; startY: number; origTx: number; origTy: number } | null>(null)
   const [view, setView] = useState<ViewState>(INITIAL_VIEW)
   const [hoverId, setHoverId] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  // 展开/收起：折叠路径按叶子布局；初始只展示根节点与第一层（挂载后初始化折叠集）
-  const [collapsedPaths, setCollapsedPaths] = useState<Set<string>>(new Set())
-  const didInitCollapseRef = useRef(false)
-  useEffect(() => {
-    if (didInitCollapseRef.current || !tree.length) return
-    didInitCollapseRef.current = true
-    const s = new Set<string>()
-    const walk = (nodes: any[], prefix: string) => {
-      for (const item of nodes || []) {
-        const rawName = String(item?.name || '').trim()
-        if (!rawName) continue
-        const isVRoot = !!(item.__vroot)
-        const kids = Array.isArray(item?.children) ? item.children.filter((k: any) => k && String(k.name || '').trim()) : []
-        // 与 layoutTree 的 foldKey 语义严格一致：虚拟根路径为空串，且根自身不折叠
-        const path = isVRoot ? '' : (prefix ? prefix + '/' + rawName : rawName)
-        if (kids.length && !isVRoot) s.add(path)
-        walk(kids, path)
-      }
-    }
-    walk(tree || [], '')
-    setCollapsedPaths(s)
-  }, [tree])
 
-  const layout = useMemo(() => layoutTree(tree, collapsedPaths), [tree, collapsedPaths])
+  const layout = useMemo(
+    () => layoutTree(tree, collapsedPaths ?? undefined),
+    [tree, collapsedPaths])
   const nodeById = useMemo(() => new Map(layout.nodes.map(n => [n.id, n])), [layout])
-  const togglePath = useCallback((p: string) => {
-    setCollapsedPaths(prev => {
-      const nx = new Set(prev)
-      if (nx.has(p)) nx.delete(p)
-      else nx.add(p)
-      return nx
-    })
-  }, [])
+  const togglePath = onTogglePath
 
   // 高亮集合：active 节点 + 祖先链 + 全部子孙
   const highlight = useMemo(() => {
@@ -217,29 +219,39 @@ function TreeCanvas({ source, tree, progressItems, projectId, onOpen }: {
     return set
   }, [layout, selectedId, hoverId])
 
+  // 按内容包围盒真实居中：缩放钳制在 [0.3, 1.5]，四周留 26px 呼吸边
   const fit = useCallback(() => {
     const el = containerRef.current
-    if (!el) return
+    if (!el || !layout.nodes.length) return
     const rect = el.getBoundingClientRect()
-    let scale = Math.min(rect.width / layout.width, rect.height / layout.height) * 0.95
+    let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity
+    for (const n of layout.nodes) {
+      bx0 = Math.min(bx0, n.x); bx1 = Math.max(bx1, n.x + n.w)
+      by0 = Math.min(by0, n.y - BOX_H / 2); by1 = Math.max(by1, n.y + BOX_H / 2)
+    }
+    const bw = Math.max(1, bx1 - bx0)
+    const bh = Math.max(1, by1 - by0)
+    const PAD = 26
+    let scale = Math.min((rect.width - PAD * 2) / bw, (rect.height - PAD * 2) / bh, 1.5)
     if (!isFinite(scale) || scale <= 0) scale = 1
     setView({
       scale,
-      tx: (rect.width - layout.width * scale) / 2,
-      ty: (rect.height - layout.height * scale) / 2,
+      tx: (rect.width - bw * scale) / 2 - bx0 * scale,
+      ty: (rect.height - bh * scale) / 2 - by0 * scale,
     })
   }, [layout])
 
-  // 仅首次成功布局时自动 fit；此后展开/收起不重置用户视角（视角完全由用户掌控）
+  // 仅在「折叠集已按当前树初始化」后自动 fit 一次；此后展开/收起不重置用户视角。
+  // 关键时序：未初始化时布局是未折叠的超大形态，此时 fit 会算出极小缩放并被锁死。
   const didFitRef = useRef(false)
   useEffect(() => {
-    if (didFitRef.current) return
+    if (didFitRef.current || collapsedPaths === null) return
     const el = containerRef.current
     if (!el) return
     if (el.getBoundingClientRect().width === 0) return // 容器尚未完成布局，等下一轮
     fit()
     didFitRef.current = true
-  }, [layout, fit])
+  }, [layout, fit, collapsedPaths])
 
   const zoomBy = useCallback((factor: number) => {
     const el = containerRef.current
@@ -318,18 +330,19 @@ function TreeCanvas({ source, tree, progressItems, projectId, onOpen }: {
     >
       <svg width="100%" height="100%" style={{ position: 'absolute', inset: 0 }}>
         <g transform={`translate(${view.tx} ${view.ty}) scale(${view.scale})`}>
-          {/* 边：水平贝塞尔 */}
+          {/* 边：父盒右缘中点 → 子盒左缘中点，水平贝塞尔 */}
           <g pointerEvents="none">
             {layout.edges.map(e => {
               const s = nodeIndex.get(e.a)
               const t = nodeIndex.get(e.b)
               if (!s || !t) return null
               const dim = highlight !== null && !(highlight.has(e.a) && highlight.has(e.b))
-              const mx = (s.x + t.x) / 2
+              const sx = s.x + s.w
+              const mx = (sx + t.x) / 2
               return (
                 <path
                   key={e.a + '>' + e.b}
-                  d={`M ${s.x} ${s.y} C ${mx} ${s.y}, ${mx} ${t.y}, ${t.x} ${t.y}`}
+                  d={`M ${sx} ${s.y} C ${mx} ${s.y}, ${mx} ${t.y}, ${t.x} ${t.y}`}
                   stroke="var(--border-color, #c8c8c8)"
                   strokeWidth={dim ? 0.8 : 1.4}
                   strokeOpacity={dim ? 0.18 : 0.75}
@@ -338,18 +351,22 @@ function TreeCanvas({ source, tree, progressItems, projectId, onOpen }: {
               )
             })}
           </g>
-          {/* 节点：圆点 + 展开收起箭头（有子节点时）+ 标签 */}
+          {/* 节点：圆角矩形包裹标签；展开收起箭头在盒内右侧 */}
           <g>
             {layout.nodes.map(n => {
               const f = fills.get(n.id)
               const isActive = n.id === (selectedId ?? hoverId)
               const dim = highlight !== null && !highlight.has(n.id)
-              const isCollapsed = collapsedPaths.has(n.path) && n.hasKids
+              const isCollapsed = (collapsedPaths?.has(n.path) ?? false) && n.hasKids
+              const isRoot = n.depth === 0 && !n.path // 虚拟根：书名主干，视觉加权防小视图下淡化
+              const textX = n.x + 10
               return (
                 <g key={n.id} data-node={n.id} opacity={dim ? 0.16 : 1}>
-                  <circle cx={n.x} cy={n.y} r={isActive ? 7 : 5} fill={f ? f.fill : 'var(--bg-panel)'}
-                    stroke={f ? 'transparent' : 'var(--text-dim, #9ca3af)'} strokeWidth={f ? 0 : 1.2}
-                    pointerEvents="all" style={{ cursor: 'pointer' }}
+                  <rect x={n.x} y={n.y - BOX_H / 2} width={n.w} height={BOX_H} rx={7}
+                    fill={f ? f.fill : 'var(--bg-panel)'}
+                    stroke={isActive ? 'var(--accent)' : (isRoot ? 'var(--accent)' : (f ? 'transparent' : 'var(--border-color, #d4d4d4)'))}
+                    strokeWidth={isActive ? 1.6 : (isRoot ? 1.3 : 1.1)}
+                    style={{ cursor: 'pointer' }}
                     onPointerEnter={() => setHoverId(n.id)}
                     onPointerLeave={() => setHoverId(cur => (cur === n.id ? null : cur))}
                     onClick={() => nodeClick(n.id)} />
@@ -359,18 +376,17 @@ function TreeCanvas({ source, tree, progressItems, projectId, onOpen }: {
                       onPointerEnter={() => setHoverId(n.id)}
                       onPointerLeave={() => setHoverId(cur => (cur === n.id ? null : cur))}
                       onClick={e => { e.stopPropagation(); togglePath(n.path) }}>
-                      <rect x={n.x + 5} y={n.y - 8} width={15} height={16} fill="transparent" />
-                      <path d={`M ${n.x + 9} ${n.y - 3.5} L ${n.x + 13} ${n.y} L ${n.x + 9} ${n.y + 3.5}`}
+                      <rect x={n.x + n.w - 20} y={n.y - 10} width={17} height={20} fill="transparent" />
+                      <path d={`M ${n.x + n.w - 15.5} ${n.y - 3.5} L ${n.x + n.w - 11.5} ${n.y} L ${n.x + n.w - 15.5} ${n.y + 3.5}`}
                         stroke="var(--text-dim)" strokeWidth={1.6} fill="none"
                         strokeLinecap="round" strokeLinejoin="round"
-                        transform={isCollapsed ? '' : `rotate(90 ${(n.x + 11).toFixed(1)} ${n.y})`} />
+                        transform={isCollapsed ? '' : `rotate(90 ${(n.x + n.w - 13.5).toFixed(1)} ${n.y})`} />
                     </g>
                   )}
-                  <text x={n.hasKids ? n.x + 22 : n.x + 10} y={n.y} fontSize={11.5}
-                    fontWeight={isActive ? 600 : 400}
+                  <text x={textX} y={n.y} fontSize={11.5}
+                    fontWeight={isActive || isRoot ? 600 : 400}
                     fill={isActive ? 'var(--accent)' : 'var(--text)'} dominantBaseline="central"
-                    style={{ userSelect: 'none', cursor: 'pointer' }}
-                    onClick={() => nodeClick(n.id)}>{n.label}</text>
+                    style={{ userSelect: 'none', pointerEvents: 'none' }}>{n.label}</text>
                 </g>
               )
             })}
@@ -397,6 +413,37 @@ function DocGraph({ source, tree, progressItems, projectId, onOpen }: {
   // 虚拟根：书名作主干，章节向右扇出成树形（根路径为空串，不参与正文定位）
   const vTree = useMemo(() => [{ name: source, children: tree || [], __vroot: true }], [tree, source])
 
+  // 折叠状态由 DocGraph 持有：mini 与放大弹窗共享展开/收起，切换视图不丢状态。
+  // 初始折叠集 = 除虚拟根外全部有子节点的节点（即首屏只展示书名主干 + 第一层章节）。
+  const [collapsedPaths, setCollapsedPaths] = useState<Set<string> | null>(null)
+  useEffect(() => {
+    const s = new Set<string>()
+    const walk = (nodes: any[], prefix: string) => {
+      for (const item of nodes || []) {
+        const rawName = String(item?.name || '').trim()
+        if (!rawName) continue
+        const isVRoot = !!(item.__vroot)
+        const kids = Array.isArray(item?.children) ? item.children.filter((k: any) => k && String(k.name || '').trim()) : []
+        // 与 layoutTree 的 foldKey 语义严格一致：虚拟根路径为空串，且根自身不折叠
+        const path = isVRoot ? '' : (prefix ? prefix + '/' + rawName : rawName)
+        if (kids.length && !isVRoot) s.add(path)
+        walk(kids, path)
+      }
+    }
+    walk(tree || [], '')
+    setCollapsedPaths(s)
+  }, [source, tree])
+
+  const togglePath = useCallback((p: string) => {
+    setCollapsedPaths(prev => {
+      if (!prev) return prev
+      const nx = new Set(prev)
+      if (nx.has(p)) nx.delete(p)
+      else nx.add(p)
+      return nx
+    })
+  }, [])
+
   return (
     <>
       <div className="border hairline rounded-xl bg-[var(--bg-input)] flex flex-col overflow-hidden" data-docgraph={source}>
@@ -409,12 +456,13 @@ function DocGraph({ source, tree, progressItems, projectId, onOpen }: {
             <Maximize2 size={11} />
           </button>
         </div>
-        <div className="relative w-full h-[240px]">
-          <TreeCanvas source={source} tree={vTree} progressItems={progressItems} projectId={projectId} onOpen={onOpen} />
+        <div className="relative w-full h-[260px]">
+          <TreeCanvas source={source} tree={vTree} progressItems={progressItems} projectId={projectId}
+            onOpen={onOpen} collapsedPaths={collapsedPaths} onTogglePath={togglePath} />
         </div>
       </div>
 
-      {/* 放大弹窗：独立大画布，查看与操作整棵树 */}
+      {/* 放大弹窗：独立大画布，查看与操作整棵树（展开状态与 mini 共享） */}
       {maximized && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-6" onClick={() => setMaximized(false)}>
           <div className="bg-[var(--bg-panel)] rounded-2xl shadow-xl w-full max-w-6xl h-[88vh] flex flex-col overflow-hidden relative"
@@ -427,7 +475,8 @@ function DocGraph({ source, tree, progressItems, projectId, onOpen }: {
               <button onClick={() => setMaximized(false)} title="关闭" className="p-1 hover:bg-[var(--bg-hover)] rounded flex-shrink-0"><X size={18} /></button>
             </div>
             <div className="flex-1 min-h-0 relative">
-              <TreeCanvas source={source} tree={vTree} progressItems={progressItems} projectId={projectId} onOpen={onOpen} />
+              <TreeCanvas source={source} tree={vTree} progressItems={progressItems} projectId={projectId}
+                onOpen={onOpen} collapsedPaths={collapsedPaths} onTogglePath={togglePath} />
             </div>
           </div>
         </div>
