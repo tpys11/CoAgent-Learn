@@ -2,6 +2,7 @@
 """SQLite 统一数据层：业务表 + sqlite-vec 向量表
 接口兼容原 pg_client（execute 返回 list[dict]），替换 PostgreSQL+Chroma。
 """
+import hashlib
 import os
 import re
 import sqlite3
@@ -114,6 +115,17 @@ class SQLiteClient:
             "CREATE TABLE IF NOT EXISTS settings("
             "key TEXT PRIMARY KEY, value TEXT, updated_at TEXT DEFAULT (datetime('now')))"
         )
+        # 索引版本注册表（照 DeepTutor version-N 思想）：embedding 签名（模型@维度）变化时
+        # 新建物理表并切换，旧表保留只读——切模型不再需要清库重灌。append-only，活跃版本=最新一行。
+        self.execute(
+            "CREATE TABLE IF NOT EXISTS kb_index_versions("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "kind TEXT NOT NULL DEFAULT 'text', "
+            "signature TEXT NOT NULL, "
+            "dim INTEGER NOT NULL DEFAULT 1024, "
+            "table_name TEXT NOT NULL, "
+            "created_at TEXT DEFAULT (datetime('now')))"
+        )
 
     def vector_table_dim(self, table: str) -> int | None:
         """读取已存在的 vec0 向量表维度；不存在或无法解析返回 None。"""
@@ -140,6 +152,88 @@ class SQLiteClient:
         """读动态配置；未配置返回空串"""
         rows = self.execute("SELECT value FROM settings WHERE key = ?", (key,))
         return rows[0]["value"] if rows else ""
+
+    # ── 索引版本化（照 DeepTutor version-N：签名变更开新表，旧表保留只读回退）──
+
+    _TABLE_RE = re.compile(r"^[A-Za-z0-9_]+$")
+
+    @staticmethod
+    def _safe_table(table: str) -> str:
+        """物理表名白名单校验（表名进 f-string SQL 前必须过这道闸）"""
+        if not table or not SQLiteClient._TABLE_RE.match(table):
+            raise ValueError(f"非法向量表名: {table!r}")
+        return table
+
+    def embedding_signature(self) -> str:
+        """当前 embedding 配置签名：模型名@维度。签名一致才视为同一索引代际——
+        同维度换模型（如 Qwen3-VL↔bge-m3 都是 1024 维）向量空间不同，必须开新版本。"""
+        from core.config import config as _cfg
+        model = getattr(_cfg, "EMBEDDING_MODEL", "") or "unknown"
+        dim = int(getattr(_cfg, "EMBEDDING_DIM", 1024) or 1024)
+        return f"{model}@{dim}"
+
+    def _emb_dim(self) -> int:
+        from core.config import config as _cfg
+        return int(getattr(_cfg, "EMBEDDING_DIM", 1024) or 1024)
+
+    def list_text_version_tables(self) -> list[str]:
+        """全部文本向量版本物理表，最新在前；无注册记录时兜底返回旧主表"""
+        rows = self.execute(
+            "SELECT table_name FROM kb_index_versions WHERE kind='text' ORDER BY id DESC")
+        tables = [r["table_name"] for r in rows]
+        return tables or ["kb_vectors"]
+
+    def peek_active_text_table(self) -> str:
+        """读路径的签名感知解析（只读语义：绝不建表/切版）：
+        - 当前签名有历史版本 → 返回该版本（配置回滚场景：旧代际内容立即可检索）
+        - 无历史版本（全新签名的首次写之前）→ 返回最新表（检索空结果而非报错）
+        - 无任何注册记录 → 旧主表"""
+        sig = self.embedding_signature()
+        rows = self.execute(
+            "SELECT signature, table_name FROM kb_index_versions WHERE kind='text' ORDER BY id DESC")
+        if not rows:
+            return "kb_vectors"
+        for r in rows:
+            if r["signature"] == sig:
+                return r["table_name"]
+        return rows[0]["table_name"]
+
+    def resolve_active_text_table(self) -> str:
+        """写路径入口：返回与当前 embedding 签名一致的活跃表。
+        - 无注册记录 → 既有 kb_vectors 注册为第 1 版（按当前签名登记）
+        - 活跃版本签名一致 → 直接复用
+        - 签名变化 → 复用历史同名签名的表（配置回滚场景），否则新建 kb_vectors_<hash8> 并切换"""
+        with self._lock:
+            sig = self.embedding_signature()
+            dim = self._emb_dim()
+            last = self.execute(
+                "SELECT signature, table_name FROM kb_index_versions WHERE kind='text' "
+                "ORDER BY id DESC LIMIT 1")
+            if last:
+                if last[0]["signature"] == sig:
+                    return last[0]["table_name"]
+                hist = self.execute(
+                    "SELECT table_name FROM kb_index_versions WHERE kind='text' AND signature=? "
+                    "ORDER BY id DESC LIMIT 1", (sig,))
+                if hist:
+                    table = hist[0]["table_name"]
+                else:
+                    table = f"kb_vectors_{hashlib.md5(sig.encode('utf-8')).hexdigest()[:8]}"
+                    self._safe_table(table)
+                    self.execute(
+                        f"CREATE VIRTUAL TABLE IF NOT EXISTS {table} USING vec0("
+                        "doc_id TEXT, project_id TEXT, source TEXT, chunk INTEGER, session_id TEXT,"
+                        f"has_context INTEGER, content TEXT, embedding float[{dim}])")
+                self.execute(
+                    "INSERT INTO kb_index_versions(kind, signature, dim, table_name) "
+                    "VALUES ('text', ?, ?, ?)", (sig, dim, table))
+                return table
+            # 首次注册：既有 kb_vectors 成为第 1 版
+            actual = self.vector_table_dim("kb_vectors") or dim
+            self.execute(
+                "INSERT INTO kb_index_versions(kind, signature, dim, table_name) "
+                "VALUES ('text', ?, ?, 'kb_vectors')", (sig, actual))
+            return "kb_vectors"
 
     def set_setting(self, key: str, value: str):
         """写动态配置（空值删除该键，恢复 .env 默认）"""
@@ -182,14 +276,16 @@ class SQLiteClient:
         )
 
     def upsert_kb_vector(self, doc_id: str, project_id: str, source: str, chunk: int,
-                         session_id: str, has_context: bool, content: str, embedding: list):
+                         session_id: str, has_context: bool, content: str, embedding: list,
+                         table: str = "kb_vectors"):
         # vec0 表不支持 UPDATE，用 DELETE+INSERT 实现 upsert
+        self._safe_table(table)
         with self._lock:
             conn = self._new_conn()
             try:
-                conn.execute("DELETE FROM kb_vectors WHERE doc_id = ?", (doc_id,))
+                conn.execute(f"DELETE FROM {table} WHERE doc_id = ?", (doc_id,))
                 conn.execute(
-                    "INSERT INTO kb_vectors(rowid, doc_id, project_id, source, chunk, session_id, has_context, content, embedding) "
+                    f"INSERT INTO {table}(rowid, doc_id, project_id, source, chunk, session_id, has_context, content, embedding) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (None, doc_id, project_id, source, chunk, session_id, int(has_context), content,
                      sqlite_vec.serialize_float32(embedding)),
@@ -198,7 +294,7 @@ class SQLiteClient:
             finally:
                 conn.close()
 
-    def upsert_kb_vectors_bulk(self, items: list):
+    def upsert_kb_vectors_bulk(self, items: list, table: str = "kb_vectors"):
         """批量 upsert：vec0 表不支持 UPDATE，先批量 DELETE 已存在 doc_id，再批量 INSERT。
         分批（每批 500）提交：控制单事务时长（大批量从分钟级锁窗口降到秒级），
         同时规避旧版 SQLite 的 SQLITE_MAX_VARIABLE_NUMBER（999）上限。
@@ -206,6 +302,7 @@ class SQLiteClient:
         if not items:
             return
         import sqlite_vec as _sv
+        self._safe_table(table)
         _BATCH = 500
         with self._lock:
             conn = self._new_conn()
@@ -214,9 +311,9 @@ class SQLiteClient:
                     batch = items[start:start + _BATCH]
                     ids = [it[0] for it in batch]
                     ph = ",".join("?" * len(ids))
-                    conn.execute(f"DELETE FROM kb_vectors WHERE doc_id IN ({ph})", ids)
+                    conn.execute(f"DELETE FROM {table} WHERE doc_id IN ({ph})", ids)
                     conn.executemany(
-                        "INSERT INTO kb_vectors(rowid, doc_id, project_id, source, chunk, session_id, has_context, content, embedding) "
+                        f"INSERT INTO {table}(rowid, doc_id, project_id, source, chunk, session_id, has_context, content, embedding) "
                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         [(None, it[0], it[1], it[2], it[3], it[4], int(it[5]), it[6], _sv.serialize_float32(it[7])) for it in batch],
                     )
@@ -310,13 +407,15 @@ class SQLiteClient:
         """删除某来源文档的标题树"""
         return self.execute("DELETE FROM kb_tree WHERE project_id=? AND source=?", (project_id, source))
 
-    def search_kb_vectors(self, project_id: str, query_embedding: list, k: int = 12) -> list[dict]:
+    def search_kb_vectors(self, project_id: str, query_embedding: list, k: int = 12,
+                          table: str = "kb_vectors") -> list[dict]:
+        self._safe_table(table)
         with self._lock:
             conn = self._new_conn()
             try:
                 rows = conn.execute(
                     "SELECT rowid, distance, doc_id, source, chunk, session_id, has_context, content "
-                    "FROM kb_vectors WHERE project_id = ? AND embedding MATCH ? AND k = ? "
+                    f"FROM {table} WHERE project_id = ? AND embedding MATCH ? AND k = ? "
                     "ORDER BY distance",
                     (project_id, sqlite_vec.serialize_float32(query_embedding), k),
                 ).fetchall()
@@ -324,32 +423,42 @@ class SQLiteClient:
                 conn.close()
         return [dict(r) for r in rows]
 
-    def get_kb_docs(self, project_id: str) -> list[dict]:
-        """取项目全部向量块（doc_id, source, chunk, content），供 BM25 与列表展示"""
+    def get_kb_docs(self, project_id: str, table: str = "kb_vectors") -> list[dict]:
+        """取活跃版本全部向量块（doc_id, source, chunk, content），供 BM25 与列表展示"""
+        self._safe_table(table)
         return self.execute(
             "SELECT rowid, doc_id, source, chunk, session_id, has_context, content "
-            "FROM kb_vectors WHERE project_id = ? ORDER BY chunk",
+            f"FROM {table} WHERE project_id = ? ORDER BY chunk",
             (project_id,),
         )
 
     def delete_kb_by_source(self, project_id: str, source: str) -> int:
-        rows = self.execute(
-            "SELECT rowid FROM kb_vectors WHERE project_id = ? AND source = ?",
-            (project_id, source),
-        )
-        ids = [r["rowid"] for r in rows]
-        if ids:
-            ph = ",".join("?" * len(ids))
-            self.execute(f"DELETE FROM kb_vectors WHERE rowid IN ({ph})", tuple(ids))
-        return len(ids)
+        """删除某来源：跨全部文本向量版本（任何代际里的残留都清掉）"""
+        total = 0
+        for table in self.list_text_version_tables():
+            rows = self.execute(
+                f"SELECT rowid FROM {self._safe_table(table)} WHERE project_id = ? AND source = ?",
+                (project_id, source),
+            )
+            ids = [r["rowid"] for r in rows]
+            if ids:
+                ph = ",".join("?" * len(ids))
+                self.execute(f"DELETE FROM {self._safe_table(table)} WHERE rowid IN ({ph})", tuple(ids))
+                total += len(ids)
+        return total
 
     def delete_kb_project(self, project_id: str) -> int:
-        rows = self.execute("SELECT rowid FROM kb_vectors WHERE project_id = ?", (project_id,))
-        ids = [r["rowid"] for r in rows]
-        if ids:
-            ph = ",".join("?" * len(ids))
-            self.execute(f"DELETE FROM kb_vectors WHERE rowid IN ({ph})", tuple(ids))
-        return len(ids)
+        """删除项目知识库：跨全部文本向量版本"""
+        total = 0
+        for table in self.list_text_version_tables():
+            rows = self.execute(
+                f"SELECT rowid FROM {self._safe_table(table)} WHERE project_id = ?", (project_id,))
+            ids = [r["rowid"] for r in rows]
+            if ids:
+                ph = ",".join("?" * len(ids))
+                self.execute(f"DELETE FROM {self._safe_table(table)} WHERE rowid IN ({ph})", tuple(ids))
+                total += len(ids)
+        return total
 
     # ── 业务表 ──
 

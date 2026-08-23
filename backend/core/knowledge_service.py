@@ -11,7 +11,7 @@ from core.db import get_kb_repo
 _db = get_kb_repo()
 logger = logging.getLogger("coagent.knowledge")
 
-# BM25 缓存：project_id -> (ids, tokenized_docs, bm25)
+# BM25 缓存：(project_id, table) -> (ids, tokenized_docs, bm25)；table 维度隔离不同索引代际
 _bm25_cache = {}
 
 # embedding 模型（懒加载）
@@ -32,15 +32,17 @@ def _get_embedder():
 
 
 def _embed_local(texts: list[str]) -> list[list[float]]:
-    """本地模型批量向量化；模型不可用时降级为哈希伪向量（仍可检索但效果差）"""
+    """本地模型批量向量化；模型不可用时降级为确定性伪向量（仍可检索但效果差）。
+    伪向量维度跟随 EMBEDDING_DIM 配置（2026-08-23 修复：原硬编码 512，插入 1024 维表必炸）。"""
     emb = _get_embedder()
     if emb:
         return emb.encode(texts, normalize_embeddings=True).tolist()
-    # 降级：确定性伪向量（相同文本得到相同向量）
+    from core.config import config as _cfg
+    dim = int(getattr(_cfg, "EMBEDDING_DIM", 1024) or 1024)
     vecs = []
     for t in texts:
-        v = [0.0] * 512
-        for i, ch in enumerate((t or "")[:512]):
+        v = [0.0] * dim
+        for i, ch in enumerate((t or "")[:dim]):
             v[i] = (ord(ch) % 100) / 100.0
         vecs.append(v)
     return vecs
@@ -133,13 +135,14 @@ def _tokenize(text: str) -> list:
         return list((text or "").lower())
 
 
-def _get_bm25(project_id: str):
-    """获取项目 BM25 索引（带缓存，数据变更后失效）"""
-    cache = _bm25_cache.get(project_id)
+def _get_bm25(project_id: str, table: str):
+    """获取项目 BM25 索引（按版本表隔离缓存；数据变更后失效）"""
+    key = (project_id, table)
+    cache = _bm25_cache.get(key)
     if cache is not None:
         return cache
     try:
-        rows = _db.get_kb_docs(project_id)
+        rows = _db.get_kb_docs(project_id, table=table)
     except Exception:
         return None
     if not rows:
@@ -148,12 +151,13 @@ def _get_bm25(project_id: str):
     tokenized = [_tokenize(r["content"]) for r in rows]
     from rank_bm25 import BM25Okapi
     bm25 = BM25Okapi(tokenized)
-    _bm25_cache[project_id] = (ids, tokenized, bm25)
-    return _bm25_cache[project_id]
+    _bm25_cache[key] = (ids, tokenized, bm25)
+    return _bm25_cache[key]
 
 
 def _invalidate_bm25(project_id: str):
-    _bm25_cache.pop(project_id, None)
+    for key in [k for k in list(_bm25_cache) if k[0] == project_id]:
+        _bm25_cache.pop(key, None)
 
 
 def _is_junk_heading(name: str) -> bool:
@@ -261,8 +265,10 @@ def add_document(project_id: str, text: str, source: str = "", session_id: str =
     chunks = _chunk_text(text)
     if not chunks:
         return 0
+    # 解析当前 embedding 签名对应的活跃索引版本（签名变化时自动开新物理表，旧表保留只读）
+    table = _db.resolve_active_text_table()
     # 入库前确认向量表维度与当前 embedding 配置一致；不一致直接报错，不再静默返回 0 块
-    _db.ensure_vector_dim("kb_vectors")
+    _db.ensure_vector_dim(table)
     # 向量化（分批，模型一次 32 条）
     embeddings = []
     batch = 32
@@ -273,7 +279,7 @@ def add_document(project_id: str, text: str, source: str = "", session_id: str =
     for i, c in enumerate(chunks):
         uid = hashlib.md5((source + str(i) + c[:80]).encode("utf-8")).hexdigest()[:24]
         bulk.append((uid, project_id, source, i, session_id, False, chunks[i], embeddings[i]))
-    _db.upsert_kb_vectors_bulk(bulk)
+    _db.upsert_kb_vectors_bulk(bulk, table=table)
     # 标题树：复用文档自身的形式分类逻辑（markdown 标题层级），供项目记忆知识图谱
     try:
         if source:
@@ -339,7 +345,8 @@ def search(project_id: str, query: str, top_k: int = 3, include_images: bool = T
     from core.config import config as _cfg
     if getattr(_cfg, "KB_MODE", "full") == "light":
         include_images = False
-    docs = _db.get_kb_docs(project_id)
+    _table = _db.peek_active_text_table()
+    docs = _db.get_kb_docs(project_id, table=_table)
     # 图片跨模态检索（仅项目有图片向量时触发，避免无谓调用 VL 接口）
     image_hits: list = []
     if include_images:
@@ -350,12 +357,14 @@ def search(project_id: str, query: str, top_k: int = 3, include_images: bool = T
             logger.warning("图片跨模态检索失败 project_id=%s", project_id, exc_info=True)
     if not docs:
         return image_hits
+    # 活跃索引版本：检索与 BM25 只在当前代际进行（旧版本保留只读，不参与检索）
+    table = _db.peek_active_text_table()
     # 1. 向量检索（取 3 倍候选）
     qvec = _embed([query])[0]
-    vec_rows = _db.search_kb_vectors(project_id, qvec, k=top_k * 3)
+    vec_rows = _db.search_kb_vectors(project_id, qvec, k=top_k * 3, table=table)
     vec = {r["doc_id"]: r for r in vec_rows}
     # 2. BM25 检索
-    bm = _get_bm25(project_id)
+    bm = _get_bm25(project_id, table)
     bm_hits = {}
     if bm:
         ids, tokenized, bm25 = bm
@@ -482,8 +491,8 @@ def list_docs(project_id: str) -> list:
     生成类（gen: 前缀 / 生成· / 对话生成·）条目过滤不显示（资源库保留，左栏不展示）。"""
     # 从 resources 表取全部资源（原文已存）
     res_rows = _db.get_resources(project_id)
-    # 从 kb_vectors 取已有向量块（按 source 聚合）
-    vec_rows = _db.get_kb_docs(project_id)
+    # 从活跃版本向量表取已有向量块（按 source 聚合；旧版本代际不计入展示）
+    vec_rows = _db.get_kb_docs(project_id, table=_db.peek_active_text_table())
     vec_map: dict[str, int] = {}
     for r in vec_rows:
         src = r["source"] or "未命名"
