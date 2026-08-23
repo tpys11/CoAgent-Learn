@@ -84,9 +84,9 @@ class TestResolvePlanTargets:
         assert _resolve_plan_targets("极速", ["知识库管理"]) == ["kb"]
         assert _resolve_plan_targets("极速", ["搜索增强"]) == ["kb"]
 
-    def test_think_mode_no_plan_generates(self):
-        """思考档：plan 为空 → 直接生成（知识库/搜索按需，非必选）"""
-        assert _resolve_plan_targets("思考", []) == ["generate"]
+    def test_think_mode_no_plan_defaults_kb(self):
+        """思考档无plan 为空 → 默认走知识库检索（2026-08 行为变更：回答须有据可依）"""
+        assert _resolve_plan_targets("思考", []) == ["kb"]
 
     def test_think_mode_kb_when_planned(self):
         """思考档：plan 含知识库管理 → 调 kb 节点"""
