@@ -4,6 +4,8 @@ import MemoryView from './MemoryView'
 import ResourceView from './ResourceView'
 import { LS, lsGet, lsGetJSON, lsSetJSON } from '../storage'
 import { api } from '../api'
+import type { UrlIngestScope } from '../api'
+import { ProbePreviewCard, useProbeOnce } from './resource/UrlProbeShared'
 
 /** 课程记忆与资源窗口：两个页签（记忆与进程 / 资源）可切换；initialTab 决定打开时默认页签。
  * 新建课程引导消息的「手动填写」按钮也复用此弹窗（initialOnly=true：仅初次创建可手动填写，
@@ -137,9 +139,12 @@ function ProjectResources({ projectId, naturalHeight, onUploaded }: { projectId:
   type PendingItem =
     | { kind: 'file'; id: string; file: File }
     | { kind: 'text'; id: string; title: string; body: string }
-    | { kind: 'link'; id: string; title: string; url: string }
+    | { kind: 'link'; id: string; title: string; url: string; scope?: UrlIngestScope }
   const [pendingItems, setPendingItems] = useState<PendingItem[]>([])
   const pendingCount = pendingItems.length
+  // 预设卡预扫描：点击「使用」后先探测结构，用户确认范围再入队（与手动链接入口行为一致）
+  const [probeItem, setProbeItem] = useState<{ title: string; url: string } | null>(null)
+  const presetProbe = useProbeOnce()
   const load = useCallback(() => {
     if (!projectId) { setDocs([]); setLoading(false); return }
     api.getKb(projectId)
@@ -173,7 +178,7 @@ const uploadItems = async () => {
           else alert(`「${it.file.name}」接入失败：${d.msg || '处理失败'}`)
         } else if (it.kind === 'link') {
           // 链接资源：后端抓取网页正文入库（真实内容，非空转）
-const d = await api.uploadKnowledgeUrl({ project_id: projectId, url: it.url, source: it.title, session_id: 'project-res', api_key: lsGet(LS.apiKey, '') })
+          const d = await api.uploadKnowledgeUrl({ project_id: projectId, url: it.url, source: it.title, session_id: 'project-res', api_key: lsGet(LS.apiKey, '') }, it.scope)
           if (d.status === 'ok') {
             if (d.duplicate) { dupCount++ }
             else { total += (d.chunks || 0); okCount++ }
@@ -228,15 +233,41 @@ const d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, 
   /** 卡片「加入课程」/ 拖入的卡片 → 仅占位进待上传列表；无链接又无实质内容的资源明确提示，不假装上传 */
   const addPreset = (title: string, body: string, url?: string) => {
     const u = (url || '').trim()
-    if (u) { addLinkItem(title, u); return }
-    if ((body || '').trim().length >= 50) { addTextItem(title, body); return }
-    alert(`「${title}」还没有链接或正文内容，无法接入知识库（请先为该资源补充链接）`)
+    if (u) {
+      setProbeItem({ title: title || u, url: u })
+      void presetProbe.run(u)
+      return
+    }
+    if ((body || '').trim().length >= 50) {
+      setPendingItems(prev => {
+        if (prev.some(x => x.kind === 'text' && x.title === title)) return prev
+        return [...prev, { kind: 'text' as const, id: 't' + Date.now() + Math.random().toString(36).slice(2, 7), title, body }]
+      })
+      return
+    }
+    alert(`「${title}」既没有链接也缺少正文内容，无法加入知识库（可编辑为普通资源或补链接）`)
+  }
+  /** 预扫描确认：带所选范围入队 */
+  const confirmProbeItem = () => {
+    if (!probeItem) return
+    addLinkItem(probeItem.title, probeItem.url, presetProbe.buildScope())
+    closeProbeItem()
+  }
+  /** 预扫描兜底：跳过预览全量加入 */
+  const addProbeItemRaw = () => {
+    if (!probeItem) return
+    addLinkItem(probeItem.title, probeItem.url)
+    closeProbeItem()
+  }
+  const closeProbeItem = () => {
+    setProbeItem(null)
+    presetProbe.reset()
   }
   /** 加入链接占位 */
-  const addLinkItem = (title: string, url: string) => {
+  const addLinkItem = (title: string, url: string, scope?: UrlIngestScope) => {
     setPendingItems(prev => {
       if (prev.some(x => x.kind === 'link' && x.url === url)) return prev
-      return [...prev, { kind: 'link' as const, id: 'l' + Date.now() + Math.random().toString(36).slice(2, 7), title, url }]
+      return [...prev, { kind: 'link' as const, id: 'l' + Date.now() + Math.random().toString(36).slice(2, 7), title, url, scope }]
     })
   }
   const [removeTarget, setRemoveTarget] = useState<string | null>(null)
@@ -342,6 +373,37 @@ const d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, 
       {/* 下：系统内置资源（可拖入 / 加入课程），撑满剩余空间 */}
       <div className="flex-1 min-h-0 flex flex-col gap-2.5 overflow-hidden">
         <p className="text-xs font-semibold text-dim uppercase tracking-wider flex items-center gap-1.5 flex-shrink-0"><BookOpen size={13} /> 系统内置资源{docs.length === 0 && <span className="font-normal text-[10px] text-dim">（卡片可拖入上方，或点卡片详情「加入课程」）</span>}</p>
+        {/* 预设卡预扫描：结构确认后再入队（与手动链接入口一致） */}
+        {probeItem && (
+          <div className="border hairline rounded-2xl p-3 flex flex-col gap-2 bg-[var(--bg-panel)]">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold flex-1 truncate">接入「{probeItem.title}」</span>
+              <button onClick={closeProbeItem} className="p-1 rounded text-dim hover:text-red-500" title="取消"><X size={12} /></button>
+            </div>
+            {presetProbe.state.phase === 'loading' && (
+              <p className="flex items-center gap-1.5 text-[11px] text-dim"><Loader2 size={11} className="animate-spin" /> 正在识别链接结构…</p>
+            )}
+            {presetProbe.state.phase === 'error' && (
+              <p className="text-[11px] text-dim" title={presetProbe.state.msg || undefined}>无法预览结构（可能需登录或链接不可访问），可全量直接加入</p>
+            )}
+            {presetProbe.data && (
+              <>
+                <ProbePreviewCard data={presetProbe.data} groups={presetProbe.groups} checked={presetProbe.groupChecked}
+                  onToggle={k => presetProbe.setGroupChecked(prev => ({ ...prev, [k]: !prev[k] }))}
+                  onSelectAll={all => presetProbe.setGroupChecked(all ? Object.fromEntries(presetProbe.groups.map(g => [g.key, true])) : {})}
+                  open={presetProbe.groupsOpen} onToggleOpen={() => presetProbe.setGroupsOpen(v => !v)} />
+                <div className="flex justify-end gap-2">
+                  <button onClick={addProbeItemRaw} className="px-2 py-1.5 text-[11px] text-dim rounded-xl row-hover transition-colors">全量加入</button>
+                  <button onClick={confirmProbeItem}
+                    disabled={presetProbe.groups.length > 0 && presetProbe.groups.every(g => !presetProbe.groupChecked[g.key])}
+                    className="px-3.5 py-1.5 text-[11px] bg-[#1a1a1a] text-white font-semibold rounded-xl hover:bg-[#333333] transition-colors disabled:opacity-40">
+                    按所选加入
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
         <div className={`border hairline rounded-2xl overflow-hidden ${naturalHeight ? 'h-[45vh]' : 'flex-1 min-h-0'}`}>
           <ResourceView embedded refreshSignal={refreshKey} projectId={projectId} onUseItem={addPreset} />
         </div>

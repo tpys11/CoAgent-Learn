@@ -1,9 +1,10 @@
 /** 上传资源面板（文本 / 文件 / 链接，仿 DeepTutor add resource；ResourceView 拆分子组件，5.1） */
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Upload, FileText, ExternalLink, Sparkles, Loader2, X, FolderTree, Globe, ChevronDown, ChevronUp } from 'lucide-react'
+import { Upload, FileText, ExternalLink, Sparkles, Loader2, X } from 'lucide-react'
 import { LS, lsGet } from '../../storage'
 import { api } from '../../api'
-import type { UrlIngestScope, UrlProbeOk } from '../../api'
+import type { UrlIngestScope } from '../../api'
+import { ProbePreviewCard, isHttpUrl, normUrl, buildScopeFrom } from './UrlProbeShared'
 
 type UpItem = { id: string; kind: 'file' | 'text' | 'link'; name: string; file?: File; body?: string; url?: string; scope?: UrlIngestScope }
 
@@ -12,15 +13,9 @@ type ProbeState =
   | { phase: 'idle' }
   | { phase: 'loading'; url: string }
   | { phase: 'error'; url: string; msg: string }
-  | { phase: 'ok'; url: string; data: UrlProbeOk }
+  | { phase: 'ok'; url: string; data: import('../../api').UrlProbeOk }
 
 const PROBE_DEBOUNCE_MS = 600
-const GROUP_COLLAPSE_AT = 6   // 超过该数量时折叠
-const GROUP_COLLAPSE_KEEP = 5 // 折叠时保留可见的条数
-
-const isHttpUrl = (s: string) => /^https?:\/\/.+/.test(s)
-/** 归一化仅用于「是否同一个链接」的判定：去空白、去锚点、去尾部斜杠 */
-const normUrl = (raw: string) => raw.trim().split('#')[0].replace(/\/+$/, '')
 
 export function UploadPanel({ projectId, onUploaded }: { projectId: string | null; onUploaded: () => void }) {
   const [upMode, setUpMode] = useState<'text' | 'file' | 'link'>('text')
@@ -96,16 +91,9 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
   const upProbeData = upProbe.phase === 'ok' ? upProbe.data : null
   const upGroups = upProbeData?.groups ?? []
   const upCheckedKeys = upGroups.filter(g => upGroupChecked[g.key]).map(g => g.key).sort()
-  const upCheckedFiles = upGroups.filter(g => upGroupChecked[g.key]).reduce((n, g) => n + (g.count || 0), 0)
-  const upGroupsVisible = upGroups.length > GROUP_COLLAPSE_AT && !upGroupsOpen ? upGroups.slice(0, GROUP_COLLAPSE_KEEP) : upGroups
 
   /** 勾选与默认一致 / 无可分区内容 → 不下发范围字段（后端按默认全量处理） */
-  const upBuildScope = (): UrlIngestScope | undefined => {
-    if (!upGroups.length) return undefined
-    const defaults = upGroups.filter(g => g.default_selected).map(g => g.key).sort()
-    if (upCheckedKeys.length === defaults.length && upCheckedKeys.every((k, i) => k === defaults[i])) return undefined
-    return { includeGroups: upCheckedKeys, excludeGroups: upGroups.filter(g => !upGroupChecked[g.key]).map(g => g.key).sort() }
-  }
+  const upBuildScope = (): UrlIngestScope | undefined => buildScopeFrom(upGroups, upGroupChecked)
 
   const upAddText = () => {
     const title = upTitle.trim() || '文本资料'
@@ -241,54 +229,12 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
           {upProbe.phase === 'error' && (
             <p className="text-[11px] text-dim" title={upProbe.msg || undefined}>无法预览结构（可能需登录或链接不可访问），可直接上传</p>
           )}
-          {/* 预检：结构预览卡片 */}
+          {/* 预检：结构预览卡片（共享组件，见 UrlProbeShared） */}
           {upProbeData && (
-            <div className="flex flex-col gap-2 rounded-xl border hairline bg-[var(--bg-input)] px-3 py-2.5">
-              <div className="flex items-center gap-2">
-                <span className="inline-flex items-center gap-1 flex-shrink-0 px-2 py-0.5 rounded-full bg-[var(--bg-hover)] text-[10px] font-medium">
-                  {upProbeData.kind === 'github' ? <FolderTree size={10} /> : <Globe size={10} />}
-                  {upProbeData.kind === 'github' ? 'GitHub 仓库' : '文档站'}
-                </span>
-                <span className="text-[11.5px] font-medium truncate flex-1" title={upProbeData.title_hint}>{upProbeData.title_hint}</span>
-                <span className={`text-[10px] flex-shrink-0 ${upProbeData.truncated ? 'text-amber-600 font-medium' : 'text-dim'}`}>
-                  {upProbeData.total_files} / 上限 {upProbeData.max_files}
-                </span>
-              </div>
-              {(upProbeData.warnings ?? []).map((w, i) => (
-                <p key={i} className="text-[10px] leading-relaxed text-amber-600">{w}</p>
-              ))}
-              {upGroups.length === 0 ? (
-                <p className="text-[11px] text-dim">未识别到可分区内容，将全量摄取</p>
-              ) : (
-                <div className="flex flex-col gap-0.5 border-t hairline pt-2">
-                  <div className="flex items-center gap-2 px-1.5 pb-0.5">
-                    <span className="text-[10px] font-semibold text-dim flex-1">
-                      选择摄取范围（已选 {upCheckedKeys.length}/{upGroups.length} 项 · 约 {upCheckedFiles} 个文件）
-                    </span>
-                    <button onClick={() => setUpGroupChecked(Object.fromEntries(upGroups.map(g => [g.key, true])))}
-                      className="text-[10px] text-dim hover:text-[var(--accent)] transition-colors">全选</button>
-                    <button onClick={() => setUpGroupChecked({})}
-                      className="text-[10px] text-dim hover:text-[var(--accent)] transition-colors">全不选</button>
-                  </div>
-                  {upGroupsVisible.map(g => (
-                    <label key={g.key} className="flex items-center gap-2 px-1.5 py-1 rounded-lg row-hover cursor-pointer">
-                      <input type="checkbox" checked={!!upGroupChecked[g.key]}
-                        onChange={() => setUpGroupChecked(prev => ({ ...prev, [g.key]: !prev[g.key] }))}
-                        className="w-3.5 h-3.5 flex-shrink-0 accent-[var(--accent)]" />
-                      <span className="text-[11px] truncate flex-1" title={g.key}>{g.label}</span>
-                      <span className="text-[10px] text-dim flex-shrink-0">（{g.count}）</span>
-                    </label>
-                  ))}
-                  {upGroups.length > GROUP_COLLAPSE_AT && (
-                    <button onClick={() => setUpGroupsOpen(v => !v)}
-                      className="inline-flex items-center gap-1 self-start px-1.5 py-1 text-[10px] text-dim hover:text-[var(--accent)] transition-colors">
-                      {upGroupsOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-                      {upGroupsOpen ? '收起' : `展开全部 ${upGroups.length} 项`}
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
+            <ProbePreviewCard data={upProbeData} groups={upGroups} checked={upGroupChecked}
+              onToggle={k => setUpGroupChecked(prev => ({ ...prev, [k]: !prev[k] }))}
+              onSelectAll={all => setUpGroupChecked(all ? Object.fromEntries(upGroups.map(g => [g.key, true])) : {})}
+              open={upGroupsOpen} onToggleOpen={() => setUpGroupsOpen(v => !v)} />
           )}
           <div className="flex items-center justify-end gap-2">
             {upProbe.phase !== 'ok' && isHttpUrl(normUrl(upUrl)) && (
