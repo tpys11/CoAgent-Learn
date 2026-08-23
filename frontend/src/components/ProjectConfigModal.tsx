@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { FileText, BookOpen, Upload, Trash2, Save, X, Loader2, CheckCircle2, ExternalLink, Plus } from 'lucide-react'
 import MemoryView from './MemoryView'
 import ResourceView from './ResourceView'
+import { UploadPanel } from './resource/UploadPanel'
 import { LS, lsGet, lsGetJSON, lsSetJSON } from '../storage'
 import { api } from '../api'
 import { watchIngestProgress } from './resource/ingestProgress'
@@ -130,9 +131,8 @@ function ProjectResources({ projectId, naturalHeight, onUploaded }: { projectId:
   const [uploading, setUploading] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
   const [dragOver, setDragOver] = useState(false)
-  // 系统文件管理器：hidden input，空态点击或尾部虚线按钮触发
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const pickFiles = () => { if (!uploading) fileInputRef.current?.click() }
+  // 上传面板展开态：虚线框点击后展开「文本 / 文件」上传面板（系统资源卡在下方直接点选）
+  const [showUpload, setShowUpload] = useState(false)
   // 拖入/选择仅占位进待上传列表，点「确认上传」才真正上传（文件与卡片文本统一）
   const [doneMsg, setDoneMsg] = useState('')
   type PendingItem =
@@ -281,13 +281,11 @@ const d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, 
   }
   return (
     <div className={`p-6 flex flex-col gap-5 ${naturalHeight ? '' : 'h-full overflow-hidden'}`}>
-      {/* 系统文件管理器：由空态/虚线按钮触发，选中后进待上传列表走确认上传 */}
-      <input ref={fileInputRef} type="file" multiple hidden
-        onChange={e => {
-          const fs = e.target.files
-          if (fs && fs.length) addFileItem(fs)
-          e.target.value = ''
-        }} />
+      {/* 上传面板：虚线框/空态点击展开，提供 文本 / 文件 两种来源（系统资源卡在下方点选） */}
+      {showUpload && (
+        <UploadPanel projectId={projectId} onUploaded={() => { load(); onUploaded?.() }} />
+      )}
+      {/*
       {/* 上：项目资源（可上传 / 拖入） */}
       <div className="flex-shrink-0 flex flex-col gap-2.5"
         onDragOver={e => { e.preventDefault(); setDragOver(true) }}
@@ -339,16 +337,16 @@ const d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, 
               ))}
               {/* 有内容时：尾部虚线占位按钮，点击调系统文件管理器 */}
               {docs.length > 0 && (
-                <button type="button" onClick={pickFiles} disabled={!!uploading} title="选择文件上传"
+                <button type="button" onClick={() => setShowUpload(v => !v)} disabled={!!uploading} title="展开 / 收起上传面板"
                   className="flex items-center justify-center border border-dashed rounded-xl px-3 py-2 text-dim hover:text-[var(--text)] hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-50">
                   <Plus size={14} />
                 </button>
               )}
               {docs.length === 0 && pendingCount === 0 && (
-                <button type="button" onClick={pickFiles}
+                <button type="button" onClick={() => setShowUpload(v => !v)}
                   className="col-span-full p-6 flex flex-col items-center justify-center gap-1.5 text-xs text-dim cursor-pointer hover:text-[var(--text)] transition-colors">
                   <Upload size={18} className="opacity-50" />
-                  <span>暂无资源 — 点击此处或拖入文件</span>
+                  <span>暂无资源 — 点击展开上传面板（文本 / 文件），或拖入文件、点选下方系统资源</span>
                 </button>
               )}
             </>
