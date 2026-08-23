@@ -56,6 +56,11 @@ class SettingsSave(BaseModel):
     kb_mode: str = "full"         # 知识库服务：light=文字向量化+重排；full=再加图片向量/跨模态
     review_enabled: bool = False  # 独立审核模型开关（默认关，审核走 deepseek v4 flash）
     review_model: str = "Qwen/Qwen2.5-72B-Instruct"
+    # 文档解析引擎（ParsePort）：pymupdf4llm | mineru | mathpix
+    parse_engine: str = "pymupdf4llm"
+    mineru_api_token: str = ""
+    mathpix_app_id: str = ""
+    mathpix_app_key: str = ""
 
 
 @router.get("/api/settings")
@@ -98,6 +103,11 @@ async def get_settings():
             "model": getattr(_cfg, "REVIEW_MODEL", "Qwen/Qwen2.5-72B-Instruct"),
             "enabled": str(getattr(_cfg, "REVIEW_ENABLED", "0")) == "1",
         },
+        "parse": {
+            "engine": getattr(_cfg, "PARSE_ENGINE", "pymupdf4llm"),
+            "mineru_key_set": bool(getattr(_cfg, "MINERU_API_TOKEN", "")),
+            "mathpix_key_set": bool(getattr(_cfg, "MATHPIX_APP_ID", "") and getattr(_cfg, "MATHPIX_APP_KEY", "")),
+        },
     }
 
 
@@ -128,6 +138,13 @@ async def save_settings(req: SettingsSave):
     _s.set_setting("KB_MODE", req.kb_mode)
     _s.set_setting("REVIEW_ENABLED", "1" if req.review_enabled else "0")
     _s.set_setting("REVIEW_MODEL", req.review_model)
+    _s.set_setting("PARSE_ENGINE", req.parse_engine)
+    if req.mineru_api_token:
+        _s.set_setting("MINERU_API_TOKEN", req.mineru_api_token)
+    if req.mathpix_app_id:
+        _s.set_setting("MATHPIX_APP_ID", req.mathpix_app_id)
+    if req.mathpix_app_key:
+        _s.set_setting("MATHPIX_APP_KEY", req.mathpix_app_key)
     _apply_dynamic_settings()
     return {"status": "ok", "msg": "配置已保存并即时生效"}
 

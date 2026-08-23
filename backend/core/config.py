@@ -37,6 +37,11 @@ class Config:
     VL_EMBEDDING_DIM: int = int(os.getenv("VL_EMBEDDING_DIM", "1024"))
     # 知识库服务档位：light=仅文字向量化+重排；full=再加图片向量化/跨模态检索
     KB_MODE: str = os.getenv("KB_MODE", "full")
+    # ── 文档解析引擎（PDF 高质量解析，ParsePort）：pymupdf4llm | mineru | mathpix ──
+    PARSE_ENGINE: str = os.getenv("PARSE_ENGINE", "pymupdf4llm")
+    MINERU_API_TOKEN: str = os.getenv("MINERU_API_TOKEN", "")      # mineru.net 免费申请
+    MATHPIX_APP_ID: str = os.getenv("MATHPIX_APP_ID", "")
+    MATHPIX_APP_KEY: str = os.getenv("MATHPIX_APP_KEY", "")
     # 独立审核模型（走硅基流动）：开关 + 模型；关闭时审核回退主模型快模型（deepseek v4 flash）
     REVIEW_ENABLED: str = os.getenv("REVIEW_ENABLED", "0")
     REVIEW_MODEL: str = os.getenv("REVIEW_MODEL", "Qwen/Qwen2.5-72B-Instruct")

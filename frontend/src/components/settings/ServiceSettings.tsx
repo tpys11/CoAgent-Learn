@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { Database, Check } from 'lucide-react'
 import { api } from '../../api'
 
@@ -27,28 +27,38 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 
 const inputCls = 'w-full px-3 py-2 input-surface rounded-lg text-xs outline-none focus:border-[var(--accent)]'
 
-/** AI 服务配置：硅基流动 Key / 知识库服务 / 独立审核模型（后端存 SQLite settings 表）
+/** AI 服务配置：硅基流动 Key / 知识库服务 / 文档解析引擎 / 独立审核模型（后端存 SQLite settings 表）
  *  图片理解由视觉主模型直接处理，无独立描述服务（2026-08-22 移除）。 */
 export default function ServiceSettings() {
   const [svc, setSvc] = useState({
     embedding_key_set: false, embedding_key_hint: '',
     review_enabled: false,
     review_model: 'Qwen/Qwen2.5-72B-Instruct',
+    parse_engine: 'pymupdf4llm',
+    mineru_key_set: false,
+    mathpix_key_set: false,
   })
   // key 输入框（不回显已存 key，只显示"已配置"状态）
-  const [svcKeys, setSvcKeys] = useState({ embedding_api_key: '' })
+  const [svcKeys, setSvcKeys] = useState({
+    embedding_api_key: '',
+    mineru_api_token: '', mathpix_app_id: '', mathpix_app_key: '',
+  })
   const [svcSaved, setSvcSaved] = useState(false)
   const [keyEditing, setKeyEditing] = useState(false)
   const [feedback, setFeedback] = useState('')
 
   useEffect(() => {
     api.getSettings().then(d => {
-      setSvc({
+      setSvc(s => ({
+        ...s,
         embedding_key_set: !!d.embedding?.api_key_set,
         embedding_key_hint: d.embedding?.api_key_hint || '',
         review_enabled: !!d.review?.enabled,
         review_model: d.review?.model || 'Qwen/Qwen2.5-72B-Instruct',
-      })
+        parse_engine: d.parse?.engine || 'pymupdf4llm',
+        mineru_key_set: !!d.parse?.mineru_key_set,
+        mathpix_key_set: !!d.parse?.mathpix_key_set,
+      }))
     }).catch(() => {})
   }, [])
 
@@ -71,6 +81,10 @@ export default function ServiceSettings() {
     kb_mode: 'full',
     review_enabled: svc.review_enabled,
     review_model: svc.review_model,
+    parse_engine: svc.parse_engine,
+    mineru_api_token: svcKeys.mineru_api_token,
+    mathpix_app_id: svcKeys.mathpix_app_id,
+    mathpix_app_key: svcKeys.mathpix_app_key,
   })
 
   const saveService = async () => {
@@ -80,9 +94,14 @@ export default function ServiceSettings() {
       setSvc(s => ({ ...s,
         embedding_key_set: !!g.embedding?.api_key_set,
         embedding_key_hint: g.embedding?.api_key_hint || '',
-        review_enabled: !!g.review?.enabled }))
+        review_enabled: !!g.review?.enabled,
+        parse_engine: g.parse?.engine || s.parse_engine,
+        mineru_key_set: !!g.parse?.mineru_key_set,
+        mathpix_key_set: !!g.parse?.mathpix_key_set }))
       setSvcSaved(true)
       setKeyEditing(false)
+      setSvcKeys(k => ({ ...k, mineru_api_token: '', mathpix_app_id: '', mathpix_app_key: '' }))
+      flash('解析设置已保存')
     } catch {
       setSvcSaved(false)
       flash('保存失败（后端不可达）')
@@ -99,12 +118,12 @@ export default function ServiceSettings() {
             {svc.embedding_key_set && !keyEditing ? (
               <>
                 <span className="flex-1 text-xs font-medium text-green-700">✓ 已配置：{svc.embedding_key_hint}</span>
-                <button onClick={() => { setKeyEditing(true); setSvcKeys({ embedding_api_key: '' }); setSvcSaved(false) }}
+                <button onClick={() => { setKeyEditing(true); setSvcKeys(k => ({ ...k, embedding_api_key: '' })); setSvcSaved(false) }}
                   className="text-[10px] text-dim hover:text-[var(--text)] flex-shrink-0">修改</button>
               </>
             ) : (
               <input type="password" name="siliconflow-api-key" autoComplete="new-password" value={svcKeys.embedding_api_key} placeholder="sk-...（硅基流动）"
-                onChange={e => { setSvcKeys({ embedding_api_key: e.target.value }); setSvcSaved(false) }} className={inputCls} />
+                onChange={e => { setSvcKeys(k => ({ ...k, embedding_api_key: e.target.value })); setSvcSaved(false) }} className={inputCls} />
             )}
             {(!svc.embedding_key_set || keyEditing) && (
               <button onClick={saveService}
@@ -121,6 +140,60 @@ export default function ServiceSettings() {
             <span className="text-[12px] font-semibold">Qwen/Qwen3-VL-Embedding-8B</span>
             <span className="text-[10px] text-dim">统一向量化模型 · 1024 维 · 文字与图片同一向量空间（上传自动切块向量化 + 重排 + 跨模态检索）</span>
           </div>
+        </div>
+
+        {/* 文档解析引擎（ParsePort） */}
+        <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2.5">
+          <p className="text-sm font-semibold">文档解析引擎</p>
+          <p className="text-[10px] text-dim">教材 PDF 的版面/表格/公式解析质量由它决定；失败自动降级到本地快道</p>
+          {([
+            { id: 'pymupdf4llm', name: 'PyMuPDF4LLM', tag: '本地快道', desc: '原生文字层 PDF 秒出，零依赖离线可用' },
+            { id: 'mineru', name: 'MinerU', tag: '高保真云解析', desc: '版面/表格/公式 SOTA，每日免费额度（mineru.net 申请 Token）' },
+            { id: 'mathpix', name: 'Mathpix', tag: '公式专家', desc: '英文原版书与手写公式金标准（按页计费，mathpix.com 开通）' },
+          ] as const).map(opt => (
+            svc.parse_engine === opt.id ? (
+              <div key={opt.id} className="flex flex-col gap-2 px-3 py-2.5 rounded-xl bg-[var(--bg-hover)] border border-[var(--accent)]">
+                <button className="flex items-center justify-between text-left" onClick={() => setSvc(s => ({ ...s, parse_engine: opt.id }))}>
+                  <span className="text-[12px] font-semibold">{opt.name}</span>
+                  <span className="text-[10px] text-dim">{opt.tag}</span>
+                </button>
+                <span className="text-[10px] text-dim">{opt.desc}</span>
+                {opt.id === 'mineru' && (
+                  <div className="flex items-center gap-2 pt-1">
+                    {svc.mineru_key_set ? (
+                      <span className="flex-1 text-xs font-medium text-green-700">✓ Token 已配置</span>
+                    ) : (
+                      <input type="password" autoComplete="new-password" value={svcKeys.mineru_api_token} placeholder="粘贴 MinerU API Token"
+                        onChange={e => { setSvcKeys(k => ({ ...k, mineru_api_token: e.target.value })); setSvcSaved(false) }} className={inputCls} />
+                    )}
+                  </div>
+                )}
+                {opt.id === 'mathpix' && (
+                  <div className="flex flex-col gap-2 pt-1">
+                    {svc.mathpix_key_set ? (
+                      <span className="text-xs font-medium text-green-700">✓ App 凭据已配置</span>
+                    ) : (
+                      <>
+                        <input type="text" autoComplete="off" value={svcKeys.mathpix_app_id} placeholder="App ID"
+                          onChange={e => { setSvcKeys(k => ({ ...k, mathpix_app_id: e.target.value })); setSvcSaved(false) }} className={inputCls} />
+                        <input type="password" autoComplete="new-password" value={svcKeys.mathpix_app_key} placeholder="App Key"
+                          onChange={e => { setSvcKeys(k => ({ ...k, mathpix_app_key: e.target.value })); setSvcSaved(false) }} className={inputCls} />
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button key={opt.id}
+                className="flex items-center justify-between px-3 py-2 rounded-xl border hairline bg-[var(--bg-panel)] hover:bg-[var(--bg-hover)] text-left"
+                onClick={() => { setSvc(s => ({ ...s, parse_engine: opt.id })); setSvcSaved(false) }}>
+                <span className="text-[12px] font-medium">{opt.name}</span>
+                <span className="text-[10px] text-dim">{opt.tag}</span>
+              </button>
+            )
+          ))}
+          <button onClick={saveService}
+            className={`self-start px-4 py-1.5 text-[11px] rounded-lg font-semibold ${svcSaved ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#1a1a1a] text-white'}`}>保存解析设置</button>
         </div>
 
         {/* 独立审核模型 */}

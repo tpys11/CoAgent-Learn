@@ -348,7 +348,13 @@ async def knowledge_upload_file(
             return {"status": "error", "msg": "图片描述失败：" + str(e)[:150]}
         text = "【图片内容】" + desc
     else:
-        text = parse_file(fname, data)
+        if _ext == "pdf":
+            # PDF 走可配置解析引擎（ParsePort：pymupdf4llm/mineru/mathpix，失败自动降级）
+            from core import parse_service
+            text, engine = parse_service.parse_document(fname, data)
+            logger.info("PDF 解析 fname=%s engine=%s chars=%s", fname, engine, len(text))
+        else:
+            text = parse_file(fname, data)
     if not text.strip():
         return {"status": "error", "msg": "无法解析该文件内容（可能为空或格式不支持）"}
     source = fname
