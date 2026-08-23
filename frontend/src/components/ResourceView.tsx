@@ -1,23 +1,14 @@
-﻿import { useState, useEffect, useCallback } from 'react'
-import { BookOpen, Sparkles, Upload, FileText, Trash2, Wrench, Plus, FolderTree, Library, ExternalLink, Download } from 'lucide-react'
+﻿/** 资源界面：只展示系统资源（预设教程 + 百科词条）。
+ *  2026-08-24 精简：移除 系统教程/我的生成/其他 三入口切换与上传页签——
+ *  「我的生成」产物在对话界面右栏资源生成栏查看；上传走课程弹窗/对话侧栏的上传面板。 */
+import { useState, useEffect, useCallback } from 'react'
+import { BookOpen, Plus, FolderTree, Library, ExternalLink, Download } from 'lucide-react'
 import { LS, lsGet, lsGetJSON, lsSetJSON } from '../storage'
 import { api } from '../api'
 import { WIKI_ENTRIES, WikiEntry } from '../data/wikiEntries'
-import { Tab, ListItem, TYPE_ICONS, fmtTime, exportItem } from './resource/commons'
+import { ListItem, exportItem } from './resource/commons'
 import { ResourceCardGrid, ResourceEmpty } from './resource/ResourceCardGrid'
 import { ResourceDetailModal } from './resource/ResourceDetailModal'
-import { UploadPanel } from './resource/UploadPanel'
-import KbReaderModal from './KbReaderModal'
-
-interface Artifact {
-  id: string
-  dialogue_id: string
-  dialogue_name: string
-  type: string
-  title: string
-  content: string
-  created_at: string
-}
 
 interface Tutorial {
   id: string
@@ -57,9 +48,6 @@ const CATEGORIES: Array<{ key: string; desc: string }> = [
 ]
 const WIKI_CAT = '百科词条'
 
-/** 分类图标（竖向展开列表用） */
-const CAT_ICONS: Record<string, any> = { '系统学习': BookOpen, '技术工具': Wrench, '百科词条': Library }
-
 /** 旧数据分类名 → 新三类 */
 const LEGACY_CAT_MAP: Record<string, string> = {
   '系统教程': '系统学习', '技术教程': '系统学习', '实践案例': '系统学习',
@@ -78,21 +66,8 @@ const PRESET_TUTORIALS: Tutorial[] = [
   { id: 'preset-fastapi', title: 'FastAPI 官方文档', url: 'https://fastapi.tiangolo.com/zh/', desc: 'Python 异步 Web 框架官方文档：构建 API 与后端服务', category: '技术工具', domain: 'Python 编程', preset: true },
 ]
 
-/** 我的生成：预设分类（按生成物类型匹配） */
-const GEN_CATS = [
-  { key: 'all', label: '全部' },
-  { key: '讲义', label: '讲义' },
-  { key: '实操指南', label: '实操指南' },
-  { key: '测试题', label: '测试题' },
-]
-const GEN_MATCH: Record<string, string[]> = { '讲义': ['讲义'], '实操指南': ['实操指南'], '测试题': ['测试题'] }
-
-/** 资源界面：hyper.ai 风格——顶部 Hero + 领域/分类选择 + 分区卡片流（配色跟随主题变量） */
-export default function ResourceView({ projectId, onUseItem, refreshSignal, embedded }: { projectId: string | null; onUseItem?: (title: string, body: string, url?: string) => void; refreshSignal?: number; embedded?: boolean }) {
-  const [tab, setTab] = useState<Tab>('tutorials')
-  const [artifacts, setArtifacts] = useState<Artifact[]>([])
-  const [genProjects, setGenProjects] = useState<Array<{ id: string; name: string }>>([])
-  const [selGenProject, setSelGenProject] = useState<string>('')
+/** 资源界面：只读系统资源（领域/分类选择 + 预设教程卡 + 百科词条） */
+export default function ResourceView({ projectId, onUseItem, refreshSignal }: { projectId: string | null; onUseItem?: (title: string, body: string, url?: string) => void; refreshSignal?: number; embedded?: boolean }) {
   const [tutorials, setTutorials] = useState<Tutorial[]>(() => {
     return lsGetJSON<Tutorial[]>(LS.tutorials, [])
   })
@@ -116,32 +91,14 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal, embe
   const [wikiTheme, setWikiTheme] = useState('all')
   const [loading, setLoading] = useState(false)
   const [detail, setDetail] = useState<ListItem | null>(null)
-  // 知识库阅读器（5.1）：「我的生成」卡片点开用阅读器（左树右文 + 渲染），tutorials/wiki 维持旧详情模态
-  const [reader, setReader] = useState<{ title?: string; content?: string; seq: number } | null>(null)
-  // 我的生成：分类
-  const [genCat, setGenCat] = useState('all')
 
   const load = useCallback(() => {
     setLoading(true)
-    // 我的生成：按选中项目加载
-    const gpid = selGenProject || projectId || ''
-    if (gpid) {
-      api.listArtifacts(gpid)
-        .then(d => setArtifacts(d.artifacts || [])).catch(() => {})
-    }
     setTimeout(() => setLoading(false), 200)
-  }, [projectId, selGenProject])
-
-  useEffect(() => { setDetail(null); load() }, [load])
-  useEffect(() => { if (refreshSignal) load() }, [refreshSignal])
-
-  useEffect(() => {
-    api.listProjects().then(d => {
-      const ps = (d.projects || []).map((p: any) => ({ id: p.id, name: p.name }))
-      setGenProjects(ps)
-      if (!selGenProject && ps.length) setSelGenProject(projectId || ps[0].id)
-    }).catch(() => {})
   }, [])
+
+  useEffect(() => { setDetail(null) }, [selectedDomain, selectedCat])
+  useEffect(() => { if (refreshSignal) setDetail(null) }, [refreshSignal])
 
   // 教程资源
   const allTutorials = [...PRESET_TUTORIALS, ...tutorials]
@@ -204,20 +161,6 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal, embe
   const wikiEntries = [...WIKI_ENTRIES, ...customWiki].filter(w => w.domain === selectedDomain)
   const wikiThemes = Array.from(new Set(wikiEntries.map(w => w.theme)))
   const filteredWiki = wikiTheme === 'all' ? wikiEntries : wikiEntries.filter(w => w.theme === wikiTheme)
-
-  let list: ListItem[] = []
-  if (tab === 'generated') {
-    const matched = artifacts.filter(a => {
-      if (genCat === 'all') return true
-      const keys = GEN_MATCH[genCat] || []
-      return keys.some(k => String(a.type).includes(k))
-    })
-    list = matched.map(a => ({
-      id: a.id, title: a.title, sub: a.dialogue_name ? `来自「${a.dialogue_name}」` : '对话生成',
-      body: a.content, icon: TYPE_ICONS[a.type] || FileText,
-      kind: 'artifact' as const, deletable: false, time: fmtTime(a.created_at),
-    }))
-  }
 
   const removeItem = (item: ListItem) => {
     if (item.kind === 'tutorial') removeTutorial(item.id)
@@ -300,142 +243,59 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal, embe
 
   return (
     <div className="flex-1 h-full min-w-0 flex flex-col panel rounded-3xl overflow-hidden">
-      {/* 顶部 Hero：主题化配色（跟随 light/dark/warm）；embedded（课程弹窗内嵌）时隐藏，直接展示系统教程内容 */}
-      {!embedded && (
-      <div className="flex-shrink-0 px-8 pt-6 pb-6 bg-[var(--bg-panel)] border-b border-[var(--border-color)]">
-          {/* 三个区域选择（系统教程 / 我的生成 / 其他） */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-            {([
-              { key: 'tutorials' as Tab, icon: BookOpen, label: '系统教程', desc: '系统整理的学习教程与主题词条', color: 'bg-blue-600' },
-              { key: 'generated' as Tab, icon: Sparkles, label: '我的生成', desc: 'AI 生成的内容，可查看与导出', color: 'bg-violet-600' },
-              { key: 'uploads' as Tab, icon: Upload, label: '其他', desc: '', color: 'bg-emerald-600' },
-            ]).map(({ key, icon: Icon, label, desc, color }) => (
+      {/* 主体：左侧分类栏 + 内容区（只读系统资源） */}
+      <div className="flex-1 flex min-h-0">
+        <div className="w-[260px] flex-shrink-0 border-r hairline bg-[var(--bg-sidebar)] p-2.5 flex flex-col gap-1 overflow-y-auto">
+          <p className="text-[10px] font-bold text-dim uppercase tracking-wider px-2.5 mt-1 mb-0.5">领域</p>
+          {domains.map(d => {
+            const c = domainColor(d)
+            const active = selectedDomain === d
+            return (
               <button
-                key={key}
-                onClick={() => { setTab(key); setDetail(null) }}
-                className={`card-surface rounded-2xl p-5 flex flex-col gap-2 text-left transition-all hover:shadow-soft border ${
-                  tab === key ? 'border-[#1a1a1a] bg-[var(--bg-hover)] shadow-soft' : 'border-transparent'
+                key={d}
+                onClick={() => { setSelectedDomain(d); setSelectedCat(CATEGORIES[0].key); setDetail(null) }}
+                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-colors ${
+                  active ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
                 }`}
               >
-                <span className="flex items-center gap-2">
-                  <span className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 text-white ${color}`}>
-                    <Icon size={14} />
-                  </span>
-                  <span className="text-sm font-semibold">{label}</span>
-                </span>
-                {desc && <span className="text-[11px] text-dim leading-relaxed">{desc}</span>}
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${c.active}`} />
+                <span className="font-semibold truncate">{d}</span>
               </button>
-            ))}
-          </div>
-      </div>
-      )}
-
-      {/* 主体：左侧分类栏 + 内容区 */}
-      <div className="flex-1 flex min-h-0">
-        {tab === 'tutorials' && (
-          <div className="w-[260px] flex-shrink-0 border-r hairline bg-[var(--bg-sidebar)] p-2.5 flex flex-col gap-1 overflow-y-auto">
-            <p className="text-[10px] font-bold text-dim uppercase tracking-wider px-2.5 mt-1 mb-0.5">领域</p>
-            {domains.map(d => {
-              const c = domainColor(d)
-              const active = selectedDomain === d
-              return (
-                <button
-                  key={d}
-                  onClick={() => { setSelectedDomain(d); setSelectedCat(CATEGORIES[0].key); setDetail(null) }}
-                  className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-colors ${
-                    active ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
-                  }`}
-                >
-                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${c.active}`} />
-                  <span className="font-semibold truncate">{d}</span>
-                </button>
-              )
-            })}
-            <button onClick={() => setShowNewDomain(true)}
-              className="flex items-center gap-2 px-3 py-2 mt-1 rounded-xl text-xs text-dim hover:bg-[var(--bg-hover)] transition-colors">
-              <Plus size={13} /> 新建领域
-            </button>
-          </div>
-        )}
-        {tab === 'generated' && (
-          <div className="w-40 flex-shrink-0 border-r hairline bg-[var(--bg-sidebar)] p-2.5 flex flex-col gap-1 overflow-y-auto">
-            <p className="text-[10px] font-bold text-dim uppercase tracking-wider px-2.5 mt-1 mb-0.5">项目</p>
-            {genProjects.length === 0 && (
-              <p className="text-[11px] text-dim px-2.5 py-1">暂无项目</p>
-            )}
-            {genProjects.map(p => (
-              <button key={p.id} onClick={() => { setSelGenProject(p.id); setGenCat('all'); setDetail(null) }}
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-left transition-colors ${
-                  (selGenProject || projectId) === p.id ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
-                }`}>
-                <span className="font-semibold truncate">{p.name}</span>
-              </button>
-            ))}
-          </div>
-        )}
+            )
+          })}
+          <button onClick={() => setShowNewDomain(true)}
+            className="flex items-center gap-2 px-3 py-2 mt-1 rounded-xl text-xs text-dim hover:bg-[var(--bg-hover)] transition-colors">
+            <Plus size={13} /> 新建领域
+          </button>
+        </div>
         <div className="flex-1 overflow-y-auto px-10 py-8">
           <div className="max-w-6xl mx-auto">
-          {tab === 'tutorials' && (
-            <>
-              {showNewDomain && (
-                <div className="border border-[var(--border-color)] rounded-2xl p-4 mb-5 flex flex-col gap-2 bg-[var(--bg-panel)] shadow-soft">
-                  <p className="text-sm font-semibold">新建领域</p>
-                  <input autoFocus value={newDomainName} onChange={e => setNewDomainName(e.target.value)} placeholder="领域名称（如：机器学习 / 前端开发）"
-                    className="px-3 py-2 text-xs input-surface rounded-xl outline-none" />
-                  <p className="text-[11px] text-dim">将由 AI 自动生成该领域的系统学习教程与百科词条</p>
-                  <div className="flex gap-2 justify-end">
-                    <button onClick={() => { setShowNewDomain(false); setNewDomainName('') }} className="px-3 py-1.5 text-[11px] text-dim rounded-xl row-hover">取消</button>
-                    <button onClick={createDomain} disabled={newDomainLoading}
-                      className="px-3 py-1.5 text-[11px] bg-[#1a1a1a] text-white font-semibold rounded-xl disabled:opacity-50">
-                      {newDomainLoading ? '生成中…' : '生成领域内容'}
-                    </button>
-                  </div>
+            {showNewDomain && (
+              <div className="border border-[var(--border-color)] rounded-2xl p-4 mb-5 flex flex-col gap-2 bg-[var(--bg-panel)] shadow-soft">
+                <p className="text-sm font-semibold">新建领域</p>
+                <input autoFocus value={newDomainName} onChange={e => setNewDomainName(e.target.value)} placeholder="领域名称（如：机器学习 / 前端开发）"
+                  className="px-3 py-2 text-xs input-surface rounded-xl outline-none" />
+                <p className="text-[11px] text-dim">将由 AI 自动生成该领域的系统学习教程与百科词条</p>
+                <div className="flex gap-2 justify-end">
+                  <button onClick={() => { setShowNewDomain(false); setNewDomainName('') }} className="px-3 py-1.5 text-[11px] text-dim rounded-xl row-hover">取消</button>
+                  <button onClick={createDomain} disabled={newDomainLoading}
+                    className="px-3 py-1.5 text-[11px] bg-[#1a1a1a] text-white font-semibold rounded-xl disabled:opacity-50">
+                    {newDomainLoading ? '生成中…' : '生成领域内容'}
+                  </button>
                 </div>
-              )}
-              <div className="flex gap-2 flex-wrap mb-6">
-                {CATEGORIES.map(c => (
-                  <button key={c.key} onClick={() => { setSelectedCat(c.key); setDetail(null) }}
-                    className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                      selectedCat === c.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'
-                    }`}>
-                    {c.key}
-                  </button>
-                ))}
               </div>
-              {selectedCat === WIKI_CAT ? wikiSection : tutorialSection}
-            </>
-          )}
-          {tab === 'generated' && (
-            <>
-              <div className="flex items-end justify-between mb-5">
-                <h2 className="text-lg font-bold flex items-center gap-2"><Sparkles size={18} /> 我的生成</h2>
-              </div>
-              <div className="flex gap-2 flex-wrap mb-6">
-                {GEN_CATS.map(c => (
-                  <button key={c.key} onClick={() => { setGenCat(c.key); setDetail(null) }}
-                    className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
-                      genCat === c.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'
-                    }`}>
-                    {c.label}
-                  </button>
-                ))}
-              </div>
-              {loading && <p className="text-xs text-dim text-center py-16">加载中…</p>}
-              {!loading && list.length === 0 && <ResourceEmpty title="暂无生成物" hint="对话生成讲义 / 指南 / 测试题后自动收录到这里" />}
-              {!loading && list.length > 0 && (
-                <ResourceCardGrid items={list} onOpen={(item) => {
-                  if (item.kind === 'artifact') setReader({ title: item.title, content: item.body, seq: Date.now() })
-                  else setDetail(item)
-                }} onUseItem={onUseItem}
-                  onDelete={removeItem} onExport={exportItem} />
-              )}
-            </>
-          )}
-          {tab === 'uploads' && (
-            <>
-              <UploadPanel projectId={projectId} onUploaded={load} />
-            </>
-          )}
+            )}
+            <div className="flex gap-2 flex-wrap mb-6">
+              {CATEGORIES.map(c => (
+                <button key={c.key} onClick={() => { setSelectedCat(c.key); setDetail(null) }}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${
+                    selectedCat === c.key ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'
+                  }`}>
+                  {c.key}
+                </button>
+              ))}
+            </div>
+            {selectedCat === WIKI_CAT ? wikiSection : tutorialSection}
           </div>
         </div>
       </div>
@@ -443,10 +303,6 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal, embe
       {/* 详情模态 */}
       {detail && (
         <ResourceDetailModal detail={detail} onClose={() => setDetail(null)} onUseItem={onUseItem} onDelete={removeItem} />
-      )}
-      {/* 知识库阅读器（5.1）：生成物卡片打开 */}
-      {reader && (
-        <KbReaderModal title={reader.title} content={reader.content} onClose={() => setReader(null)} />
       )}
     </div>
   )
