@@ -37,6 +37,10 @@ export default function ServiceSettings() {
     parse_engine: 'pymupdf4llm',
     mineru_key_set: false,
     mathpix_key_set: false,
+    chunk_size: 512,
+    chunk_overlap: 50,
+    rrf_k: 60,
+    fetch_mult: 3,
   })
   // key 输入框（不回显已存 key，只显示"已配置"状态）
   const [svcKeys, setSvcKeys] = useState({
@@ -58,6 +62,10 @@ export default function ServiceSettings() {
         parse_engine: d.parse?.engine || 'pymupdf4llm',
         mineru_key_set: !!d.parse?.mineru_key_set,
         mathpix_key_set: !!d.parse?.mathpix_key_set,
+        chunk_size: d.chunking?.chunk_size ?? 512,
+        chunk_overlap: d.chunking?.chunk_overlap ?? 50,
+        rrf_k: d.chunking?.rrf_k ?? 60,
+        fetch_mult: d.chunking?.fetch_mult ?? 3,
       }))
     }).catch(() => {})
   }, [])
@@ -85,6 +93,10 @@ export default function ServiceSettings() {
     mineru_api_token: svcKeys.mineru_api_token,
     mathpix_app_id: svcKeys.mathpix_app_id,
     mathpix_app_key: svcKeys.mathpix_app_key,
+    chunk_size: svc.chunk_size,
+    chunk_overlap: svc.chunk_overlap,
+    rrf_k: svc.rrf_k,
+    fetch_mult: svc.fetch_mult,
   })
 
   const saveService = async () => {
@@ -97,7 +109,11 @@ export default function ServiceSettings() {
         review_enabled: !!g.review?.enabled,
         parse_engine: g.parse?.engine || s.parse_engine,
         mineru_key_set: !!g.parse?.mineru_key_set,
-        mathpix_key_set: !!g.parse?.mathpix_key_set }))
+        mathpix_key_set: !!g.parse?.mathpix_key_set,
+        chunk_size: g.chunking?.chunk_size ?? s.chunk_size,
+        chunk_overlap: g.chunking?.chunk_overlap ?? s.chunk_overlap,
+        rrf_k: g.chunking?.rrf_k ?? s.rrf_k,
+        fetch_mult: g.chunking?.fetch_mult ?? s.fetch_mult }))
       setSvcSaved(true)
       setKeyEditing(false)
       setSvcKeys(k => ({ ...k, mineru_api_token: '', mathpix_app_id: '', mathpix_app_key: '' }))
@@ -194,6 +210,32 @@ export default function ServiceSettings() {
           ))}
           <button onClick={saveService}
             className={`self-start px-4 py-1.5 text-[11px] rounded-lg font-semibold ${svcSaved ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#1a1a1a] text-white'}`}>保存解析设置</button>
+        </div>
+
+        {/* 切块与检索参数 */}
+        <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2.5">
+          <p className="text-sm font-semibold">切块与检索参数</p>
+          <p className="text-[10px] text-dim">改动仅影响之后入库的内容；已有文档需删除重传才会按新参数重切</p>
+          <div className="grid grid-cols-2 gap-2.5">
+            {([
+              { key: 'chunk_size', label: '切块大小（字符）', min: 100, max: 4000 },
+              { key: 'chunk_overlap', label: '相邻块重叠', min: 0, max: 500 },
+              { key: 'rrf_k', label: 'RRF 融合常数 K', min: 1, max: 200 },
+              { key: 'fetch_mult', label: '召回倍数 ×top_k', min: 1, max: 10 },
+            ] as const).map(f => (
+              <label key={f.key} className="flex flex-col gap-1 px-3 py-2 rounded-xl bg-[var(--bg-hover)]">
+                <span className="text-[10px] text-dim">{f.label}</span>
+                <input type="number" min={f.min} max={f.max} value={svc[f.key]}
+                  onChange={e => {
+                    const v = Math.max(f.min, Math.min(f.max, parseInt(e.target.value || String(f.min), 10) || f.min))
+                    setSvc(s => ({ ...s, [f.key]: v })); setSvcSaved(false)
+                  }}
+                  className="w-full bg-transparent text-xs outline-none" />
+              </label>
+            ))}
+          </div>
+          <button onClick={saveService}
+            className={`self-start px-4 py-1.5 text-[11px] rounded-lg font-semibold ${svcSaved ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#1a1a1a] text-white'}`}>保存参数</button>
         </div>
 
         {/* 独立审核模型 */}

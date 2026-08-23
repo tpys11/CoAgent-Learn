@@ -262,11 +262,24 @@ def add_document(project_id: str, text: str, source: str = "", session_id: str =
     对齐 DeepTutor，上传链路零 LLM 调用，几百块从分钟级降到秒级；
     上下文连续性由 512/50 重叠切块保证，检索质量由 bge+BM25+rerank 保证。
     skip_context 参数保留仅为兼容旧调用方，不再起作用。"""
-    chunks = _chunk_text(text)
+    from core.config import config as _cfg
+    chunks = _chunk_text(
+        text,
+        size=int(getattr(_cfg, "KB_CHUNK_SIZE", 512) or 512),
+        overlap=int(getattr(_cfg, "KB_CHUNK_OVERLAP", 50) or 0),
+    )
     if not chunks:
         return 0
     # 解析当前 embedding 签名对应的活跃索引版本（签名变化时自动开新物理表，旧表保留只读）
     table = _db.resolve_active_text_table()
+    # 清同源旧块（跨版本）：改切块参数/更新内容后重传，避免新旧边界块混存污染检索
+    try:
+        removed = _db.delete_kb_by_source(project_id, source)
+        if removed:
+            logger.info("入库前清理同源旧块 source=%s removed=%s", source, removed)
+            _invalidate_bm25(project_id)
+    except Exception:
+        logger.warning("清理同源旧块失败 source=%s", source, exc_info=True)
     # 入库前确认向量表维度与当前 embedding 配置一致；不一致直接报错，不再静默返回 0 块
     _db.ensure_vector_dim(table)
     # 向量化（分批，模型一次 32 条）
@@ -358,10 +371,12 @@ def search(project_id: str, query: str, top_k: int = 3, include_images: bool = T
     if not docs:
         return image_hits
     # 活跃索引版本：检索与 BM25 只在当前代际进行（旧版本保留只读，不参与检索）
-    table = _db.peek_active_text_table()
-    # 1. 向量检索（取 3 倍候选）
+    table = _table
+    rrf_k = int(getattr(_cfg, "KB_RRF_K", 60) or 60)
+    fetch_mult = max(1, int(getattr(_cfg, "KB_FETCH_MULT", 3) or 3))
+    # 1. 向量检索（召回倍数候选）
     qvec = _embed([query])[0]
-    vec_rows = _db.search_kb_vectors(project_id, qvec, k=top_k * 3, table=table)
+    vec_rows = _db.search_kb_vectors(project_id, qvec, k=top_k * fetch_mult, table=table)
     vec = {r["doc_id"]: r for r in vec_rows}
     # 2. BM25 检索
     bm = _get_bm25(project_id, table)
@@ -370,17 +385,17 @@ def search(project_id: str, query: str, top_k: int = 3, include_images: bool = T
         ids, tokenized, bm25 = bm
         scores = bm25.get_scores(_tokenize(query))
         order = sorted(range(len(scores)), key=lambda i: -scores[i])
-        for idx in order[: top_k * 3]:
+        for idx in order[: top_k * fetch_mult]:
             if scores[idx] > 0:
                 bm_hits[ids[idx]] = idx
-    # 3. RRF 融合：score = sum(1/(60+rank))
+    # 3. RRF 融合：score = sum(1/(k+rank))
     rrf = {}
     for i, h in enumerate(vec.keys()):
-        rrf[h] = 1.0 / (60 + i)
+        rrf[h] = 1.0 / (rrf_k + i)
     if bm:
         sorted_bm = sorted(bm_hits.keys(), key=lambda k: bm_hits[k])
-        for i, k in enumerate(sorted_bm[: top_k * 3]):
-            rrf[k] = rrf.get(k, 0) + 1.0 / (60 + i)
+        for i, k in enumerate(sorted_bm[: top_k * fetch_mult]):
+            rrf[k] = rrf.get(k, 0) + 1.0 / (rrf_k + i)
     # 4. 合并：向量结果 + BM25 独有命中
     all_hits = {}
     for h, r in vec.items():
@@ -403,8 +418,8 @@ def search(project_id: str, query: str, top_k: int = 3, include_images: bool = T
                                      "session_id": d["session_id"], "has_context": bool(d["has_context"])},
                         "distance": None,
                     }
-    # 5. 按 RRF 分数取候选（多取一些供 P3 精排）
-    candidate_n = max(top_k * 6, 12)
+    # 5. 按 RRF 分数取候选（多取一些供 P3 精排；候选池=召回倍数×2，保底 12）
+    candidate_n = max(top_k * fetch_mult * 2, 12)
     ranked = sorted(rrf.keys(), key=lambda k: -rrf[k])[:candidate_n]
     cands = []
     for h in ranked:

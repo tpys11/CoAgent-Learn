@@ -42,6 +42,12 @@ class Config:
     MINERU_API_TOKEN: str = os.getenv("MINERU_API_TOKEN", "")      # mineru.net 免费申请
     MATHPIX_APP_ID: str = os.getenv("MATHPIX_APP_ID", "")
     MATHPIX_APP_KEY: str = os.getenv("MATHPIX_APP_KEY", "")
+    # ── 切块与检索参数（对齐 DeepTutor SentenceSplitter 可配置语义）──
+    # 改动仅影响之后入库的内容；已有文档需删除重传才会按新参数重切。
+    KB_CHUNK_SIZE: int = int(os.getenv("KB_CHUNK_SIZE", "512"))    # 块大小（字符）
+    KB_CHUNK_OVERLAP: int = int(os.getenv("KB_CHUNK_OVERLAP", "50"))  # 相邻块重叠（字符）
+    KB_RRF_K: int = int(os.getenv("KB_RRF_K", "60"))               # RRF 融合常数 score=Σ1/(k+rank)
+    KB_FETCH_MULT: int = int(os.getenv("KB_FETCH_MULT", "3"))      # 向量/BM25 召回倍数（top_k×此值）
     # 独立审核模型（走硅基流动）：开关 + 模型；关闭时审核回退主模型快模型（deepseek v4 flash）
     REVIEW_ENABLED: str = os.getenv("REVIEW_ENABLED", "0")
     REVIEW_MODEL: str = os.getenv("REVIEW_MODEL", "Qwen/Qwen2.5-72B-Instruct")
