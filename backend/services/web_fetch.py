@@ -132,7 +132,7 @@ def fetch_site_pages(base_url: str, max_pages: int | None = None,
         pass
     if base_url not in page_urls:
         page_urls.insert(0, base_url)
-    page_urls = _apply_doc_groups(page_urls, include_groups, exclude_groups)
+    page_urls = _apply_doc_groups(base_url, page_urls, include_groups, exclude_groups)
     page_urls.sort(key=lambda u: u.count("/"))
     page_urls = page_urls[:max_pages or MAX_LINK_PAGES]
 
@@ -156,11 +156,11 @@ _GITHUB_SKIP_PREFIXES = ("node_modules/", ".github/", ".vscode/", "translations/
 # ── 语言识别与结构分组（上传前预览用） ────────────────────────────────
 
 _LANG_LABELS = {"en": "英语", "ja": "日语", "ko": "韩语", "zh": "中文", "zh-cn": "简体中文",
-                "zh-tw": "繁体中文", "fr": "法语", "de": "德语", "es": "西班牙语",
-                "ru": "俄语", "pt": "葡萄牙语", "it": "意大利语"}
-_FOREIGN_LANG_CODES = {"en", "ja", "ko", "fr", "de", "es", "ru", "pt", "it"}
-_DOC_LANG_RE = re.compile(
-    r"^/(en|ja|ko|zh(?:-cn|-hans|-hant|-tw)?|fr|de|es|ru|pt|it)(/|$)", re.I)
+                "zh-tw": "繁体中文", "zhtw": "繁体中文", "fr": "法语", "de": "德语", "es": "西班牙语",
+                "ru": "俄语", "pt": "葡萄牙语", "it": "意大利语", "tr": "土耳其语", "ar": "阿拉伯语",
+                "he": "希伯来语", "hu": "匈牙利语", "id": "印尼语", "ta": "泰米尔语", "vi": "越南语"}
+_FOREIGN_LANG_CODES = {"en", "ja", "ko", "fr", "de", "es", "ru", "pt", "it", "tr",
+                       "ar", "he", "hu", "id", "ta", "vi"}
 
 
 def _lang_label(code: str) -> str:
@@ -177,13 +177,51 @@ def _gh_group_key(path: str) -> str | None:
     return segs[0] + "/"
 
 
-def _doc_group_key(u: str) -> str | None:
-    """文档站 URL → 语言路径段分组键（如 /en/）；无语言段返回 None。"""
+def _doc_scope_path(base_url: str, u: str) -> str:
+    """u 相对站点根的路径（剥离站点自身挂载前缀，如 /book/），保留前导 /。"""
     from urllib.parse import urlparse as _up
-    m = _DOC_LANG_RE.match(_up(u).path or "/")
-    if not m:
+    base_path = (_up(base_url).path or "").rstrip("/")
+    p = _up(u).path or "/"
+    if base_path and (p + "/").startswith(base_path + "/"):
+        return p[len(base_path):] or "/"
+    return p
+
+
+def _doc_group_key(base_url: str, u: str) -> str | None:
+    """文档站 URL → 一级路径分组键（如 chapter1/、book-es/、en/），与 GitHub 目录分组对齐；
+    站点根页面返回 None（视作主内容，不受分组过滤影响）。"""
+    sp = _doc_scope_path(base_url, u).lstrip("/")
+    if not sp:
         return None
-    return f"/{m.group(1).lower()}/"
+    seg = sp.split("/")[0]
+    if not seg:
+        return None
+    return seg.lower() + "/"
+
+
+def _seg_lang_code(seg: str) -> str | None:
+    """段的语言码推断：纯语言码（en、zh-cn）或连字符后缀（book-es、tr-ja）。"""
+    s = seg.lower()
+    if s in _LANG_LABELS:
+        return s
+    tail = s.rsplit("-", 1)[-1]
+    if tail != s and tail in _LANG_LABELS:
+        return tail
+    return None
+
+
+def _seg_label(seg: str) -> str:
+    """分组显示名：语言段给人类可读名，翻译式命名（book-es）标注为「翻译 · X」。"""
+    code = _seg_lang_code(seg)
+    if not code:
+        return seg
+    base = seg.lower()
+    if base == code:
+        return _LANG_LABELS[code]
+    prefix = base[: len(base) - len(code) - 1]
+    if "book" in prefix or "translation" in prefix or "i18n" in prefix:
+        return f"翻译 · {_LANG_LABELS[code]}"
+    return f"{seg}（{_LANG_LABELS[code]}）"
 
 
 def _github_tree(owner: str, repo: str, ref_hint: str | None) -> tuple[str, list[str]]:
@@ -220,13 +258,14 @@ def _apply_gh_groups(paths: list[str], include_groups=(), exclude_groups=()) -> 
     return out
 
 
-def _apply_doc_groups(urls: list[str], include_groups=(), exclude_groups=()) -> list[str]:
-    """按语言路径段过滤 URL：无语言段的页面始终保留，语言页须命中 include 且不落 exclude。"""
+def _apply_doc_groups(base_url: str, urls: list[str],
+                      include_groups=(), exclude_groups=()) -> list[str]:
+    """按一级路径分组过滤 URL：根页面始终保留，分组页须命中 include 且不落 exclude。"""
     inc = {x for x in (include_groups or []) if x}
     exc = {x for x in (exclude_groups or []) if x}
     out: list[str] = []
     for u in urls:
-        g = _doc_group_key(u)
+        g = _doc_group_key(base_url, u)
         if g is not None:
             if inc and g not in inc:
                 continue
@@ -294,20 +333,28 @@ def probe_url(url: str) -> dict:
         pass
     if url not in urls:
         urls.insert(0, url)
-    plain = sum(1 for u in urls if _doc_group_key(u) is None)
-    counts = {}
+    plain = sum(1 for u in urls if _doc_group_key(url, u) is None)
+    counts: dict[str, int] = {}
     for u in urls:
-        g = _doc_group_key(u)
+        g = _doc_group_key(url, u)
         if g:
             counts[g] = counts.get(g, 0) + 1
-    has_zh = any(k.lower().startswith("/zh") for k in counts)
+
+    def _seg_is_zh(seg: str) -> bool:
+        code = _seg_lang_code(seg)
+        return bool(code) and code.startswith("zh")
+
+    has_zh = any(_seg_is_zh(k.rstrip("/")) for k in counts)
+    has_home = plain > 0 or has_zh
     groups = [{"key": "", "label": "站点主内容", "count": plain,
                "default_selected": True}] if plain else []
     for k in sorted(counts):
-        code = k.strip("/").lower()
-        sel = True if code not in _FOREIGN_LANG_CODES else (
-            code.startswith("zh") or not (plain > 0 or has_zh))
-        groups.append({"key": k, "label": f"{_lang_label(code)}（{k}）",
+        seg = k.rstrip("/")
+        code = _seg_lang_code(seg)
+        foreign = code in _FOREIGN_LANG_CODES if code else False
+        # 外语段默认不勾，除非除它之外没有任何主内容可保（避免空选）
+        sel = (not foreign) or (bool(code) and code.startswith("zh")) or (not has_home)
+        groups.append({"key": k, "label": _seg_label(seg),
                        "count": counts[k], "default_selected": bool(sel)})
     if len(urls) <= 1:
         warnings.append("未发现 sitemap，将只抓取该页本身")
