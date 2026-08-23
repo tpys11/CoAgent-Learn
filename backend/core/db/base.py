@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """SQLite 统一数据层：业务表 + sqlite-vec 向量表
 接口兼容原 pg_client（execute 返回 list[dict]），替换 PostgreSQL+Chroma。
 """
@@ -25,7 +25,7 @@ class SQLiteClient:
 
     def _new_conn(self):
         """新建一个短命连接（每次操作独立连接，用完即关）。
-        Windows 挂载卷上不使用 WAL（-shm/-wal 不稳定），用默认 rollback journal + busy_timeout。"""
+        数据在 named volume（Linux 原生 fs）上，WAL 稳定：写事务不再阻塞读。"""
         last_err = None
         for _attempt in range(5):
             try:
@@ -34,6 +34,7 @@ class SQLiteClient:
                 conn.enable_load_extension(True)
                 sqlite_vec.load(conn)
                 conn.execute("PRAGMA busy_timeout=5000")
+                conn.execute("PRAGMA journal_mode=WAL")
                 conn.execute("PRAGMA foreign_keys=ON")
                 return conn
             except sqlite3.Error as e:

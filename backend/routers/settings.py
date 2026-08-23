@@ -34,7 +34,7 @@ def _apply_dynamic_settings():
 
 
 @router.get("/health")
-async def health_check():
+def health_check():
     return {"status": "ok", "version": "0.3.0"}
 
 
@@ -70,7 +70,7 @@ class SettingsSave(BaseModel):
 
 
 @router.get("/api/settings")
-async def get_settings():
+def get_settings():
     """返回当前生效配置（key 只回显是否已配置，不回显内容）"""
     from core.config import config as _cfg
     from core.db import get_settings_repo
@@ -125,7 +125,7 @@ async def get_settings():
 
 
 @router.put("/api/settings")
-async def save_settings(req: SettingsSave):
+def save_settings(req: SettingsSave):
     """保存配置到 settings 表并即时应用到 config 单例；空 key 表示清除（恢复 .env）"""
     from core.db import get_settings_repo
     _s = get_settings_repo()
@@ -168,7 +168,7 @@ async def save_settings(req: SettingsSave):
 
 
 @router.post("/api/settings/test")
-async def test_settings(req: SettingsSave):
+def test_settings(req: SettingsSave):
     """测试知识库服务连接（不保存）：文字向量化、重排；full 档额外测图片向量/跨模态。
     只返回功能级结果（ok + 简短 msg），不暴露具体模型名。"""
     import requests as _req

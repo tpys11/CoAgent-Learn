@@ -329,8 +329,10 @@ async def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
          "m": req.max_files}, ensure_ascii=False, sort_keys=True)
     _cache_key = "v2|" + hashlib.sha1(_opts_fp.encode("utf-8")).hexdigest()[:10] + "|" + url
     try:
+        import asyncio
         from core.db import get_kb_repo
-        _cached = get_kb_repo().get_preset_doc(_cache_key)
+        # 同步 SQLite 读必须离环，否则撞上写锁时整个事件循环停摆（busy_timeout 5s）
+        _cached = await asyncio.to_thread(get_kb_repo().get_preset_doc, _cache_key)
         if _cached and (_cached.get("content") or "").strip():
             text = _cached["content"]
     except Exception:
@@ -379,8 +381,10 @@ async def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
         return {"status": "error", "msg": "链接内容过短或无法解析为文本"}
     logger.info("URL 摄取完成 url=%s pages=%s chars=%s", url, page_count or "缓存", len(text))
     if wait:
+        from starlette.concurrency import run_in_threadpool
         _ch = hashlib.sha256(text.encode("utf-8")).hexdigest()
-        chunks = _process_upload(req.project_id, text, source, req.session_id, req.api_key, True, True, _ch)
+        chunks = await run_in_threadpool(
+            _process_upload, req.project_id, text, source, req.session_id, req.api_key, True, True, _ch)
         if chunks == -1:
             return {"status": "ok", "chunks": 0, "duplicate": True, "source": source, "msg": "内容已存在，已跳过重复入库"}
         return {"status": "ok", "chunks": chunks, "source": source}
@@ -398,6 +402,7 @@ async def knowledge_upload_file(
     file: UploadFile = File(...),
 ):
     from core.file_parser import parse_file
+    from starlette.concurrency import run_in_threadpool
     data = await file.read()
     fname = file.filename or "file"
     _IMG_EXTS = {"png", "jpg", "jpeg", "gif", "webp", "bmp"}
@@ -406,7 +411,9 @@ async def knowledge_upload_file(
         import base64 as _b64
         _b64str = _b64.b64encode(data).decode()
         try:
-            desc = _describe_image_main(
+            # 视觉 LLM 是同步 HTTP 调用，必须离环执行（参照 DeepTutor #777 纪律）
+            desc = await run_in_threadpool(
+                _describe_image_main,
                 _b64str,
                 "请详细描述这张图片的内容，包括文字、图表、概念，用于知识库检索。",
                 _IMG_MIME.get(_ext, "image/png"),
@@ -420,10 +427,10 @@ async def knowledge_upload_file(
         if _ext == "pdf":
             # PDF 走可配置解析引擎（ParsePort：pymupdf4llm/mineru/mathpix，失败自动降级）
             from core import parse_service
-            text, engine = parse_service.parse_document(fname, data)
+            text, engine = await run_in_threadpool(parse_service.parse_document, fname, data)
             logger.info("PDF 解析 fname=%s engine=%s chars=%s", fname, engine, len(text))
         else:
-            text = parse_file(fname, data)
+            text = await run_in_threadpool(parse_file, fname, data)
     if not text.strip():
         return {"status": "error", "msg": "无法解析该文件内容（可能为空或格式不支持）"}
     source = fname
@@ -443,13 +450,13 @@ async def knowledge_upload_file(
 
 
 @router.get("/api/knowledge/list")
-async def knowledge_list(project_id: str = "default"):
+def knowledge_list(project_id: str = "default"):
     from core.knowledge_service import list_docs
     return {"docs": list_docs(project_id)}
 
 
 @router.get("/api/knowledge/list-all")
-async def knowledge_list_all():
+def knowledge_list_all():
     from core.knowledge_service import list_docs
     from core.postgres_client import pg_client
     from core.db import get_kb_repo
@@ -464,13 +471,13 @@ async def knowledge_list_all():
 
 
 @router.get("/api/kb/{project_id}")
-async def kb_list(project_id: str):
+def kb_list(project_id: str):
     from core.knowledge_service import list_docs
     return list_docs(project_id)
 
 
 @router.delete("/api/knowledge/delete")
-async def knowledge_delete(project_id: str = "default", source: str = ""):
+def knowledge_delete(project_id: str = "default", source: str = ""):
     from core.knowledge_service import delete_doc
     n = delete_doc(project_id, source)
     return {"status": "ok", "deleted": n, "graph_relations": 0}
@@ -479,8 +486,9 @@ async def knowledge_delete(project_id: str = "default", source: str = ""):
 @router.post("/api/file-to-text")
 async def file_to_text(file: UploadFile = File(...)):
     from core.file_parser import parse_file
+    from starlette.concurrency import run_in_threadpool
     data = await file.read()
-    text = parse_file(file.filename or "file", data)
+    text = await run_in_threadpool(parse_file, file.filename or "file", data)
     if not text.strip():
         return {"status": "error", "msg": "无法解析该文件内容"}
     return {"status": "ok", "text": text[:50000], "chars": len(text)}

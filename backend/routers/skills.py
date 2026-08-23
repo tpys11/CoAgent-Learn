@@ -10,13 +10,13 @@ logger = logging.getLogger("coagent.skills")
 
 
 @router.get("/api/skills")
-async def list_skills():
+def list_skills():
     from skills.registry import registry
     return {"skills": registry.list_all()}
 
 
 @router.get("/api/skills/{name}/source")
-async def skill_source(name: str):
+def skill_source(name: str):
     """Skill 实现源码（详情弹层展示具体实现）"""
     try:
         from skills.registry import registry
@@ -37,12 +37,12 @@ class SkillUpload(BaseModel):
 
 
 @router.post("/api/skills")
-async def upload_skill(req: SkillUpload):
+def upload_skill(req: SkillUpload):
     """上传新 Skill（占位——后续实现文件写入）"""
     return {"status": "ok", "name": req.name, "message": "Skill 上传功能即将实现"}
 
 
 @router.delete("/api/skills/{name}")
-async def delete_skill(name: str):
+def delete_skill(name: str):
     """删除 Skill（占位）"""
     return {"status": "ok", "name": name, "message": "Skill 删除功能即将实现"}

@@ -35,7 +35,7 @@
       - ../agents:/app/agents
       - ../skills:/app/skills
       - ../tests:/app/tests
-      - ../data:/app/data
+      - coagent-kbdata:/app/data
     networks:
       - guashuai-network
 
@@ -43,3 +43,6 @@ networks:
   guashuai-network:
     driver: bridge
 
+volumes:
+  coagent-kbdata:
+    name: coagent-kbdata

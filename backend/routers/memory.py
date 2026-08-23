@@ -15,19 +15,19 @@ router = APIRouter()
 
 
 @router.get("/api/global-profile")
-async def get_global_profile(session_id: str = "default"):
+def get_global_profile(session_id: str = "default"):
     data = get_memory_repo().get_global_profile()
     return {"profile": _as_dict(data) if data else {}}
 
 
 @router.get("/api/project-memory/{project_id}")
-async def get_project_memory(project_id: str, session_id: str = "default"):
+def get_project_memory(project_id: str, session_id: str = "default"):
     data = get_memory_repo().get_project_memory(project_id)
     return {"memory": _as_dict(data) if data else {}}
 
 
 @router.get("/api/dialogues/{did}/followups")
-async def get_followups(did: str):
+def get_followups(did: str):
     rows = get_memory_repo().get_followups(did)
     if not rows:
         return {"questions": []}
@@ -39,7 +39,7 @@ async def get_followups(did: str):
 
 
 @router.get("/api/artifacts")
-async def list_artifacts(project_id: str = "default"):
+def list_artifacts(project_id: str = "default"):
     """扫描项目对话消息，解析生成物（定制讲义/实操指南/分阶测试题）"""
     import re
     dialogs = get_project_repo().list_dialogue_briefs(project_id)
@@ -96,7 +96,7 @@ class FeedbackReq(BaseModel):
 
 
 @router.post("/api/feedback")
-async def add_feedback(req: FeedbackReq):
+def add_feedback(req: FeedbackReq):
     mrepo = get_memory_repo()
     mrepo.insert_feedback(req.dialogue_id, req.project_id, req.resource_type, req.feedback, req.note)
     if req.dialogue_id and req.feedback in ("太难", "太简单"):
@@ -119,7 +119,7 @@ async def add_feedback(req: FeedbackReq):
 
 
 @router.get("/api/stats")
-async def get_stats(project_id: str = "default"):
+def get_stats(project_id: str = "default"):
     mrepo = get_memory_repo()
     d = mrepo.count_dialogues(project_id)
     m = mrepo.count_messages_total()
@@ -144,7 +144,7 @@ async def get_stats(project_id: str = "default"):
 
 
 @router.get("/api/task-stats")
-async def get_task_stats(project_id: str = "default", limit: int = 20):
+def get_task_stats(project_id: str = "default", limit: int = 20):
     rows = get_memory_repo().get_task_stats(project_id, min(max(limit, 1), 100))
     out = []
     for r in rows:
@@ -158,13 +158,13 @@ async def get_task_stats(project_id: str = "default", limit: int = 20):
 
 
 @router.delete("/api/memories")
-async def clear_memories():
+def clear_memories():
     get_memory_repo().clear_all_memories()
     return {"status": "ok"}
 
 
 @router.post("/api/memory/rebuild")
-async def memory_rebuild(req: dict):
+def memory_rebuild(req: dict):
     from core.background import submit
     from core.memory_service import distill_memory
     from core.sqlite_client import get_db
@@ -180,7 +180,7 @@ async def memory_rebuild(req: dict):
 
 
 @router.delete("/api/projects/{pid}/dialogues")
-async def clear_project_dialogues(pid: str):
+def clear_project_dialogues(pid: str):
     repo = get_project_repo()
     dialogs = repo.list_dialogue_ids(pid)
     for d in dialogs or []:
@@ -191,7 +191,7 @@ async def clear_project_dialogues(pid: str):
 
 
 @router.get("/api/export")
-async def export_all(project_id: str = "default"):
+def export_all(project_id: str = "default"):
     prepo = get_project_repo()
     mrepo = get_memory_repo()
     out = {
@@ -208,7 +208,7 @@ async def export_all(project_id: str = "default"):
 
 
 @router.get("/api/learning-log")
-async def get_learning_log(project_id: str = ""):
+def get_learning_log(project_id: str = ""):
     prepo = get_project_repo()
     mrepo = get_memory_repo()
     dialogs = prepo.list_learning_dialogues(project_id or None)
@@ -251,7 +251,7 @@ async def get_learning_log(project_id: str = ""):
 
 
 @router.get("/api/memory/progress")
-async def memory_progress(project_id: str = "default"):
+def memory_progress(project_id: str = "default"):
     import datetime
     from collections import defaultdict
     from core.db.memory_repo import get_memory_repo as _mrepo
@@ -315,19 +315,19 @@ class DialogueUpdate(BaseModel):
 
 
 @router.post("/api/dialogues/{did}/update")
-async def update_dialogue(did: str, req: DialogueUpdate):
+def update_dialogue(did: str, req: DialogueUpdate):
     get_project_repo().update_dialogue_meta(did, name=req.name, archived=req.archived)
     return {"status": "ok"}
 
 
 @router.post("/api/global-profile")
-async def save_global_profile(req: ProfileData):
+def save_global_profile(req: ProfileData):
     get_memory_repo().save_global_profile(json.dumps(req.profile, ensure_ascii=False))
     return {"status": "ok"}
 
 
 @router.post("/api/project-memory/{project_id}")
-async def save_project_memory(project_id: str, req: ProfileData):
+def save_project_memory(project_id: str, req: ProfileData):
     mrepo = get_memory_repo()
     rows = mrepo.get_project_memory_with_session(project_id)
     proj = _as_dict(rows[0]["data"]) if rows and rows[0]["data"] else {}
@@ -344,7 +344,7 @@ async def save_project_memory(project_id: str, req: ProfileData):
 
 
 @router.post("/api/projects/{pid}/profile")
-async def save_project_profile(pid: str, req: ProfileData):
+def save_project_profile(pid: str, req: ProfileData):
     mrepo = get_memory_repo()
     rows = mrepo.get_project_memory_with_session(pid)
     proj = _as_dict(rows[0]["data"]) if rows and rows[0]["data"] else {}
@@ -363,13 +363,13 @@ async def save_project_profile(pid: str, req: ProfileData):
 
 
 @router.get("/api/projects/{pid}/profile")
-async def get_project_profile(pid: str):
+def get_project_profile(pid: str):
     rows = get_memory_repo().get_project_memory_with_session(pid)
     return {"profile": rows[0]["data"] if rows else {}}
 
 
 @router.post("/api/dialogues/{did}/profile")
-async def save_dialogue_profile(did: str, req: ProfileData):
+def save_dialogue_profile(did: str, req: ProfileData):
     mrepo = get_memory_repo()
     pid = get_project_repo().get_dialogue_project(did) or "default"
     data = json.dumps(req.profile, ensure_ascii=False)
@@ -400,5 +400,5 @@ async def save_dialogue_profile(did: str, req: ProfileData):
 
 
 @router.get("/api/dialogues/{did}/profile")
-async def get_dialogue_profile(did: str):
+def get_dialogue_profile(did: str):
     return {"profile": get_memory_repo().get_dialogue_profile(did)}
