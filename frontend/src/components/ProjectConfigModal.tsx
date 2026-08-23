@@ -160,6 +160,7 @@ const uploadItems = async () => {
     let okCount = 0
     let dupCount = 0
     const count = pendingItems.length
+    let asyncCount = 0
     for (const it of pendingItems) {
       setUploading(it.kind === 'file' ? it.file.name : it.title)
       try {
@@ -177,13 +178,15 @@ const uploadItems = async () => {
           }
           else alert(`「${it.file.name}」接入失败：${d.msg || '处理失败'}`)
         } else if (it.kind === 'link') {
-          // 链接资源：后端抓取网页正文入库（真实内容，非空转）
           const d = await api.uploadKnowledgeUrl({ project_id: projectId, url: it.url, source: it.title, session_id: 'project-res', api_key: lsGet(LS.apiKey, '') }, it.scope)
-          if (d.status === 'ok') {
+          if (d.status === 'processing') {
+            okCount++; asyncCount++
+          }
+          else if (d.status === 'ok') {
             if (d.duplicate) { dupCount++ }
             else { total += (d.chunks || 0); okCount++ }
           }
-          else alert(`「${it.title}」接入失败：${d.msg || '处理失败'}`)
+          else alert(`「${it.title}」接入失败：${(d && d.msg) || '处理失败'}`)
         } else {
           // wait 是后端 query 参数（非 body），必须放在 URL 上，否则走异步分支返回 processing
 const d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, source: it.title, session_id: 'project-res', api_key: lsGet(LS.apiKey, '') })
@@ -204,6 +207,7 @@ const d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, 
     const msgs = []
     if (okCount) msgs.push(`${okCount} 个新入库（${total} 个内容块）`)
     if (dupCount) msgs.push(`${dupCount} 个内容已存在（已跳过重复入库）`)
+    if (asyncCount) msgs.push(`${asyncCount} 项后台处理中，完成后自动出现`)
     if (failed) msgs.push(`${failed} 个失败`)
     setDoneMsg(msgs.join('，') || '处理完成')
     load()
@@ -373,42 +377,45 @@ const d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, 
       {/* 下：系统内置资源（可拖入 / 加入课程），撑满剩余空间 */}
       <div className="flex-1 min-h-0 flex flex-col gap-2.5 overflow-hidden">
         <p className="text-xs font-semibold text-dim uppercase tracking-wider flex items-center gap-1.5 flex-shrink-0"><BookOpen size={13} /> 系统内置资源{docs.length === 0 && <span className="font-normal text-[10px] text-dim">（卡片可拖入上方，或点卡片详情「加入课程」）</span>}</p>
-        {/* 预设卡预扫描：结构确认后再入队（与手动链接入口一致） */}
-        {probeItem && (
-          <div className="border hairline rounded-2xl p-3 flex flex-col gap-2 bg-[var(--bg-panel)]">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold flex-1 truncate">接入「{probeItem.title}」</span>
-              <button onClick={closeProbeItem} className="p-1 rounded text-dim hover:text-red-500" title="取消"><X size={12} /></button>
-            </div>
-            {presetProbe.state.phase === 'loading' && (
-              <p className="flex items-center gap-1.5 text-[11px] text-dim"><Loader2 size={11} className="animate-spin" /> 正在识别链接结构…</p>
-            )}
-            {presetProbe.state.phase === 'error' && (
-              <p className="text-[11px] text-dim" title={presetProbe.state.msg || undefined}>无法预览结构（可能需登录或链接不可访问），可全量直接加入</p>
-            )}
-            {presetProbe.data && (
-              <>
-                <ProbePreviewCard data={presetProbe.data} groups={presetProbe.groups} checked={presetProbe.groupChecked}
-                  onToggle={k => presetProbe.setGroupChecked(prev => ({ ...prev, [k]: !prev[k] }))}
-                  onSelectAll={all => presetProbe.setGroupChecked(all ? Object.fromEntries(presetProbe.groups.map(g => [g.key, true])) : {})}
-                  open={presetProbe.groupsOpen} onToggleOpen={() => presetProbe.setGroupsOpen(v => !v)} />
-                <div className="flex justify-end gap-2">
-                  <button onClick={addProbeItemRaw} className="px-2 py-1.5 text-[11px] text-dim rounded-xl row-hover transition-colors">全量加入</button>
-                  <button onClick={confirmProbeItem}
-                    disabled={presetProbe.groups.length > 0 && presetProbe.groups.every(g => !presetProbe.groupChecked[g.key])}
-                    className="px-3.5 py-1.5 text-[11px] bg-[#1a1a1a] text-white font-semibold rounded-xl hover:bg-[#333333] transition-colors disabled:opacity-40">
-                    按所选加入
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        )}
         <div className={`border hairline rounded-2xl overflow-hidden ${naturalHeight ? 'h-[45vh]' : 'flex-1 min-h-0'}`}>
           <ResourceView embedded refreshSignal={refreshKey} projectId={projectId} onUseItem={addPreset} />
         </div>
       </div>
       {/* 内部确认弹窗：删除已上传资源（不用浏览器原生 confirm） */}
+      {/* 预设卡预扫描弹窗：结构确认后再入队（内部可滚动，不受资源区高度裁剪影响） */}
+      {probeItem && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/30 p-6" onClick={closeProbeItem}>
+          <div className="card-lift rounded-2xl w-full max-w-lg flex flex-col max-h-[80vh]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 px-5 py-3 border-b hairline flex-shrink-0">
+              <span className="text-sm font-bold flex-1 truncate">接入「{probeItem.title}」</span>
+              <button onClick={closeProbeItem} className="p-1 rounded text-dim hover:text-red-500" title="取消"><X size={14} /></button>
+            </div>
+            <div className="flex-1 min-h-0 overflow-y-auto px-5 py-3 flex flex-col gap-2">
+              {presetProbe.state.phase === 'loading' && (
+                <p className="flex items-center gap-1.5 text-[11px] text-dim"><Loader2 size={11} className="animate-spin" /> 正在识别链接结构…</p>
+              )}
+              {presetProbe.state.phase === 'error' && (
+                <p className="text-[11px] text-dim" title={presetProbe.state.msg || undefined}>无法预览结构（可能需登录或链接不可访问），可选择全量直接加入。</p>
+              )}
+              {presetProbe.data && (
+                <ProbePreviewCard data={presetProbe.data} groups={presetProbe.groups} checked={presetProbe.groupChecked}
+                  onToggle={k => presetProbe.setGroupChecked(prev => ({ ...prev, [k]: !prev[k] }))}
+                  onSelectAll={all => presetProbe.setGroupChecked(all ? Object.fromEntries(presetProbe.groups.map(g => [g.key, true])) : {})}
+                  open={presetProbe.groupsOpen} onToggleOpen={() => presetProbe.setGroupsOpen(v => !v)} />
+              )}
+            </div>
+            <div className="flex justify-end gap-2 px-5 py-3 border-t hairline flex-shrink-0">
+              <button onClick={addProbeItemRaw} className="px-2 py-1.5 text-[11px] text-dim rounded-xl row-hover transition-colors">全量加入</button>
+              <button onClick={confirmProbeItem}
+                disabled={presetProbe.state.phase !== 'ok' || (presetProbe.groups.length > 0 && presetProbe.groups.every(g => !presetProbe.groupChecked[g.key]))}
+                title={presetProbe.state.phase !== 'ok' ? '结构未就绪' : undefined}
+                className="px-4 py-1.5 text-[11px] bg-[#1a1a1a] text-white font-semibold rounded-xl hover:bg-[#333333] transition-colors disabled:opacity-40">
+                按所选加入
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {removeTarget && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-6" onClick={() => setRemoveTarget(null)}>
           <div className="card-lift rounded-2xl p-5 w-full max-w-sm" onClick={e => e.stopPropagation()}>

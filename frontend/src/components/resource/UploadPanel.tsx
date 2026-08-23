@@ -127,6 +127,10 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
         setUpDone(`资源已上传：「${source}」已接入课程知识库（${d.chunks || 0} 个内容块）`)
         setUpTitle(''); setUpUrl(''); resetProbe()
         setTimeout(() => onUploaded(), 500)
+      } else if (d && d.status === 'processing') {
+        setUpDone(`「${source}」已提交后台处理，完成后自动出现在知识库`)
+        setUpTitle(''); setUpUrl(''); resetProbe()
+        setTimeout(() => onUploaded(), 1500)
       } else {
         alert(`「${source}」接入失败：${(d && d.msg) || '处理失败'}`)
       }
@@ -145,7 +149,7 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
   }
   const upUploadAll = async () => {
     if (!projectId || !upItems.length || upUploading) return
-    let total = 0; let ok = 0
+    let total = 0; let ok = 0; let asyncCount = 0
     const count = upItems.length
     for (const it of upItems) {
       setUpUploading(it.name)
@@ -161,9 +165,10 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
           d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, source: it.name, session_id: 'project-res', api_key: lsGet(LS.apiKey, '') })
         } else if (it.kind === 'link') {
           d = await api.uploadKnowledgeUrl({ project_id: projectId, url: it.url, source: it.name, session_id: 'project-res', api_key: lsGet(LS.apiKey, '') }, it.scope)
+          if (d && d.status === 'processing') { ok++; asyncCount++ }
         }
         if (d && d.status === 'ok') { total += (d.chunks || 0); ok++ }
-        else alert(`「${it.name}」接入失败：${(d && d.msg) || '处理失败'}`)
+        else if (d?.status !== 'processing') alert(`「${it.name}」接入失败：${(d && d.msg) || '处理失败'}`)
       } catch (e) {
         alert(`「${it.name}」上传失败：${(e as any)?.message || '网络异常'}`)
       }
@@ -171,7 +176,10 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
     setUpUploading('')
     setUpItems([])
     const failed = count - ok
-    setUpDone(failed === 0 ? `资源已上传：${count} 个资源已接入课程知识库（${total} 个内容块）` : `上传完成：${ok} 个成功（${total} 个内容块），${failed} 个失败`)
+    const note = `（其中 ${asyncCount} 项后台处理中）`
+    setUpDone(failed === 0
+      ? `资源已上传：${count} 个资源已接入课程知识库（${total} 个内容块）${asyncCount ? note : ''}`
+      : `上传完成：${ok} 个成功（${total} 个内容块），${failed} 个失败`)
     setTimeout(() => onUploaded(), 500)
   }
 

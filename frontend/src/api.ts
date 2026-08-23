@@ -131,7 +131,7 @@ export const api = {
   uploadUrlProbe: (url: string) =>
     apiFetch<UrlProbeResult>('/api/knowledge/upload-url/probe', jsonInit('POST', { url })),
   uploadKnowledgeUrl: (body: unknown, scope?: UrlIngestScope) =>
-    apiFetch<any>('/api/knowledge/upload-url?wait=true',
+    apiFetch<any>('/api/knowledge/upload-url',
       jsonInit('POST', scope ? { ...(body as Record<string, unknown>), ...urlScopeBody(scope) } : body)),
   uploadKnowledgeFile: (form: FormData) =>
     apiFetch<any>('/api/knowledge/upload-file', { method: 'POST', body: form }),
