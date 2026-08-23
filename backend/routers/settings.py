@@ -62,6 +62,7 @@ class SettingsSave(BaseModel):
     mathpix_app_id: str = ""
     mathpix_app_key: str = ""
     # 切块与检索参数（改动仅影响之后入库的内容）
+    chunk_mode: str = "auto"   # window | markdown | auto
     chunk_size: int = 512
     chunk_overlap: int = 50
     rrf_k: int = 60
@@ -114,6 +115,7 @@ async def get_settings():
             "mathpix_key_set": bool(getattr(_cfg, "MATHPIX_APP_ID", "") and getattr(_cfg, "MATHPIX_APP_KEY", "")),
         },
         "chunking": {
+            "mode": getattr(_cfg, "KB_CHUNK_MODE", "auto"),
             "chunk_size": int(getattr(_cfg, "KB_CHUNK_SIZE", 512)),
             "chunk_overlap": int(getattr(_cfg, "KB_CHUNK_OVERLAP", 50)),
             "rrf_k": int(getattr(_cfg, "KB_RRF_K", 60)),
@@ -156,6 +158,7 @@ async def save_settings(req: SettingsSave):
         _s.set_setting("MATHPIX_APP_ID", req.mathpix_app_id)
     if req.mathpix_app_key:
         _s.set_setting("MATHPIX_APP_KEY", req.mathpix_app_key)
+    _s.set_setting("KB_CHUNK_MODE", req.chunk_mode if req.chunk_mode in ("window", "markdown", "auto") else "auto")
     _s.set_setting("KB_CHUNK_SIZE", str(max(100, min(4000, int(req.chunk_size or 512)))))
     _s.set_setting("KB_CHUNK_OVERLAP", str(max(0, min(500, int(req.chunk_overlap or 0)))))
     _s.set_setting("KB_RRF_K", str(max(1, min(200, int(req.rrf_k or 60)))))

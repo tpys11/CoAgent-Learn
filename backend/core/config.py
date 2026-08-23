@@ -44,6 +44,7 @@ class Config:
     MATHPIX_APP_KEY: str = os.getenv("MATHPIX_APP_KEY", "")
     # ── 切块与检索参数（对齐 DeepTutor SentenceSplitter 可配置语义）──
     # 改动仅影响之后入库的内容；已有文档需删除重传才会按新参数重切。
+    KB_CHUNK_MODE: str = os.getenv("KB_CHUNK_MODE", "auto")        # window | markdown | auto
     KB_CHUNK_SIZE: int = int(os.getenv("KB_CHUNK_SIZE", "512"))    # 块大小（字符）
     KB_CHUNK_OVERLAP: int = int(os.getenv("KB_CHUNK_OVERLAP", "50"))  # 相邻块重叠（字符）
     KB_RRF_K: int = int(os.getenv("KB_RRF_K", "60"))               # RRF 融合常数 score=Σ1/(k+rank)

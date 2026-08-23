@@ -256,6 +256,59 @@ def _chunk_text(text: str, size: int = 512, overlap: int = 50) -> list:
     return chunks
 
 
+def _split_markdown_sections(text: str) -> list[tuple[str, str]]:
+    """按 markdown 标题把文本切成节：返回 [(标题路径, 节正文)]。
+    - ``` 围栏内的 # 是代码注释不是标题（复用 _extract_tree 的围栏语义）
+    - 垃圾标题过滤复用 _is_junk_heading
+    - 首个标题前的导语也保留为一节（路径为空串）"""
+    sections: list[tuple[str, str]] = []
+    stack: list[tuple[int, str]] = []   # (层级, 标题名)
+    buf: list[str] = []
+
+    def emit():
+        nonlocal buf
+        body = "\n".join(buf).strip()
+        buf = []
+        path = " > ".join(name for _, name in stack)
+        if body:
+            sections.append((path, body))
+
+    in_fence = False
+    for line in (text or "").splitlines():
+        s = line.strip()
+        if s.startswith("```"):
+            in_fence = not in_fence
+            buf.append(line)
+            continue
+        if not in_fence and s.startswith("#"):
+            m = re.match(r"^(#{1,6})\s+(.+)$", line.rstrip())
+            if m and not _is_junk_heading(m.group(2).strip()):
+                emit()                                   # 先收束上一节（旧栈）
+                lvl, name = len(m.group(1)), m.group(2).strip()
+                while stack and stack[-1][0] >= lvl:
+                    stack.pop()
+                stack.append((lvl, name))
+                buf.append(line)                         # 标题行留在节内
+                continue
+        buf.append(line)
+    emit()
+    return sections
+
+
+def _chunk_markdown(text: str, size: int, overlap: int) -> list:
+    """按标题结构切块：每节一块；超长节内部回退句子级窗口切分。
+    每块自带标题路径前缀（如「第2章 动力学 > 2.3 角动量」），保证块自含检索上下文。"""
+    out: list = []
+    for path, body in _split_markdown_sections(text):
+        prefix = (path + "\n") if path else ""
+        if len(body) <= size:
+            out.append(prefix + body)
+        else:
+            for piece in _chunk_text(body, size=size, overlap=overlap):
+                out.append(prefix + piece)
+    return [c.strip() for c in out if c and c.strip()]
+
+
 def add_document(project_id: str, text: str, source: str = "", session_id: str = "", api_key: str = "", skip_context: bool = False) -> int:
     """上传文本：切块 → 向量化 → 入库，返回入库块数。
     已移除「每块 LLM 生成上下文前缀」（_gen_context，2026-08-15 删除）：
@@ -263,11 +316,20 @@ def add_document(project_id: str, text: str, source: str = "", session_id: str =
     上下文连续性由 512/50 重叠切块保证，检索质量由 bge+BM25+rerank 保证。
     skip_context 参数保留仅为兼容旧调用方，不再起作用。"""
     from core.config import config as _cfg
-    chunks = _chunk_text(
-        text,
-        size=int(getattr(_cfg, "KB_CHUNK_SIZE", 512) or 512),
-        overlap=int(getattr(_cfg, "KB_CHUNK_OVERLAP", 50) or 0),
-    )
+    size = int(getattr(_cfg, "KB_CHUNK_SIZE", 512) or 512)
+    overlap = int(getattr(_cfg, "KB_CHUNK_OVERLAP", 50) or 0)
+    mode = (getattr(_cfg, "KB_CHUNK_MODE", "auto") or "auto").lower()
+    has_heading = bool(re.search(r"^#{1,6}\s+\S", text or "", flags=re.M))
+    # 结构切块仅在文本确有有效标题时启用（window 模式 / 无标题文本 → 句子级窗口）
+    if mode in ("markdown", "auto") and has_heading:
+        chunks = _chunk_markdown(text, size=size, overlap=overlap) or \
+                 _chunk_text(text, size=size, overlap=overlap)
+    else:
+        chunks = _chunk_text(
+            text,
+            size=size,
+            overlap=overlap,
+        )
     if not chunks:
         return 0
     # 解析当前 embedding 签名对应的活跃索引版本（签名变化时自动开新物理表，旧表保留只读）

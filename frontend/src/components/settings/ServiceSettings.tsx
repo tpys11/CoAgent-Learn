@@ -37,6 +37,7 @@ export default function ServiceSettings() {
     parse_engine: 'pymupdf4llm',
     mineru_key_set: false,
     mathpix_key_set: false,
+    chunk_mode: 'auto',
     chunk_size: 512,
     chunk_overlap: 50,
     rrf_k: 60,
@@ -59,6 +60,7 @@ export default function ServiceSettings() {
         embedding_key_hint: d.embedding?.api_key_hint || '',
         review_enabled: !!d.review?.enabled,
         review_model: d.review?.model || 'Qwen/Qwen2.5-72B-Instruct',
+        chunk_mode: d.chunking?.mode || 'auto',
         parse_engine: d.parse?.engine || 'pymupdf4llm',
         mineru_key_set: !!d.parse?.mineru_key_set,
         mathpix_key_set: !!d.parse?.mathpix_key_set,
@@ -90,6 +92,7 @@ export default function ServiceSettings() {
     review_enabled: svc.review_enabled,
     review_model: svc.review_model,
     parse_engine: svc.parse_engine,
+    chunk_mode: svc.chunk_mode,
     mineru_api_token: svcKeys.mineru_api_token,
     mathpix_app_id: svcKeys.mathpix_app_id,
     mathpix_app_key: svcKeys.mathpix_app_key,
@@ -107,6 +110,7 @@ export default function ServiceSettings() {
         embedding_key_set: !!g.embedding?.api_key_set,
         embedding_key_hint: g.embedding?.api_key_hint || '',
         review_enabled: !!g.review?.enabled,
+        chunk_mode: g.chunking?.mode || s.chunk_mode,
         parse_engine: g.parse?.engine || s.parse_engine,
         mineru_key_set: !!g.parse?.mineru_key_set,
         mathpix_key_set: !!g.parse?.mathpix_key_set,
@@ -216,6 +220,16 @@ export default function ServiceSettings() {
         <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2.5">
           <p className="text-sm font-semibold">切块与检索参数</p>
           <p className="text-[10px] text-dim">改动仅影响之后入库的内容；已有文档需删除重传才会按新参数重切</p>
+          <label className="flex flex-col gap-1 px-3 py-2 rounded-xl bg-[var(--bg-hover)]">
+            <span className="text-[10px] text-dim">切块模式</span>
+            <select value={svc.chunk_mode}
+              onChange={e => { setSvc(s => ({ ...s, chunk_mode: e.target.value })); setSvcSaved(false) }}
+              className="w-full bg-transparent text-xs outline-none">
+              <option value="auto">自动（有标题走结构，无标题走窗口）</option>
+              <option value="markdown">按标题结构（每节一块，自带标题路径）</option>
+              <option value="window">固定窗口（句子累积+重叠）</option>
+            </select>
+          </label>
           <div className="grid grid-cols-2 gap-2.5">
             {([
               { key: 'chunk_size', label: '切块大小（字符）', min: 100, max: 4000 },
