@@ -9,6 +9,11 @@ fetch_site_pages 返回 [{url,title,markdown}]，调用方按「站点→页面�
 
 import re
 from concurrent.futures import ThreadPoolExecutor
+# ── 链接摄取通道（后端保留 · 前端入口已下线 2026-08-24）────────────────
+# 本模块为 URL 结构化摄取的完整后端：probe 预扫描 / GitHub 适配器 / 文档站
+# 爬取 / 内容分类 / 语言门。前端入口已移入保留件
+# frontend/src/components/resource/linkIngest/（含恢复指南），API 在线可用。
+
 
 MAX_LINK_PAGES = 60       # 站点最多摄取页数（原 12，李博杰整站案例实测不够）
 GITHUB_MAX_FILES = 120    # GitHub 仓库最多摄取 .md 数

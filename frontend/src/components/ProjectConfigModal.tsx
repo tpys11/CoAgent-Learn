@@ -4,8 +4,7 @@ import MemoryView from './MemoryView'
 import ResourceView from './ResourceView'
 import { LS, lsGet, lsGetJSON, lsSetJSON } from '../storage'
 import { api } from '../api'
-import type { UrlIngestScope } from '../api'
-import { ProbePreviewCard, useProbeOnce, watchIngestProgress } from './resource/UrlProbeShared'
+import { watchIngestProgress } from './resource/ingestProgress'
 
 /** 课程记忆与资源窗口：两个页签（记忆与进程 / 资源）可切换；initialTab 决定打开时默认页签。
  * 新建课程引导消息的「手动填写」按钮也复用此弹窗（initialOnly=true：仅初次创建可手动填写，
@@ -139,12 +138,9 @@ function ProjectResources({ projectId, naturalHeight, onUploaded }: { projectId:
   type PendingItem =
     | { kind: 'file'; id: string; file: File }
     | { kind: 'text'; id: string; title: string; body: string }
-    | { kind: 'link'; id: string; title: string; url: string; scope?: UrlIngestScope }
+    | { kind: 'link'; id: string; title: string; url: string }
   const [pendingItems, setPendingItems] = useState<PendingItem[]>([])
   const pendingCount = pendingItems.length
-  // 预设卡预扫描：点击「使用」后先探测结构，用户确认范围再入队（与手动链接入口行为一致）
-  const [probeItem, setProbeItem] = useState<{ title: string; url: string } | null>(null)
-  const presetProbe = useProbeOnce()
   const load = useCallback(() => {
     if (!projectId) { setDocs([]); setLoading(false); return }
     api.getKb(projectId)
@@ -178,7 +174,7 @@ const uploadItems = async () => {
           }
           else alert(`「${it.file.name}」接入失败：${d.msg || '处理失败'}`)
         } else if (it.kind === 'link') {
-          const d = await api.uploadKnowledgeUrl({ project_id: projectId, url: it.url, source: it.title, session_id: 'project-res', api_key: lsGet(LS.apiKey, '') }, it.scope)
+          const d = await api.uploadKnowledgeUrl({ project_id: projectId, url: it.url, source: it.title, session_id: 'project-res', api_key: lsGet(LS.apiKey, '') })
           if (d.status === 'processing') {
             okCount++; asyncCount++
             const srcTitle = it.title
@@ -243,11 +239,7 @@ const d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, 
   /** 卡片「加入课程」/ 拖入的卡片 → 仅占位进待上传列表；无链接又无实质内容的资源明确提示，不假装上传 */
   const addPreset = (title: string, body: string, url?: string) => {
     const u = (url || '').trim()
-    if (u) {
-      setProbeItem({ title: title || u, url: u })
-      void presetProbe.run(u)
-      return
-    }
+    if (u) { addLinkItem(title, u); return }
     if ((body || '').trim().length >= 50) {
       setPendingItems(prev => {
         if (prev.some(x => x.kind === 'text' && x.title === title)) return prev
@@ -257,27 +249,10 @@ const d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, 
     }
     alert(`「${title}」既没有链接也缺少正文内容，无法加入知识库（可编辑为普通资源或补链接）`)
   }
-  /** 预扫描确认：带所选范围入队 */
-  const confirmProbeItem = () => {
-    if (!probeItem) return
-    addLinkItem(probeItem.title, probeItem.url, presetProbe.buildScope())
-    closeProbeItem()
-  }
-  /** 预扫描兜底：跳过预览全量加入 */
-  const addProbeItemRaw = () => {
-    if (!probeItem) return
-    addLinkItem(probeItem.title, probeItem.url)
-    closeProbeItem()
-  }
-  const closeProbeItem = () => {
-    setProbeItem(null)
-    presetProbe.reset()
-  }
-  /** 加入链接占位 */
-  const addLinkItem = (title: string, url: string, scope?: UrlIngestScope) => {
+  const addLinkItem = (title: string, url: string) => {
     setPendingItems(prev => {
       if (prev.some(x => x.kind === 'link' && x.url === url)) return prev
-      return [...prev, { kind: 'link' as const, id: 'l' + Date.now() + Math.random().toString(36).slice(2, 7), title, url, scope }]
+      return [...prev, { kind: 'link' as const, id: 'l' + Date.now() + Math.random().toString(36).slice(2, 7), title, url }]
     })
   }
   const [removeTarget, setRemoveTarget] = useState<string | null>(null)
@@ -388,40 +363,6 @@ const d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, 
         </div>
       </div>
       {/* 内部确认弹窗：删除已上传资源（不用浏览器原生 confirm） */}
-      {/* 预设卡预扫描弹窗：结构确认后再入队（内部可滚动，不受资源区高度裁剪影响） */}
-      {probeItem && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/30 p-6" onClick={closeProbeItem}>
-          <div className="card-lift rounded-2xl w-full max-w-lg flex flex-col max-h-[80vh]" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center gap-2 px-5 py-3 border-b hairline flex-shrink-0">
-              <span className="text-sm font-bold flex-1 truncate">接入「{probeItem.title}」</span>
-              <button onClick={closeProbeItem} className="p-1 rounded text-dim hover:text-red-500" title="取消"><X size={14} /></button>
-            </div>
-            <div className="flex-1 min-h-0 overflow-y-auto px-5 py-3 flex flex-col gap-2">
-              {presetProbe.state.phase === 'loading' && (
-                <p className="flex items-center gap-1.5 text-[11px] text-dim"><Loader2 size={11} className="animate-spin" /> 正在识别链接结构…</p>
-              )}
-              {presetProbe.state.phase === 'error' && (
-                <p className="text-[11px] text-dim" title={presetProbe.state.msg || undefined}>无法预览结构（可能需登录或链接不可访问），可选择全量直接加入。</p>
-              )}
-              {presetProbe.data && (
-                <ProbePreviewCard data={presetProbe.data} groups={presetProbe.groups} checked={presetProbe.groupChecked}
-                  onToggle={k => presetProbe.setGroupChecked(prev => ({ ...prev, [k]: !prev[k] }))}
-                  onSelectAll={all => presetProbe.setGroupChecked(all ? Object.fromEntries(presetProbe.groups.map(g => [g.key, true])) : {})}
-                  open={presetProbe.groupsOpen} onToggleOpen={() => presetProbe.setGroupsOpen(v => !v)} />
-              )}
-            </div>
-            <div className="flex justify-end gap-2 px-5 py-3 border-t hairline flex-shrink-0">
-              <button onClick={addProbeItemRaw} className="px-2 py-1.5 text-[11px] text-dim rounded-xl row-hover transition-colors">全量加入</button>
-              <button onClick={confirmProbeItem}
-                disabled={presetProbe.state.phase !== 'ok' || (presetProbe.groups.length > 0 && presetProbe.groups.every(g => !presetProbe.groupChecked[g.key]))}
-                title={presetProbe.state.phase !== 'ok' ? '结构未就绪' : undefined}
-                className="px-4 py-1.5 text-[11px] bg-[#1a1a1a] text-white font-semibold rounded-xl hover:bg-[#333333] transition-colors disabled:opacity-40">
-                按所选加入
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       {removeTarget && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/30 p-6" onClick={() => setRemoveTarget(null)}>
           <div className="card-lift rounded-2xl p-5 w-full max-w-sm" onClick={e => e.stopPropagation()}>

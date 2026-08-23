@@ -2,8 +2,8 @@
  *  UploadPanel（手动粘贴）与 ProjectConfigModal（系统预设卡）两个入口共用，保证行为一致。 */
 import { useState, useCallback, useRef } from 'react'
 import { FolderTree, Globe, ChevronDown, ChevronUp } from 'lucide-react'
-import { api } from '../../api'
-import type { UrlIngestScope, UrlProbeOk } from '../../api'
+import { api } from '../../../api'
+import type { UrlIngestScope, UrlProbeOk } from '../../../api'
 
 /** 链接预检状态机：闲置 → 识别中 → 成功（带预览数据）/ 失败（可直接上传兜底） */
 export type ProbeState =
@@ -137,21 +137,4 @@ export function ProbePreviewCard({ data, groups: rawGroups, checked, onToggle, o
       )}
     </div>
   )
-}
-
-/** 轮询后台摄取进度直至完成/超时；onUpdate 收到最新 done/total。 */
-export async function watchIngestProgress(projectId: string, source: string,
-  onUpdate: (done: number, total: number) => void,
-  timeoutMs = 15 * 60_000): Promise<'done' | 'timeout'> {
-  const t0 = Date.now()
-  while (Date.now() - t0 < timeoutMs) {
-    await new Promise(r => setTimeout(r, 2500))
-    try {
-      const d = await api.getUploadProgress(projectId, source)
-      if (!d || d.status !== 'ok') continue
-      onUpdate(d.done || 0, d.total || 0)
-      if ((d.total || 0) > 0 && (d.done || 0) >= d.total) return 'done'
-    } catch { /* 瞬时网络错误忽略 */ }
-  }
-  return 'timeout'
 }

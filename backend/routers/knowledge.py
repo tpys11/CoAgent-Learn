@@ -287,6 +287,7 @@ class UrlProbe(BaseModel):
     url: str = ""
 
 
+# ── 链接摄取端点（保留 · 前端入口已下线 2026-08-24，见 resource/linkIngest/README）──
 @router.post("/api/knowledge/upload-url/probe")
 async def knowledge_upload_url_probe(req: UrlProbe):
     """上传前轻量预扫描：只拉结构清单（GitHub 树 / sitemap），返回目录与语言分组
