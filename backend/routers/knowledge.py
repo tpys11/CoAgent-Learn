@@ -395,6 +395,22 @@ async def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
     return {"status": "processing", "msg": f"正在处理（{page_count} 页），稍后刷新查看" if page_count else "正在处理，稍后刷新查看"}
 
 
+# 支持格式单一事实源（对齐 DeepTutor SupportedFileTypesInfo）：前端 accept 与后端校验共用
+UPLOAD_CONSTRAINTS = {
+    "extensions": [".txt", ".md", ".markdown", ".py", ".js", ".ts", ".json", ".csv",
+                    ".html", ".css", ".log", ".yaml", ".yml",
+                    ".pdf", ".docx", ".pptx", ".xlsx", ".epub"],
+    "accept": ".txt,.md,.markdown,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml,.pdf,.docx,.pptx,.xlsx,.epub",
+    "max_file_size_bytes": 50 * 1024 * 1024,
+}
+
+
+@router.get("/api/knowledge/upload-constraints")
+def knowledge_upload_constraints():
+    """上传约束（支持扩展名 / accept 串 / 大小上限），前端据此渲染 accept 与预校验。"""
+    return UPLOAD_CONSTRAINTS
+
+
 @router.get("/api/knowledge/upload-progress")
 def knowledge_upload_progress(project_id: str, source: str):
     """后台摄取进度（done/total 内容块），供前端轮询展示。"""
@@ -413,6 +429,16 @@ async def knowledge_upload_file(
     from core.file_parser import parse_file
     from starlette.concurrency import run_in_threadpool
     data = await file.read()
+    _ALLOWED_EXTS = {"txt", "md", "markdown", "py", "js", "ts", "json", "csv", "html", "css",
+                     "log", "yaml", "yml", "pdf", "docx", "pptx", "xlsx", "epub",
+                     "png", "jpg", "jpeg", "gif", "webp", "bmp"}
+    if len(data) > UPLOAD_CONSTRAINTS["max_file_size_bytes"]:
+        return {"status": "error", "msg": "文件超过大小上限（50MB）"}
+    _fname0 = file.filename or "file"
+    _ext0 = _fname0.rsplit(".", 1)[-1].lower() if "." in _fname0 else ""
+    if _ext0 and _ext0 not in _ALLOWED_EXTS:
+        return {"status": "error",
+                "msg": f"不支持的文件格式 .{_ext0}（支持：txt/md/pdf/docx/pptx/xlsx/epub 及常见文本、代码、图片文件）"}
     fname = file.filename or "file"
     _IMG_EXTS = {"png", "jpg", "jpeg", "gif", "webp", "bmp"}
     _ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""

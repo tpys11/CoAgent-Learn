@@ -1,5 +1,5 @@
 /** 上传资源面板（文本 / 文件两种方式；链接通道已下线，保留件见 resource/linkIngest/） */
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Upload, FileText, Sparkles, Loader2, X } from 'lucide-react'
 import { LS, lsGet } from '../../storage'
 import { api } from '../../api'
@@ -15,6 +15,17 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
   const [upDone, setUpDone] = useState('')
   const [upDropActive, setUpDropActive] = useState(false)
   const upFileRef = useRef<HTMLInputElement>(null)
+  // 支持格式单一事实源：以后端 upload-constraints 为准（对齐 DeepTutor SupportedFileTypesInfo）
+  const [accept, setAccept] = useState('.txt,.md,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml,.pdf,.docx,.pptx')
+  const [allowedExts, setAllowedExts] = useState<string[]>([])
+  useEffect(() => {
+    api.getUploadConstraints().then(d => {
+      if (d && Array.isArray(d.extensions)) {
+        setAccept(d.accept || accept)
+        setAllowedExts(d.extensions.map((x: string) => x.replace('.', '')))
+      }
+    }).catch(() => {})
+  }, [])
 
   const upAddText = () => {
     const title = upTitle.trim() || '文本资料'
@@ -23,7 +34,15 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
     setUpTitle(''); setUpText('')
   }
   const upAddFiles = (fs: FileList | File[]) => {
-    const incoming = Array.from(fs)
+    let incoming: File[] = Array.from(fs)
+    if (allowedExts.length) {
+      const bad = incoming.filter(f => {
+        const ext = f.name.slice(f.name.lastIndexOf('.') + 1).toLowerCase()
+        return !allowedExts.includes(ext)
+      })
+      if (bad.length) alert(`不支持的文件格式：${bad.map(f => f.name).join('、')}（支持：${allowedExts.join('/')} 等）`)
+      incoming = incoming.filter(f => allowedExts.includes(f.name.slice(f.name.lastIndexOf('.') + 1).toLowerCase()))
+    }
     setUpItems(prev => {
       const names = new Set(prev.filter(x => x.kind === 'file' && x.file).map(x => x.name))
       return [...prev, ...incoming.filter(f => !names.has(f.name)).map(f => ({ id: 'u' + Date.now() + Math.random().toString(36).slice(2, 6), kind: 'file' as const, name: f.name, file: f }))]
@@ -101,7 +120,7 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
         </button>
       )}
       <input ref={upFileRef} type="file" multiple className="hidden"
-        accept=".txt,.md,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml,.pdf,.docx,.pptx"
+        accept={accept}
         onChange={e => { if (e.target.files?.length) upAddFiles(e.target.files); e.target.value = '' }} />
       {/* 待上传列表 + 确认上传 */}
       {upItems.length > 0 && (
