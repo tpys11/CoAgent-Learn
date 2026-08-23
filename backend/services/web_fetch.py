@@ -8,6 +8,7 @@ fetch_site_pages 返回 [{url,title,markdown}]，调用方按「站点→页面�
 """
 
 import re
+from concurrent.futures import ThreadPoolExecutor
 
 MAX_LINK_PAGES = 60       # 站点最多摄取页数（原 12，李博杰整站案例实测不够）
 MAX_PAGE_CHARS = 300_000  # 单页字符保险丝
