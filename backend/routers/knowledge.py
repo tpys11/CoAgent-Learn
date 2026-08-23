@@ -1,5 +1,6 @@
 """知识库上传、抓取、检索与文件解析路由。"""
 import hashlib
+import json
 import logging
 
 from core.background import submit
@@ -276,6 +277,36 @@ class KnowledgeUrlUpload(BaseModel):
     source: str = ""
     session_id: str = "default"
     api_key: str = ""
+    # 上传范围控制（来自 /upload-url/probe 的结构预览勾选）
+    include_groups: list[str] = []   # 目录/语言前缀白名单（空=不限制；无语言段内容不受影响）
+    exclude_groups: list[str] = []   # 目录/语言前缀黑名单
+    max_files: int | None = None     # 覆盖默认页数/文件数上限
+
+
+class UrlProbe(BaseModel):
+    url: str = ""
+
+
+@router.post("/api/knowledge/upload-url/probe")
+async def knowledge_upload_url_probe(req: UrlProbe):
+    """上传前轻量预扫描：只拉结构清单（GitHub 树 / sitemap），返回目录与语言分组
+    及默认勾选建议，供前端展示「将摄取什么」并让用户裁剪范围。"""
+    from urllib.parse import urlparse
+    url = (req.url or "").strip().split("#")[0]
+    if not url.startswith(("http://", "https://")):
+        return {"status": "error", "msg": "链接格式不正确（需以 http:// 或 https:// 开头）"}
+    host = (urlparse(url).hostname or "").strip()
+    if not host or is_disallowed_host(host):
+        return {"status": "error", "msg": "链接主机不可访问（私网/回环地址）"}
+    import asyncio
+    from services.web_fetch import probe_url
+
+    try:
+        return await asyncio.to_thread(probe_url, url)
+    except Exception as e:
+        logger.warning("链接预扫描失败 %s: %s", url, e)
+        return {"status": "error",
+                "msg": "无法识别该链接结构（站点不可访问或 GitHub 仓库不存在/私有）"}
 
 
 @router.post("/api/knowledge/upload-url")
@@ -292,7 +323,11 @@ async def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
     source = (req.source or "").strip() or url
 
     text = ""
-    _cache_key = "v2|" + url  # 管线版本前缀：摄取逻辑升级后旧缓存自然失效，不阻塞新结果
+    # 缓存键须包含范围选项指纹：同一 URL 不同勾选（如只要中文/只要某目录）是不同内容
+    _opts_fp = json.dumps(
+        {"i": sorted(set(req.include_groups)), "e": sorted(set(req.exclude_groups)),
+         "m": req.max_files}, ensure_ascii=False, sort_keys=True)
+    _cache_key = "v2|" + hashlib.sha1(_opts_fp.encode("utf-8")).hexdigest()[:10] + "|" + url
     try:
         from core.db import get_kb_repo
         _cached = get_kb_repo().get_preset_doc(_cache_key)
@@ -318,10 +353,14 @@ async def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
             kind = classify_url(url)
             if kind == "github":
                 owner, repo, _ref = parse_github_url(url)
-                pages = fetch_github_repo_pages(url)
+                pages = fetch_github_repo_pages(
+                    url, max_files=req.max_files,
+                    include_groups=req.include_groups, exclude_groups=req.exclude_groups)
                 site_title = f"{owner}/{repo}"
             else:
-                pages = fetch_site_pages(url)
+                pages = fetch_site_pages(
+                    url, max_pages=req.max_files,
+                    include_groups=req.include_groups, exclude_groups=req.exclude_groups)
                 site_title = derive_site_title(url)
             return assemble_hierarchical(site_title, pages), len(pages)
 

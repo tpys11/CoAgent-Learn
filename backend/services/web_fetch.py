@@ -11,6 +11,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 
 MAX_LINK_PAGES = 60       # 站点最多摄取页数（原 12，李博杰整站案例实测不够）
+GITHUB_MAX_FILES = 120    # GitHub 仓库最多摄取 .md 数
 MAX_PAGE_CHARS = 300_000  # 单页字符保险丝
 MIN_PAGE_CHARS = 20
 
@@ -115,11 +116,12 @@ def _page_title(u: str, md: str = "") -> str:
     return title or "首页"
 
 
-def fetch_site_pages(base_url: str) -> list[dict]:
-    """文档站结构化摄取：sitemap 枚举全站 → 按路径深度排序（浅页优先）→ 并发提取。
-    返回 [{url, title, markdown}]；不再做整体字符串拼接与截断。"""
+def fetch_site_pages(base_url: str, max_pages: int | None = None,
+                     include_groups=(), exclude_groups=()) -> list[dict]:
+    """文档站结构化摄取：sitemap 枚举全站 → 语言组过滤 → 按路径深度排序（浅页优先）→ 并发提取。
+    include/exclude_groups 为语言路径段前缀（如 /en/，来自 probe_url 的 groups）；
+    无语言段的页面不受 include 限制。返回 [{url, title, markdown}]。"""
     from urllib.parse import urlparse
-    from concurrent.futures import ThreadPoolExecutor
     base_host = urlparse(base_url).netloc
     page_urls: list[str] = []
     try:
@@ -130,8 +132,9 @@ def fetch_site_pages(base_url: str) -> list[dict]:
         pass
     if base_url not in page_urls:
         page_urls.insert(0, base_url)
+    page_urls = _apply_doc_groups(page_urls, include_groups, exclude_groups)
     page_urls.sort(key=lambda u: u.count("/"))
-    page_urls = page_urls[:MAX_LINK_PAGES]
+    page_urls = page_urls[:max_pages or MAX_LINK_PAGES]
 
     results: list[dict] = []
 
@@ -149,6 +152,171 @@ def fetch_site_pages(base_url: str) -> list[dict]:
 # ── 来源分类与 GitHub 适配器 ──────────────────────────────────────────
 
 _GITHUB_SKIP_PREFIXES = ("node_modules/", ".github/", ".vscode/", "translations/")
+
+# ── 语言识别与结构分组（上传前预览用） ────────────────────────────────
+
+_LANG_LABELS = {"en": "英语", "ja": "日语", "ko": "韩语", "zh": "中文", "zh-cn": "简体中文",
+                "zh-tw": "繁体中文", "fr": "法语", "de": "德语", "es": "西班牙语",
+                "ru": "俄语", "pt": "葡萄牙语", "it": "意大利语"}
+_FOREIGN_LANG_CODES = {"en", "ja", "ko", "fr", "de", "es", "ru", "pt", "it"}
+_DOC_LANG_RE = re.compile(
+    r"^/(en|ja|ko|zh(?:-cn|-hans|-hant|-tw)?|fr|de|es|ru|pt|it)(/|$)", re.I)
+
+
+def _lang_label(code: str) -> str:
+    return _LANG_LABELS.get(code.lower(), code)
+
+
+def _gh_group_key(path: str) -> str | None:
+    """GitHub .md 路径 → 分组键（顶层目录前缀；translations 展开到语言级）；根目录单文件返回 None。"""
+    segs = path.split("/")
+    if len(segs) == 1:
+        return None
+    if segs[0].lower() == "translations" and len(segs) >= 3:
+        return f"translations/{segs[1]}/"
+    return segs[0] + "/"
+
+
+def _doc_group_key(u: str) -> str | None:
+    """文档站 URL → 语言路径段分组键（如 /en/）；无语言段返回 None。"""
+    from urllib.parse import urlparse as _up
+    m = _DOC_LANG_RE.match(_up(u).path or "/")
+    if not m:
+        return None
+    return f"/{m.group(1).lower()}/"
+
+
+def _github_tree(owner: str, repo: str, ref_hint: str | None) -> tuple[str, list[str]]:
+    """仓库信息 + 递归树各一次 API 调用 → (ref, 全部 .md 路径)。"""
+    import requests as _req
+    h = {"Accept": "application/vnd.github+json"}
+    info = _req.get(f"{GITHUB_API}/repos/{owner}/{repo}", headers=h, timeout=30)
+    info.raise_for_status()
+    ref = ref_hint or info.json().get("default_branch") or "main"
+    tree = _req.get(f"{GITHUB_API}/repos/{owner}/{repo}/git/trees/{ref}?recursive=1",
+                    headers=h, timeout=30)
+    tree.raise_for_status()
+    return ref, [e["path"] for e in tree.json().get("tree", [])
+                 if e.get("type") == "blob" and str(e.get("path", "")).lower().endswith(".md")]
+
+
+def _apply_gh_groups(paths: list[str], include_groups=(), exclude_groups=()) -> list[str]:
+    """按组前缀过滤 .md 路径：根文件始终保留；include 非空时目录文件须命中；
+    exclude 命中即剔除。硬跳过前缀（. 开头/node_modules/translations）仍生效，
+    除非被 include 显式点名——用户可借此取回 translations/ja 等被默认排除的语言。"""
+    inc = [x for x in (include_groups or []) if x]
+    exc = [x for x in (exclude_groups or []) if x]
+    out: list[str] = []
+    for p in paths:
+        hard = p.startswith(".") or any(p.startswith(s) for s in _GITHUB_SKIP_PREFIXES)
+        if hard and not any(p.startswith(x) for x in inc):
+            continue
+        g = _gh_group_key(p)
+        if inc and g is not None and g not in inc:
+            continue
+        if exc and g is not None and g in exc:
+            continue
+        out.append(p)
+    return out
+
+
+def _apply_doc_groups(urls: list[str], include_groups=(), exclude_groups=()) -> list[str]:
+    """按语言路径段过滤 URL：无语言段的页面始终保留，语言页须命中 include 且不落 exclude。"""
+    inc = {x for x in (include_groups or []) if x}
+    exc = {x for x in (exclude_groups or []) if x}
+    out: list[str] = []
+    for u in urls:
+        g = _doc_group_key(u)
+        if g is not None:
+            if inc and g not in inc:
+                continue
+            if g in exc:
+                continue
+        out.append(u)
+    return out
+
+
+def probe_url(url: str) -> dict:
+    """上传前轻量预扫描：只拉结构清单（GitHub Trees API / sitemap），不抓正文、不入库。
+    返回 {kind,title_hint,total_files,max_files,truncated,groups,languages,warnings}，
+    groups[].default_selected 即前端预勾选建议。"""
+    kind = classify_url(url)
+    warnings: list[str] = []
+    if kind == "github":
+        owner, repo, ref_hint = parse_github_url(url)
+        _ref, paths = _github_tree(owner, repo, ref_hint)
+        base = [p for p in paths
+                if not p.startswith(".")
+                and not any(p.startswith(s) for s in _GITHUB_SKIP_PREFIXES)]
+        root_n = sum(1 for p in paths if "/" not in p)
+        counts: dict[str, int] = {}
+        for p in paths:          # 用全量路径分组：translations/* 才会出现在可勾选列表
+            g = _gh_group_key(p)
+            if g:
+                counts[g] = counts.get(g, 0) + 1
+        has_zh_dir = any(k.split("/")[0].lower().startswith("zh") for k in counts)
+        groups: list[dict] = []
+        languages: list[dict] = []
+        for k in sorted(counts):
+            seg0 = k.split("/")[0]
+            m_tr = re.match(r"^translations/([^/]+)/$", k)
+            code = (m_tr.group(1).lower() if m_tr
+                    else seg0.lower() if seg0.lower() in _FOREIGN_LANG_CODES
+                    or seg0.lower().startswith("zh") else "")
+            foreign = bool(m_tr) or seg0.lower() in _FOREIGN_LANG_CODES
+            label = f"翻译 · {_lang_label(code)}" if m_tr else (
+                _lang_label(seg0.lower()) if code else seg0.rstrip("/"))
+            # 默认勾选：中文/中性目录选中；外语组仅当「无根内容且无任何中文」时兜底全选
+            sel = True if not foreign else (
+                code.startswith("zh") or not (root_n > 0 or has_zh_dir))
+            groups.append({"key": k, "label": label, "count": counts[k],
+                           "default_selected": bool(sel)})
+            if m_tr:
+                languages.append({"code": code, "label": _lang_label(code),
+                                  "count": counts[k], "key": k})
+        total = len(base)
+        if total > GITHUB_MAX_FILES:
+            warnings.append(f".md 文件共 {total} 个，超过上限 {GITHUB_MAX_FILES}，"
+                            "将按「README 优先→路径排序」取前部分")
+        return {"status": "ok", "kind": "github", "title_hint": f"{owner}/{repo}",
+                "total_files": total, "max_files": GITHUB_MAX_FILES,
+                "truncated": total > GITHUB_MAX_FILES, "groups": groups,
+                "languages": languages, "warnings": warnings}
+    # 文档站：sitemap 预扫
+    from urllib.parse import urlparse as _up
+    base_host = _up(url).netloc
+    urls: list[str] = []
+    try:
+        r = safe_get(url.rstrip("/") + "/sitemap.xml", timeout=15)
+        urls = [u for u in re.findall(r"<loc>([^<]+)</loc>", r)
+                if _up(u).netloc == base_host and "/index." not in u]
+    except Exception:
+        pass
+    if url not in urls:
+        urls.insert(0, url)
+    plain = sum(1 for u in urls if _doc_group_key(u) is None)
+    counts = {}
+    for u in urls:
+        g = _doc_group_key(u)
+        if g:
+            counts[g] = counts.get(g, 0) + 1
+    has_zh = any(k.lower().startswith("/zh") for k in counts)
+    groups = [{"key": "", "label": "站点主内容", "count": plain,
+               "default_selected": True}] if plain else []
+    for k in sorted(counts):
+        code = k.strip("/").lower()
+        sel = True if code not in _FOREIGN_LANG_CODES else (
+            code.startswith("zh") or not (plain > 0 or has_zh))
+        groups.append({"key": k, "label": f"{_lang_label(code)}（{k}）",
+                       "count": counts[k], "default_selected": bool(sel)})
+    if len(urls) <= 1:
+        warnings.append("未发现 sitemap，将只抓取该页本身")
+    elif len(urls) > MAX_LINK_PAGES:
+        warnings.append(f"页面数约 {len(urls)}，超过上限 {MAX_LINK_PAGES}，浅层页面优先")
+    return {"status": "ok", "kind": "docs", "title_hint": derive_site_title(url),
+            "total_files": len(urls), "max_files": MAX_LINK_PAGES,
+            "truncated": len(urls) > MAX_LINK_PAGES, "groups": groups,
+            "languages": [], "warnings": warnings}
 
 
 def classify_url(url: str) -> str:
@@ -172,34 +340,24 @@ def parse_github_url(url: str) -> tuple[str, str, str | None]:
     return owner, repo, ref
 
 
-def fetch_github_repo_pages(url: str, max_files: int = 120) -> list[dict]:
+def fetch_github_repo_pages(url: str, max_files: int | None = None,
+                            include_groups=(), exclude_groups=()) -> list[dict]:
     """GitHub 仓库适配器：Git Trees API 拉 .md 文件树 → raw 直读。
     目录路径映射为页面标题（大纲层级随仓库目录而来）；README 排最前。
-    匿名限额：API 调用 ≤2 次/次上传（仓库信息+树），raw 下载走 CDN 不计入。"""
+    include/exclude_groups 为目录前缀组（如 AI/、translations/ja/，来自 probe_url）；
+    include 可显式取回默认硬跳过的 translations/<lang>。匿名限额：API ≤2 次/次上传。"""
     import requests as _req
     from urllib.parse import quote
     from urllib.parse import unquote as _unq
     owner, repo, ref_hint = parse_github_url(url)
-    h = {"Accept": "application/vnd.github+json"}
-    info = _req.get(f"{GITHUB_API}/repos/{owner}/{repo}", headers=h, timeout=30)
-    info.raise_for_status()
-    ref = ref_hint or info.json().get("default_branch") or "main"
-    tree = _req.get(
-        f"{GITHUB_API}/repos/{owner}/{repo}/git/trees/{ref}?recursive=1",
-        headers=h, timeout=30)
-    tree.raise_for_status()
-    blobs = [e for e in tree.json().get("tree", [])
-             if e.get("type") == "blob" and str(e.get("path", "")).lower().endswith(".md")]
-    blobs = [b for b in blobs
-             if not b["path"].startswith(".")
-             and not any(b["path"].startswith(p) for p in _GITHUB_SKIP_PREFIXES)]
+    ref, all_paths = _github_tree(owner, repo, ref_hint)
+    paths = _apply_gh_groups(all_paths, include_groups, exclude_groups)
     # README 置顶，其余按路径排序（目录顺序即阅读顺序）
-    blobs.sort(key=lambda b: (not str(b["path"]).lower().endswith("readme.md"), b["path"]))
-    blobs = blobs[:max_files]
+    paths.sort(key=lambda p: (not p.lower().endswith("readme.md"), p))
+    paths = paths[:max_files or GITHUB_MAX_FILES]
 
     out: list[dict] = []
     base_raw = f"{GITHUB_RAW}/{owner}/{repo}/{ref}"
-    paths = [str(b["path"]) for b in blobs]
 
     def _download(path: str) -> tuple[str, str] | None:
         try:
@@ -213,10 +371,10 @@ def fetch_github_repo_pages(url: str, max_files: int = 120) -> list[dict]:
     # 并发直读（raw 走 CDN，无 API 限额消耗）
     with ThreadPoolExecutor(max_workers=6) as _ex:
         results = list(_ex.map(_download, paths))
-    for b, r in zip(blobs, results):
+    for path, r in zip(paths, results):
         if not r:
             continue
-        path, t = r
+        _, t = r
         out.append({
             "url": f"https://github.com/{owner}/{repo}/blob/{ref}/{path}",
             "title": _unq(path)[:-3].replace("-", " ").replace("_", " "),

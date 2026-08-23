@@ -37,6 +37,58 @@ function jsonInit(method: string, body?: unknown, init?: RequestInit): RequestIn
   }
 }
 
+/* ---------- URL 摄取预检（probe）契约 ---------- */
+
+/** 可勾选的摄取分区（GitHub 目录前缀 / 文档站路径前缀）。 */
+export interface UrlProbeGroup {
+  key: string
+  label: string
+  count: number
+  default_selected: boolean
+}
+
+/** 语言类分区的便捷镜像（其内容同样出现在 groups 中）。 */
+export interface UrlProbeLanguage {
+  code: string
+  label: string
+  count: number
+  key: string
+}
+
+export interface UrlProbeOk {
+  status: 'ok'
+  kind: 'github' | 'docs'
+  title_hint: string
+  total_files: number
+  max_files: number
+  truncated: boolean
+  /** 后端保证返回，但按可选处理以兼容旧版本/异常响应 */
+  groups?: UrlProbeGroup[]
+  languages?: UrlProbeLanguage[]
+  warnings?: string[]
+}
+
+export interface UrlProbeError {
+  status: 'error'
+  msg?: string
+}
+
+export type UrlProbeResult = UrlProbeOk | UrlProbeError
+
+/** 用户在预览卡片中调整后的摄取范围；空数组/未变更时不落到请求体。 */
+export interface UrlIngestScope {
+  includeGroups?: string[]
+  excludeGroups?: string[]
+}
+
+/** 驼峰范围参数 → 后端 snake_case 字段；仅输出非空项。 */
+function urlScopeBody(scope: UrlIngestScope): Record<string, string[]> {
+  const out: Record<string, string[]> = {}
+  if (scope.includeGroups?.length) out.include_groups = scope.includeGroups
+  if (scope.excludeGroups?.length) out.exclude_groups = scope.excludeGroups
+  return out
+}
+
 export const api = {
   getSettings: () => apiFetch<SettingsData>('/api/settings', { cache: 'no-store' }),
   saveSettings: (body: unknown) => apiFetch<any>('/api/settings', jsonInit('PUT', body)),
@@ -76,8 +128,11 @@ export const api = {
 
   uploadKnowledgeText: (body: unknown) =>
     apiFetch<any>('/api/knowledge/upload?wait=true', jsonInit('POST', body)),
-  uploadKnowledgeUrl: (body: unknown) =>
-    apiFetch<any>('/api/knowledge/upload-url?wait=true', jsonInit('POST', body)),
+  uploadUrlProbe: (url: string) =>
+    apiFetch<UrlProbeResult>('/api/knowledge/upload-url/probe', jsonInit('POST', { url })),
+  uploadKnowledgeUrl: (body: unknown, scope?: UrlIngestScope) =>
+    apiFetch<any>('/api/knowledge/upload-url?wait=true',
+      jsonInit('POST', scope ? { ...(body as Record<string, unknown>), ...urlScopeBody(scope) } : body)),
   uploadKnowledgeFile: (form: FormData) =>
     apiFetch<any>('/api/knowledge/upload-file', { method: 'POST', body: form }),
   listKnowledge: (projectId: string) =>
