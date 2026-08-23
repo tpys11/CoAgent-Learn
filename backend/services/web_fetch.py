@@ -132,7 +132,8 @@ def fetch_site_pages(base_url: str, max_pages: int | None = None,
         pass
     if base_url not in page_urls:
         page_urls.insert(0, base_url)
-    page_urls = _apply_doc_groups(base_url, page_urls, include_groups, exclude_groups)
+    # 语言门前置（分段码可确定，提前释放抓取预算）；角色过滤与同名去重在取回正文后进行
+    page_urls = [u for u in page_urls if _doc_is_simplified(base_url, u)]
     page_urls.sort(key=lambda u: u.count("/"))
     page_urls = page_urls[:max_pages or MAX_LINK_PAGES]
 
@@ -146,7 +147,25 @@ def fetch_site_pages(base_url: str, max_pages: int | None = None,
         for item in _ex.map(_job, page_urls):
             if len(item["markdown"]) >= MIN_PAGE_CHARS:
                 results.append(item)
-    return results
+
+    # 内容类型范围 + 同名页去重（标题归一化，首见保留）
+    inc = {x for x in (include_groups or []) if x}
+    exc = {x for x in (exclude_groups or []) if x}
+    kept: list[dict] = []
+    seen_titles: set[str] = set()
+    for item in results:
+        role = _doc_role(item["title"])
+        if inc and role not in inc:
+            continue
+        if role in exc:
+            continue
+        t_norm = re.sub(r"\s+", "", _first_heading_text(item["markdown"]) or item["title"] or "")
+        if t_norm:
+            if t_norm in seen_titles:
+                continue
+            seen_titles.add(t_norm)
+        kept.append(item)
+    return kept
 
 
 # ── 来源分类与 GitHub 适配器 ──────────────────────────────────────────
@@ -224,6 +243,47 @@ def _seg_label(seg: str) -> str:
     return f"{seg}（{_LANG_LABELS[code]}）"
 
 
+_DOC_ROLES = ("正文", "测试题·思考题", "小结·速览", "实验·附录")
+
+
+def _doc_role(title: str) -> str:
+    """按页面标题关键词归类内容类型。"""
+    t = (title or "").lower()
+    if any(k in t for k in ("测", "题", "答案")):
+        return "测试题·思考题"
+    if any(k in t for k in ("速览", "小结", "摘要")):
+        return "小结·速览"
+    if ("实验" in t or "附录" in t
+            or "evidence" in t or "requirement" in t or "experiment" in t):
+        return "实验·附录"
+    return "正文"
+
+
+def _doc_is_simplified(base_url: str, u: str) -> bool:
+    """语言门：分组段带非简体语言码（含 zhtw 繁体与 en/ja/…）即排除；
+    无段或中性段（chapter1、book 等）视作站点主语言放行。"""
+    gk = _doc_group_key(base_url, u)
+    if not gk:
+        return True
+    code = _seg_lang_code(gk.rstrip("/"))
+    if not code:
+        return True
+    return code == "zh" or code.startswith("zh-")
+
+
+def _slug_role(base_url: str, u: str) -> str:
+    """抓取前用 URL 路径关键词估算内容类型；真实分类在取回正文后按标题进行。"""
+    from urllib.parse import urlparse as _up
+    full = _doc_scope_path(base_url, u).lower()
+    if any(k in full for k in ("quiz", "test", "question", "answer")):
+        return "测试题·思考题"
+    if any(k in full for k in ("summary", "review", "recap")):
+        return "小结·速览"
+    if any(k in full for k in ("experiment", "lab", "appendix", "evidence", "exercise")):
+        return "实验·附录"
+    return "正文"
+
+
 def _github_tree(owner: str, repo: str, ref_hint: str | None) -> tuple[str, list[str]]:
     """仓库信息 + 递归树各一次 API 调用 → (ref, 全部 .md 路径)。"""
     import requests as _req
@@ -255,23 +315,6 @@ def _apply_gh_groups(paths: list[str], include_groups=(), exclude_groups=()) -> 
         if exc and g is not None and g in exc:
             continue
         out.append(p)
-    return out
-
-
-def _apply_doc_groups(base_url: str, urls: list[str],
-                      include_groups=(), exclude_groups=()) -> list[str]:
-    """按一级路径分组过滤 URL：根页面始终保留，分组页须命中 include 且不落 exclude。"""
-    inc = {x for x in (include_groups or []) if x}
-    exc = {x for x in (exclude_groups or []) if x}
-    out: list[str] = []
-    for u in urls:
-        g = _doc_group_key(base_url, u)
-        if g is not None:
-            if inc and g not in inc:
-                continue
-            if g in exc:
-                continue
-        out.append(u)
     return out
 
 
@@ -333,36 +376,24 @@ def probe_url(url: str) -> dict:
         pass
     if url not in urls:
         urls.insert(0, url)
-    plain = sum(1 for u in urls if _doc_group_key(url, u) is None)
-    counts: dict[str, int] = {}
-    for u in urls:
-        g = _doc_group_key(url, u)
-        if g:
-            counts[g] = counts.get(g, 0) + 1
-
-    def _seg_is_zh(seg: str) -> bool:
-        code = _seg_lang_code(seg)
-        return bool(code) and code.startswith("zh")
-
-    has_zh = any(_seg_is_zh(k.rstrip("/")) for k in counts)
-    has_home = plain > 0 or has_zh
-    groups = [{"key": "", "label": "站点主内容", "count": plain,
-               "default_selected": True}] if plain else []
-    for k in sorted(counts):
-        seg = k.rstrip("/")
-        code = _seg_lang_code(seg)
-        foreign = code in _FOREIGN_LANG_CODES if code else False
-        # 外语段默认不勾，除非除它之外没有任何主内容可保（避免空选）
-        sel = (not foreign) or (bool(code) and code.startswith("zh")) or (not has_home)
-        groups.append({"key": k, "label": _seg_label(seg),
-                       "count": counts[k], "default_selected": bool(sel)})
-    if len(urls) <= 1:
+    kept_urls = [u for u in urls if _doc_is_simplified(url, u)]
+    excluded_n = len(urls) - len(kept_urls)
+    role_counts: dict[str, int] = {}
+    for u in kept_urls:
+        r = _slug_role(url, u)
+        role_counts[r] = role_counts.get(r, 0) + 1
+    groups = [{"key": r, "label": r, "count": c, "default_selected": True}
+              for r, c in sorted(role_counts.items())
+              if r in _DOC_ROLES or True]
+    if excluded_n:
+        warnings.append(f"已自动排除约 {excluded_n} 个非简体中文页面")
+    if len(kept_urls) <= 1:
         warnings.append("未发现 sitemap，将只抓取该页本身")
-    elif len(urls) > MAX_LINK_PAGES:
-        warnings.append(f"页面数约 {len(urls)}，超过上限 {MAX_LINK_PAGES}，浅层页面优先")
+    elif len(kept_urls) > MAX_LINK_PAGES:
+        warnings.append(f"简体中文页面约 {len(kept_urls)}，超过上限 {MAX_LINK_PAGES}，浅层页面优先")
     return {"status": "ok", "kind": "docs", "title_hint": derive_site_title(url),
-            "total_files": len(urls), "max_files": MAX_LINK_PAGES,
-            "truncated": len(urls) > MAX_LINK_PAGES, "groups": groups,
+            "total_files": len(kept_urls), "max_files": MAX_LINK_PAGES,
+            "truncated": len(kept_urls) > MAX_LINK_PAGES, "groups": groups,
             "languages": [], "warnings": warnings}
 
 
