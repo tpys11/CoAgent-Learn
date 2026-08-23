@@ -5,7 +5,7 @@ import ResourceView from './ResourceView'
 import { LS, lsGet, lsGetJSON, lsSetJSON } from '../storage'
 import { api } from '../api'
 import type { UrlIngestScope } from '../api'
-import { ProbePreviewCard, useProbeOnce } from './resource/UrlProbeShared'
+import { ProbePreviewCard, useProbeOnce, watchIngestProgress } from './resource/UrlProbeShared'
 
 /** 课程记忆与资源窗口：两个页签（记忆与进程 / 资源）可切换；initialTab 决定打开时默认页签。
  * 新建课程引导消息的「手动填写」按钮也复用此弹窗（initialOnly=true：仅初次创建可手动填写，
@@ -181,6 +181,12 @@ const uploadItems = async () => {
           const d = await api.uploadKnowledgeUrl({ project_id: projectId, url: it.url, source: it.title, session_id: 'project-res', api_key: lsGet(LS.apiKey, '') }, it.scope)
           if (d.status === 'processing') {
             okCount++; asyncCount++
+            const srcTitle = it.title
+            void watchIngestProgress(projectId, srcTitle, (dn, tt) =>
+              setDoneMsg(`「${srcTitle}」入库中 ${dn}/${tt} 块…`)).then(st => {
+              setDoneMsg(st === 'done' ? `「${srcTitle}」已完成接入课程知识库` : `「${srcTitle}」仍在后台处理`)
+              load()
+            })
           }
           else if (d.status === 'ok') {
             if (d.duplicate) { dupCount++ }

@@ -135,6 +135,8 @@ export const api = {
       jsonInit('POST', scope ? { ...(body as Record<string, unknown>), ...urlScopeBody(scope) } : body)),
   uploadKnowledgeFile: (form: FormData) =>
     apiFetch<any>('/api/knowledge/upload-file', { method: 'POST', body: form }),
+  getUploadProgress: (projectId: string, source: string) =>
+    apiFetch<any>('/api/knowledge/upload-progress?project_id=' + encodeURIComponent(projectId) + '&source=' + encodeURIComponent(source), { cache: 'no-store' }),
   listKnowledge: (projectId: string) =>
     apiFetch<any>('/api/knowledge/list?project_id=' + encodeURIComponent(projectId), { cache: 'no-store' }),
   deleteKnowledge: (projectId: string, source: string) =>

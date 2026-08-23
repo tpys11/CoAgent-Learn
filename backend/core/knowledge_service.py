@@ -309,6 +309,18 @@ def _chunk_markdown(text: str, size: int, overlap: int) -> list:
     return [c.strip() for c in out if c and c.strip()]
 
 
+# ── 上传进度（内存态：进程重启即清；仅 URL 摄取链路轮询用） ──────────────
+_progress: dict = {}
+
+
+def _set_progress(project_id: str, source: str, done: int, total: int) -> None:
+    _progress[(project_id, source)] = {"status": "ok", "done": int(done), "total": int(total)}
+
+
+def get_progress(project_id: str, source: str) -> dict:
+    return _progress.get((project_id, source)) or {"status": "none"}
+
+
 def add_document(project_id: str, text: str, source: str = "", session_id: str = "", api_key: str = "", skip_context: bool = False) -> int:
     """上传文本：切块 → 向量化 → 入库，返回入库块数。
     已移除「每块 LLM 生成上下文前缀」（_gen_context，2026-08-15 删除）：
@@ -344,11 +356,13 @@ def add_document(project_id: str, text: str, source: str = "", session_id: str =
         logger.warning("清理同源旧块失败 source=%s", source, exc_info=True)
     # 入库前确认向量表维度与当前 embedding 配置一致；不一致直接报错，不再静默返回 0 块
     _db.ensure_vector_dim(table)
-    # 向量化（分批，模型一次 32 条）
+    # 向量化（分批，模型一次 32 条）；每批写进度供前端轮询
     embeddings = []
     batch = 32
+    _set_progress(project_id, source, done=0, total=len(chunks))
     for i in range(0, len(chunks), batch):
         embeddings.extend(_embed(chunks[i:i + batch]))
+        _set_progress(project_id, source, done=min(i + batch, len(chunks)), total=len(chunks))
     # 入库（批量单事务：大批量从逐条 commit 降到一次 commit，避免分钟级锁窗口）
     bulk = []
     for i, c in enumerate(chunks):

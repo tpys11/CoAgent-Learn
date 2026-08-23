@@ -4,7 +4,7 @@ import { Upload, FileText, ExternalLink, Sparkles, Loader2, X } from 'lucide-rea
 import { LS, lsGet } from '../../storage'
 import { api } from '../../api'
 import type { UrlIngestScope } from '../../api'
-import { ProbePreviewCard, isHttpUrl, normUrl, buildScopeFrom } from './UrlProbeShared'
+import { ProbePreviewCard, isHttpUrl, normUrl, buildScopeFrom, watchIngestProgress } from './UrlProbeShared'
 
 type UpItem = { id: string; kind: 'file' | 'text' | 'link'; name: string; file?: File; body?: string; url?: string; scope?: UrlIngestScope }
 
@@ -128,9 +128,13 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
         setUpTitle(''); setUpUrl(''); resetProbe()
         setTimeout(() => onUploaded(), 500)
       } else if (d && d.status === 'processing') {
-        setUpDone(`「${source}」已提交后台处理，完成后自动出现在知识库`)
+        setUpDone(`「${source}」后台处理中…`)
         setUpTitle(''); setUpUrl(''); resetProbe()
-        setTimeout(() => onUploaded(), 1500)
+        void watchIngestProgress(projectId, source, (dn, tt) =>
+          setUpDone(`「${source}」入库中 ${dn}/${tt} 块…`)).then(st => {
+          setUpDone(st === 'done' ? `「${source}」已完成接入课程知识库` : `「${source}」仍在后台处理，稍后自动出现`)
+          setTimeout(() => onUploaded(), 500)
+        })
       } else {
         alert(`「${source}」接入失败：${(d && d.msg) || '处理失败'}`)
       }

@@ -394,6 +394,13 @@ async def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
     return {"status": "processing", "msg": f"正在处理（{page_count} 页），稍后刷新查看" if page_count else "正在处理，稍后刷新查看"}
 
 
+@router.get("/api/knowledge/upload-progress")
+def knowledge_upload_progress(project_id: str, source: str):
+    """后台摄取进度（done/total 内容块），供前端轮询展示。"""
+    from core.knowledge_service import get_progress
+    return get_progress(project_id, source)
+
+
 @router.post("/api/knowledge/upload-file")
 async def knowledge_upload_file(
     project_id: str = Form("default"),
