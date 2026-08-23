@@ -3,7 +3,7 @@ import hashlib
 import logging
 
 from core.background import submit
-from services.web_fetch import is_disallowed_host, fetch_site_text, MAX_LINK_CHARS
+from services.web_fetch import is_disallowed_host
 
 from fastapi import APIRouter, File, Form, UploadFile
 from pydantic import BaseModel
@@ -279,7 +279,9 @@ class KnowledgeUrlUpload(BaseModel):
 
 
 @router.post("/api/knowledge/upload-url")
-def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
+async def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
+    """URL 结构化摄取：来源分类（GitHub 仓库 / 文档站·sitemap / 单页兜底）→
+    多页结构化抓取 → 「站点(H1) → 页面(H2) → 页内标题」层级组装 → 现有入库管线。"""
     url = (req.url or "").strip().split("#")[0]
     if not url.startswith(("http://", "https://")):
         return {"status": "error", "msg": "链接格式不正确（需以 http:// 或 https:// 开头）"}
@@ -288,27 +290,55 @@ def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
     if not host or is_disallowed_host(host):
         return {"status": "error", "msg": "链接主机不可访问（私网/回环地址）"}
     source = (req.source or "").strip() or url
+
     text = ""
+    _cache_key = "v2|" + url  # 管线版本前缀：摄取逻辑升级后旧缓存自然失效，不阻塞新结果
     try:
         from core.db import get_kb_repo
-        _cached = get_kb_repo().get_preset_doc(url)
+        _cached = get_kb_repo().get_preset_doc(_cache_key)
         if _cached and (_cached.get("content") or "").strip():
             text = _cached["content"]
     except Exception:
         pass
+
+    page_count = 0
     if not text:
+        import asyncio
+        from services.web_fetch import (
+            assemble_hierarchical,
+            classify_url,
+            derive_site_title,
+            fetch_github_repo_pages,
+            fetch_site_pages,
+            parse_github_url,
+        )
+
+        def _build() -> tuple[str, int]:
+            """阻塞 IO（多页并发抓取），线程池执行；返回 (组装后的层级 Markdown, 页数)。"""
+            kind = classify_url(url)
+            if kind == "github":
+                owner, repo, _ref = parse_github_url(url)
+                pages = fetch_github_repo_pages(url)
+                site_title = f"{owner}/{repo}"
+            else:
+                pages = fetch_site_pages(url)
+                site_title = derive_site_title(url)
+            return assemble_hierarchical(site_title, pages), len(pages)
+
         try:
-            text = fetch_site_text(url)
+            text, page_count = await asyncio.to_thread(_build)
             if len(text.strip()) >= 20:
                 try:
-                    get_kb_repo().save_preset_doc(url, source, text[:MAX_LINK_CHARS])
+                    from core.db import get_kb_repo as _g
+                    _g().save_preset_doc(_cache_key, source, text)  # 全量缓存，不再截断
                 except Exception:
                     pass
         except Exception as e:
-            logger.warning("链接抓取失败 %s: %s", url, e)
-            return {"status": "error", "msg": "抓取链接失败（链接不可访问或内容无法解析）"}
+            logger.warning("链接结构化摄取失败 %s: %s", url, e)
+            return {"status": "error", "msg": "抓取链接失败（链接不可访问、站点需登录，或 GitHub 私有仓库不支持）"}
     if len(text.strip()) < 20:
         return {"status": "error", "msg": "链接内容过短或无法解析为文本"}
+    logger.info("URL 摄取完成 url=%s pages=%s chars=%s", url, page_count or "缓存", len(text))
     if wait:
         _ch = hashlib.sha256(text.encode("utf-8")).hexdigest()
         chunks = _process_upload(req.project_id, text, source, req.session_id, req.api_key, True, True, _ch)
@@ -317,7 +347,7 @@ def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
         return {"status": "ok", "chunks": chunks, "source": source}
     _ch2 = hashlib.sha256(text.encode("utf-8")).hexdigest()
     submit(_process_upload, req.project_id, text, source, req.session_id, req.api_key, True, True, _ch2)
-    return {"status": "processing", "msg": "正在处理，稍后刷新查看"}
+    return {"status": "processing", "msg": f"正在处理（{page_count} 页），稍后刷新查看" if page_count else "正在处理，稍后刷新查看"}
 
 
 @router.post("/api/knowledge/upload-file")
