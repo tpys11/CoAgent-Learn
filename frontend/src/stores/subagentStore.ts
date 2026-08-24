@@ -1,7 +1,7 @@
 /**
  * 条目4：子agent实时事件仓库（模块级单例，React 外置 store）。
- * useChatStream 是唯一写入点（SSE 信封事件）；SubAgentWindow 经 useSyncExternalStore 订阅。
- * 不引状态库——约 40 行 pub/sub 满足"跨组件只读直播"需求；档案持久化在后端，此处仅直播态。
+ * useChatStream 是唯一写入点（SSE 信封事件）；显示组件经 useSyncExternalStore 订阅。
+ * 不引状态库——pub/sub 满足"跨组件只读直播"；档案持久化在后端 subagent_runs 表，此处仅直播态。
  */
 import type { SubAgentSse } from '../types'
 
@@ -47,7 +47,6 @@ export const subagentStore = {
     } else if (p.event === 'input') {
       r.input = p.content || r.input
     }
-    // delta：v1 静默子agent无流式增量，通道预留
     if (p.event === 'end') {
       r.status = p.status || 'ok'
       r.summary = p.summary || ''
@@ -58,6 +57,11 @@ export const subagentStore = {
 
   get(rid: string): RunLive | undefined {
     return runs.get(rid)
+  },
+
+  /** 直播条枚举：按启动顺序返回全部 run（Map 保序） */
+  listAll(): RunLive[] {
+    return Array.from(runs.values())
   },
 
   /** useSyncExternalStore 快照：版本号（数字在两次变更间恒定） */

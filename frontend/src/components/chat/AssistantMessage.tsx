@@ -3,7 +3,7 @@ import { CheckCircle2, Image as ImageIcon, PenLine, Lightbulb } from 'lucide-rea
 import type { Message, Project } from '../../types'
 import MarkdownIt from 'markdown-it'
 import { LS, lsGetJSON } from '../../storage'
-import { SubAgentWindow } from './SubAgentWindow'
+import { SubAgentWindow, SubAgentLiveStrip } from './subagent'
 
 // ---------- 思维链渲染：markdown-it 轻量渲染（html:false 防 XSS，换行生效）----------
 const mdThink = new MarkdownIt({ html: false, linkify: true, breaks: true })
@@ -73,6 +73,8 @@ export default function AssistantMessage({
   const streaming = isLoading && isLast
   return (
     <>
+      {/* 条目4·实时化：流式期间的子agent直播条（start 即现脉冲chip，完成翻✓）；历史消息不显示 */}
+      {streaming && <SubAgentLiveStrip />}
       {/* 思考过程区块（DeepSeek 式：流式展开逐字 / 完成自动折叠为一行） */}
       {msg.think && msg.think.length > 0 && (
         <div className="mb-3">

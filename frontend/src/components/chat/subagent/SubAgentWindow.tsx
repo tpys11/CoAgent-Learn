@@ -7,9 +7,9 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import MarkdownIt from 'markdown-it'
 import { X } from 'lucide-react'
-import { api } from '../../api'
-import { subagentStore } from '../../stores/subagentStore'
-import type { SubAgentRun } from '../../types'
+import { api } from '../../../api'
+import { subagentStore } from '../../../stores/subagentStore'
+import type { SubAgentRun } from '../../../types'
 
 const mdWin = new MarkdownIt({ html: false, linkify: true, breaks: true })
 
@@ -49,7 +49,11 @@ function RunCard({ runId }: { runId: string }) {
   const title = arch?.title || live?.title || '子agent'
   const input = arch?.input || live?.input || ''
   const output = arch?.output || ''
-  const events: Array<Record<string, any>> = arch ? (arch.events as any) : (live ? live.events : [])
+  // 条目4实时化：delta 仅直播不入库——时间线=档案事件 ∪ 直播delta；字数计数供"正在整理"提示
+  const liveDeltas = (live?.events || []).filter(e => e.event === 'delta')
+  const baseEvents: Array<Record<string, any>> = arch ? (arch.events as any) : ((live?.events || []).filter(e => e.event !== 'delta'))
+  const events = [...baseEvents, ...liveDeltas]
+  const genChars = liveDeltas.reduce((s, e) => s + String(e.text || '').length, 0)
 
   return (
     <div className="rounded-lg border border-black/10 dark:border-white/10 p-3 flex flex-col gap-2">
@@ -65,7 +69,9 @@ function RunCard({ runId }: { runId: string }) {
       </div>
       {/* 区2：过程时间线 */}
       <div>
-        <div className="text-[10px] text-dim mb-0.5">过程（{events.length} 条事件）</div>
+        <div className="text-[10px] text-dim mb-0.5">
+          过程（{events.length} 条事件{genChars > 0 ? ` · 已生成 ${genChars} 字` : ''}）
+        </div>
         <div className="flex flex-col gap-0.5 max-h-40 overflow-auto text-[11px]">
           {events.length === 0 && <span className="text-dim">暂无事件</span>}
           {events.map((ev, i) => (
@@ -76,6 +82,9 @@ function RunCard({ runId }: { runId: string }) {
               </span>
             </div>
           ))}
+          {status === 'running' && genChars > 0 && (
+            <div className="text-[10px] text-dim animate-pulse truncate">正在整理… {genChars} 字</div>
+          )}
         </div>
       </div>
       {/* 区3：最终报告 */}
