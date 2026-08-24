@@ -122,9 +122,9 @@ def _merge_mindchain(mc):
             continue
         name = it.get("agent", "")
         content = it.get("content", "") or ""
-        if not content.strip():
-            continue  # 空内容（无实际产出）条目不展示
         ids = _rids(it)
+        if not content.strip() and not ids:
+            continue  # 空内容且无子agent观测的条目不展示；带 run_ids 的必须保留（前端🛰按钮靠它开窗）
         dn = _mindchain_display_name(name)
         if out and _mindchain_display_name(out[-1].get("agent", "")) == dn and dn:
             # 连续同名：内容拼接进上一条；run_ids 并集去重保留
