@@ -3,6 +3,7 @@ import { CheckCircle2, Image as ImageIcon, PenLine, Lightbulb } from 'lucide-rea
 import type { Message, Project } from '../../types'
 import MarkdownIt from 'markdown-it'
 import { LS, lsGetJSON } from '../../storage'
+import { SubAgentWindow } from './SubAgentWindow'
 
 // ---------- 思维链渲染：markdown-it 轻量渲染（html:false 防 XSS，换行生效）----------
 const mdThink = new MarkdownIt({ html: false, linkify: true, breaks: true })
@@ -245,25 +246,28 @@ function StreamingMd({ text, streaming }: { text: string; streaming?: boolean })
   )
 }
 
-/** 思考过程区块（DeepSeek 式独立区块）。 */
-function ReasoningBlock({ items, streaming, activeAgent, activeStatus, flowAgents }: { items: Array<{ agent: string; content: string }> | string[]; streaming?: boolean; activeAgent?: string | null; activeStatus?: string; flowAgents?: string[] }) {
+/** 思考过程区块（DeepSeek 式独立区块）。条目4：run_ids 并集保留——前端合并与后端 _merge_mindchain 同款陷阱，重建时不得剥字段。 */
+function ReasoningBlock({ items, streaming, activeAgent, activeStatus, flowAgents }: { items: Array<{ agent: string; content: string; run_ids?: string[] }> | string[]; streaming?: boolean; activeAgent?: string | null; activeStatus?: string; flowAgents?: string[] }) {
   const merged = useMemo(() => {
-    const list = (items || []).map(it => typeof it === 'string' ? { agent: '', content: it } : it)
+    const list = (items || []).map(it => typeof it === 'string' ? { agent: '', content: it, run_ids: [] as string[] } : { ...it, run_ids: Array.from(new Set(it.run_ids || [])) })
       .filter(it => it.agent !== '运行统计')
-    return list.reduce<Array<{ agent: string; content: string }>>((acc, it) => {
+    return list.reduce<Array<{ agent: string; content: string; run_ids: string[] }>>((acc, it) => {
       const dn = displayAgent(it.agent)
       const last = acc[acc.length - 1]
       if (last && dn && displayAgent(last.agent) === dn) {
         if (it.content) last.content = (last.content ? last.content + '\n' : '') + it.content
+        for (const rid of it.run_ids) if (!last.run_ids.includes(rid)) last.run_ids.push(rid)
         return acc
       }
-      acc.push({ agent: it.agent, content: it.content })
+      acc.push({ agent: it.agent, content: it.content, run_ids: [...it.run_ids] })
       return acc
     }, [])
   }, [items])
   const [open, setOpen] = useState(true)
   // 块级折叠（5.2）：流式中非当前输出的 agent 块折叠为小标题行；完成后整块折叠
   const [folded, setFolded] = useState<Record<number, boolean>>({})
+  // 条目4：打开中的子agent窗口（null=关闭，否则为该条目的 run_ids 列表）
+  const [subOpen, setSubOpen] = useState<string[] | null>(null)
   const prevStreaming = useRef(streaming)
   useEffect(() => {
     if (streaming) {
@@ -314,6 +318,16 @@ function ReasoningBlock({ items, streaming, activeAgent, activeStatus, flowAgent
                   {isFolded && <span className="text-[9px] font-normal text-dim">（已折叠）</span>}
                 </button>
               )}
+              {/* 条目4：子agent入口按钮——点击打开只读运行窗口 */}
+              {it.run_ids && it.run_ids.length > 0 && (
+                <button
+                  onClick={() => setSubOpen(it.run_ids || null)}
+                  className="mb-1 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border border-[var(--accent)]/30 text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
+                  title="查看子 Agent 运行详情（主发指令/过程/报告）"
+                >
+                  🛰 子agent{it.run_ids.length > 1 ? ` ×${it.run_ids.length}` : ''}
+                </button>
+              )}
               {!isFolded && (
               <div className="text-[11px] leading-relaxed text-dim">
                 {streaming ? (
@@ -328,6 +342,7 @@ function ReasoningBlock({ items, streaming, activeAgent, activeStatus, flowAgent
           })}
         </div>
       )}
+      {subOpen && <SubAgentWindow runIds={subOpen} onClose={() => setSubOpen(null)} />}
     </div>
   )
 }
