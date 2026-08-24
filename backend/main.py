@@ -570,3 +570,15 @@ async def chat_stop(req: StopRequest):
     return {"status": "ok"}
 
 
+@app.get("/api/chat/subagent/{run_id}")
+async def chat_subagent_get(run_id: str):
+    """子agent运行档案事后拉档（条目4·回看通道）：SSE 实时事件之外按 run_id 读完整档案
+    （input 主发给子的指令 / events 过程事件序列 / output 最终报告）。不存在返回 404。"""
+    from fastapi import HTTPException
+    from services.subagent_runs import get_run
+    run = get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="run_not_found")
+    return {"run": run}
+
+
