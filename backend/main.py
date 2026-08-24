@@ -556,6 +556,12 @@ async def chat(req: ChatRequest):
                     yield f"data: {json.dumps({'type': 'thought_token', 'agent': agent, 'chunk': chunk})}\n\n"
                 elif msg[0] == "answer":
                     yield f"data: {json.dumps({'type': 'answer_token', 'chunk': msg[1]})}\n\n"
+                elif msg[0] == "subagent":
+                    # 条目4：信封转换——graph 内部载荷 {"type":"start|input|end"} 撞外层信封键，
+                    # 统一转 {"type":"subagent","event":"start|input|end", …} 下发前端
+                    _sp = dict(msg[1] or {})
+                    _sp["event"] = _sp.pop("type", "")
+                    yield f"data: {json.dumps({'type': 'subagent', **_sp})}\n\n"
                 elif msg[0] == "done":
                     result = msg[1]
                     # 跨模态检索命中的图片：随 done 回传前端渲染（图片本体已落盘 /uploads 静态目录）
