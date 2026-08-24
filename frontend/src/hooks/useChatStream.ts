@@ -269,21 +269,26 @@ export function useChatStream(args: UseChatStreamArgs) {
           setFlowAgents(prev => prev.includes(data.agent) ? prev : [...prev, data.agent])
           setFlowActiveAgent(data.agent)
           const c = data.chunk || ''
-          if (c === '`') {
-            fenceBufRef.current += '`'
-            if (fenceBufRef.current.length >= 3) { fenceInRef.current = !fenceInRef.current; fenceBufRef.current = '' }
-            return
+          // 围栏检测必须逐字扫描：SSE 改按 chunk 原样直传（faa44b1）后 chunk 常为多字，
+          // 旧写法 `if (c === '\`')` 只认单字块，多字 chunk 会整体漏判导致代码围栏失效
+          let appended = false
+          for (const ch of c) {
+            if (ch === '`') {
+              fenceBufRef.current += '`'
+              if (fenceBufRef.current.length >= 3) { fenceInRef.current = !fenceInRef.current; fenceBufRef.current = '' }
+              continue
+            }
+            fenceBufRef.current = ''
+            if (fenceInRef.current) continue
+            const cur = pendingMindRef.current
+            if (cur && cur.agent === data.agent) {
+              cur.text += ch
+            } else {
+              pendingMindRef.current = { agent: data.agent, text: ch }
+            }
+            appended = true
           }
-          fenceBufRef.current = ''
-          if (fenceInRef.current) return
-          if (!c) return
-          const cur = pendingMindRef.current
-          if (cur && cur.agent === data.agent) {
-            cur.text += c
-          } else {
-            pendingMindRef.current = { agent: data.agent, text: c }
-          }
-          ensureRevealLoop()
+          if (appended) ensureRevealLoop()
           return
         }
         if (data.type === 'answer_token') {
@@ -344,14 +349,29 @@ export function useChatStream(args: UseChatStreamArgs) {
         if (typingOn && streamedRef.current) {
           setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: finalContent, steps, think: thinkArr, special, retrievedImages, review }) }))
         } else if (typingOn) {
-          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: '', steps, think: thinkArr, special, retrievedImages, review }) }))
+          // 打字机必须钉住目标下标：isLoading 在动画结束前已复位，用户可再发消息——
+          // 旧写法盲写"数组末条"，会把旧回复的打字内容踩进新消息的占位气泡（真bug）
+          let typeIdx = -1
+          setAllMessages(prev => {
+            const next = upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: '', steps, think: thinkArr, special, retrievedImages, review })
+            typeIdx = next.length - 1
+            return { ...prev, [did || '']: next }
+          })
           let i = 0
           const iv = setInterval(() => {
             i += 3
             const chunk = finalContent.slice(0, i)
             setAllMessages(prev => {
               const arr = [...(prev[did || ''] || [])]
-              if (arr.length) arr[arr.length - 1] = { role: 'assistant', content: chunk, steps, think: thinkArr, special, retrievedImages, review }
+              const tgt = arr[typeIdx]
+              if (!tgt || tgt.role !== 'assistant') { clearInterval(iv); return prev }
+              if (arr.length !== typeIdx + 1) {
+                // 打字期间插入了新消息：本条立即终稿化并停表，绝不越过下标乱写
+                clearInterval(iv)
+                arr[typeIdx] = { role: 'assistant', content: finalContent, steps, think: thinkArr, special, retrievedImages, review }
+                return { ...prev, [did || '']: arr }
+              }
+              arr[typeIdx] = { role: 'assistant', content: chunk, steps, think: thinkArr, special, retrievedImages, review }
               return { ...prev, [did || '']: arr }
             })
             if (i >= finalContent.length) clearInterval(iv)
