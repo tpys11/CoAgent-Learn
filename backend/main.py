@@ -346,6 +346,49 @@ def _five_round_hook(pid: str, did: str):
         logger.exception("五轮对话传递失败 did=%s", did)
 
 
+def _queue_msg_to_sse(msg) -> tuple[str, bool]:
+    """token_queue 消息 → (SSE data 行文本, 是否终止流循环)。纯映射无 IO（闭环D·切片1 外移）。
+    未知消息类型返回空串继续循环（保守：不因未知类型中断用户连接）。"""
+    kind = msg[0]
+    if kind == "step":
+        return f"data: {json.dumps({'type': 'step', 'agent': msg[1]})}\n\n", False
+    if kind == "token":
+        _, agent, chunk = msg
+        return f"data: {json.dumps({'type': 'thought_token', 'agent': agent, 'chunk': chunk})}\n\n", False
+    if kind == "answer":
+        return f"data: {json.dumps({'type': 'answer_token', 'chunk': msg[1]})}\n\n", False
+    if kind == "subagent":
+        # 条目4：信封转换——graph 内部载荷 {"type":"start|input|end"} 撞外层信封键，
+        # 统一转 {"type":"subagent","event":"start|input|end", …} 下发前端
+        _sp = dict(msg[1] or {})
+        _sp["event"] = _sp.pop("type", "")
+        return f"data: {json.dumps({'type': 'subagent', **_sp})}\n\n", False
+    if kind == "done":
+        result = msg[1]
+        # 跨模态检索命中的图片：随 done 回传前端渲染（图片本体已落盘 /uploads 静态目录）
+        retrieved_images = []
+        for _k in (result.get("knowledge") or []):
+            if isinstance(_k, dict) and _k.get("kind") == "image":
+                _meta = _k.get("metadata") or {}
+                retrieved_images.append({
+                    "source": _meta.get("source", ""),
+                    "content": (_k.get("content") or "")[:240],
+                    "file_path": _meta.get("file_path", ""),
+                    "mime": _meta.get("mime", ""),
+                })
+        frame = {
+            "type": "done", "reply": result.get("final_reply", "处理完成"),
+            "steps": result.get("steps", []), "mindchain": result.get("mindchain", []),
+            "task_stats": result.get("task_stats", {}),
+            "special_suggestions": result.get("special_suggestions", []),
+            "retrieved_images": retrieved_images, "review": result.get("reviewed"),
+        }
+        return f"data: {json.dumps(frame)}\n\n", True
+    if kind == "error":
+        return f"data: {json.dumps({'type': 'error', 'message': msg[1]})}\n\n", True
+    return "", False
+
+
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
     # 画像守卫：新对话画像未合成完成时禁发（前端同步禁用发送按钮）——必须在 SSE 流开始前检查
@@ -551,36 +594,10 @@ async def chat(req: ChatRequest):
                     await asyncio.sleep(0.05)
                     yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
                     continue
-                if msg[0] == "step":
-                    yield f"data: {json.dumps({'type': 'step', 'agent': msg[1]})}\n\n"
-                elif msg[0] == "token":
-                    _, agent, chunk = msg
-                    yield f"data: {json.dumps({'type': 'thought_token', 'agent': agent, 'chunk': chunk})}\n\n"
-                elif msg[0] == "answer":
-                    yield f"data: {json.dumps({'type': 'answer_token', 'chunk': msg[1]})}\n\n"
-                elif msg[0] == "subagent":
-                    # 条目4：信封转换——graph 内部载荷 {"type":"start|input|end"} 撞外层信封键，
-                    # 统一转 {"type":"subagent","event":"start|input|end", …} 下发前端
-                    _sp = dict(msg[1] or {})
-                    _sp["event"] = _sp.pop("type", "")
-                    yield f"data: {json.dumps({'type': 'subagent', **_sp})}\n\n"
-                elif msg[0] == "done":
-                    result = msg[1]
-                    # 跨模态检索命中的图片：随 done 回传前端渲染（图片本体已落盘 /uploads 静态目录）
-                    retrieved_images = []
-                    for _k in (result.get("knowledge") or []):
-                        if isinstance(_k, dict) and _k.get("kind") == "image":
-                            _meta = _k.get("metadata") or {}
-                            retrieved_images.append({
-                                "source": _meta.get("source", ""),
-                                "content": (_k.get("content") or "")[:240],
-                                "file_path": _meta.get("file_path", ""),
-                                "mime": _meta.get("mime", ""),
-                            })
-                    yield f"data: {json.dumps({'type': 'done', 'reply': result.get('final_reply', '处理完成'), 'steps': result.get('steps', []), 'mindchain': result.get('mindchain', []), 'task_stats': result.get('task_stats', {}), 'special_suggestions': result.get('special_suggestions', []), 'retrieved_images': retrieved_images, 'review': result.get('reviewed')})}\n\n"
-                    break
-                elif msg[0] == "error":
-                    yield f"data: {json.dumps({'type': 'error', 'message': msg[1]})}\n\n"
+                text, stop = _queue_msg_to_sse(msg)
+                if text:
+                    yield text
+                if stop:
                     break
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
