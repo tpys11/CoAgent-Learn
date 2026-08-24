@@ -4,6 +4,7 @@ import type { AgentConfig, Message, Dialogue, ReviewResult } from '../types'
 import { streamChatResponse, type ChatEvent } from '../sse'
 import { LS, lsGet, lsGetJSON, lsSetJSON } from '../storage'
 import { api } from '../api'
+import { subagentStore } from '../stores/subagentStore'
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 
@@ -148,7 +149,7 @@ export function useChatStream(args: UseChatStreamArgs) {
       setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'assistant', content: '' }] }))
     }
     setIsLoading(true)
-    if (!continuing) { setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = [] }
+    if (!continuing) { setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = []; subagentStore.reset() }
     setFlowStatus('正在等待模型响应…')
     setFlowActiveAgent(null)
     streamedRef.current = false
@@ -290,6 +291,11 @@ export function useChatStream(args: UseChatStreamArgs) {
             pendingAnswerRef.current += ch
             ensureRevealLoop()
           }
+          return
+        }
+        if (data.type === 'subagent') {
+          // 条目4：子agent实时事件 → 外置仓库（SubAgentWindow 经 useSyncExternalStore 订阅直播）
+          subagentStore.applySse(data)
           return
         }
         if (data.type === 'done') {
