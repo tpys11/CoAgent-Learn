@@ -9,7 +9,7 @@ def _as_dict(data):
     if isinstance(data, str):
         try:
             return _json.loads(data)
-        except Exception:
+        except _json.JSONDecodeError:
             return {}
     return {}
 
@@ -21,14 +21,14 @@ def extract_json_obj(text: str) -> dict:
     try:
         d = _json.loads(text)
         return d if isinstance(d, dict) else {}
-    except Exception:
+    except _json.JSONDecodeError:
         pass
     m = _re.search(r"\{[\s\S]*\}", text)
     if m:
         try:
             d = _json.loads(m.group(0))
             return d if isinstance(d, dict) else {}
-        except Exception:
+        except _json.JSONDecodeError:
             pass
     return {}
 

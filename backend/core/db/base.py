@@ -478,8 +478,8 @@ class SQLiteClient:
         """)
         try:
             self.execute("ALTER TABLE projects ADD COLUMN simple INTEGER DEFAULT 0")
-        except Exception:
-            pass
+        except sqlite3.OperationalError:
+            pass  # 幂等迁移：列已存在
         self.execute("""
             CREATE TABLE IF NOT EXISTS dialogue_memories (
                 dialogue_id TEXT PRIMARY KEY,
@@ -549,8 +549,8 @@ class SQLiteClient:
         ]:
             try:
                 self.execute("ALTER TABLE resources ADD COLUMN " + _col + " " + _ddl)
-            except Exception:
-                pass
+            except sqlite3.OperationalError:
+                pass  # 幂等迁移：列已存在
         self.execute("""
             CREATE TABLE IF NOT EXISTS dialogues (
                 id TEXT PRIMARY KEY,
@@ -567,14 +567,14 @@ class SQLiteClient:
         for _col, _ddl in [("summary", "TEXT DEFAULT ''"), ("compressed_upto", "INTEGER DEFAULT 0")]:
             try:
                 self.execute("ALTER TABLE dialogues ADD COLUMN " + _col + " " + _ddl)
-            except Exception:
-                pass
+            except sqlite3.OperationalError:
+                pass  # 幂等迁移：列已存在
         # 兼容旧库：对话级学情画像缓存（合成后注入，未完成禁发）
         for _col, _ddl in [("profile", "TEXT DEFAULT ''"), ("profile_status", "TEXT DEFAULT 'ready'")]:
             try:
                 self.execute("ALTER TABLE dialogues ADD COLUMN " + _col + " " + _ddl)
-            except Exception:
-                pass
+            except sqlite3.OperationalError:
+                pass  # 幂等迁移：列已存在
         self.execute("CREATE INDEX IF NOT EXISTS idx_dialogues_project ON dialogues (project_id, created_at)")
         self.execute("""
             CREATE TABLE IF NOT EXISTS messages (
@@ -589,8 +589,8 @@ class SQLiteClient:
         try:
             # 兼容旧库：思维链列（{agent, content}[] 的 JSON）
             self.execute("ALTER TABLE messages ADD COLUMN think TEXT DEFAULT ''")
-        except Exception:
-            pass
+        except sqlite3.OperationalError:
+            pass  # 幂等迁移：列已存在
         self.execute("CREATE INDEX IF NOT EXISTS idx_messages_dialogue ON messages (dialogue_id, created_at)")
         self.execute("""
             CREATE TABLE IF NOT EXISTS global_profile (

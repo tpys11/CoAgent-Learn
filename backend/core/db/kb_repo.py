@@ -77,7 +77,7 @@ class KbRepo:
                 continue
             try:
                 t = _json.loads(r["tree"])
-            except Exception:
+            except _json.JSONDecodeError:
                 continue
             if isinstance(t, list):
                 out.append({"source": r.get("source"), "tree": t})

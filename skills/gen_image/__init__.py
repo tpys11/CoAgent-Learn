@@ -86,14 +86,14 @@ def search_images(query: str, limit: int = 2) -> list:
         resp.raise_for_status()
         results.extend(_parse_wikimedia(resp.json()))
     except Exception:
-        pass
+        pass  # 边界处保留宽口径（含内建网络异常族）：主源败转 Openverse 备源
     if not results:
         try:
             resp = requests.get(_OPENVERSE_URL, params={"q": kw, "page_size": 5}, headers=_UA, timeout=8)
             resp.raise_for_status()
             results.extend(_parse_openverse(resp.json()))
         except Exception:
-            pass
+            pass  # 边界处保留宽口径：备源也败返回空，由调用方兜底
     return _dedupe(results)[:limit]
 
 

@@ -101,7 +101,7 @@ def embed_images(md: str, searcher=None, max_images: int = _MAX_IMAGES) -> str:
                 kw, hits = f.result(timeout=8)
                 results[kw] = hits
             except Exception:
-                pass
+                pass  # 边界处保留宽口径：单关键词搜图失败仅缺该图，报告照常产出
 
     return replace_image_markers(md, lambda kw, limit=1: results.get(kw, []))
 
