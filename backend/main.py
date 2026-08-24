@@ -346,6 +346,188 @@ def _five_round_hook(pid: str, did: str):
         logger.exception("五轮对话传递失败 did=%s", did)
 
 
+def _chat_workflow_worker(req, token_queue, cancel_evt, request_id):
+    """工作流线程体（闭环D·切片2 自 /api/chat 外移；逻辑逐字未改）。
+    职责：自动档设置→模板编排→建workflow→存用户消息→记忆分支→invoke→done/error 入队。
+    流后落库/统计/后台任务由本函数内 _persist 与 submit 承担。"""
+    try:
+        from agents.graph import create_workflow
+
+        # step 帧去重：每个 agent 首个 token 前发一次 step
+        _seen_agents: set = set()
+
+        def on_token(agent_name: str, chunk: str):
+            if agent_name not in _seen_agents:
+                _seen_agents.add(agent_name)
+                token_queue.put(("step", agent_name))
+            # 按 chunk 原样入队（速度修复）：逐字拆帧曾把吞吐掐死在传输层；
+            # 平滑交给前端 reveal 自适应排水——慢到哪显示到哪，快则贴模型原生速度
+            if chunk:
+                token_queue.put(("token", agent_name, chunk))
+
+        def on_subagent(payload: dict):
+            # 条目4：子agent实时事件入队（start/input/delta/end），SSE 消费侧转 data 帧
+            token_queue.put(("subagent", payload))
+
+        # Auto / 模型 Auto：AI 读取输入自动推断设置（模型 Auto 同时推断模型）
+        _settings = dict(req.settings or {})
+        _model = req.model
+        _tpl0 = _settings.get("template") or "思考"
+        if _settings.get("modelAuto") or _settings.get("auto"):
+            # run_workflow 在独立线程执行：同步 LLM 调用不阻塞事件循环，无需 run_in_threadpool
+            _auto = _auto_settings(req.api_key, req.message, _tpl0, infer_model=bool(_settings.get("modelAuto")))
+            if _auto:
+                _settings.update(_auto)
+                if _auto.get("model"):
+                    _model = _auto["model"]
+        # 模板模式：按所选模板调整 agents（基础 = 不调整）
+        _tpl = _settings.get("template") or "思考"
+        _agents = _apply_template(req.agents, _tpl)
+        wf = create_workflow(req.api_key, _settings, on_token, model=_model, base_url=req.base_url, agents=_agents,
+                             on_answer=lambda piece: token_queue.put(("answer", piece)) if piece else None, cancel_event=cancel_evt,
+                             on_subagent=on_subagent)
+        pid = req.project_id or "default"
+        _did = req.dialogue_id or "default"
+        # 先存用户消息（invoke 时 generate_node 才能读到）
+        try:
+            from core.postgres_client import pg_client as _pg
+            _exist=_pg.execute("SELECT id FROM dialogues WHERE id=%s",(_did,))
+            if not _exist:
+                _pg.execute("INSERT INTO dialogues(id,project_id,session_id,name) VALUES(%s,%s,%s,%s)",(_did,pid,req.session_id or "default","新对话"))
+            _pg.execute("INSERT INTO messages(dialogue_id,role,content) VALUES(%s,%s,%s)",(_did,"user",req.message))
+        except Exception:
+            logger.exception("保存用户消息失败 did=%s", _did)
+        # 记忆修改分支：[模块名] 引用 → 由 AI 分析修改记忆，不走多 Agent 流程
+        try:
+            _edit = memory_edit(req.api_key, req.message, pid, req.session_id or "default")
+        except Exception:
+            _edit = None
+            logger.exception("记忆修改分析失败")
+        if _edit:
+            _reply2 = _edit["reply"]
+            try:
+                from core.postgres_client import pg_client as _pg2
+                _pg2.execute("INSERT INTO messages(dialogue_id,role,content,think) VALUES(%s,%s,%s,%s)", (_did, "assistant", _reply2, ""))
+            except Exception:
+                logger.exception("保存记忆修改回复失败 did=%s", _did)
+            _five_round_hook(pid, _did)
+            token_queue.put(("done", {"final_reply": _reply2, "steps": _edit["steps"], "mindchain": [], "task_stats": {}}))
+            return
+        import time as _time
+        _t0 = _time.time()
+        _msg = _parse_special_inputs(req.message)
+        _pre = _build_preloaded(pid, _did, _msg)
+        result = wf.invoke({"user_input": _msg, "project_id": pid, "dialogue_id": _did, "session_id": req.session_id or "default", "mode": req.mode or "kb", "image": req.image or "", "steps": [], "mindchain": [], "preloaded": _pre})
+        # 用户手动停止：不落库、不执行记忆/追问等后处理（前端已保留流式显示内容；避免旧线程与新消息乱序/竞态）
+        # 必须发一个带空 reply 的 done 让 SSE 主循环 break，否则主循环无限心跳、前端永久卡"正在输出回答…"
+        if cancel_evt.is_set():
+            token_queue.put(("done", {"final_reply": "", "steps": [], "mindchain": [], "task_stats": {}}))
+            return
+        # 资源生成建议（M10 触发条件-模型判断）：normal 未取消时 flash 判断回答适合哪些形式；simple/失败返回 []
+        if result.get("complexity") != "simple":
+            result["special_suggestions"] = suggest_special_forms(req.api_key, result.get("final_reply", ""), req.base_url)
+        else:
+            result["special_suggestions"] = []
+        # 思维链处理：合并同名 agent 的连续条目（同一 agent 规划→生成只显示一个标题）；
+        # 简单问题在 plan_node 已不产出思维链（mindchain 为空），此处合并后仍为空，前端不展示
+        result["mindchain"] = _merge_mindchain(result.get("mindchain") or [])
+        # 立即发 done（回复已完整）：stats/focus_log/task_stats/落库等写入移到后台线程，
+        # 避免 Windows 挂载卷上 SQLite 瞬时锁阻塞 done → 前端状态卡"正在输出回答"、发送键不复位
+        # （task_stats/messages 落库 + autoSaveResource 已由下方后台 _persist() 线程承担）
+        token_queue.put(("done", result))
+        def _persist():
+            import time as _time2
+            # 五轮对话→课程记忆钩子（4.2）：COUNT 用户消息 %5==0 触发传递+进度条（进度条唯一更新逻辑）
+            try:
+                _five_round_hook(pid, _did)
+            except Exception:
+                logger.exception("五轮对话传递钩子异常 did=%s", _did)
+            # 专注时长：本次任务完成，累加进项目 stats（可视化反馈：专注时长 + token 用量）
+            try:
+                from core.postgres_client import pg_client as _pg4
+                _dur = max(0, int(_time2.time() - _t0))
+                _srow = _pg4.execute("SELECT id, duration_seconds FROM stats WHERE project_id=%s ORDER BY updated_at DESC LIMIT 1", (pid,))
+                if _srow:
+                    _pg4.execute("UPDATE stats SET duration_seconds=%s, updated_at=datetime('now') WHERE id=%s",
+                                 ((_srow[0]["duration_seconds"] or 0) + _dur, _srow[0]["id"]))
+                else:
+                    _pg4.execute("INSERT INTO stats(project_id, duration_seconds) VALUES(%s,%s)", (pid, _dur))
+                # 按天落库：主页趋势图（专注时长·最近30天）数据源
+                if _dur > 0:
+                    _pg4.execute("INSERT INTO focus_log(project_id, dialogue_id, duration_seconds) VALUES(%s,%s,%s)", (pid, _did, _dur))
+            except Exception as _e:
+                logger.exception("累计专注时长失败 did=%s", _did)
+            # 记录本次任务的运行统计（Agent 界面·运行监控）
+            try:
+                import json as _json2
+                from core.postgres_client import pg_client as _pg2
+                _ts = result.get("task_stats") or {}
+                if _ts:
+                    _pg2.execute("INSERT INTO task_stats(project_id,dialogue_id,data) VALUES(%s,%s,%s)",
+                                 (pid, _did, _json2.dumps(_ts, ensure_ascii=False)))
+            except Exception as _e:
+                logger.exception("保存运行统计失败 did=%s", _did)
+            # invoke 后存 AI 回复（含思维链 mindchain 落库，刷新后保留）
+            try:
+                import json as _json3
+                from core.postgres_client import pg_client as _pg
+                _reply=result.get("final_reply","")
+                if _reply:
+                    _think = _json3.dumps(result.get("mindchain") or [], ensure_ascii=False)
+                    _pg.execute("INSERT INTO messages(dialogue_id,role,content,think) VALUES(%s,%s,%s,%s)",(_did,"assistant",_reply,_think))
+            except Exception as _e:
+                logger.exception("保存 AI 回复失败 did=%s", _did)
+            # 自动保存生成物到"我的上传"（设置开关 autoSaveResource）
+            if req.settings and req.settings.get('autoSaveResource') and result.get("final_reply"):
+                try:
+                    import hashlib as _hl
+                    from core.postgres_client import pg_client as _pg3
+                    _fr = result.get("final_reply","")
+                    # 垃圾过滤：报错/系统提示/太短的寒暄不入资源表
+                    _head = _fr.strip()[:40]
+                    _junk = (
+                        "生成内容时出现错误" in _head
+                        or _head.startswith("⚠️")
+                        or _head.startswith("（系统未生成内容）")
+                        or len(_fr.strip()) < 120
+                    )
+                    if not _junk:
+                        _nm = "对话生成·" + _fr.strip()[:14]
+                        _rid = _hl.md5((_nm + pid).encode()).hexdigest()[:16]
+                        _has = _pg3.execute("SELECT id FROM resources WHERE id=%s", (_rid,))
+                        if _has:
+                            _pg3.execute("UPDATE resources SET content=%s WHERE id=%s", (_fr, _rid))
+                        else:
+                            _pg3.execute("INSERT INTO resources (id, name, content, project_id) VALUES (%s,%s,%s,%s)", (_rid, _nm, _fr, pid))
+                except Exception as _e:
+                    logger.exception("自动保存生成物失败 did=%s", _did)
+        submit(_persist)
+# 后台异步分析记忆 + 生成追问（开关可配）
+        try:
+            reply = result.get("final_reply", "")
+            if reply:
+                from core.memory_service import compress_dialogue, distill_memory, generate_followups
+                from core.postgres_client import pg_client
+                submit(distill_memory, req.api_key, pid, _did, pg_client, req.session_id or "default")
+                # 上下文自动压缩：token 预算制（后台，用户无感知）
+                submit(compress_dialogue, req.api_key, _did, pg_client)
+                if not (req.settings and req.settings.get('autoFollowups') is False):
+                    submit(generate_followups, req.api_key, pid, _did, pg_client, req.followup_focus or "purpose")
+                # 主对话完成后同步为第二对话生成横向拓展/闲聊追问（第二对话发送时不会带 extra 字段，互不影响）
+                if req.extra_followup_did:
+                    try:
+                        submit(generate_followups, req.api_key, pid, req.extra_followup_did, pg_client, req.extra_followup_focus or "expand")
+                    except Exception:
+                        logger.exception("启动第二对话追问失败 did=%s", req.extra_followup_did)
+        except Exception:
+            logger.exception("启动后台记忆/压缩/追问任务失败 did=%s", _did)
+    except Exception as e:
+        token_queue.put(("error", str(e)))
+    finally:
+        _active_cancels.pop(request_id, None)
+
+
+
 def _queue_msg_to_sse(msg) -> tuple[str, bool]:
     """token_queue 消息 → (SSE data 行文本, 是否终止流循环)。纯映射无 IO（闭环D·切片1 外移）。
     未知消息类型返回空串继续循环（保守：不因未知类型中断用户连接）。"""
@@ -400,7 +582,6 @@ async def chat(req: ChatRequest):
             raise HTTPException(status_code=409, detail="profile_pending")
     async def stream():
         try:
-            from agents.graph import create_workflow
             import queue, threading, asyncio
             from core.background import submit
             token_queue = queue.Queue()
@@ -410,181 +591,7 @@ async def chat(req: ChatRequest):
             cancel_evt = threading.Event()
             _active_cancels[request_id] = cancel_evt
 
-            _seen_agents = set()
-
-            def on_token(agent_name: str, chunk: str):
-                if agent_name not in _seen_agents:
-                    _seen_agents.add(agent_name)
-                    token_queue.put(("step", agent_name))
-                # 按 chunk 原样入队（速度修复）：逐字拆帧曾把吞吐掐死在传输层；
-                # 平滑交给前端 reveal 自适应排水——慢到哪显示到哪，快则贴模型原生速度
-                if chunk:
-                    token_queue.put(("token", agent_name, chunk))
-
-            def on_subagent(payload: dict):
-                # 条目4：子agent实时事件入队（start/input/delta/end），SSE 消费侧转 data 帧
-                token_queue.put(("subagent", payload))
-
-            def run_workflow():
-                try:
-                    # Auto / 模型 Auto：AI 读取输入自动推断设置（模型 Auto 同时推断模型）
-                    _settings = dict(req.settings or {})
-                    _model = req.model
-                    _tpl0 = _settings.get("template") or "思考"
-                    if _settings.get("modelAuto") or _settings.get("auto"):
-                        # run_workflow 在独立线程执行：同步 LLM 调用不阻塞事件循环，无需 run_in_threadpool
-                        _auto = _auto_settings(req.api_key, req.message, _tpl0, infer_model=bool(_settings.get("modelAuto")))
-                        if _auto:
-                            _settings.update(_auto)
-                            if _auto.get("model"):
-                                _model = _auto["model"]
-                    # 模板模式：按所选模板调整 agents（基础 = 不调整）
-                    _tpl = _settings.get("template") or "思考"
-                    _agents = _apply_template(req.agents, _tpl)
-                    wf = create_workflow(req.api_key, _settings, on_token, model=_model, base_url=req.base_url, agents=_agents,
-                                         on_answer=lambda piece: token_queue.put(("answer", piece)) if piece else None, cancel_event=cancel_evt,
-                                         on_subagent=on_subagent)
-                    pid = req.project_id or "default"
-                    _did = req.dialogue_id or "default"
-                    # 先存用户消息（invoke 时 generate_node 才能读到）
-                    try:
-                        from core.postgres_client import pg_client as _pg
-                        _exist=_pg.execute("SELECT id FROM dialogues WHERE id=%s",(_did,))
-                        if not _exist:
-                            _pg.execute("INSERT INTO dialogues(id,project_id,session_id,name) VALUES(%s,%s,%s,%s)",(_did,pid,req.session_id or "default","新对话"))
-                        _pg.execute("INSERT INTO messages(dialogue_id,role,content) VALUES(%s,%s,%s)",(_did,"user",req.message))
-                    except Exception:
-                        logger.exception("保存用户消息失败 did=%s", _did)
-                    # 记忆修改分支：[模块名] 引用 → 由 AI 分析修改记忆，不走多 Agent 流程
-                    try:
-                        _edit = memory_edit(req.api_key, req.message, pid, req.session_id or "default")
-                    except Exception:
-                        _edit = None
-                        logger.exception("记忆修改分析失败")
-                    if _edit:
-                        _reply2 = _edit["reply"]
-                        try:
-                            from core.postgres_client import pg_client as _pg2
-                            _pg2.execute("INSERT INTO messages(dialogue_id,role,content,think) VALUES(%s,%s,%s,%s)", (_did, "assistant", _reply2, ""))
-                        except Exception:
-                            logger.exception("保存记忆修改回复失败 did=%s", _did)
-                        _five_round_hook(pid, _did)
-                        token_queue.put(("done", {"final_reply": _reply2, "steps": _edit["steps"], "mindchain": [], "task_stats": {}}))
-                        return
-                    import time as _time
-                    _t0 = _time.time()
-                    _msg = _parse_special_inputs(req.message)
-                    _pre = _build_preloaded(pid, _did, _msg)
-                    result = wf.invoke({"user_input": _msg, "project_id": pid, "dialogue_id": _did, "session_id": req.session_id or "default", "mode": req.mode or "kb", "image": req.image or "", "steps": [], "mindchain": [], "preloaded": _pre})
-                    # 用户手动停止：不落库、不执行记忆/追问等后处理（前端已保留流式显示内容；避免旧线程与新消息乱序/竞态）
-                    # 必须发一个带空 reply 的 done 让 SSE 主循环 break，否则主循环无限心跳、前端永久卡"正在输出回答…"
-                    if cancel_evt.is_set():
-                        token_queue.put(("done", {"final_reply": "", "steps": [], "mindchain": [], "task_stats": {}}))
-                        return
-                    # 资源生成建议（M10 触发条件-模型判断）：normal 未取消时 flash 判断回答适合哪些形式；simple/失败返回 []
-                    if result.get("complexity") != "simple":
-                        result["special_suggestions"] = suggest_special_forms(req.api_key, result.get("final_reply", ""), req.base_url)
-                    else:
-                        result["special_suggestions"] = []
-                    # 思维链处理：合并同名 agent 的连续条目（同一 agent 规划→生成只显示一个标题）；
-                    # 简单问题在 plan_node 已不产出思维链（mindchain 为空），此处合并后仍为空，前端不展示
-                    result["mindchain"] = _merge_mindchain(result.get("mindchain") or [])
-                    # 立即发 done（回复已完整）：stats/focus_log/task_stats/落库等写入移到后台线程，
-                    # 避免 Windows 挂载卷上 SQLite 瞬时锁阻塞 done → 前端状态卡"正在输出回答"、发送键不复位
-                    # （task_stats/messages 落库 + autoSaveResource 已由下方后台 _persist() 线程承担）
-                    token_queue.put(("done", result))
-                    def _persist():
-                        import time as _time2
-                        # 五轮对话→课程记忆钩子（4.2）：COUNT 用户消息 %5==0 触发传递+进度条（进度条唯一更新逻辑）
-                        try:
-                            _five_round_hook(pid, _did)
-                        except Exception:
-                            logger.exception("五轮对话传递钩子异常 did=%s", _did)
-                        # 专注时长：本次任务完成，累加进项目 stats（可视化反馈：专注时长 + token 用量）
-                        try:
-                            from core.postgres_client import pg_client as _pg4
-                            _dur = max(0, int(_time2.time() - _t0))
-                            _srow = _pg4.execute("SELECT id, duration_seconds FROM stats WHERE project_id=%s ORDER BY updated_at DESC LIMIT 1", (pid,))
-                            if _srow:
-                                _pg4.execute("UPDATE stats SET duration_seconds=%s, updated_at=datetime('now') WHERE id=%s",
-                                             ((_srow[0]["duration_seconds"] or 0) + _dur, _srow[0]["id"]))
-                            else:
-                                _pg4.execute("INSERT INTO stats(project_id, duration_seconds) VALUES(%s,%s)", (pid, _dur))
-                            # 按天落库：主页趋势图（专注时长·最近30天）数据源
-                            if _dur > 0:
-                                _pg4.execute("INSERT INTO focus_log(project_id, dialogue_id, duration_seconds) VALUES(%s,%s,%s)", (pid, _did, _dur))
-                        except Exception as _e:
-                            logger.exception("累计专注时长失败 did=%s", _did)
-                        # 记录本次任务的运行统计（Agent 界面·运行监控）
-                        try:
-                            import json as _json2
-                            from core.postgres_client import pg_client as _pg2
-                            _ts = result.get("task_stats") or {}
-                            if _ts:
-                                _pg2.execute("INSERT INTO task_stats(project_id,dialogue_id,data) VALUES(%s,%s,%s)",
-                                             (pid, _did, _json2.dumps(_ts, ensure_ascii=False)))
-                        except Exception as _e:
-                            logger.exception("保存运行统计失败 did=%s", _did)
-                        # invoke 后存 AI 回复（含思维链 mindchain 落库，刷新后保留）
-                        try:
-                            import json as _json3
-                            from core.postgres_client import pg_client as _pg
-                            _reply=result.get("final_reply","")
-                            if _reply:
-                                _think = _json3.dumps(result.get("mindchain") or [], ensure_ascii=False)
-                                _pg.execute("INSERT INTO messages(dialogue_id,role,content,think) VALUES(%s,%s,%s,%s)",(_did,"assistant",_reply,_think))
-                        except Exception as _e:
-                            logger.exception("保存 AI 回复失败 did=%s", _did)
-                        # 自动保存生成物到"我的上传"（设置开关 autoSaveResource）
-                        if req.settings and req.settings.get('autoSaveResource') and result.get("final_reply"):
-                            try:
-                                import hashlib as _hl
-                                from core.postgres_client import pg_client as _pg3
-                                _fr = result.get("final_reply","")
-                                # 垃圾过滤：报错/系统提示/太短的寒暄不入资源表
-                                _head = _fr.strip()[:40]
-                                _junk = (
-                                    "生成内容时出现错误" in _head
-                                    or _head.startswith("⚠️")
-                                    or _head.startswith("（系统未生成内容）")
-                                    or len(_fr.strip()) < 120
-                                )
-                                if not _junk:
-                                    _nm = "对话生成·" + _fr.strip()[:14]
-                                    _rid = _hl.md5((_nm + pid).encode()).hexdigest()[:16]
-                                    _has = _pg3.execute("SELECT id FROM resources WHERE id=%s", (_rid,))
-                                    if _has:
-                                        _pg3.execute("UPDATE resources SET content=%s WHERE id=%s", (_fr, _rid))
-                                    else:
-                                        _pg3.execute("INSERT INTO resources (id, name, content, project_id) VALUES (%s,%s,%s,%s)", (_rid, _nm, _fr, pid))
-                            except Exception as _e:
-                                logger.exception("自动保存生成物失败 did=%s", _did)
-                    submit(_persist)
-# 后台异步分析记忆 + 生成追问（开关可配）
-                    try:
-                        reply = result.get("final_reply", "")
-                        if reply:
-                            from core.memory_service import compress_dialogue, distill_memory, generate_followups
-                            from core.postgres_client import pg_client
-                            submit(distill_memory, req.api_key, pid, _did, pg_client, req.session_id or "default")
-                            # 上下文自动压缩：token 预算制（后台，用户无感知）
-                            submit(compress_dialogue, req.api_key, _did, pg_client)
-                            if not (req.settings and req.settings.get('autoFollowups') is False):
-                                submit(generate_followups, req.api_key, pid, _did, pg_client, req.followup_focus or "purpose")
-                            # 主对话完成后同步为第二对话生成横向拓展/闲聊追问（第二对话发送时不会带 extra 字段，互不影响）
-                            if req.extra_followup_did:
-                                try:
-                                    submit(generate_followups, req.api_key, pid, req.extra_followup_did, pg_client, req.extra_followup_focus or "expand")
-                                except Exception:
-                                    logger.exception("启动第二对话追问失败 did=%s", req.extra_followup_did)
-                    except Exception:
-                        logger.exception("启动后台记忆/压缩/追问任务失败 did=%s", _did)
-                except Exception as e:
-                    token_queue.put(("error", str(e)))
-                finally:
-                    _active_cancels.pop(request_id, None)
-
-            threading.Thread(target=run_workflow, daemon=True).start()
+            threading.Thread(target=_chat_workflow_worker, args=(req, token_queue, cancel_evt, request_id), daemon=True).start()
             yield f"data: {json.dumps({'type': 'start', 'request_id': request_id})}\n\n"
             while True:
                 try:
