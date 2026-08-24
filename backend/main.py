@@ -372,9 +372,10 @@ async def chat(req: ChatRequest):
                 if agent_name not in _seen_agents:
                     _seen_agents.add(agent_name)
                     token_queue.put(("step", agent_name))
-                # 拆字推送：chunk 拆成单字（含空白）逐字入队——前端"到达即显示"，逐字且速度=模型速度，无积压
-                for _c in chunk:
-                    token_queue.put(("token", agent_name, _c))
+                # 按 chunk 原样入队（速度修复）：逐字拆帧曾把吞吐掐死在传输层；
+                # 平滑交给前端 reveal 自适应排水——慢到哪显示到哪，快则贴模型原生速度
+                if chunk:
+                    token_queue.put(("token", agent_name, chunk))
 
             def on_subagent(payload: dict):
                 # 条目4：子agent实时事件入队（start/input/delta/end），SSE 消费侧转 data 帧
@@ -397,7 +398,7 @@ async def chat(req: ChatRequest):
                     _tpl = _settings.get("template") or "思考"
                     _agents = _apply_template(req.agents, _tpl)
                     wf = create_workflow(req.api_key, _settings, on_token, model=_model, base_url=req.base_url, agents=_agents,
-                                         on_answer=lambda piece: [token_queue.put(("answer", _c)) for _c in piece], cancel_event=cancel_evt,
+                                         on_answer=lambda piece: token_queue.put(("answer", piece)) if piece else None, cancel_event=cancel_evt,
                                          on_subagent=on_subagent)
                     pid = req.project_id or "default"
                     _did = req.dialogue_id or "default"
