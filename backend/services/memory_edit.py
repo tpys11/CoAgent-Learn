@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
-"""记忆编辑：检测 [模块名] 引用 → AI 分析并修改记忆。"""
+"""记忆编辑：检测 [模块名] 引用 → AI 分析并修改记忆。
+闭环A（2026-08-25）：读写全部收敛到 core/db/memory_repo.py，文件内不再有裸 SQL；
+数组字段归一化两路径统一；session 归一为「传入值或 default」。"""
 import json
 import re
 
@@ -8,6 +10,14 @@ from core.helpers import _as_dict, extract_json_obj
 
 GLOBAL_MEM_KEYS = ["身份", "学习目标", "擅长领域", "学习方式", "兴趣方向", "补充信息"]
 PROJECT_MEM_KEYS = ["抽象目的", "抽象项目情况", "起点", "当前水平", "目标", "偏好", "知识点", "难点", "薄弱点", "兴趣"]
+_ARRAY_KEYS = {"偏好", "知识点", "难点", "薄弱点", "兴趣"}
+
+
+def _normalize_mem_value(key, value):
+    """数组型字段的字符串值拆分为列表（D2：edit/chat 两路径统一归一化）。"""
+    if key in _ARRAY_KEYS and isinstance(value, str):
+        return [s.strip() for s in re.split(r"[,，、\n]+", value) if s.strip()]
+    return value
 
 
 def memory_edit(api_key: str, message: str, project_id: str, session_id: str) -> dict | None:
@@ -21,20 +31,16 @@ def memory_edit(api_key: str, message: str, project_id: str, session_id: str) ->
     is_project = key in PROJECT_MEM_KEYS
     if not (is_global or is_project):
         return None
-    from core.postgres_client import pg_client as _pg
     from core.config import config as _cfg
-    # 读当前内容
-    cur = ""
+    from core.db.memory_repo import get_memory_repo
+    _mrepo = get_memory_repo()
+    # 读当前内容（整字典一次读出，写回即全量 upsert——读写保证同一行）
     if is_global:
-        rows = _pg.execute("SELECT data FROM global_profile ORDER BY updated_at DESC LIMIT 1")
-        d = _as_dict(rows[0]["data"]) if rows and rows[0]["data"] else {}
-        v = d.get(key, "")
-        cur = v if isinstance(v, str) else (", ".join(v) if isinstance(v, list) else str(v))
+        d = _as_dict(_mrepo.get_global_profile())
     else:
-        rows = _pg.execute("SELECT data FROM project_memories WHERE project_id=%s", (project_id,))
-        d = _as_dict(rows[0]["data"]) if rows and rows[0]["data"] else {}
-        v = d.get(key, "")
-        cur = v if isinstance(v, str) else (", ".join(v) if isinstance(v, list) else str(v))
+        d = _as_dict(_mrepo.get_project_memory(project_id))
+    v = d.get(key, "")
+    cur = v if isinstance(v, str) else (", ".join(v) if isinstance(v, list) else str(v))
     # LLM 分析修改
     prompt = (
         f"你是记忆管理 Agent。用户希望对记忆模块「{key}」进行修改。\n"
@@ -59,47 +65,32 @@ def memory_edit(api_key: str, message: str, project_id: str, session_id: str) ->
             return {"reply": "⚠️ 修改失败：AI 未能生成修改内容", "steps": [{"agent": "记忆管理", "status": "done", "detail": "解析失败"}]}
     except Exception as e:
         return {"reply": f"⚠️ 修改失败：{str(e)[:120]}", "steps": [{"agent": "记忆管理", "status": "done", "detail": "调用异常"}]}
-    # 写回
+    # 写回（repo 统一 upsert；数组字段统一归一化）
     try:
+        d[key] = _normalize_mem_value(key, content)
+        payload = json.dumps(d, ensure_ascii=False)
         if is_global:
-            rows = _pg.execute("SELECT id FROM global_profile LIMIT 1")
-            if rows:
-                old = _pg.execute("SELECT data FROM global_profile WHERE id=%s", (rows[0]["id"],))
-                d2 = _as_dict(old[0]["data"]) if old and old[0]["data"] else {}
-                d2[key] = content
-                _pg.execute("UPDATE global_profile SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE id=%s", (json.dumps(d2, ensure_ascii=False), rows[0]["id"]))
-            else:
-                _pg.execute("INSERT INTO global_profile (session_id, data) VALUES (%s,%s)", (session_id or "default", json.dumps({key: content}, ensure_ascii=False)))
+            _mrepo.save_global_profile(payload)
         else:
-            newv: object = content
-            if key in ["偏好", "知识点", "难点", "薄弱点", "兴趣"]:
-                newv = [s.strip() for s in re.split(r"[,，、\n]+", content) if s.strip()]
-            rows = _pg.execute("SELECT session_id, data FROM project_memories WHERE project_id=%s", (project_id,))
-            if rows:
-                d2 = _as_dict(rows[0]["data"]) if rows[0]["data"] else {}
-                d2[key] = newv
-                _pg.execute("UPDATE project_memories SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE project_id=%s", (json.dumps(d2, ensure_ascii=False), project_id))
-            else:
-                _pg.execute("INSERT INTO project_memories (session_id, project_id, data) VALUES (%s,%s,%s)", (session_id or "default", project_id, json.dumps({key: newv}, ensure_ascii=False)))
+            _mrepo.save_project_memory(project_id, payload, session_id or "default")
     except Exception as e:
         return {"reply": f"⚠️ 修改失败（写入）：{str(e)[:120]}", "steps": [{"agent": "记忆管理", "status": "done", "detail": "写入异常"}]}
     return {"reply": f"✅ 已更新记忆模块「{key}」\n\n**修改理由**：{reason}\n\n**新内容**：\n{content}", "steps": [{"agent": "记忆管理", "status": "done", "detail": f"分析并更新「{key}」"}]}
 
 
-def memory_chat(api_key: str, message: str, project_id: str) -> dict:
+def memory_chat(api_key: str, message: str, project_id: str, session_id: str = "") -> dict:
     """记忆对话：根据用户输入直接更新记忆（只更新明确提到的字段），返回一句话确认。
     project_id 为 'global'（或空）时操作个人全局性记忆，否则操作课程记忆。"""
-    from core.postgres_client import pg_client
     from core.config import config as _cfg
+    from core.db.memory_repo import get_memory_repo
+    _mrepo = get_memory_repo()
     pid = (project_id or "").strip()
     if not pid or pid == "global":
         pid = "global"
-        rows = pg_client.execute("SELECT id, data FROM global_profile ORDER BY updated_at DESC LIMIT 1")
-        mem = _as_dict(rows[0]["data"]) if rows and rows[0].get("data") else {}
+        mem = _as_dict(_mrepo.get_global_profile())
         ALLOW = GLOBAL_MEM_KEYS
     else:
-        rows = pg_client.execute("SELECT session_id, data FROM project_memories WHERE project_id=%s", (pid,))
-        mem = _as_dict(rows[0]["data"]) if rows and rows[0].get("data") else {}
+        mem = _as_dict(_mrepo.get_project_memory(pid))
         ALLOW = PROJECT_MEM_KEYS
     prompt = (
         "你是记忆更新助手。以下是当前记忆字段，以及用户想要修改的内容。"
@@ -130,27 +121,14 @@ def memory_chat(api_key: str, message: str, project_id: str) -> dict:
             merged = dict(mem)
             for k, v in update.items():
                 if k in ALLOW and v not in (None, ""):
-                    merged[k] = v
+                    merged[k] = _normalize_mem_value(k, v)
                     changed.append(k)
             if changed:
+                payload = json.dumps(merged, ensure_ascii=False)
                 if pid == "global":
-                    rows = pg_client.execute("SELECT id FROM global_profile LIMIT 1")
-                    if rows:
-                        pg_client.execute("UPDATE global_profile SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE id=%s",
-                                          (json.dumps(merged, ensure_ascii=False), rows[0]["id"]))
-                    else:
-                        pg_client.execute("INSERT INTO global_profile (session_id, data) VALUES (%s,%s)",
-                                          ("default", json.dumps(merged, ensure_ascii=False)))
+                    _mrepo.save_global_profile(payload)
                 else:
-                    _rows = pg_client.execute("SELECT session_id FROM project_memories WHERE project_id=%s", (pid,))
-                    if _rows:
-                        pg_client.execute(
-                            "UPDATE project_memories SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE project_id=%s",
-                            (json.dumps(merged, ensure_ascii=False), pid))
-                    else:
-                        pg_client.execute(
-                            "INSERT INTO project_memories (session_id, project_id, data) VALUES (%s,%s,%s)",
-                            ("project", pid, json.dumps(merged, ensure_ascii=False)))
+                    _mrepo.save_project_memory(pid, payload, session_id or "default")
         if not changed and not reply.strip():
             reply = "⚠️ 没有需要更新的字段。"
         return {"reply": reply, "changed": changed}

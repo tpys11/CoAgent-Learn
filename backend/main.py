@@ -233,7 +233,7 @@ async def memory_chat(req: ChatRequest):
     """记忆对话：根据用户输入直接更新记忆（只更新明确提到的字段），返回一句话确认。
     project_id 为 'global'（或空）时操作个人全局性记忆，否则操作课程记忆。"""
     from starlette.concurrency import run_in_threadpool
-    return await run_in_threadpool(_memory_chat_service, req.api_key, req.message, req.project_id)
+    return await run_in_threadpool(_memory_chat_service, req.api_key, req.message, req.project_id, req.session_id or "")
 
 
 def _build_preloaded(pid: str, did: str, user_input: str) -> dict:

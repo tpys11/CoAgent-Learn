@@ -14,7 +14,9 @@ class MemoryRepo:
         return rows[0]["data"] if rows else None
 
     def save_global_profile(self, data):
-        rows = self._db.execute("SELECT id FROM global_profile LIMIT 1")
+        """upsert 全局记忆；UPDATE 必须命中「updated_at 最新」的行——与 get_global_profile 读同一行
+        （B1' 修复：旧实现 SELECT id LIMIT 1 无排序，多 session 历史行时读写可能错位）"""
+        rows = self._db.execute("SELECT id FROM global_profile ORDER BY updated_at DESC LIMIT 1")
         if rows:
             self._db.execute("UPDATE global_profile SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE id=%s",
                              (data, rows[0]["id"]))
@@ -30,14 +32,16 @@ class MemoryRepo:
     def get_project_memory_with_session(self, pid):
         return self._db.execute("SELECT session_id, data FROM project_memories WHERE project_id=%s", (pid,))
 
-    def save_project_memory(self, pid, data):
+    def save_project_memory(self, pid, data, session_id=""):
+        """upsert 课程记忆；新插入行的 session 归一为「传入值或 default」
+        （D1 修复：旧 INSERT 写死 'project' 字面量，与 memory_edit 路径漂移并已污染一行存量数据）"""
         rows = self.get_project_memory_with_session(pid)
         if rows:
             self._db.execute("UPDATE project_memories SET data=%s, updated_at=CURRENT_TIMESTAMP WHERE project_id=%s",
                              (data, pid))
         else:
             self._db.execute("INSERT INTO project_memories (session_id, project_id, data) VALUES (%s,%s,%s)",
-                             ("project", pid, data))
+                             (session_id or "default", pid, data))
 
     # ---- dialogue_memories ----
 
