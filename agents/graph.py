@@ -284,14 +284,20 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
             logger.warning("[subagent] 收尾失败 run=%s", rid, exc_info=True)
         _sub_emit_local(rid, {"type": "end", "run_id": rid, "status": status, "summary": summary})
 
-    def think_then_json(llm, system_prompt: str, user_prompt: str, agent_name: str, silent: bool = False) -> tuple[str, dict]:
+    def think_then_json(llm, system_prompt: str, user_prompt: str, agent_name: str, silent: bool = False, on_delta=None) -> tuple[str, dict]:
         """流式思考：用chat_stream逐token推送，收集完整文本后提取JSON。
-        silent=True：不推 step/thought_token（子 Agent 内部工作不展示在主思维链，产出仍返回给调用方）"""
+        silent=True：不推 step/thought_token（子 Agent 内部整理工作不展示在主思维链，产出仍返回给调用方）
+        on_delta（条目4实时化）：与 silent 无关的 chunk 广播回调——静默子agent借此仅直播不落库；缺省时行为与旧版完全一致"""
         collected = []
         def collect(chunk):
             collected.append(chunk)
             if on_token and not silent:
                 on_token(agent_name, chunk)
+            if on_delta and chunk:
+                try:
+                    on_delta(chunk)
+                except Exception:
+                    pass
         try:
             llm.chat_stream(
                 [{"role": "system", "content": system_prompt},
@@ -453,7 +459,9 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                     if _rid:
                         _run_ids.append(_rid)
                     # silent：子 Agent 内部整理工作不展示在主思维链（产出供主流程使用）
-                    _t, _r = think_then_json(llm_fast, _sp, _in, _sname, silent=True)
+                    # 条目4实时化：delta 仅广播不入库（防逐token读改写爆炸）；闭包默认参绑定当轮 _rid；无档案(_rid空)则零开销
+                    _on_delta = ((lambda t, _rid0=_rid: _sub_emit_local(_rid0, {"type": "delta", "text": t}))) if _rid else None
+                    _t, _r = think_then_json(llm_fast, _sp, _in, _sname, silent=True, on_delta=_on_delta)
                     _c = (_r.get("content") if isinstance(_r, dict) and _r.get("content") else _t) or ""
                     if _rid:
                         _sub_finish(_rid, status="ok", summary=f"整理 {len(str(_c))} 字", output=str(_c))
