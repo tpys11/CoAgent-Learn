@@ -2,6 +2,7 @@ import { useRef, useState, useCallback } from 'react'
 import type { Dispatch, SetStateAction, MutableRefObject } from 'react'
 import type { AgentConfig, Message, Dialogue, ReviewResult } from '../types'
 import { streamChatResponse, type ChatEvent } from '../sse'
+import { drainTake, feedThoughtChunk, newFenceState } from '../streaming'
 import { LS, lsGet, lsGetJSON, lsSetJSON } from '../storage'
 import { api } from '../api'
 import { subagentStore } from '../stores/subagentStore'
@@ -55,15 +56,14 @@ export function useChatStream(args: UseChatStreamArgs) {
   const abortCtrlRef = useRef<AbortController | null>(null)
   const userStoppedRef = useRef(false)
   const requestIdRef = useRef<string | null>(null)
-  const fenceBufRef = useRef('')
-  const fenceInRef = useRef(false)
+  const fenceRef = useRef(newFenceState())
 
   const revealTick = () => {
     const pa = pendingAnswerRef.current
     if (pa) {
       // 自适应排水（速度修复）：每帧放行量随积压比例增长，≈6帧(约100ms)追平积压——
       // 慢到哪显示到哪（小积压仍逐字平滑），快则贴模型原生速度，不再被固定2-4字/帧掐死
-      const take = Math.min(pa.length, Math.max(2, Math.ceil(pa.length / 6)))
+      const take = drainTake(pa.length, 2)
       const out = pa.slice(0, take)
       pendingAnswerRef.current = pa.slice(take)
       setAllMessages(prev => {
@@ -78,7 +78,7 @@ export function useChatStream(args: UseChatStreamArgs) {
     const pm = pendingMindRef.current
     if (pm) {
       // 同款自适应排水：思维链与回答保持一致节奏（100ms 追平）
-      const take = Math.min(pm.text.length, Math.max(1, Math.ceil(pm.text.length / 6)))
+      const take = drainTake(pm.text.length, 1)
       const out = pm.text.slice(0, take)
       pm.text = pm.text.slice(take)
       if (pm.text.length === 0) pendingMindRef.current = null
@@ -158,8 +158,7 @@ export function useChatStream(args: UseChatStreamArgs) {
     streamedRef.current = false
     userStoppedRef.current = false
     requestIdRef.current = null
-    fenceBufRef.current = ''
-    fenceInRef.current = false
+    fenceRef.current = newFenceState()
     pendingAnswerRef.current = ''
     pendingMindRef.current = null
     activeDidRef.current = did || null
@@ -271,23 +270,14 @@ export function useChatStream(args: UseChatStreamArgs) {
           const c = data.chunk || ''
           // 围栏检测必须逐字扫描：SSE 改按 chunk 原样直传（faa44b1）后 chunk 常为多字，
           // 旧写法 `if (c === '\`')` 只认单字块，多字 chunk 会整体漏判导致代码围栏失效
-          let appended = false
-          for (const ch of c) {
-            if (ch === '`') {
-              fenceBufRef.current += '`'
-              if (fenceBufRef.current.length >= 3) { fenceInRef.current = !fenceInRef.current; fenceBufRef.current = '' }
-              continue
-            }
-            fenceBufRef.current = ''
-            if (fenceInRef.current) continue
+          const appended = feedThoughtChunk(fenceRef.current, c, data.agent, (ag, text) => {
             const cur = pendingMindRef.current
-            if (cur && cur.agent === data.agent) {
-              cur.text += ch
+            if (cur && cur.agent === ag) {
+              cur.text += text
             } else {
-              pendingMindRef.current = { agent: data.agent, text: ch }
+              pendingMindRef.current = { agent: ag, text }
             }
-            appended = true
-          }
+          })
           if (appended) ensureRevealLoop()
           return
         }
