@@ -9,6 +9,7 @@ const SESSION_ID = (() => {
 })()
 import ProjectSidebar from './components/ProjectSidebar'
 import CenterPanel from './components/CenterPanel'
+import { SubAgentPage } from './components/chat/subagent'
 import RightPanel from './components/RightPanel'
 import SettingsModal, { ApiKeyPrompt } from './components/SettingsModal'
 import ProjectConfigModal from './components/ProjectConfigModal'
@@ -103,6 +104,16 @@ function App() {
     profilePollTimer.current = setInterval(check, 1500)
   }, [])
   const [view, setView] = useState<ViewKey>('chat')
+  // 条目4：子agent独立界面（OpenCode 式会话切换）——深层 chip 经 open-subagent 事件唤起；返回/Esc 即回原视图
+  const [subPageRuns, setSubPageRuns] = useState<string[] | null>(null)
+  useEffect(() => {
+    const h = (e: Event) => {
+      const ids = (e as CustomEvent<{ runIds?: string[] }>).detail?.runIds
+      if (Array.isArray(ids) && ids.length) setSubPageRuns(ids)
+    }
+    window.addEventListener('open-subagent', h)
+    return () => window.removeEventListener('open-subagent', h)
+  }, [])
   // 主页模式：view=chat 时默认显示主页（按项目展开），进入项目后才显示对话界面
   const [chatOpen, setChatOpen] = useState(false)
   // 记忆修改预填：从记忆界面跳转时，输入框以 [模块名] 引用并提示补充想法
@@ -462,6 +473,9 @@ function App() {
         />
       ))}
       </div>
+
+      {/* 条目4：子agent独立界面（全屏页，非浮层）——返回/Esc 即回原视图 */}
+      {subPageRuns && <SubAgentPage runIds={subPageRuns} onBack={() => setSubPageRuns(null)} />}
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} projectId={currentProjectId} />}
       {showProjectConfig && (

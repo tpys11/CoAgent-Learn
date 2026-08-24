@@ -3,7 +3,7 @@ import { CheckCircle2, Image as ImageIcon, PenLine, Lightbulb } from 'lucide-rea
 import type { Message, Project } from '../../types'
 import MarkdownIt from 'markdown-it'
 import { LS, lsGetJSON } from '../../storage'
-import { SubAgentWindow, SubAgentLiveStrip } from './subagent'
+import { SubAgentLiveStrip } from './subagent'
 
 // ---------- 思维链渲染：markdown-it 轻量渲染（html:false 防 XSS，换行生效）----------
 const mdThink = new MarkdownIt({ html: false, linkify: true, breaks: true })
@@ -268,8 +268,6 @@ function ReasoningBlock({ items, streaming, activeAgent, activeStatus, flowAgent
   const [open, setOpen] = useState(true)
   // 块级折叠（5.2）：流式中非当前输出的 agent 块折叠为小标题行；完成后整块折叠
   const [folded, setFolded] = useState<Record<number, boolean>>({})
-  // 条目4：打开中的子agent窗口（null=关闭，否则为该条目的 run_ids 列表）
-  const [subOpen, setSubOpen] = useState<string[] | null>(null)
   const prevStreaming = useRef(streaming)
   useEffect(() => {
     if (streaming) {
@@ -323,7 +321,7 @@ function ReasoningBlock({ items, streaming, activeAgent, activeStatus, flowAgent
               {/* 条目4：子agent入口按钮——点击打开只读运行窗口 */}
               {it.run_ids && it.run_ids.length > 0 && (
                 <button
-                  onClick={() => setSubOpen(it.run_ids || null)}
+                  onClick={() => window.dispatchEvent(new CustomEvent('open-subagent', { detail: { runIds: it.run_ids } }))}
                   className="mb-1 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border border-[var(--accent)]/30 text-[var(--accent)] hover:bg-[var(--accent)]/10 transition-colors"
                   title="查看子 Agent 运行详情（主发指令/过程/报告）"
                 >
@@ -344,7 +342,6 @@ function ReasoningBlock({ items, streaming, activeAgent, activeStatus, flowAgent
           })}
         </div>
       )}
-      {subOpen && <SubAgentWindow runIds={subOpen} onClose={() => setSubOpen(null)} />}
     </div>
   )
 }

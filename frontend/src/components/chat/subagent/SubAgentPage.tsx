@@ -1,12 +1,12 @@
 /**
- * 条目4：子agent只读窗口——思维链「🛰 子agent」按钮点开。
+ * 条目4：子agent独立界面（OpenCode 式会话切换）——思维链「🛰 子agent」按钮 / 直播条点入，
+ * 顶部「← 返回对话」或 Esc 回主界面。全屏页面而非浮层弹窗。
  * 三区布局：主→子指令 / 过程时间线 / 最终报告；无输入框——协议级只读（上行通道不存在）。
  * 数据双模式：挂载时 REST 拉档（回看）；同时订阅 subagentStore 直播态，
  * 运行状态翻转（running→ok/error）时自动重拉档案拿最终 output。
  */
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import MarkdownIt from 'markdown-it'
-import { X } from 'lucide-react'
 import { api } from '../../../api'
 import { subagentStore } from '../../../stores/subagentStore'
 import type { SubAgentRun } from '../../../types'
@@ -100,27 +100,30 @@ function RunCard({ runId }: { runId: string }) {
   )
 }
 
-/** 独立窗口壳：遮罩点击/Esc 关闭；runIds 来自思维链条目的 run_ids。 */
-export function SubAgentWindow({ runIds, onClose }: { runIds: string[]; onClose: () => void }) {
+/** 独立界面：顶部返回条 + 全区滚动卡片列；Esc=返回。由 App 经 open-subagent 事件唤起。 */
+export function SubAgentPage({ runIds, onBack }: { runIds: string[]; onBack: () => void }) {
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onBack() }
     window.addEventListener('keydown', h)
     return () => window.removeEventListener('keydown', h)
-  }, [onClose])
+  }, [onBack])
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div
-        className="w-full max-w-2xl max-h-[85vh] overflow-auto rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-zinc-900 shadow-xl p-4 flex flex-col gap-3"
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="flex items-center gap-2">
-          <span className="text-[13px] font-semibold">🛰 子 Agent 运行窗口</span>
-          <span className="text-[10px] text-dim">只读 · 无法向子 Agent 发送消息</span>
-          <button onClick={onClose} className="ml-auto text-dim hover:text-[var(--text)]" aria-label="关闭">
-            <X size={16} />
-          </button>
+    <div className="fixed inset-0 z-40 bg-white dark:bg-zinc-900 flex flex-col">
+      <div className="flex items-center gap-2 px-5 py-3 border-b hairline flex-shrink-0">
+        <button
+          onClick={onBack}
+          title="返回主界面 (Esc)"
+          className="inline-flex items-center gap-1 text-[12px] px-2.5 py-1 rounded-lg border hairline row-hover transition-colors"
+        >
+          ← 返回对话
+        </button>
+        <span className="text-[13px] font-semibold">🛰 子 Agent</span>
+        <span className="text-[10px] text-dim">只读 · 无法向子 Agent 发送消息</span>
+      </div>
+      <div className="flex-1 overflow-auto p-5">
+        <div className="max-w-3xl mx-auto flex flex-col gap-3">
+          {runIds.map(rid => <RunCard key={rid} runId={rid} />)}
         </div>
-        {runIds.map(rid => <RunCard key={rid} runId={rid} />)}
       </div>
     </div>
   )

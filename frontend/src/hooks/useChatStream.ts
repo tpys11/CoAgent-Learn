@@ -294,7 +294,7 @@ export function useChatStream(args: UseChatStreamArgs) {
           return
         }
         if (data.type === 'subagent') {
-          // 条目4：子agent实时事件 → 外置仓库（SubAgentWindow 经 useSyncExternalStore 订阅直播）
+          // 条目4：子agent实时事件 → 外置仓库（LiveStrip/子agent界面 经 useSyncExternalStore 订阅直播）
           subagentStore.applySse(data)
           return
         }
