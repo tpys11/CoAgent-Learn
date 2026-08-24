@@ -180,9 +180,10 @@ def _research_multi_search(registry, llm, query: str) -> dict:
 
 def create_workflow(api_key: str | None = None, settings: dict | None = None, on_token=None,
                     model: str | None = None, base_url: str | None = None, agents: list | None = None,
-                    on_answer=None, cancel_event=None):
+                    on_answer=None, cancel_event=None, on_subagent=None):
     # on_answer：学习助手生成节点的最终回答逐 token 直接流式推送（不进思维链，对话区实时显示）
     # cancel_event：用户手动停止时置位（threading.Event），所有 LLM 流式调用内检查，尽早中断生成
+    # on_subagent：子agent实时事件出口（条目4）——payload 形如 {"type":"start|input|end","run_id":…}；缺省仅落档不直播
     settings = settings or {}
     agents = agents or []
     tpl = settings.get("template") or "思考"  # 思考 / 研究 / 极速
@@ -246,6 +247,42 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
     def _stats(node: str, ms: int, llm_calls: int = 0, tokens: int = 0) -> dict:
         """运行统计（返回局部 dict，不就地改 state）：节点随 partial 返回，_merge_stats reducer 合并各节点统计"""
         return {node: {"ms": ms, "llm_calls": llm_calls}, "token_estimate": tokens}
+
+    # ---------------- 子agent 观测（条目4）：档案落库 + 实时事件双通道 ----------------
+
+    def _sub_emit_local(rid: str, payload: dict):
+        """实时事件出口；on_subagent 未接或抛错时静默——观测绝不打断主流程。"""
+        if rid and on_subagent:
+            try:
+                on_subagent(payload)
+            except Exception:
+                pass
+
+    def _sub_run(agent_name: str, title: str, input_text: str, state: dict) -> str:
+        """隐式子agent建档：create_run + start/input 双事件。返回 run_id；失败降级空串（仅无观测，主流程照常）。"""
+        rid = ""
+        try:
+            from services.subagent_runs import create_run as _cr, emit as _em
+            _cap = (input_text or "")[:6000]
+            rid = _cr(project_id=state.get("project_id", ""), dialogue_id=state.get("dialogue_id", ""),
+                      agent=agent_name, title=title, input_text=_cap)
+            _em(rid, "start", title=title)
+            _em(rid, "input", content=_cap)
+        except Exception:
+            logger.warning("[subagent] 建档失败 agent=%s", agent_name, exc_info=True)
+            return ""
+        _sub_emit_local(rid, {"type": "start", "run_id": rid, "agent": agent_name, "title": title})
+        _sub_emit_local(rid, {"type": "input", "run_id": rid, "content": (input_text or "")[:2000]})
+        return rid
+
+    def _sub_finish(rid: str, status: str = "ok", summary: str = "", output: str = ""):
+        """终态回写（output 截断 8000 字防行膨胀）+ end 实时事件。"""
+        try:
+            from services.subagent_runs import finish_run as _fin
+            _fin(rid, status=status, summary=summary, output=(output or "")[:8000])
+        except Exception:
+            logger.warning("[subagent] 收尾失败 run=%s", rid, exc_info=True)
+        _sub_emit_local(rid, {"type": "end", "run_id": rid, "status": status, "summary": summary})
 
     def think_then_json(llm, system_prompt: str, user_prompt: str, agent_name: str, silent: bool = False) -> tuple[str, dict]:
         """流式思考：用chat_stream逐token推送，收集完整文本后提取JSON。
