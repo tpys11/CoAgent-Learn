@@ -61,7 +61,9 @@ export function useChatStream(args: UseChatStreamArgs) {
   const revealTick = () => {
     const pa = pendingAnswerRef.current
     if (pa) {
-      const take = Math.min(pa.length, pa.length > 40 ? 4 : 2)
+      // 自适应排水（速度修复）：每帧放行量随积压比例增长，≈12帧(约200ms)追平积压——
+      // 慢到哪显示到哪（小积压仍逐字平滑），快则贴模型原生速度，不再被固定2-4字/帧掐死
+      const take = Math.min(pa.length, Math.max(2, Math.ceil(pa.length / 12)))
       const out = pa.slice(0, take)
       pendingAnswerRef.current = pa.slice(take)
       setAllMessages(prev => {
@@ -75,7 +77,8 @@ export function useChatStream(args: UseChatStreamArgs) {
     }
     const pm = pendingMindRef.current
     if (pm) {
-      const take = Math.min(pm.text.length, 3)
+      // 同款自适应排水：思维链与回答保持一致节奏
+      const take = Math.min(pm.text.length, Math.max(1, Math.ceil(pm.text.length / 12)))
       const out = pm.text.slice(0, take)
       pm.text = pm.text.slice(take)
       if (pm.text.length === 0) pendingMindRef.current = null
