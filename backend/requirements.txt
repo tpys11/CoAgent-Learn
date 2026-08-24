@@ -24,4 +24,4 @@ python-pptx>=1.0.0
 python-multipart>=0.0.9
 sqlite-vec>=0.1.6
 trafilatura>=2.0.0
-
+llama-index-core

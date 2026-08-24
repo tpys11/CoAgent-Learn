@@ -333,7 +333,29 @@ def add_document(project_id: str, text: str, source: str = "", session_id: str =
     mode = (getattr(_cfg, "KB_CHUNK_MODE", "auto") or "auto").lower()
     has_heading = bool(re.search(r"^#{1,6}\s+\S", text or "", flags=re.M))
     # 结构切块仅在文本确有有效标题时启用（window 模式 / 无标题文本 → 句子级窗口）
-    if mode in ("markdown", "auto") and has_heading:
+    chunker = (getattr(_cfg, "KB_CHUNKER", "self") or "self").lower()
+    if chunker == "llamaindex" and has_heading:
+        # 刀1·库式借用：LlamaIndex MarkdownNodeParser 切块（对照日志+失败回退自研，门面/下游零改动）
+        try:
+            from llama_index.core.node_parser import MarkdownNodeParser
+            from llama_index.core.schema import Document
+            _li: list = []
+            for _n in MarkdownNodeParser().get_nodes_from_documents([Document(text=text)]):
+                _md = _n.metadata or {}
+                _path = " > ".join([_md.get(k, "") for k in ("Header_1", "Header_2", "Header_3", "Header_4") if _md.get(k)])
+                _t = ((_path + "\n") if _path else "" + _n.get_content()).strip()
+                if _t:
+                    _li.append(_t)
+            _self = _chunk_markdown(text, size=size, overlap=overlap)
+            logger.info("[chunker] llamaindex=%d块/均长%.0f vs self=%d块/均长%.0f",
+                        len(_li), (sum(map(len, _li)) / len(_li)) if _li else 0,
+                        len(_self), (sum(map(len, _self)) / len(_self)) if _self else 0)
+            chunks = _li or _chunk_markdown(text, size=size, overlap=overlap) or _chunk_text(text, size=size, overlap=overlap)
+        except Exception:
+            logger.warning("[chunker] llamaindex 切块失败，回退自研", exc_info=True)
+            chunks = _chunk_markdown(text, size=size, overlap=overlap) or \
+                     _chunk_text(text, size=size, overlap=overlap)
+    elif mode in ("markdown", "auto") and has_heading:
         chunks = _chunk_markdown(text, size=size, overlap=overlap) or \
                  _chunk_text(text, size=size, overlap=overlap)
     else:
