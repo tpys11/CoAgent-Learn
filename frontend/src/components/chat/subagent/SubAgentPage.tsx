@@ -1,9 +1,8 @@
 /**
- * 条目4：子agent独立界面（OpenCode 式会话切换）——思维链「🛰 子agent」按钮 / 直播条点入，
- * 顶部「← 返回对话」或 Esc 回主界面。全屏页面而非浮层弹窗。
- * 三区布局：主→子指令 / 过程时间线 / 最终报告；无输入框——协议级只读（上行通道不存在）。
- * 数据双模式：挂载时 REST 拉档（回看）；同时订阅 subagentStore 直播态，
- * 运行状态翻转（running→ok/error）时自动重拉档案拿最终 output。
+ * 条目4：子agent独立界面（抄 OpenCode session-ui 思想——同一套聊天渲染器，换数据源）。
+ * 纯对话形态：主发给子的指令=右侧用户输入气泡；子agent回答=左侧 markdown 正文（直播 delta 流式 → 终稿）。
+ * 无卡片/时间线/徽章。顶部「← 返回对话」/Esc 回主界面；协议级只读（无输入框）。
+ * 数据：挂载 REST 拉档（回看）+ 订阅 subagentStore 直播（delta 仅直播不入库，end 后切终稿）。
  */
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import MarkdownIt from 'markdown-it'
@@ -11,27 +10,10 @@ import { api } from '../../../api'
 import { subagentStore } from '../../../stores/subagentStore'
 import type { SubAgentRun } from '../../../types'
 
-const mdWin = new MarkdownIt({ html: false, linkify: true, breaks: true })
+const md = new MarkdownIt({ html: false, linkify: true, breaks: true })
 
-const EVENT_CN: Record<string, string> = {
-  start: '启动',
-  input: '收到指令',
-  delta: '增量',
-  end: '完成',
-}
-
-function StatusBadge({ status }: { status?: 'running' | 'ok' | 'error' }) {
-  if (status === 'running')
-    return <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] animate-pulse">运行中…</span>
-  if (status === 'error')
-    return <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500/10 text-red-500">异常</span>
-  if (status === 'ok')
-    return <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600">✓ 完成</span>
-  return <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-black/5 text-dim">未知</span>
-}
-
-function RunCard({ runId }: { runId: string }) {
-  // 订阅直播版本号：store 变化即重渲染；live.status 翻转作为重拉档案的依赖
+/** 单次运行的对话段：右=主→子指令（输入姿态）；左=回答（直播delta流式 → 终稿markdown） */
+function RunTranscript({ runId }: { runId: string }) {
   useSyncExternalStore(subagentStore.subscribe, subagentStore.getVersion)
   const live = subagentStore.get(runId)
   const [arch, setArch] = useState<SubAgentRun | null>(null)
@@ -46,61 +28,49 @@ function RunCard({ runId }: { runId: string }) {
   }, [runId, live?.status])
 
   const status = live?.status ?? arch?.status ?? 'running'
-  const title = arch?.title || live?.title || '子agent'
   const input = arch?.input || live?.input || ''
   const output = arch?.output || ''
-  // 条目4实时化：delta 仅直播不入库——时间线=档案事件 ∪ 直播delta；字数计数供"正在整理"提示
-  const liveDeltas = (live?.events || []).filter(e => e.event === 'delta')
-  const baseEvents: Array<Record<string, any>> = arch ? (arch.events as any) : ((live?.events || []).filter(e => e.event !== 'delta'))
-  const events = [...baseEvents, ...liveDeltas]
-  const genChars = liveDeltas.reduce((s, e) => s + String(e.text || '').length, 0)
+  // 直播正文：delta 增量拼接；终稿以档案 output 为准（end 后自动切换）
+  const liveText = (live?.events || []).filter(e => e.event === 'delta').map(e => String(e.text || '')).join('')
 
   return (
-    <div className="rounded-lg border border-black/10 dark:border-white/10 p-3 flex flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <span className="text-[12px] font-semibold">{title}</span>
-        <StatusBadge status={status} />
-        <span className="ml-auto text-[9px] text-dim font-mono select-all">{runId}</span>
-      </div>
-      {/* 区1：主→子指令 */}
-      <div>
-        <div className="text-[10px] text-dim mb-0.5">主 Agent 发送的指令</div>
-        <pre className="text-[11px] leading-snug whitespace-pre-wrap break-words max-h-32 overflow-auto bg-black/[.03] dark:bg-white/[.04] rounded p-2">{input || '—'}</pre>
-      </div>
-      {/* 区2：过程时间线 */}
-      <div>
-        <div className="text-[10px] text-dim mb-0.5">
-          过程（{events.length} 条事件{genChars > 0 ? ` · 已生成 ${genChars} 字` : ''}）
-        </div>
-        <div className="flex flex-col gap-0.5 max-h-40 overflow-auto text-[11px]">
-          {events.length === 0 && <span className="text-dim">暂无事件</span>}
-          {events.map((ev, i) => (
-            <div key={i} className="flex items-start gap-1.5">
-              <span className="text-[9px] text-dim flex-shrink-0 w-14">{EVENT_CN[String(ev.event)] || String(ev.event)}</span>
-              <span className="whitespace-pre-wrap break-words min-w-0 flex-1">
-                {String(ev.summary || ev.content || ev.text || '').slice(0, 200) || '—'}
-              </span>
-            </div>
-          ))}
-          {status === 'running' && genChars > 0 && (
-            <div className="text-[10px] text-dim animate-pulse truncate">正在整理… {genChars} 字</div>
-          )}
+    <div className="flex flex-col gap-3">
+      {/* 右侧：主 Agent 发给子的指令（用户输入姿态，样式同主聊 card-surface 气泡） */}
+      <div className="flex flex-col items-end">
+        <span className="text-[10px] text-dim mb-0.5">主 Agent → 子agent · 指令</span>
+        <div
+          className="self-end max-w-[85%] card-surface px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap break-words"
+          style={{ borderBottomRightRadius: 6 }}
+        >
+          {input || '—'}
         </div>
       </div>
-      {/* 区3：最终报告 */}
-      <div>
-        <div className="text-[10px] text-dim mb-0.5">最终报告</div>
-        {output
-          ? <div className="md-think-body max-h-64 overflow-auto rounded bg-black/[.03] dark:bg-white/[.04] p-2" dangerouslySetInnerHTML={{ __html: mdWin.render(output) }} />
-          : (loadErr
-              ? <div className="text-[11px] text-red-500">拉档失败：{loadErr}</div>
-              : <div className="text-[11px] text-dim animate-pulse">运行中… 报告生成后自动显示</div>)}
+      {/* 左侧：子agent回答（流式纯文本 → markdown 终稿，样式同主聊 md-answer-body） */}
+      <div className="self-start w-full max-w-[92%] flex flex-col gap-1">
+        <span className="text-[10px] text-dim">{arch?.title || live?.title || '子agent'} · 回答</span>
+        {status !== 'running' && output ? (
+          <div className="w-full text-sm leading-7">
+            <div className="md-answer-body" dangerouslySetInnerHTML={{ __html: md.render(output) }} />
+          </div>
+        ) : (
+          <div className="w-full text-sm leading-7 whitespace-pre-wrap break-words text-[var(--text)]">
+            {liveText || '…'}
+            <span className="inline-block w-1.5 h-4 align-middle bg-[var(--accent)] animate-pulse ml-0.5" />
+          </div>
+        )}
+        {/* 状态微行（对话流内的轻量脚注，非徽章卡片） */}
+        <span className="text-[10px] text-dim">
+          {status === 'running' && <>● 整理中{liveText ? ` · 已生成 ${liveText.length} 字` : ''}…</>}
+          {status === 'ok' && <>✓ 已完成{output ? ` · ${output.length} 字` : ''}</>}
+          {status === 'error' && <>⚠ 异常{arch?.output ? `：${arch.output.slice(0, 120)}` : ''}</>}
+          {loadErr && <>（拉档失败：{loadErr}）</>}
+        </span>
       </div>
     </div>
   )
 }
 
-/** 独立界面：顶部返回条 + 全区滚动卡片列；Esc=返回。由 App 经 open-subagent 事件唤起。 */
+/** 独立界面：顶部返回条 + 纯对话滚动区；Esc=返回。由 App 经 open-subagent 事件唤起。 */
 export function SubAgentPage({ runIds, onBack }: { runIds: string[]; onBack: () => void }) {
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onBack() }
@@ -121,8 +91,8 @@ export function SubAgentPage({ runIds, onBack }: { runIds: string[]; onBack: () 
         <span className="text-[10px] text-dim">只读 · 无法向子 Agent 发送消息</span>
       </div>
       <div className="flex-1 overflow-auto p-5">
-        <div className="max-w-3xl mx-auto flex flex-col gap-3">
-          {runIds.map(rid => <RunCard key={rid} runId={rid} />)}
+        <div className="max-w-3xl mx-auto flex flex-col gap-6">
+          {runIds.map(rid => <RunTranscript key={rid} runId={rid} />)}
         </div>
       </div>
     </div>
