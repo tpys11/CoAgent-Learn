@@ -431,9 +431,12 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         # 检索增强模板：强制调用知识库与搜索 Agent 的子 Agent（内置默认：知识库管理/搜索；用户自定义则用自定义）
         kb_cfg = _agent_cfg("kb")
         kb_subs = kb_cfg.get("subAgents") or _DEFAULT_KB_SUBS
+        _run_ids: list = []  # 条目4：本轮隐式子agent档案 id（挂到 知识库管理 思维链条目）
         if tpl == "思考" and kb_subs:
             sub_parts = []
             for sub in kb_subs:
+                _sname = sub.get("name") or "资料解析"
+                _rid = ""  # 先置空：except 分支也要能安全判断是否需要收尾
                 try:
                     _sp = (sub.get("subPrompt") or "") + "\n请只输出整理结果本身。"
                     _sid = sub.get("id") or ""
@@ -445,17 +448,26 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                     else:
                         _feed = {"knowledge": state.get("knowledge", []), "search": state.get("search_results", [])}
                     _in = "检索材料：\n" + json.dumps(_feed, ensure_ascii=False)[:4000]
+                    # 条目4：建档（input=主发给子的检索材料），建档失败降级空串不影响整理本体
+                    _rid = _sub_run(_sname, _sname, _in, state)
+                    if _rid:
+                        _run_ids.append(_rid)
                     # silent：子 Agent 内部整理工作不展示在主思维链（产出供主流程使用）
-                    _t, _r = think_then_json(llm_fast, _sp, _in, sub.get("name") or "资料解析", silent=True)
+                    _t, _r = think_then_json(llm_fast, _sp, _in, _sname, silent=True)
                     _c = (_r.get("content") if isinstance(_r, dict) and _r.get("content") else _t) or ""
+                    if _rid:
+                        _sub_finish(_rid, status="ok", summary=f"整理 {len(str(_c))} 字", output=str(_c))
                     if _c:
-                        sub_parts.append(f"【{sub.get('name')}】\n" + str(_c)[:1200])
-                except Exception:
-                    pass
+                        sub_parts.append(f"【{_sname}】\n" + str(_c)[:1200])
+                except Exception as _e:
+                    # 条目4：原裸 pass 静默吞——补档案收尾 + 警告日志（排障可见）
+                    if _rid:
+                        _sub_finish(_rid, status="error", summary=f"执行异常：{_e}")
+                    logger.warning("[kb_node] 子Agent %s 整理失败", _sname, exc_info=True)
             if sub_parts:
                 state["sub_outputs"] = {**(state.get("sub_outputs") or {}), "kb": "\n".join(sub_parts)}
                 thinking += f"；子Agent整理 {len(sub_parts)} 项"
-        new_mc.append({"agent": "知识库管理", "content": thinking})
+        new_mc.append({"agent": "知识库管理", "content": thinking, **({"run_ids": _run_ids} if _run_ids else {})})
         new_steps.append({"agent": "知识库管理", "status": "done"})
         # 只返回变更字段（partial）：不就地修改共享 state 的可变字段，避免并行分支互相污染/重复合并
         out = {
