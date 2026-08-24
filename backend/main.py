@@ -346,6 +346,79 @@ def _five_round_hook(pid: str, did: str):
         logger.exception("五轮对话传递失败 did=%s", did)
 
 
+
+
+def _chat_persist(req, pid, _did, result, _t0):
+    """流后持久化（闭环D·切片3 自 worker 外移；逻辑逐字未改）：
+    五轮钩子/专注时长/任务统计/AI回复落库/自动保存生成物。由 core.background.submit 调度。"""
+    import time as _time2
+    # 五轮对话→课程记忆钩子（4.2）：COUNT 用户消息 %5==0 触发传递+进度条（进度条唯一更新逻辑）
+    try:
+        _five_round_hook(pid, _did)
+    except Exception:
+        logger.exception("五轮对话传递钩子异常 did=%s", _did)
+    # 专注时长：本次任务完成，累加进项目 stats（可视化反馈：专注时长 + token 用量）
+    try:
+        from core.postgres_client import pg_client as _pg4
+        _dur = max(0, int(_time2.time() - _t0))
+        _srow = _pg4.execute("SELECT id, duration_seconds FROM stats WHERE project_id=%s ORDER BY updated_at DESC LIMIT 1", (pid,))
+        if _srow:
+            _pg4.execute("UPDATE stats SET duration_seconds=%s, updated_at=datetime('now') WHERE id=%s",
+                         ((_srow[0]["duration_seconds"] or 0) + _dur, _srow[0]["id"]))
+        else:
+            _pg4.execute("INSERT INTO stats(project_id, duration_seconds) VALUES(%s,%s)", (pid, _dur))
+        # 按天落库：主页趋势图（专注时长·最近30天）数据源
+        if _dur > 0:
+            _pg4.execute("INSERT INTO focus_log(project_id, dialogue_id, duration_seconds) VALUES(%s,%s,%s)", (pid, _did, _dur))
+    except Exception as _e:
+        logger.exception("累计专注时长失败 did=%s", _did)
+    # 记录本次任务的运行统计（Agent 界面·运行监控）
+    try:
+        import json as _json2
+        from core.postgres_client import pg_client as _pg2
+        _ts = result.get("task_stats") or {}
+        if _ts:
+            _pg2.execute("INSERT INTO task_stats(project_id,dialogue_id,data) VALUES(%s,%s,%s)",
+                         (pid, _did, _json2.dumps(_ts, ensure_ascii=False)))
+    except Exception as _e:
+        logger.exception("保存运行统计失败 did=%s", _did)
+    # invoke 后存 AI 回复（含思维链 mindchain 落库，刷新后保留）
+    try:
+        import json as _json3
+        from core.postgres_client import pg_client as _pg
+        _reply=result.get("final_reply","")
+        if _reply:
+            _think = _json3.dumps(result.get("mindchain") or [], ensure_ascii=False)
+            _pg.execute("INSERT INTO messages(dialogue_id,role,content,think) VALUES(%s,%s,%s,%s)",(_did,"assistant",_reply,_think))
+    except Exception as _e:
+        logger.exception("保存 AI 回复失败 did=%s", _did)
+    # 自动保存生成物到"我的上传"（设置开关 autoSaveResource）
+    if req.settings and req.settings.get('autoSaveResource') and result.get("final_reply"):
+        try:
+            import hashlib as _hl
+            from core.postgres_client import pg_client as _pg3
+            _fr = result.get("final_reply","")
+            # 垃圾过滤：报错/系统提示/太短的寒暄不入资源表
+            _head = _fr.strip()[:40]
+            _junk = (
+                "生成内容时出现错误" in _head
+                or _head.startswith("⚠️")
+                or _head.startswith("（系统未生成内容）")
+                or len(_fr.strip()) < 120
+            )
+            if not _junk:
+                _nm = "对话生成·" + _fr.strip()[:14]
+                _rid = _hl.md5((_nm + pid).encode()).hexdigest()[:16]
+                _has = _pg3.execute("SELECT id FROM resources WHERE id=%s", (_rid,))
+                if _has:
+                    _pg3.execute("UPDATE resources SET content=%s WHERE id=%s", (_fr, _rid))
+                else:
+                    _pg3.execute("INSERT INTO resources (id, name, content, project_id) VALUES (%s,%s,%s,%s)", (_rid, _nm, _fr, pid))
+        except Exception as _e:
+            logger.exception("自动保存生成物失败 did=%s", _did)
+
+
+
 def _chat_workflow_worker(req, token_queue, cancel_evt, request_id):
     """工作流线程体（闭环D·切片2 自 /api/chat 外移；逻辑逐字未改）。
     职责：自动档设置→模板编排→建workflow→存用户消息→记忆分支→invoke→done/error 入队。
@@ -435,73 +508,7 @@ def _chat_workflow_worker(req, token_queue, cancel_evt, request_id):
         # 避免 Windows 挂载卷上 SQLite 瞬时锁阻塞 done → 前端状态卡"正在输出回答"、发送键不复位
         # （task_stats/messages 落库 + autoSaveResource 已由下方后台 _persist() 线程承担）
         token_queue.put(("done", result))
-        def _persist():
-            import time as _time2
-            # 五轮对话→课程记忆钩子（4.2）：COUNT 用户消息 %5==0 触发传递+进度条（进度条唯一更新逻辑）
-            try:
-                _five_round_hook(pid, _did)
-            except Exception:
-                logger.exception("五轮对话传递钩子异常 did=%s", _did)
-            # 专注时长：本次任务完成，累加进项目 stats（可视化反馈：专注时长 + token 用量）
-            try:
-                from core.postgres_client import pg_client as _pg4
-                _dur = max(0, int(_time2.time() - _t0))
-                _srow = _pg4.execute("SELECT id, duration_seconds FROM stats WHERE project_id=%s ORDER BY updated_at DESC LIMIT 1", (pid,))
-                if _srow:
-                    _pg4.execute("UPDATE stats SET duration_seconds=%s, updated_at=datetime('now') WHERE id=%s",
-                                 ((_srow[0]["duration_seconds"] or 0) + _dur, _srow[0]["id"]))
-                else:
-                    _pg4.execute("INSERT INTO stats(project_id, duration_seconds) VALUES(%s,%s)", (pid, _dur))
-                # 按天落库：主页趋势图（专注时长·最近30天）数据源
-                if _dur > 0:
-                    _pg4.execute("INSERT INTO focus_log(project_id, dialogue_id, duration_seconds) VALUES(%s,%s,%s)", (pid, _did, _dur))
-            except Exception as _e:
-                logger.exception("累计专注时长失败 did=%s", _did)
-            # 记录本次任务的运行统计（Agent 界面·运行监控）
-            try:
-                import json as _json2
-                from core.postgres_client import pg_client as _pg2
-                _ts = result.get("task_stats") or {}
-                if _ts:
-                    _pg2.execute("INSERT INTO task_stats(project_id,dialogue_id,data) VALUES(%s,%s,%s)",
-                                 (pid, _did, _json2.dumps(_ts, ensure_ascii=False)))
-            except Exception as _e:
-                logger.exception("保存运行统计失败 did=%s", _did)
-            # invoke 后存 AI 回复（含思维链 mindchain 落库，刷新后保留）
-            try:
-                import json as _json3
-                from core.postgres_client import pg_client as _pg
-                _reply=result.get("final_reply","")
-                if _reply:
-                    _think = _json3.dumps(result.get("mindchain") or [], ensure_ascii=False)
-                    _pg.execute("INSERT INTO messages(dialogue_id,role,content,think) VALUES(%s,%s,%s,%s)",(_did,"assistant",_reply,_think))
-            except Exception as _e:
-                logger.exception("保存 AI 回复失败 did=%s", _did)
-            # 自动保存生成物到"我的上传"（设置开关 autoSaveResource）
-            if req.settings and req.settings.get('autoSaveResource') and result.get("final_reply"):
-                try:
-                    import hashlib as _hl
-                    from core.postgres_client import pg_client as _pg3
-                    _fr = result.get("final_reply","")
-                    # 垃圾过滤：报错/系统提示/太短的寒暄不入资源表
-                    _head = _fr.strip()[:40]
-                    _junk = (
-                        "生成内容时出现错误" in _head
-                        or _head.startswith("⚠️")
-                        or _head.startswith("（系统未生成内容）")
-                        or len(_fr.strip()) < 120
-                    )
-                    if not _junk:
-                        _nm = "对话生成·" + _fr.strip()[:14]
-                        _rid = _hl.md5((_nm + pid).encode()).hexdigest()[:16]
-                        _has = _pg3.execute("SELECT id FROM resources WHERE id=%s", (_rid,))
-                        if _has:
-                            _pg3.execute("UPDATE resources SET content=%s WHERE id=%s", (_fr, _rid))
-                        else:
-                            _pg3.execute("INSERT INTO resources (id, name, content, project_id) VALUES (%s,%s,%s,%s)", (_rid, _nm, _fr, pid))
-                except Exception as _e:
-                    logger.exception("自动保存生成物失败 did=%s", _did)
-        submit(_persist)
+        submit(_chat_persist, req, pid, _did, result, _t0)
 # 后台异步分析记忆 + 生成追问（开关可配）
         try:
             reply = result.get("final_reply", "")
