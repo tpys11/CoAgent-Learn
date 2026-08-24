@@ -1,12 +1,13 @@
-import type { ChatStep, MindchainItem, ReviewResult } from './types'
+import type { ChatStep, MindchainItem, ReviewResult, SubAgentSse } from './types'
 
-/** 后端 /api/chat SSE 事件的完整类型（7 类 + start/heartbeat）。 */
+/** 后端 /api/chat SSE 事件的完整类型（8 类 + start/heartbeat）。 */
 export type ChatEvent =
   | { type: 'start'; request_id: string }
   | { type: 'heartbeat' }
   | { type: 'step'; agent: string }
   | { type: 'thought_token'; agent: string; chunk: string }
   | { type: 'answer_token'; chunk: string }
+  | SubAgentSse
   | {
       type: 'done'
       reply: string

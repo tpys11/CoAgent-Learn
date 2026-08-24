@@ -2,7 +2,7 @@
  * 极薄 API 封装：统一 fetch 错误处理，避免 12 个组件各自裸 fetch 且错误处理不一致。
  * SSE 长连接不在这里封装（见 sse.ts）。
  */
-import type { ProjectList, DialogueList, MessagesData, ProfileData, ResourceList, StatsData, SettingsData, CapabilityList, SkillList } from './types'
+import type { ProjectList, DialogueList, MessagesData, ProfileData, ResourceList, StatsData, SettingsData, CapabilityList, SkillList, SubAgentRun } from './types'
 
 export interface ApiError extends Error {
   status?: number
@@ -109,6 +109,9 @@ export const api = {
     apiFetch<{ status: string }>('/api/dialogues/' + encodeURIComponent(did) + '/profile_status', { cache: 'no-store' }),
   getDialogueMessages: (did: string) =>
     apiFetch<MessagesData>('/api/dialogues/' + encodeURIComponent(did) + '/messages', { cache: 'no-store' }),
+  /** 条目4：子agent运行档案事后拉档（回看通道） */
+  getSubAgentRun: (runId: string) =>
+    apiFetch<{ run: SubAgentRun }>('/api/chat/subagent/' + encodeURIComponent(runId), { cache: 'no-store' }),
   postDialogueMessage: (did: string, body: unknown) =>
     apiFetch<any>('/api/dialogues/' + encodeURIComponent(did) + '/messages', jsonInit('POST', body)),
   updateDialogue: (did: string, body: unknown) =>

@@ -49,6 +49,40 @@ export interface AgentConfig {
 export interface MindchainItem {
   agent: string
   content: string
+  /** 条目4：该条目关联的子agent运行档案 id（前端渲染按钮，点开子agent窗口） */
+  run_ids?: string[]
+}
+
+/** 条目4：子agent实时 SSE 载荷（信封 type='subagent'，event 为内部阶段） */
+export interface SubAgentSse {
+  type: 'subagent'
+  event: 'start' | 'input' | 'delta' | 'end'
+  run_id: string
+  agent?: string
+  title?: string
+  /** input 事件：主agent发给子的指令（截断版，完整看档案接口） */
+  content?: string
+  /** delta 事件：增量片段（v1 预留） */
+  text?: string
+  status?: 'ok' | 'error'
+  summary?: string
+}
+
+/** 条目4：子agent运行档案（GET /api/chat/subagent/{run_id} 返回 {run}） */
+export interface SubAgentRun {
+  id: string
+  project_id: string
+  dialogue_id: string
+  agent: string
+  title: string
+  /** 主agent发给子的完整指令 */
+  input: string
+  status: 'running' | 'ok' | 'error'
+  /** 最终报告/整理结果 */
+  output: string
+  events: Array<Record<string, unknown>>
+  created_at: string
+  finished_at: string | null
 }
 
 export interface ReviewIssue {
