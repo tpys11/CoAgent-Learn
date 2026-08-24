@@ -89,7 +89,8 @@ def _store_image_vector(project_id: str, source: str, data: bytes, desc: str, ex
         from core.knowledge_service import add_image
         mime = _IMG_MIME.get(ext, "image/png")
         doc_id = _hl.md5((source + project_id).encode("utf-8")).hexdigest()[:24]
-        up_dir = "/app/data/uploads"
+        from core.db.base import DATA_DIR as _data_dir
+        up_dir = _os.path.join(_data_dir, "uploads")
         _os.makedirs(up_dir, exist_ok=True)
         fname = doc_id + (("." + ext) if ext else "")
         fpath = _os.path.join(up_dir, fname)

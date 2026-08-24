@@ -53,3 +53,5 @@ docs（已开发内容记录）/
 data_backup_*/
 
 data/app.db.backup-premigration
+
+_attic*/

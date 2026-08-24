@@ -77,7 +77,8 @@ async def _unhandled_exception_handler(request, exc):
 
 
 # 图片等上传文件静态回显（跨模态检索命中图片后前端可直接取图）
-_UPLOADS_DIR = "/app/data/uploads"
+from core.db.base import DATA_DIR as _APP_DATA_DIR
+_UPLOADS_DIR = os.path.join(_APP_DATA_DIR, "uploads")
 try:
     os.makedirs(_UPLOADS_DIR, exist_ok=True)
     app.mount("/uploads", StaticFiles(directory=_UPLOADS_DIR), name="uploads")

@@ -11,8 +11,13 @@ import time
 
 import sqlite_vec
 
-_DB_DIR = os.environ.get("SQLITE_DIR", "./data")
+# 数据目录默认锚定仓库根 data/（与进程 CWD 无关）——历史教训：相对 ./data 曾因启动目录不同
+# 分裂出三个 app.db（根data / backend/data / docker命名卷）。环境变量 SQLITE_DIR 仍可覆盖。
+_DEFAULT_DB_DIR = os.path.normpath(os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "data"))
+_DB_DIR = os.path.normpath(os.environ.get("SQLITE_DIR") or _DEFAULT_DB_DIR)
 _DB_PATH = os.path.join(_DB_DIR, "app.db")
+DATA_DIR = _DB_DIR  # 上传目录等同源派生（main.py 静态挂载 / knowledge.py 图片落盘）
 
 
 class SQLiteClient:
