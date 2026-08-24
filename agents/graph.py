@@ -735,6 +735,9 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
         # 3.5 引用标注：有知识库证据且审核通过 → citation_compile 技能补 [来源:xxx#chunk-N]（失败保留原文）
         _cited = None
         if passed and _kb_evidence:
+            # 条目4：引用标注同为隐式子agent——建档（input=待标注正文前2000字），失败降级空串
+            _cc_rid = _sub_run("citation_compile", "引用标注",
+                               f"待标注正文：\n{generated[:2000]}", state)
             try:
                 from skills.registry import registry
                 _cc = registry.execute("citation_compile",
@@ -745,8 +748,15 @@ def create_workflow(api_key: str | None = None, settings: dict | None = None, on
                                        base_url=base_url or "")
                 if _cc.get("content") and _cc.get("content") != generated:
                     _cited = _cc["content"]
-                    new_mc.append({"agent": "审核", "content": "已补引用标注 [来源:...#chunk-N]：" + str(_cc.get("citations", 0)) + " 处"})
-            except Exception:
+                    new_mc.append({"agent": "审核", "content": "已补引用标注 [来源:...#chunk-N]：" + str(_cc.get("citations", 0)) + " 处",
+                                   **({"run_ids": [_cc_rid]} if _cc_rid else {})})
+                    if _cc_rid:
+                        _sub_finish(_cc_rid, status="ok", summary=f"补引用 {(_cc.get('citations') or 0)} 处", output=str(_cited))
+                elif _cc_rid:
+                    _sub_finish(_cc_rid, status="ok", summary="内容未变化，无需标注")
+            except Exception as _e:
+                if _cc_rid:
+                    _sub_finish(_cc_rid, status="error", summary=f"执行异常：{_e}")
                 logger.exception("引用标注技能异常（保留原文）")
         if _cited:
             state["final_reply"] = _cited
