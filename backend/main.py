@@ -105,7 +105,15 @@ def _mindchain_display_name(name):
 
 
 def _merge_mindchain(mc):
-    """合并同名 agent 的连续思维链条目（同一 agent 规划→生成只显示一个标题），并过滤空内容条目"""
+    """合并同名 agent 的连续思维链条目（同一 agent 规划→生成只显示一个标题），并过滤空内容条目。
+    条目4：run_ids（子agent观测档案 id）合并时并集保留——前端按钮靠它拉子agent窗口；
+    兼容历史单数 run_id 字段。"""
+    def _rids(x):
+        v = list(x.get("run_ids") or [])
+        if x.get("run_id"):
+            v.append(x["run_id"])
+        return list(dict.fromkeys(v))
+
     if not mc:
         return []
     out = []
@@ -116,13 +124,20 @@ def _merge_mindchain(mc):
         content = it.get("content", "") or ""
         if not content.strip():
             continue  # 空内容（无实际产出）条目不展示
+        ids = _rids(it)
         dn = _mindchain_display_name(name)
         if out and _mindchain_display_name(out[-1].get("agent", "")) == dn and dn:
-            # 连续同名：内容拼接进上一条
+            # 连续同名：内容拼接进上一条；run_ids 并集去重保留
             if content:
                 out[-1]["content"] = (out[-1].get("content", "") + "\n" + content).strip()
+            merged = list(dict.fromkeys(_rids(out[-1]) + ids))
+            if merged:
+                out[-1]["run_ids"] = merged
         else:
-            out.append({"agent": name, "content": content})
+            entry = {"agent": name, "content": content}
+            if ids:
+                entry["run_ids"] = ids
+            out.append(entry)
     return out
 
 
