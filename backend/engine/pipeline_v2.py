@@ -82,9 +82,14 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         except Exception:
             logger.exception("[v2] 保存用户消息失败 did=%s", did)
 
+        # --- 模板与画像快照（S3 Assess 预备） ---
+        template = (req.settings or {}).get("template") or "思考"
+        from engine.assess import coerce_score, load_profile_cache
+        profile_cache = load_profile_cache(did)
+        prev_score = coerce_score(profile_cache.get("level_score"))
+
         # --- S1 Plan ---
         from engine.planning import classify_intent, is_rule_simple
-        template = (req.settings or {}).get("template") or "思考"
         token_queue.put(("step", "学习助手·规划"))
         if is_rule_simple(req.message):
             plan = {"complexity": "simple_direct", "need_kb": False}
@@ -97,9 +102,21 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         if plan["complexity"] == "research_deep":
             plan["need_kb"] = True
 
-        # --- S2 Retrieve（条件）---
+        # --- S3 Assess 启动（与 S2 重叠执行；极速档跳过——架构注释中的幽灵节点就此转正） ---
+        assess_exec = None
+        assess_future = None
+        if template != "极速":
+            from concurrent.futures import ThreadPoolExecutor
+            from engine.assess import assess_and_store
+            token_queue.put(("step", "学情与记忆管理"))
+            assess_exec = ThreadPoolExecutor(max_workers=1)
+            assess_future = assess_exec.submit(
+                assess_and_store, _make_fast_llm(req), did, req.message,
+                "", prev_score)
+
+        # --- S2 Retrieve（模式权威：思考/研究必检索，极速不检索；simple_direct 已在上方短路） ---
         search_results: list = []
-        if plan["complexity"] != "simple_direct" and template != "极速" and plan.get("need_kb"):
+        if plan["complexity"] != "simple_direct" and template != "极速":
             token_queue.put(("step", "知识库管理"))
             try:
                 from engine.retrieve import retrieve_stage
@@ -108,16 +125,34 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
             except Exception:
                 logger.exception("[v2] 检索阶段失败，降级无检索生成")
 
+        # --- S3 Assess 回收（与 S2 重叠执行完毕） ---
+        assess_score = None
+        if assess_future is not None:
+            try:
+                assess_score = assess_future.result(timeout=15)
+            except Exception:
+                logger.exception("[v2] 学情评估失败，回落规则地板")
+            finally:
+                assess_exec.shutdown(wait=False)
+
+        # --- 输出策略：T 路由 → 指令注入 → 脚注观测 ---
+        from engine import output_strategy as _os
+        t_val = _os.compute_t(profile_cache, assess_score)
+        strategy_id = _os.route(template, t_val)
+        strategy_text = _os.directive(strategy_id, t_val)
+        token_queue.put(("token", "输出策略",
+                         f"{_os.strategy_name(strategy_id)} T={t_val:.2f}"))
+
         # --- S4 Generate 直连 ---
         token_queue.put(("step", "学习助手·生成"))
         collected: list[str] = []
 
-        def _on_content(piece: str):
+        def _on_content(piece):
             collected.append(piece)
             token_queue.put(("answer", piece))
 
         llm = _make_llm(req)
-        system_prompt = "你是学习助手，禁止输出虚假信息。"  # v0.1 角色句；策略指令 Loop3 注入
+        system_prompt = ("你是学习助手，禁止输出虚假信息。\n【输出策略指令】" + strategy_text)
         user_content = req.message
         if search_results:
             user_content = ("【检索结果】\n" + json.dumps(search_results, ensure_ascii=False)

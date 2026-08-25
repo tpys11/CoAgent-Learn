@@ -14,10 +14,9 @@ _SOFT_KEYS = ["你好", "您好", "hi", "hello", "嗨", "哈喽", "在吗", "谢
 
 _CLASSIFY_PROMPT = (
     "你是学习助手的意图分类器。对用户消息输出 JSON：\n"
-    '{"complexity": "simple_direct|standard|research_deep", "need_kb": true|false}\n'
+    '{"complexity": "simple_direct|standard|research_deep"}\n'
     "规则：寒暄闲聊或极短问答=simple_direct；常规学习问答=standard；"
-    "明确要求深入调研/多源交叉/最新信息=research_deep。"
-    "需要知识库或联网支撑时 need_kb=true。只输出 JSON。"
+    "明确要求深入调研/多源交叉/最新信息=research_deep。只输出 JSON。"
 )
 
 
@@ -55,14 +54,12 @@ def resolve_plan_targets(tpl: str, plan: list) -> list[str]:
 
 
 def classify_intent(llm_fast, message: str, template: str) -> dict:
-    """flash 意图分类：{complexity, need_kb}。失败软着陆→standard + 按模式默认。"""
+    """flash 意图分类：只产出 {complexity}。
+    检索与否由模式决定（思考/研究必检索、极速不检索）——分类器不越权。"""
     from engine.llm_io import think_then_json
     _, result = think_then_json(
         llm_fast, _CLASSIFY_PROMPT, message[:1500], "学习助手·规划", silent=True)
     complexity = result.get("complexity")
     if complexity not in ("simple_direct", "standard", "research_deep"):
         complexity = "standard"
-    need_kb = bool(result.get("need_kb"))
-    if not need_kb and template != "极速":
-        need_kb = True  # 思考/研究默认要检索，分类器说不要才关
-    return {"complexity": complexity, "need_kb": need_kb}
+    return {"complexity": complexity}

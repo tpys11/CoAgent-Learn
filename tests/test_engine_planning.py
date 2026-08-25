@@ -36,11 +36,11 @@ class _JsonLLM:
 def test_classify_intent_ok():
     llm = _JsonLLM('{"complexity": "research_deep", "need_kb": false}')
     out = classify_intent(llm, "深入调研X", "研究")
-    assert out == {"complexity": "research_deep", "need_kb": True}  # 研究档强制need_kb
+    # 新契约：检索决策归模式所有，分类器只产出复杂度（多余键被忽略）
+    assert out == {"complexity": "research_deep"}
 
 
 def test_classify_intent_garbage_falls_back():
     llm = _JsonLLM("完全不是json")
     out = classify_intent(llm, "随便聊聊天气", "思考")
-    assert out["complexity"] == "standard"
-    assert out["need_kb"] is True  # 思考档默认要检索
+    assert out == {"complexity": "standard"}

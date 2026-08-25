@@ -1,0 +1,81 @@
+# -*- coding: utf-8 -*-
+"""S3 Assess（Loop3）：流内学情评估——flash 判定本轮 level_score 并写回画像缓存。
+写回目标 = dialogues.profile JSON（_build_preloaded 的读取源），采用读改写**加键不改键**，
+防止与 settings 页等其他写入者互踩。失败软着陆：任何异常不写不抛，返回 None，
+generate 回落规则地板（output_strategy.compute_t 内建分支）。"""
+import datetime
+import json
+
+from engine.llm_io import think_then_json
+
+
+def evaluate_level(llm_fast, message: str, history_text: str,
+                   previous_score: float | None) -> dict | None:
+    """flash 评估：返回 {"level_score": float, "evidence": str}；解析失败返回 None。"""
+    prompt = (
+        "你是学情评估器。根据用户最新消息与近期对话，评估其当前知识理解水平。\n"
+        '只输出 JSON：{"level_score": 0到1的小数, "evidence": "一句话依据"}\n'
+        "判据：逻辑是否混乱、有无明显知识错误、提问深度、术语使用准确度。"
+        "0=完全新手，1=领域熟练者。\n"
+        + (f"上次评估分：{previous_score:.2f}（仅作参照，勿盲从）\n" if previous_score is not None else "")
+        + (f"近期对话：\n{history_text[:800]}\n" if history_text else "")
+        + f"最新消息：{message[:800]}"
+    )
+    _, result = think_then_json(llm_fast, prompt, "", "学情与记忆管理", silent=True)
+    try:
+        score = float(result.get("level_score"))
+        if not 0 <= score <= 1:
+            return None
+        return {"level_score": score,
+                "evidence": str(result.get("evidence") or "")[:120]}
+    except Exception:
+        return None
+
+
+def load_profile_cache(did: str) -> dict:
+    """读取 dialogues.profile JSON 缓存（T 计算的数据源）；失败返回空字典。"""
+    try:
+        from core.db.project_repo import get_project_repo
+        rows = get_project_repo()._db.execute(
+            "SELECT profile FROM dialogues WHERE id=%s", (did,))
+        d = json.loads(rows[0]["profile"]) if rows and rows[0].get("profile") else {}
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+def store_level_score(did: str, score: float, evidence: str) -> bool:
+    """把 level_score 加键写入 dialogues.profile JSON（读改写，保全其他键）。
+    返回是否成功；失败由调用方决定回落策略，本函数绝不抛出。"""
+    try:
+        from core.db.project_repo import get_project_repo
+        repo = get_project_repo()
+        d = load_profile_cache(did)
+        d["level_score"] = round(score, 4)
+        d["level_evidence"] = evidence
+        d["level_updated_at"] = datetime.datetime.now().isoformat(timespec="seconds")
+        repo._db.execute("UPDATE dialogues SET profile=%s WHERE id=%s",
+                         (json.dumps(d, ensure_ascii=False), did))
+        return True
+    except Exception:
+        return False
+
+
+def coerce_score(value) -> float | None:
+    """任意来源的分数 → [0,1] float 或 None（防御画像/评估双路脏数据）。"""
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return None
+    return f if 0 <= f <= 1 else None
+
+
+def assess_and_store(llm_fast, did: str, message: str, history_text: str = "",
+                     previous_score: float | None = None) -> float | None:
+    """S3 阶段入口：评估并落库；返回本轮流内可用的 level_score（失败 None）。
+    落库失败不掩埋评估值——本轮路由仍可使用，只是下轮无新鲜分。"""
+    out = evaluate_level(llm_fast, message, history_text, previous_score)
+    if not out:
+        return None
+    store_level_score(did, out["level_score"], out.get("evidence", ""))
+    return out["level_score"]  # 评估值即使落库失败也可供本轮使用

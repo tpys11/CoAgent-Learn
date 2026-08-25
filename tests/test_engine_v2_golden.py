@@ -17,20 +17,24 @@ for _p in (str(_ROOT), str(_ROOT / "backend")):
 
 import fastapi.testclient  # noqa: E402
 
+from tests._engine_helpers import RoutingFastLLM, ScriptedLLM
+
 GOLDEN_PATH = pathlib.Path(__file__).parent / "golden" / "sse_frames_v2.json"
 
 
 class FakeLLM:
-    """替代 DeepSeekLLM：chat_stream 以 on_content 吐出定值回答。"""
+    """替代 DeepSeekLLM：chat_stream 以 on_content 吐出定值回答，并捕获 messages 供指令断言。"""
     last_instance = None
 
     def __init__(self, api_key=None, model=None, base_url=None, **kw):
         self.api_key = api_key
         self.model = model
+        self.messages = None
         FakeLLM.last_instance = self
 
     def chat_stream(self, messages, on_token, temperature=0.7, on_content=None,
                     cancel_event=None, on_reasoning=None):
+        self.messages = messages
         assert messages[0]["role"] == "system"
         assert "学习助手" in messages[0]["content"]
         for piece in ["黄金回答内容"]:
@@ -56,6 +60,9 @@ def isolated_app(tmp_path, monkeypatch):
     import engine.pipeline_v2 as eng
     monkeypatch.setattr(eng, "_make_llm", lambda req: FakeLLM(
         api_key="dummy", model=req.model or "test-model", base_url=req.base_url))
+    # 快模型接缝默认给一条学情评估响应（极速档/规则simple路径不会消费）
+    monkeypatch.setattr(eng, "_make_fast_llm", lambda req: ScriptedLLM(
+        ['{"level_score": 0.8, "evidence": "ok"}']))
 
     import main as _main  # SQLITE_DIR 已就位后再导入应用
     return _main.app
@@ -132,3 +139,39 @@ def test_engine_mode_default():
         if old is not None:
             os.environ["CHAT_ENGINE"] = old
         importlib.reload(eng)
+
+
+def test_v2_strategy_directive_flow(isolated_app, monkeypatch):
+    """Loop3·非简单消息全链：Plan分类→Assess评分→T路由②→指令注入生成system。
+    思考档模式权威检索：知识库管理步必然存在。"""
+    monkeypatch.setenv("CHAT_ENGINE", "v2")
+    app = isolated_app
+    body = {"message": "请讲解RAG的原理与应用", "api_key": "dummy-key",
+            "project_id": "p-v2", "dialogue_id": "d-v2", "session_id": "s-v2",
+            "settings": {}}
+    import engine.pipeline_v2 as eng
+    import engine.retrieve as rt_mod
+    fast = RoutingFastLLM()
+    monkeypatch.setattr(eng, "_make_fast_llm", lambda req: fast)
+    # 检索源定值化（防真实网络）：2查询×2条web + 1条kb = 5候选 ≤ keep6 → 筛选早退
+    monkeypatch.setattr(rt_mod, "_web_search",
+                        lambda q: [{"title": "web-" + q + "-a", "content": "wc"},
+                                   {"title": "web-" + q + "-b", "content": "wc"}])
+    monkeypatch.setattr(rt_mod, "_kb_search",
+                        lambda q, pid: [{"title": "kb-" + q, "content": "kc"}])
+
+    frames = _capture(app, body)
+    steps = [f.get("agent") for f in frames if f["type"] == "step"]
+    assert steps == ["学习助手·规划", "学情与记忆管理", "知识库管理", "学习助手·生成"]
+
+    foot = [f for f in frames if f["type"] == "thought_token" and f.get("agent") == "输出策略"]
+    assert len(foot) == 1 and foot[0]["chunk"].startswith("②用户语域 T=0.81"), foot
+
+    main_llm = FakeLLM.last_instance
+    sys_text = main_llm.messages[0]["content"]
+    assert "【输出策略指令】" in sys_text and "贴合用户当前" in sys_text
+    done = frames[-1]
+    assert done["type"] == "done" and done["reply"] == "黄金回答内容"
+
+    # 快模型三消费者全部命中路由前缀（分类/评估/查询规划；候选≤keep时筛选早退不调用）
+    assert len(fast.calls) == 3

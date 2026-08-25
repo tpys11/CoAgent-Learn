@@ -9,6 +9,15 @@
  },
  {
   "type": "step",
+  "agent": "学情与记忆管理"
+ },
+ {
+  "type": "thought_token",
+  "agent": "输出策略",
+  "chunk": "②用户语域 T=0.74"
+ },
+ {
+  "type": "step",
   "agent": "学习助手·生成"
  },
  {
