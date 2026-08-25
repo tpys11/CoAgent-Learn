@@ -143,7 +143,8 @@ def _merge_mindchain(mc):
 
 
 # 手动停止注册表：request_id -> cancel_event（POST /api/chat/stop 置位，run_workflow 检查后中断生成）
-_active_cancels: dict = {}
+# 手动停止注册表：request_id -> cancel_event（POST /api/chat/stop 置位；v1/v2 引擎共用 engine.cancel.ACTIVE_CANCELS）
+from engine.cancel import ACTIVE_CANCELS as _active_cancels  # noqa: E402
 # ---------- API 接口 ----------
 
 class ChatRequest(BaseModel):
@@ -587,6 +588,10 @@ async def chat(req: ChatRequest):
         if _pst == "pending":
             from fastapi import HTTPException
             raise HTTPException(status_code=409, detail="profile_pending")
+    # 引擎分流：CHAT_ENGINE=v2 走新引擎（Loop1 骨架），默认 v1 旧路径
+    from engine.pipeline_v2 import engine_mode, stream_response as _v2_stream_response
+    if engine_mode() == "v2":
+        return await _v2_stream_response(req)
     async def stream():
         try:
             import queue, threading, asyncio

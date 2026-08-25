@@ -1,0 +1,30 @@
+[
+ {
+  "type": "start",
+  "request_id": "<RID>"
+ },
+ {
+  "type": "step",
+  "agent": "学习助手·生成"
+ },
+ {
+  "type": "answer_token",
+  "chunk": "黄金回答内容"
+ },
+ {
+  "type": "done",
+  "reply": "黄金回答内容",
+  "steps": [
+   {
+    "agent": "学习助手·生成",
+    "status": "done",
+    "detail": "直接生成"
+   }
+  ],
+  "mindchain": [],
+  "task_stats": {},
+  "special_suggestions": [],
+  "retrieved_images": [],
+  "review": null
+ }
+]
