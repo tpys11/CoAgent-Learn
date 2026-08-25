@@ -138,6 +138,16 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         prev_score = coerce_score(profile_cache.get("level_score"))
         ctx_steps: list = []
         mindchain_entries: list = []
+        traces: list[dict] = []
+
+        def _trace(stage: str, input_digest="", output_digest="", **metrics):
+            traces.append({
+                "stage": stage,
+                "input_digest": str(input_digest)[:400],
+                "output_digest": str(output_digest)[:400],
+                "metrics_json": json.dumps(metrics, ensure_ascii=False),
+                "elapsed_ms": max(0, int((_time_mod.time() - t0) * 1000)),
+            })
         history_block = preloaded.get("history") or {}
 
         # 特殊输入解析（消息内URL并行抓取并入文；无URL原样返回）
@@ -164,6 +174,8 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         if plan_thinking.strip():
             mindchain_entries.append({"agent": "学习助手·规划",
                                       "content": plan_thinking.strip()[:800]})
+        _trace("plan", input_digest=req.message[:200],
+               output_digest=json.dumps({"complexity": plan["complexity"]}, ensure_ascii=False))
         ctx_steps.append({"agent": "学习助手·规划", "status": "done", "detail": "意图分类完成"})
 
         recent_digest = "\n".join(
@@ -196,6 +208,9 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                 logger.exception("[v2] 检索阶段失败，降级无检索生成")
             ctx_steps.append({"agent": "知识库管理", "status": "done",
                               "detail": f"检索{len(search_results)}条"})
+            _trace("retrieve", input_digest=req.message[:200],
+                   output_digest=json.dumps({"kept": len(search_results)}, ensure_ascii=False),
+                   raw_count=len(search_results))
 
         # --- S3 Assess 回收（与 S2 重叠执行完毕） ---
         assess_score = None
@@ -213,6 +228,8 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                                       "content": assess_thinking[:800]})
         ctx_steps.append({"agent": "学情与记忆管理", "status": "done",
                           "detail": ("水平评估完成" if assess_score is not None else "规则地板")})
+        _trace("assess", input_digest=req.message[:200],
+               output_digest=json.dumps({"level_score": assess_score}, ensure_ascii=False))
 
         # --- 输出策略：T 路由 → 指令注入 → 脚注观测 ---
         from engine import output_strategy as _os
@@ -319,12 +336,19 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         if gen_reasoning_text:
             mindchain_entries.append({"agent": "学习助手·生成",
                                       "content": gen_reasoning_text[:1500]})
+        _trace("generate", input_digest=working_message[:200],
+               output_digest=json.dumps({"reply_len": len(reply), "attempts": attempt + 1},
+                                        ensure_ascii=False))
         ctx_steps.append({"agent": "学习助手·生成", "status": "done", "detail": "生成输出"})
         if reviewed_info:
             ctx_steps.append({"agent": "审核",
                               "status": "done",
                               "detail": ("审核通过" if reviewed_info["passed"]
                                          else "未通过：" + reviewed_info["suggestion"])})
+        _trace("review", output_digest=json.dumps(
+            {"passed": reviewed_info["passed"] if reviewed_info else None,
+             "score": reviewed_info["score"] if reviewed_info else None},
+            ensure_ascii=False))
         special_suggestions = []
         if plan["complexity"] != "simple_direct":
             try:
@@ -332,6 +356,13 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                 special_suggestions = suggest_special_forms(req.api_key, reply, req.base_url)
             except Exception:
                 logger.exception("[v2] 特殊形式建议失败")
+
+        # --- Trace 批量落库（旁路，失败不影响主流程） ---
+        try:
+            from core.db.eval_repo import get_eval_repo
+            get_eval_repo().insert_traces(request_id, did, pid, template, traces)
+        except Exception:
+            logger.exception("[v2] Trace 落库失败（不影响主流程）")
 
         result = {
             "final_reply": reply,

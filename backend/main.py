@@ -177,6 +177,24 @@ async def memory_chat(req: ChatRequest):
     return await run_in_threadpool(_memory_chat_service, req.api_key, req.message, req.project_id, req.session_id or "")
 
 
+@app.get("/api/eval/traces/{request_id}")
+async def get_eval_traces(request_id: str):
+    """按 request_id 查询单轮对话的全量评估Trace（协作者接口）。"""
+    from core.db.eval_repo import get_eval_repo
+    rows = get_eval_repo().by_request(request_id)
+    return {"request_id": request_id, "traces": rows}
+
+
+@app.get("/api/eval/export")
+async def export_eval_traces():
+    """导出全部评估Trace（提交材料/离线分析用）。"""
+    from core.db.eval_repo import get_eval_repo
+    repo = get_eval_repo()
+    all_rows = repo._db.execute(
+        "SELECT * FROM eval_traces ORDER BY request_id, id")
+    return {"count": len(all_rows), "traces": all_rows}
+
+
 def _build_preloaded(pid: str, did: str, user_input: str) -> dict:
     """生成节点上下文预查（main.py 预取 → 塞 state["preloaded"]，generate_node 不再直接查库）。
     各段独立容错：单段失败不影响其他段，生成节点按 preloaded 有无决定注入。"""
