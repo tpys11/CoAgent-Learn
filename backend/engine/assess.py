@@ -10,8 +10,8 @@ from engine.llm_io import think_then_json
 
 
 def evaluate_level(llm_fast, message: str, history_text: str,
-                   previous_score: float | None) -> dict | None:
-    """flash 评估：返回 {"level_score": float, "evidence": str}；解析失败返回 None。"""
+                   previous_score: float | None) -> tuple[str, dict | None]:
+    """flash 评估：返回 (思考原文, {"level_score","evidence"} 或 None)。"""
     prompt = (
         "你是学情评估器。根据用户最新消息与近期对话，评估其当前知识理解水平。\n"
         '只输出 JSON：{"level_score": 0到1的小数, "evidence": "一句话依据"}\n'
@@ -21,15 +21,15 @@ def evaluate_level(llm_fast, message: str, history_text: str,
         + (f"近期对话：\n{history_text[:800]}\n" if history_text else "")
         + f"最新消息：{message[:800]}"
     )
-    _, result = think_then_json(llm_fast, prompt, "", "学情与记忆管理", silent=True)
+    thinking, result = think_then_json(llm_fast, prompt, "", "学情与记忆管理", silent=True)
     try:
         score = float(result.get("level_score"))
         if not 0 <= score <= 1:
-            return None
-        return {"level_score": score,
-                "evidence": str(result.get("evidence") or "")[:120]}
+            return thinking, None
+        return thinking, {"level_score": score,
+                          "evidence": str(result.get("evidence") or "")[:120]}
     except Exception:
-        return None
+        return thinking, None
 
 
 def load_profile_cache(did: str) -> dict:
@@ -71,11 +71,11 @@ def coerce_score(value) -> float | None:
 
 
 def assess_and_store(llm_fast, did: str, message: str, history_text: str = "",
-                     previous_score: float | None = None) -> float | None:
-    """S3 阶段入口：评估并落库；返回本轮流内可用的 level_score（失败 None）。
+                     previous_score: float | None = None) -> tuple[float | None, str]:
+    """S3 阶段入口：评估并落库；返回 (本轮流内可用 level_score 或 None, 思考原文)。
     落库失败不掩埋评估值——本轮路由仍可使用，只是下轮无新鲜分。"""
-    out = evaluate_level(llm_fast, message, history_text, previous_score)
+    thinking, out = evaluate_level(llm_fast, message, history_text, previous_score)
     if not out:
-        return None
+        return None, thinking
     store_level_score(did, out["level_score"], out.get("evidence", ""))
-    return out["level_score"]  # 评估值即使落库失败也可供本轮使用
+    return out["level_score"], thinking  # 评估值即使落库失败也可供本轮使用

@@ -166,9 +166,12 @@ def test_research_full_chain_with_review(v2_env, monkeypatch):
             s = messages[0]["content"]
             self.calls.append(s[:20])
             if "意图分类器" in s:
-                raw = '{"complexity": "research_deep"}'
+                # 前导自然语言 + 围栏json：思考原文非空（Loop6 思维链持久化验证点）
+                raw = ('用户想深入了解RAG。\n```json\n'
+                       '{"complexity": "research_deep"}\n```')
             elif "学情评估器" in s:
-                raw = '{"level_score": 0.9, "evidence": "术语准确"}'
+                raw = ('近期术语使用准确。\n```json\n'
+                       '{"level_score": 0.9, "evidence": "术语准确"}\n```')
             elif "查询规划器" in s:
                 self.qn += 1
                 raw = json.dumps({"need_search": True,
@@ -198,8 +201,11 @@ def test_research_full_chain_with_review(v2_env, monkeypatch):
                    if f["type"] == "thought_token" and f.get("agent") == "审核"]
     assert any("密度不足" in (c or "") for c in audit_notes)
     done = frames[-1]
-    # 线协议字段名为 review（v1 内部变量名叫 reviewed——测试曾因此误判）
     assert done["review"]["passed"] is True and done["review"]["score"] == 88
+    # Loop6：思维链持久化——done.mindchain 携带各阶段思考原文（规划/学情）
+    mc_agents = [e.get("agent") for e in done.get("mindchain", [])]
+    assert "学习助手·规划" in mc_agents and "学情与记忆管理" in mc_agents, mc_agents
+    assert any("深入了解RAG" in e["content"] for e in done["mindchain"])
     assert done["reply"] == "合成回答内容"
 
 

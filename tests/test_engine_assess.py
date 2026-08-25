@@ -34,13 +34,15 @@ def repo_db(tmp_path, monkeypatch):
 
 
 def test_evaluate_ok(repo_db):
-    out = evaluate_level(OneShot(GOOD), "消息", "", None)
-    assert out == {"level_score": 0.8, "evidence": "术语准确"}
+    thinking, out = evaluate_level(OneShot(GOOD), "消息", "", None)
+    assert thinking == "" and out == {"level_score": 0.8, "evidence": "术语准确"}
 
 
 def test_evaluate_malformed_returns_none():
-    assert evaluate_level(OneShot("不是json"), "m", "", None) is None
-    assert evaluate_level(OneShot('{"level_score": 5}'), "m", "", None) is None
+    thinking, out = evaluate_level(OneShot("不是json"), "m", "", None)
+    assert out is None and thinking == "不是json"
+    _, out5 = evaluate_level(OneShot('{"level_score": 5}'), "m", "", None)
+    assert out5 is None
 
 
 def test_coerce_score():
@@ -67,13 +69,13 @@ def test_load_roundtrip(repo_db):
 
 
 def test_assess_and_store_happy(repo_db):
-    out = assess_and_store(OneShot(GOOD), "d1", "消息", "", None)
-    assert out == 0.8
+    score, thinking = assess_and_store(OneShot(GOOD), "d1", "消息", "", None)
+    assert score == 0.8
     d = load_profile_cache("d1")
     assert d["level_score"] == 0.8 and d["level_evidence"] == "术语准确"
 
 
 def test_assess_missing_dialogue_row_still_returns_score(repo_db):
     """对话行不存在时落库静默失败，但本轮评分仍返回供路由使用。"""
-    out = assess_and_store(OneShot(GOOD), "不存在的did", "消息", "", None)
-    assert out == 0.8
+    score, _thinking = assess_and_store(OneShot(GOOD), "不存在的did", "消息", "", None)
+    assert score == 0.8

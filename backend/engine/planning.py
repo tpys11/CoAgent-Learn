@@ -53,13 +53,13 @@ def resolve_plan_targets(tpl: str, plan: list) -> list[str]:
     return ["generate"]
 
 
-def classify_intent(llm_fast, message: str, template: str) -> dict:
-    """flash 意图分类：只产出 {complexity}。
-    检索与否由模式决定（思考/研究必检索、极速不检索）——分类器不越权。"""
+def classify_intent(llm_fast, message: str, template: str) -> tuple[str, dict]:
+    """flash 意图分类：返回 (思考原文, {complexity})。
+    thinking 供思维链持久化；检索与否由模式决定，分类器不越权。"""
     from engine.llm_io import think_then_json
-    _, result = think_then_json(
+    thinking, result = think_then_json(
         llm_fast, _CLASSIFY_PROMPT, message[:1500], "学习助手·规划", silent=True)
     complexity = result.get("complexity")
     if complexity not in ("simple_direct", "standard", "research_deep"):
         complexity = "standard"
-    return {"complexity": complexity}
+    return thinking, {"complexity": complexity}

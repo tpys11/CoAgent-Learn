@@ -45,12 +45,13 @@ def review_once(llm_review, answer: str, context_digest: str,
         + (f"【参考上下文摘要】{context_digest[:1200]}\n" if context_digest else "")
         + f"【待审回答】{answer[:2500]}"
     )
+    thinking = ""
     try:
-        _, result = think_then_json(llm_review, prompt, "", "审核", silent=True)
+        thinking, result = think_then_json(llm_review, prompt, "", "审核", silent=True)
         if not isinstance(result, dict) or "passed" not in result:
             return {"passed": True, "score": 100,
                     "reasons": "审核器输出不可解析，跳过本轮",
-                    "skipped": True}
+                    "thinking": thinking[:600], "skipped": True}
         passed = bool(result.get("passed"))
         try:
             score = max(0, min(100, int(result.get("score"))))
@@ -58,7 +59,8 @@ def review_once(llm_review, answer: str, context_digest: str,
             score = 80 if passed else 30
         return {"passed": passed, "score": score,
                 "reasons": str(result.get("reasons") or ""),
-                "skipped": False}
+                "thinking": thinking[:600], "skipped": False}
     except Exception as e:
         return {"passed": True, "score": 100,
-                "reasons": f"审核器异常跳过：{str(e)[:80]}", "skipped": True}
+                "reasons": f"审核器异常跳过：{str(e)[:80]}",
+                "thinking": "", "skipped": True}

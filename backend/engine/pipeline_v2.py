@@ -23,6 +23,8 @@ DEFAULT_MODEL = "deepseek-v4-flash-vision-exp"
 # 极速档字数约束（自旧引擎常量平移，语义不变）
 FAST_WORD_MIN, FAST_WORD_MAX, FAST_WORD_HARD = 500, 800, 1000
 
+from engine.mindchain import merge_consecutive  # noqa: E402
+
 
 def engine_mode() -> str:
     """引擎选择开关：环境变量 CHAT_ENGINE=v1 可回退旧引擎；缺省 v2（新引擎为主）。"""
@@ -135,6 +137,7 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         profile_cache = preloaded.get("dialogue_profile_cache") or {}
         prev_score = coerce_score(profile_cache.get("level_score"))
         ctx_steps: list = []
+        mindchain_entries: list = []
         history_block = preloaded.get("history") or {}
 
         # 特殊输入解析（消息内URL并行抓取并入文；无URL原样返回）
@@ -149,15 +152,18 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         from engine.planning import classify_intent, is_rule_simple
         token_queue.put(("step", "学习助手·规划"))
         if is_rule_simple(req.message):
-            plan = {"complexity": "simple_direct", "need_kb": False}
+            plan_thinking = ""
+            plan = {"complexity": "simple_direct"}
         else:
             try:
-                plan = classify_intent(_make_fast_llm(req), req.message, template)
+                plan_thinking, plan = classify_intent(
+                    _make_fast_llm(req), req.message, template)
             except Exception:
                 logger.exception("[v2] 意图分类失败，回落 standard")
-                plan = {"complexity": "standard", "need_kb": template != "极速"}
-        if plan["complexity"] == "research_deep":
-            plan["need_kb"] = True
+                plan_thinking, plan = "", {"complexity": "standard"}
+        if plan_thinking.strip():
+            mindchain_entries.append({"agent": "学习助手·规划",
+                                      "content": plan_thinking.strip()[:800]})
         ctx_steps.append({"agent": "学习助手·规划", "status": "done", "detail": "意图分类完成"})
 
         recent_digest = "\n".join(
@@ -193,13 +199,18 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
 
         # --- S3 Assess 回收（与 S2 重叠执行完毕） ---
         assess_score = None
+        assess_thinking = ""
         if assess_future is not None:
             try:
-                assess_score = assess_future.result(timeout=15)
+                assess_score, assess_thinking_raw = assess_future.result(timeout=15)
+                assess_thinking = (assess_thinking_raw or "").strip()
             except Exception:
                 logger.exception("[v2] 学情评估失败，回落规则地板")
             finally:
                 assess_exec.shutdown(wait=False)
+        if assess_thinking:
+            mindchain_entries.append({"agent": "学情与记忆管理",
+                                      "content": assess_thinking[:800]})
         ctx_steps.append({"agent": "学情与记忆管理", "status": "done",
                           "detail": ("水平评估完成" if assess_score is not None else "规则地板")})
 
@@ -220,6 +231,14 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         def _on_content(piece):
             collected.append(piece)
             token_queue.put(("answer", piece))
+
+        # 强模型思考流内实时可见（v1 对齐），同时累积供思维链持久化
+        gen_reasoning: list[str] = []
+
+        def _on_reasoning(piece):
+            if piece:
+                gen_reasoning.append(piece)
+                token_queue.put(("token", "学习助手·生成", piece))
 
         llm_gen = _make_llm(req, model_override=effective_model)
         base_system = ("你是学习助手，禁止输出虚假信息。\n【输出策略指令】" + strategy_text)
@@ -265,8 +284,9 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
             collected.clear()
             llm_gen.chat_stream(
                 [{"role": "system", "content": base_system + sys_extra}, user_msg],
-                (lambda _c: None),          # 通用通道不消费（无思维链阶段）
-                on_content=_on_content,     # 回答 token → answer 帧
+                (lambda _c: None),          # 通用通道不消费
+                on_reasoning=_on_reasoning,  # 思考 token → thought 帧（流内可见+持久化采集）
+                on_content=_on_content,      # 回答 token → answer 帧
                 cancel_event=cancel_evt,
             )
             reply = "".join(collected)
@@ -295,6 +315,10 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
             token_queue.put(("done", {"final_reply": "", "steps": [], "mindchain": [], "task_stats": {}}))
             return
 
+        gen_reasoning_text = "".join(gen_reasoning).strip()
+        if gen_reasoning_text:
+            mindchain_entries.append({"agent": "学习助手·生成",
+                                      "content": gen_reasoning_text[:1500]})
         ctx_steps.append({"agent": "学习助手·生成", "status": "done", "detail": "生成输出"})
         if reviewed_info:
             ctx_steps.append({"agent": "审核",
@@ -312,7 +336,7 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         result = {
             "final_reply": reply,
             "steps": ctx_steps,
-            "mindchain": [],
+            "mindchain": merge_consecutive(mindchain_entries),
             "task_stats": {},
             "complexity": plan["complexity"],
             **({"reviewed": reviewed_info} if reviewed_info else {}),
