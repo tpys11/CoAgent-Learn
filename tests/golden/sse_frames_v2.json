@@ -29,9 +29,19 @@
   "reply": "黄金回答内容",
   "steps": [
    {
+    "agent": "学习助手·规划",
+    "status": "done",
+    "detail": "意图分类完成"
+   },
+   {
+    "agent": "学情与记忆管理",
+    "status": "done",
+    "detail": "水平评估完成"
+   },
+   {
     "agent": "学习助手·生成",
     "status": "done",
-    "detail": "直接生成"
+    "detail": "生成输出"
    }
   ],
   "mindchain": [],

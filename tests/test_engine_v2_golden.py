@@ -58,8 +58,9 @@ def isolated_app(tmp_path, monkeypatch):
     monkeypatch.setattr(bgmod, "submit", lambda fn=None, *a, **k: None)
 
     import engine.pipeline_v2 as eng
-    monkeypatch.setattr(eng, "_make_llm", lambda req: FakeLLM(
-        api_key="dummy", model=req.model or "test-model", base_url=req.base_url))
+    monkeypatch.setattr(eng, "_make_llm", lambda req, model_override=None: FakeLLM(
+        api_key="dummy", model=model_override or req.model or "test-model",
+        base_url=req.base_url))
     # 快模型接缝默认给一条学情评估响应（极速档/规则simple路径不会消费）
     monkeypatch.setattr(eng, "_make_fast_llm", lambda req: ScriptedLLM(
         ['{"level_score": 0.8, "evidence": "ok"}']))
@@ -126,6 +127,37 @@ def test_default_engine_is_v1_and_skips_v2_seam(isolated_app, monkeypatch):
     monkeypatch.setattr(eng, "_make_llm", _boom)
     frames = _capture(app, _body())
     assert frames and frames[-1]["type"] in {"done", "error"}, "v1 路径应正常产出终止帧"
+
+
+def test_v2_memory_edit_branch_short_circuit(isolated_app, monkeypatch):
+    """[模块名] 记忆修改分支：短路 done，不进入生成管线。"""
+    monkeypatch.setenv("CHAT_ENGINE", "v2")
+    app = isolated_app
+    import services.memory_edit as me_mod
+    monkeypatch.setattr(me_mod, "memory_edit",
+                        lambda api_key, message, pid, session_id="": {
+                            "reply": "✅ 已更新记忆模块「学习目标」",
+                            "steps": [{"agent": "记忆管理", "status": "done", "detail": "更新"}]})
+    import engine.pipeline_v2 as eng
+    constructed = []
+    base_make = eng._make_llm
+
+    def _spy(req, model_override=None):
+        constructed.append(1)
+        return base_make(req, model_override)
+
+    monkeypatch.setattr(eng, "_make_llm", _spy)
+
+    frames = _capture(app, {"message": "[学习目标] 改成掌握RAG", "api_key": "d",
+                            "project_id": "p-v2", "dialogue_id": "d-v2",
+                            "session_id": "s-v2", "settings": {}})
+    types = [f["type"] for f in frames]
+    assert types[0] == "start" and types[-1] == "done"
+    assert not any(f["type"] == "step" and f.get("agent") == "学习助手·生成"
+                   for f in frames), "记忆分支不应进入生成阶段"
+    assert constructed == [], "生成模型不应被触碰"
+    done = frames[-1]
+    assert "已更新记忆模块" in done["reply"]
 
 
 def test_engine_mode_default():

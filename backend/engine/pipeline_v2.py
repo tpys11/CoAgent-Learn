@@ -29,12 +29,12 @@ def engine_mode() -> str:
 
 # --- 模型接缝（测试在此打补丁注入 FakeLLM） ---
 
-def _make_llm(req):
+def _make_llm(req, model_override=None):
     from core.base_llm import DeepSeekLLM
     from core.config import config as _cfg
     return DeepSeekLLM(
         api_key=req.api_key or _cfg.DEEPSEEK_API_KEY,
-        model=req.model or DEFAULT_MODEL,
+        model=model_override or req.model or DEFAULT_MODEL,
         base_url=req.base_url,
     )
 
@@ -75,18 +75,72 @@ def _persist_assistant_message(did: str, reply: str) -> None:
 def _v2_worker(req, token_queue, cancel_evt, request_id):
     """S0+S4 最小链路（线程体）。后续 Loop 在此扩展 Plan/Retrieve/Assess/Review。"""
     try:
+        import time as _time_mod
+        t0 = _time_mod.time()
         pid = req.project_id or "default"
         did = req.dialogue_id or "default"
+        raw_settings = dict(req.settings or {})
         try:
             _persist_user_message(req, pid, did)
         except Exception:
             logger.exception("[v2] 保存用户消息失败 did=%s", did)
 
-        # --- 模板与画像快照（S3 Assess 预备） ---
-        template = (req.settings or {}).get("template") or "思考"
-        from engine.assess import coerce_score, load_profile_cache
-        profile_cache = load_profile_cache(did)
+        # 记忆修改分支：[模块名] 引用 → 独立路径短路（不走多Agent流程，v1语义平移）
+        try:
+            from services.memory_edit import memory_edit as _mem_edit
+            _edit = _mem_edit(req.api_key, req.message, pid, req.session_id or "default")
+        except Exception:
+            _edit = None
+            logger.exception("[v2] 记忆修改分析失败")
+        if _edit:
+            _reply2 = _edit["reply"]
+            try:
+                _persist_assistant_message(did, _reply2)
+            except Exception:
+                logger.exception("[v2] 保存记忆修改回复失败 did=%s", did)
+            from engine.finalize import five_round_hook
+            five_round_hook(pid, did)
+            token_queue.put(("done", {"final_reply": _reply2,
+                                      "steps": _edit.get("steps") or [],
+                                      "mindchain": [], "task_stats": {}}))
+            return
+
+        # 自动档设置推断（保留 v1 能力：modelAuto/auto）
+        effective_model = req.model
+        try:
+            if raw_settings.get("modelAuto") or raw_settings.get("auto"):
+                from main import _auto_settings
+                tpl0 = raw_settings.get("template") or "思考"
+                _auto = _auto_settings(req.api_key, req.message, tpl0,
+                                       infer_model=bool(raw_settings.get("modelAuto")))
+                if _auto:
+                    raw_settings.update(_auto)
+                    if _auto.get("model"):
+                        effective_model = _auto["model"]
+        except Exception:
+            logger.exception("[v2] 自动设置推断失败，按原设置继续")
+
+        # --- 会话上下文快照：画像缓存 + 历史预算块（复用主模块已验证的预取逻辑） ---
+        template = raw_settings.get("template") or "思考"
+        try:
+            from main import _build_preloaded
+            preloaded = _build_preloaded(pid, did, req.message)
+        except Exception:
+            logger.exception("[v2] 预取会话上下文失败")
+            preloaded = {}
+        from engine.assess import coerce_score
+        profile_cache = preloaded.get("dialogue_profile_cache") or {}
         prev_score = coerce_score(profile_cache.get("level_score"))
+        ctx_steps: list = []
+        history_block = preloaded.get("history") or {}
+
+        # 特殊输入解析（消息内URL并行抓取并入文；无URL原样返回）
+        try:
+            from main import _parse_special_inputs
+            working_message = _parse_special_inputs(req.message)
+        except Exception:
+            logger.exception("[v2] 特殊输入解析失败")
+            working_message = req.message
 
         # --- S1 Plan ---
         from engine.planning import classify_intent, is_rule_simple
@@ -101,6 +155,11 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                 plan = {"complexity": "standard", "need_kb": template != "极速"}
         if plan["complexity"] == "research_deep":
             plan["need_kb"] = True
+        ctx_steps.append({"agent": "学习助手·规划", "status": "done", "detail": "意图分类完成"})
+
+        recent_digest = "\n".join(
+            f"{m.get('role')}: {str(m.get('content'))[:120]}"
+            for m in (history_block.get("recent") or [])[-4:])
 
         # --- S3 Assess 启动（与 S2 重叠执行；极速档跳过——架构注释中的幽灵节点就此转正） ---
         assess_exec = None
@@ -112,7 +171,7 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
             assess_exec = ThreadPoolExecutor(max_workers=1)
             assess_future = assess_exec.submit(
                 assess_and_store, _make_fast_llm(req), did, req.message,
-                "", prev_score)
+                recent_digest, prev_score)
 
         # --- S2 Retrieve（模式权威：思考/研究必检索，极速不检索；simple_direct 已在上方短路） ---
         search_results: list = []
@@ -124,6 +183,8 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                 search_results = _rr["search_results"]
             except Exception:
                 logger.exception("[v2] 检索阶段失败，降级无检索生成")
+            ctx_steps.append({"agent": "知识库管理", "status": "done",
+                              "detail": f"检索{len(search_results)}条"})
 
         # --- S3 Assess 回收（与 S2 重叠执行完毕） ---
         assess_score = None
@@ -134,6 +195,8 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                 logger.exception("[v2] 学情评估失败，回落规则地板")
             finally:
                 assess_exec.shutdown(wait=False)
+        ctx_steps.append({"agent": "学情与记忆管理", "status": "done",
+                          "detail": ("水平评估完成" if assess_score is not None else "规则地板")})
 
         # --- 输出策略：T 路由 → 指令注入 → 脚注观测 ---
         from engine import output_strategy as _os
@@ -143,7 +206,9 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         token_queue.put(("token", "输出策略",
                          f"{_os.strategy_name(strategy_id)} T={t_val:.2f}"))
 
-        # --- S4 Generate 直连 ---
+        # --- S4 Generate × S5 ReviewGate（研究必开/思考可配/极速关） ---
+        from engine.review import REVIEW_MAX_RETRY, pick_judge_llm, review_enabled, review_once
+        gate_on = review_enabled(template, raw_settings)
         token_queue.put(("step", "学习助手·生成"))
         collected: list[str] = []
 
@@ -151,9 +216,25 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
             collected.append(piece)
             token_queue.put(("answer", piece))
 
-        llm = _make_llm(req)
-        system_prompt = ("你是学习助手，禁止输出虚假信息。\n【输出策略指令】" + strategy_text)
-        user_content = req.message
+        llm_gen = _make_llm(req, model_override=effective_model)
+        base_system = ("你是学习助手，禁止输出虚假信息。\n【输出策略指令】" + strategy_text)
+        # 画像/历史上下文注入（v1 对齐）：用户背景、偏好、早期摘要、近期原文
+        context_blocks = ""
+        if profile_cache.get("用户背景"):
+            context_blocks += f"【用户背景】{str(profile_cache['用户背景'])[:500]}\n"
+        for k, label in [("偏好提问方式", "偏好提问方式"), ("偏好学习方式", "偏好学习方式"),
+                         ("偏好_输出", "偏好输出形式")]:
+            v = profile_cache.get(k)
+            if v:
+                text = "、".join(str(x) for x in v) if isinstance(v, list) else str(v)
+                context_blocks += f"【{label}】{text[:200]}\n"
+        if history_block.get("summary"):
+            context_blocks += f"【早期对话摘要】{history_block['summary'][:800]}\n"
+        recent = history_block.get("recent") or []
+        if recent:
+            context_blocks += "【近期对话】\n" + "\n".join(
+                f"{m.get('role')}: {str(m.get('content'))[:200]}" for m in recent[-6:]) + "\n"
+        user_content = context_blocks + working_message
         if search_results:
             user_content = ("【检索结果】\n" + json.dumps(search_results, ensure_ascii=False)
                             + "\n\n（优先基于以上检索结果回答；未覆盖部分用通识并注明。）\n\n"
@@ -161,35 +242,77 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         user_msg = {"role": "user", "content": user_content}
         if req.image:
             user_msg = {"role": "user", "content": [
-                {"type": "text", "text": req.message},
+                {"type": "text", "text": working_message},
                 {"type": "image_url",
                  "image_url": {"url": "data:image/png;base64," + (req.image or "")}},
             ]}
-        llm.chat_stream(
-            [{"role": "system", "content": system_prompt}, user_msg],
-            (lambda _c: None),          # 通用通道不消费（无思维链阶段）
-            on_content=_on_content,     # 回答 token → answer 帧
-            cancel_event=cancel_evt,
-        )
-        reply = "".join(collected)
+
+        attempt_reasons = ""
+        attempt = 0
+        reviewed_info = None
+        while True:
+            sys_extra = (f"\n【审核反馈·上一稿未通过】{attempt_reasons}。请据此修正后重新完整输出。"
+                         if attempt else "")
+            collected.clear()
+            llm_gen.chat_stream(
+                [{"role": "system", "content": base_system + sys_extra}, user_msg],
+                (lambda _c: None),          # 通用通道不消费（无思维链阶段）
+                on_content=_on_content,     # 回答 token → answer 帧
+                cancel_event=cancel_evt,
+            )
+            reply = "".join(collected)
+            if cancel_evt.is_set():
+                break
+            if not gate_on:
+                break
+            verdict = review_once(pick_judge_llm(template, req), reply,
+                                  json.dumps(search_results[:3], ensure_ascii=False),
+                                  strategy_text)
+            reviewed_info = {"passed": verdict["passed"],
+                             "reason": verdict.get("reasons", "")[:200]}
+            if verdict["passed"]:
+                break
+            token_queue.put(("token", "审核",
+                             f"未通过({verdict['reasons'][:60]})，重新生成…"))
+            attempt += 1
+            if attempt > REVIEW_MAX_RETRY:
+                reviewed_info["note"] = "达重试上限，保留当前稿并附审核意见"
+                break
+            attempt_reasons = verdict["reasons"]
 
         if cancel_evt.is_set():
             # 手动停止：空reply done 让泵退出（现状语义），不落库
             token_queue.put(("done", {"final_reply": "", "steps": [], "mindchain": [], "task_stats": {}}))
             return
 
+        ctx_steps.append({"agent": "学习助手·生成", "status": "done", "detail": "生成输出"})
+        if reviewed_info:
+            ctx_steps.append({"agent": "审核",
+                              "status": "done",
+                              "detail": ("审核通过" if reviewed_info["passed"]
+                                         else "未通过：" + reviewed_info["reason"])})
+        special_suggestions = []
+        if plan["complexity"] != "simple_direct":
+            try:
+                from main import suggest_special_forms
+                special_suggestions = suggest_special_forms(req.api_key, reply, req.base_url)
+            except Exception:
+                logger.exception("[v2] 特殊形式建议失败")
+
         result = {
             "final_reply": reply,
-            "steps": [{"agent": "学习助手·生成", "status": "done", "detail": "直接生成"}],
+            "steps": ctx_steps,
             "mindchain": [],
             "task_stats": {},
-            "complexity": "simple",
+            "complexity": plan["complexity"],
+            **({"reviewed": reviewed_info} if reviewed_info else {}),
         }
         token_queue.put(("done", result))
-        try:
-            _persist_assistant_message(did, reply)
-        except Exception:
-            logger.exception("[v2] 保存 AI 回复失败 did=%s", did)
+
+        from core.background import submit
+        from engine.finalize import finalize_side_effects, schedule_post_turn
+        submit(finalize_side_effects, req, pid, did, result, t0)
+        schedule_post_turn(req, pid, did, result)
     except Exception as e:
         token_queue.put(("error", str(e)))
     finally:
