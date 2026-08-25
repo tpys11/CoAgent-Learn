@@ -85,6 +85,7 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         pid = req.project_id or "default"
         did = req.dialogue_id or "default"
         raw_settings = dict(req.settings or {})
+        traces: list[dict] = []  # 首行初始化：异常路径也要能尽力冲刷已积累Trace
         try:
             _persist_user_message(req, pid, did)
         except Exception:
@@ -138,7 +139,6 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         prev_score = coerce_score(profile_cache.get("level_score"))
         ctx_steps: list = []
         mindchain_entries: list = []
-        traces: list[dict] = []
 
         def _trace(stage: str, input_digest="", output_digest="", **metrics):
             traces.append({
@@ -196,7 +196,9 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
 
         # --- S2 Retrieve（模式权威：思考/研究必检索，极速不检索；simple_direct 已在上方短路） ---
         search_results: list = []
-        _rounds = 2 if plan["complexity"] == "research_deep" else 1  # 研究档两轮递归
+        # 研究档强制两轮递归（模式契约"必开两轮"，设计稿S2/矩阵）；research_deep 分类同样两轮
+        _rounds = 2 if (template == "研究" or plan["complexity"] == "research_deep") else 1
+        _search_meta: dict = {}
         if plan["complexity"] != "simple_direct" and template != "极速":
             token_queue.put(("step", "知识库管理"))
             try:
@@ -204,20 +206,27 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                 _rr = retrieve_stage(_make_fast_llm(req), req.message, template, pid,
                                      rounds=_rounds)
                 search_results = _rr["search_results"]
+                _search_meta = _rr.get("search_meta") or {}
             except Exception:
                 logger.exception("[v2] 检索阶段失败，降级无检索生成")
             ctx_steps.append({"agent": "知识库管理", "status": "done",
                               "detail": f"检索{len(search_results)}条"})
             _trace("retrieve", input_digest=req.message[:200],
-                   output_digest=json.dumps({"kept": len(search_results)}, ensure_ascii=False),
-                   raw_count=len(search_results))
+                   output_digest=json.dumps(
+                       {"kept": len(search_results),
+                        "queries": (_search_meta.get("queries") or [])[:8],
+                        "raw_count": _search_meta.get("raw_count", len(search_results)),
+                        "rounds": _search_meta.get("rounds", 0)},
+                       ensure_ascii=False))
 
         # --- S3 Assess 回收（与 S2 重叠执行完毕） ---
         assess_score = None
         assess_thinking = ""
+        assess_evidence = ""
         if assess_future is not None:
             try:
-                assess_score, assess_thinking_raw = assess_future.result(timeout=15)
+                assess_score, assess_thinking_raw, assess_evidence = \
+                    assess_future.result(timeout=15)
                 assess_thinking = (assess_thinking_raw or "").strip()
             except Exception:
                 logger.exception("[v2] 学情评估失败，回落规则地板")
@@ -229,7 +238,9 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         ctx_steps.append({"agent": "学情与记忆管理", "status": "done",
                           "detail": ("水平评估完成" if assess_score is not None else "规则地板")})
         _trace("assess", input_digest=req.message[:200],
-               output_digest=json.dumps({"level_score": assess_score}, ensure_ascii=False))
+               output_digest=json.dumps(
+                   {"level_score": assess_score, "evidence": (assess_evidence or "")[:120]},
+                   ensure_ascii=False))
 
         # --- 输出策略：T 路由 → 指令注入 → 脚注观测 ---
         from engine import output_strategy as _os
@@ -338,7 +349,9 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                                       "content": gen_reasoning_text[:1500]})
         _trace("generate", input_digest=working_message[:200],
                output_digest=json.dumps({"reply_len": len(reply), "attempts": attempt + 1},
-                                        ensure_ascii=False))
+                                        ensure_ascii=False),
+               t_value=round(t_val, 4), strategy_id=strategy_id,
+               strategy_name=_os.strategy_name(strategy_id))
         ctx_steps.append({"agent": "学习助手·生成", "status": "done", "detail": "生成输出"})
         if reviewed_info:
             ctx_steps.append({"agent": "审核",
@@ -379,6 +392,18 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         submit(finalize_side_effects, req, pid, did, result, t0)
         schedule_post_turn(req, pid, did, result)
     except Exception as e:
+        # 失败轮次也要可回放（评估体系L4"每轮可回放"承诺）：尽力冲刷已积累Trace+error条目
+        try:
+            traces.append({"stage": "error",
+                           "input_digest": "",
+                           "output_digest": str(e)[:400],
+                           "metrics_json": "{}",
+                           "elapsed_ms": max(0, int((_time_mod.time() - t0) * 1000))})
+            from core.db.eval_repo import get_eval_repo
+            get_eval_repo().insert_traces(request_id, did, pid,
+                                          (raw_settings or {}).get("template") or "", traces)
+        except Exception:
+            logger.exception("[v2] error 路径 Trace 冲刷失败")
         token_queue.put(("error", str(e)))
     finally:
         from engine.cancel import ACTIVE_CANCELS

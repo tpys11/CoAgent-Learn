@@ -69,13 +69,13 @@ def test_load_roundtrip(repo_db):
 
 
 def test_assess_and_store_happy(repo_db):
-    score, thinking = assess_and_store(OneShot(GOOD), "d1", "消息", "", None)
-    assert score == 0.8
+    score, thinking, evidence = assess_and_store(OneShot(GOOD), "d1", "消息", "", None)
+    assert score == 0.8 and evidence == "术语准确"
     d = load_profile_cache("d1")
     assert d["level_score"] == 0.8 and d["level_evidence"] == "术语准确"
 
 
 def test_assess_missing_dialogue_row_still_returns_score(repo_db):
     """对话行不存在时落库静默失败，但本轮评分仍返回供路由使用。"""
-    score, _thinking = assess_and_store(OneShot(GOOD), "不存在的did", "消息", "", None)
+    score, _thinking, _evidence = assess_and_store(OneShot(GOOD), "不存在的did", "消息", "", None)
     assert score == 0.8

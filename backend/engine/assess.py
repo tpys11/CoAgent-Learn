@@ -71,11 +71,11 @@ def coerce_score(value) -> float | None:
 
 
 def assess_and_store(llm_fast, did: str, message: str, history_text: str = "",
-                     previous_score: float | None = None) -> tuple[float | None, str]:
-    """S3 阶段入口：评估并落库；返回 (本轮流内可用 level_score 或 None, 思考原文)。
+                     previous_score: float | None = None) -> tuple[float | None, str, str]:
+    """S3 阶段入口：评估并落库；返回 (本轮流内可用 level_score 或 None, 思考原文, evidence一句话)。
     落库失败不掩埋评估值——本轮路由仍可使用，只是下轮无新鲜分。"""
     thinking, out = evaluate_level(llm_fast, message, history_text, previous_score)
     if not out:
-        return None, thinking
+        return None, thinking, ""
     store_level_score(did, out["level_score"], out.get("evidence", ""))
-    return out["level_score"], thinking  # 评估值即使落库失败也可供本轮使用
+    return out["level_score"], thinking, out.get("evidence", "")  # 评估值即使落库失败也可供本轮使用
