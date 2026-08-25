@@ -115,18 +115,18 @@ def test_v2_golden_sequence(isolated_app, monkeypatch):
     assert len(golden) == len(frames)
 
 
-def test_default_engine_is_v1_and_skips_v2_seam(isolated_app, monkeypatch):
-    """CHAT_ENGINE 缺省 → 走 v1 旧路径；v2 模型接缝若被触碰立即失败。"""
-    monkeypatch.delenv("CHAT_ENGINE", raising=None)
-    app = isolated_app
-
-    def _boom(req):
-        raise AssertionError("默认模式不应触碰 v2 引擎接缝")
-
+def test_default_engine_is_v2():
+    """缺省（未设 CHAT_ENGINE）→ 新引擎 v2 为主；显式 v1 才回退旧路径。"""
+    import importlib
     import engine.pipeline_v2 as eng
-    monkeypatch.setattr(eng, "_make_llm", _boom)
-    frames = _capture(app, _body())
-    assert frames and frames[-1]["type"] in {"done", "error"}, "v1 路径应正常产出终止帧"
+    old = os.environ.pop("CHAT_ENGINE", None)
+    try:
+        importlib.reload(eng)
+        assert eng.engine_mode() == "v2"
+    finally:
+        if old is not None:
+            os.environ["CHAT_ENGINE"] = old
+        importlib.reload(eng)
 
 
 def test_v2_memory_edit_branch_short_circuit(isolated_app, monkeypatch):
@@ -158,19 +158,6 @@ def test_v2_memory_edit_branch_short_circuit(isolated_app, monkeypatch):
     assert constructed == [], "生成模型不应被触碰"
     done = frames[-1]
     assert "已更新记忆模块" in done["reply"]
-
-
-def test_engine_mode_default():
-    import importlib
-    import engine.pipeline_v2 as eng
-    old = os.environ.pop("CHAT_ENGINE", None)
-    try:
-        importlib.reload(eng)
-        assert eng.engine_mode() == "v1"
-    finally:
-        if old is not None:
-            os.environ["CHAT_ENGINE"] = old
-        importlib.reload(eng)
 
 
 def test_v2_strategy_directive_flow(isolated_app, monkeypatch):

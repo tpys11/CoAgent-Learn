@@ -35,7 +35,6 @@
     command: sh -c "pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --quiet sqlite-vec python-multipart pypdf python-docx python-pptx rank_bm25 jieba pytest pymupdf4llm trafilatura markitdown llama-index-core && uvicorn main:app --host 0.0.0.0 --port 8000"
     volumes:
       - ../backend:/app
-      - ../agents:/app/agents
       - ../skills:/app/skills
       - ../tests:/app/tests
       - ../data:/app-data

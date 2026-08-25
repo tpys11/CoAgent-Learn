@@ -22,9 +22,9 @@ DEFAULT_MODEL = "deepseek-v4-flash-vision-exp"
 
 
 def engine_mode() -> str:
-    """引擎选择开关：环境变量 CHAT_ENGINE=v2 启用新引擎，默认 v1。"""
+    """引擎选择开关：环境变量 CHAT_ENGINE=v1 可回退旧引擎；缺省 v2（新引擎为主）。"""
     import os
-    return os.environ.get("CHAT_ENGINE", "v1")
+    return os.environ.get("CHAT_ENGINE", "v2")
 
 
 # --- 模型接缝（测试在此打补丁注入 FakeLLM） ---
