@@ -39,6 +39,18 @@ def _make_llm(req):
     )
 
 
+def _make_fast_llm(req):
+    """快模型：同通道关思考（现版规则：未配置独立快模型时=主模型关thinking）。"""
+    from core.base_llm import DeepSeekLLM
+    from core.config import config as _cfg
+    return DeepSeekLLM(
+        api_key=req.api_key or _cfg.DEEPSEEK_API_KEY,
+        model=req.model or DEFAULT_MODEL,
+        base_url=req.base_url,
+        thinking=False,
+    )
+
+
 def _persist_user_message(req, pid: str, did: str) -> None:
     from core.postgres_client import pg_client
     exist = pg_client.execute("SELECT id FROM dialogues WHERE id=%s", (did,))
@@ -70,6 +82,32 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         except Exception:
             logger.exception("[v2] 保存用户消息失败 did=%s", did)
 
+        # --- S1 Plan ---
+        from engine.planning import classify_intent, is_rule_simple
+        template = (req.settings or {}).get("template") or "思考"
+        token_queue.put(("step", "学习助手·规划"))
+        if is_rule_simple(req.message):
+            plan = {"complexity": "simple_direct", "need_kb": False}
+        else:
+            try:
+                plan = classify_intent(_make_fast_llm(req), req.message, template)
+            except Exception:
+                logger.exception("[v2] 意图分类失败，回落 standard")
+                plan = {"complexity": "standard", "need_kb": template != "极速"}
+        if plan["complexity"] == "research_deep":
+            plan["need_kb"] = True
+
+        # --- S2 Retrieve（条件）---
+        search_results: list = []
+        if plan["complexity"] != "simple_direct" and template != "极速" and plan.get("need_kb"):
+            token_queue.put(("step", "知识库管理"))
+            try:
+                from engine.retrieve import retrieve_stage
+                _rr = retrieve_stage(_make_fast_llm(req), req.message, template, pid)
+                search_results = _rr["search_results"]
+            except Exception:
+                logger.exception("[v2] 检索阶段失败，降级无检索生成")
+
         # --- S4 Generate 直连 ---
         token_queue.put(("step", "学习助手·生成"))
         collected: list[str] = []
@@ -80,7 +118,12 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
 
         llm = _make_llm(req)
         system_prompt = "你是学习助手，禁止输出虚假信息。"  # v0.1 角色句；策略指令 Loop3 注入
-        user_msg = {"role": "user", "content": req.message}
+        user_content = req.message
+        if search_results:
+            user_content = ("【检索结果】\n" + json.dumps(search_results, ensure_ascii=False)
+                            + "\n\n（优先基于以上检索结果回答；未覆盖部分用通识并注明。）\n\n"
+                            + user_content)
+        user_msg = {"role": "user", "content": user_content}
         if req.image:
             user_msg = {"role": "user", "content": [
                 {"type": "text", "text": req.message},
