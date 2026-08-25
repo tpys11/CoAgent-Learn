@@ -32,13 +32,15 @@ def pick_judge_llm(template: str, req):
 
 def review_once(llm_review, answer: str, context_digest: str,
                 strategy_directive: str) -> dict:
-    """单次评审：{"passed": bool, "reasons": str, "skipped": bool}。
-    解析失败/审核器不可用 → skipped=True 且视为通过（不阻塞主流程），理由留痕。"""
+    """单次评审：{"passed", "score", "reasons", "skipped"}。
+    score 为 0-100 整数（对齐前端 ReviewResult.score）；解析失败/审核器不可用 →
+    skipped=True 且视为通过（不阻塞主流程），理由留痕。"""
     prompt = (
         "你是独立质检员，对学习助手的回答做终审（你与生成者不同源，请严格）。"
         "维度：①知识正确性——与参考上下文矛盾或明显虚构即不通过；引用标注是否可回指。"
         "②指令遵从——是否落实【输出策略指令】的信息密度与专业名词解释方式。\n"
-        '只输出 JSON：{"passed": true|false, "reasons": "未通过原因（通过则为空）"}\n'
+        '只输出 JSON：{"passed": true|false, "score": 0到100的整数评分, '
+        '"reasons": "未通过原因（通过则空）"}\n'
         f"【输出策略指令】{strategy_directive}\n"
         + (f"【参考上下文摘要】{context_digest[:1200]}\n" if context_digest else "")
         + f"【待审回答】{answer[:2500]}"
@@ -46,9 +48,17 @@ def review_once(llm_review, answer: str, context_digest: str,
     try:
         _, result = think_then_json(llm_review, prompt, "", "审核", silent=True)
         if not isinstance(result, dict) or "passed" not in result:
-            return {"passed": True, "reasons": "审核器输出不可解析，跳过本轮", "skipped": True}
-        return {"passed": bool(result.get("passed")),
+            return {"passed": True, "score": 100,
+                    "reasons": "审核器输出不可解析，跳过本轮",
+                    "skipped": True}
+        passed = bool(result.get("passed"))
+        try:
+            score = max(0, min(100, int(result.get("score"))))
+        except (TypeError, ValueError):
+            score = 80 if passed else 30
+        return {"passed": passed, "score": score,
                 "reasons": str(result.get("reasons") or ""),
                 "skipped": False}
     except Exception as e:
-        return {"passed": True, "reasons": f"审核器异常跳过：{str(e)[:80]}", "skipped": True}
+        return {"passed": True, "score": 100,
+                "reasons": f"审核器异常跳过：{str(e)[:80]}", "skipped": True}

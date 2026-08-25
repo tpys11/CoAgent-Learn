@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "deepseek-v4-flash-vision-exp"
 
+# 极速档字数约束（自旧引擎常量平移，语义不变）
+FAST_WORD_MIN, FAST_WORD_MAX, FAST_WORD_HARD = 500, 800, 1000
+
 
 def engine_mode() -> str:
     """引擎选择开关：环境变量 CHAT_ENGINE=v1 可回退旧引擎；缺省 v2（新引擎为主）。"""
@@ -175,11 +178,13 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
 
         # --- S2 Retrieve（模式权威：思考/研究必检索，极速不检索；simple_direct 已在上方短路） ---
         search_results: list = []
+        _rounds = 2 if plan["complexity"] == "research_deep" else 1  # 研究档两轮递归
         if plan["complexity"] != "simple_direct" and template != "极速":
             token_queue.put(("step", "知识库管理"))
             try:
                 from engine.retrieve import retrieve_stage
-                _rr = retrieve_stage(_make_fast_llm(req), req.message, template, pid)
+                _rr = retrieve_stage(_make_fast_llm(req), req.message, template, pid,
+                                     rounds=_rounds)
                 search_results = _rr["search_results"]
             except Exception:
                 logger.exception("[v2] 检索阶段失败，降级无检索生成")
@@ -218,6 +223,10 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
 
         llm_gen = _make_llm(req, model_override=effective_model)
         base_system = ("你是学习助手，禁止输出虚假信息。\n【输出策略指令】" + strategy_text)
+        if template == "极速":
+            # 极速字数约束（自旧引擎平移）：目标区间 + 硬上限
+            base_system += (f"\n【输出要求】回答控制在 {FAST_WORD_MIN}-{FAST_WORD_MAX} 字以内"
+                            f"（硬上限 {FAST_WORD_HARD} 字），直接给结论要点，不展开长篇。")
         # 画像/历史上下文注入（v1 对齐）：用户背景、偏好、早期摘要、近期原文
         context_blocks = ""
         if profile_cache.get("用户背景"):
@@ -268,8 +277,9 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
             verdict = review_once(pick_judge_llm(template, req), reply,
                                   json.dumps(search_results[:3], ensure_ascii=False),
                                   strategy_text)
-            reviewed_info = {"passed": verdict["passed"],
-                             "reason": verdict.get("reasons", "")[:200]}
+            # reviewed 形状对齐前端 ReviewResult {passed,score,suggestion}
+            reviewed_info = {"passed": verdict["passed"], "score": verdict["score"],
+                             "suggestion": verdict["reasons"][:200]}
             if verdict["passed"]:
                 break
             token_queue.put(("token", "审核",
@@ -290,11 +300,11 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
             ctx_steps.append({"agent": "审核",
                               "status": "done",
                               "detail": ("审核通过" if reviewed_info["passed"]
-                                         else "未通过：" + reviewed_info["reason"])})
+                                         else "未通过：" + reviewed_info["suggestion"])})
         special_suggestions = []
         if plan["complexity"] != "simple_direct":
             try:
-                from main import suggest_special_forms
+                from services.special_forms import suggest_special_forms
                 special_suggestions = suggest_special_forms(req.api_key, reply, req.base_url)
             except Exception:
                 logger.exception("[v2] 特殊形式建议失败")

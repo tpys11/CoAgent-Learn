@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FTimeout
 from engine.llm_io import think_then_json
 
 
-def rewrite_queries(llm_fast, message: str) -> dict:
+def rewrite_queries(llm_fast, message: str, angle_hint: str = "") -> dict:
     """R1 改写：flash 单次调用合并 need_search 判定与 queries 产出。
     失败软着陆：任何异常 → {need_search: False, queries: []}。"""
     prompt = (
@@ -17,6 +17,8 @@ def rewrite_queries(llm_fast, message: str) -> dict:
         "规则：闲聊/纯创作/数学计算类 need_search=false；"
         "需要事实、教程、最新信息时给 3~5 条互不重复的高质量搜索词。只输出 JSON。"
     )
+    if angle_hint:
+        prompt += "\n" + angle_hint
     try:
         _, result = think_then_json(
             llm_fast, prompt, message[:1000], "知识库管理", silent=True)
@@ -90,14 +92,39 @@ def filter_results(llm_fast, candidates: list, keep: int = 6) -> list:
 
 
 def retrieve_stage(llm_fast, message: str, template: str, project_id: str,
-                   use_kb: bool = True) -> dict:
-    """阶段入口：返回 ctx.search_results 结构。极速档由调用方决定是否进入本阶段。"""
-    rw = rewrite_queries(llm_fast, message)
-    if not rw["need_search"] or not rw["queries"]:
-        return {"search_results": [], "search_meta": {"queries": [], "rounds": 0}}
-    web, kb = _fetch_all(rw["queries"], project_id, use_kb=use_kb)
+                   use_kb: bool = True, rounds: int = 1) -> dict:
+    """阶段入口：rounds≥2 时执行多轮递归检索（研究档），候选按 url+title 去重合并后统一终筛。
+    返回 ctx.search_results 结构；极速档由调用方决定是否进入本阶段。"""
+    all_web: list = []
+    all_kb: list = []
+    seen: set = set()
+    queries_log: list = []
+    angle = ""
+    actual_rounds = 0
+    for rnd in range(1, max(1, rounds) + 1):
+        rw = rewrite_queries(llm_fast, message, angle_hint=angle)
+        if not rw["need_search"] or not rw["queries"]:
+            break
+        actual_rounds = rnd
+        queries_log.extend(rw["queries"])
+        web, kb = _fetch_all(rw["queries"], project_id, use_kb=use_kb)
+        for r in kb:
+            key = ("kb", str(r.get("title") or ""), str(r.get("url") or ""))
+            if key in seen:
+                continue
+            seen.add(key)
+            all_kb.append(r)
+        for r in web:
+            key = ("web", str(r.get("title") or ""), str(r.get("url") or ""))
+            if key in seen:
+                continue
+            seen.add(key)
+            all_web.append(r)
+        angle = (f"首轮已完成基础检索（关键词：{'、'.join(queries_log[-5:])}）。"
+                 "请从补充角度给出与首轮不同的新查询。")
+
     candidates = []
-    for r in kb + web:
+    for r in all_kb + all_web:
         if isinstance(r, dict):
             candidates.append({
                 "title": str(r.get("title") or "")[:120],
@@ -106,4 +133,5 @@ def retrieve_stage(llm_fast, message: str, template: str, project_id: str,
             })
     kept = filter_results(llm_fast, candidates)
     return {"search_results": kept,
-            "search_meta": {"queries": rw["queries"], "raw_count": len(candidates)}}
+            "search_meta": {"queries": queries_log, "raw_count": len(candidates),
+                            "rounds": actual_rounds}}
