@@ -37,7 +37,8 @@ class ProjectRepo:
 
     def list_dialogues(self, pid):
         return self._db.execute(
-            "SELECT id, name, created_at FROM dialogues WHERE project_id=%s AND archived=FALSE ORDER BY created_at", (pid,))
+            "SELECT id, name, created_at FROM dialogues "
+            "WHERE project_id=%s AND archived=FALSE AND (kind IS NULL OR kind='') ORDER BY created_at", (pid,))
 
     def list_dialogue_briefs(self, pid):
         return self._db.execute("SELECT id, name FROM dialogues WHERE project_id=%s", (pid,))

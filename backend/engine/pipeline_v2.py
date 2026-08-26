@@ -83,6 +83,83 @@ def _persist_assistant_message(did: str, reply: str) -> None:
         (did, "assistant", reply, "[]"))
 
 
+async def _stream_resource_edit(req):
+    """闭环六：资源编辑会话独立分支（D-新5：结构性隔离，不进主管线五阶段）。
+    全文重生成语义（拍板①）：注入资源全文+修改指令 → 主模型流式输出修订后全文 →
+    done 时落 assistant 消息并写回 resources 新行（append 语义=天然版本历史）。
+    会话隔离（拍板②）：dialogues.kind='resource'，不进对话列表/无学情/无画像/无记忆。
+    非实时（拍板③）：流式仅进对话流，预览由前端 done 后刷新。"""
+    import asyncio as _asyncio
+    from core.postgres_client import pg_client
+
+    async def stream():
+        request_id = __import__("uuid").uuid4().hex[:16]
+        rid = (req.edit_resource_id or "").strip()
+        yield f"data: {json.dumps({'type': 'start', 'request_id': request_id})}\n\n"
+        try:
+            rows = pg_client.execute(
+                "SELECT id, name, content, project_id, type FROM resources WHERE id=%s", (rid,))
+            if not rows:
+                yield f"data: {json.dumps({'type': 'error', 'message': '资源不存在或已删除'})}\n\n"
+                return
+            res = rows[0]
+            pid = req.project_id or res["project_id"] or "default"
+            did = req.dialogue_id or ("red-" + request_id)
+
+            # 幂等建行（kind='resource' 隔离标记；重开窗口续聊同一 dialogue）
+            exist = pg_client.execute("SELECT id FROM dialogues WHERE id=%s", (did,))
+            if not exist:
+                pg_client.execute(
+                    "INSERT INTO dialogues(id,project_id,session_id,name,kind) VALUES(%s,%s,%s,%s,'resource')",
+                    (did, pid, req.session_id or "default", "编辑·" + (res["name"] or "资源")))
+
+            user_text = (req.message or "").strip() or "请修订这份资料"
+            pg_client.execute(
+                "INSERT INTO messages(dialogue_id,role,content) VALUES(%s,%s,%s)",
+                (did, "user", user_text))
+
+            full = str(res["content"] or "")
+            if len(full) > 12000:
+                full = full[:12000] + "\n\n（原文超长，以上为截断版——修订时保持既有结构）"
+            system = (
+                "你是资料修订助手。根据用户的修改要求，输出修订后的完整 markdown 全文；"
+                "保持原文结构与小标题风格，只改用户要求的部分，不要输出任何解释性文字。"
+            )
+            user_prompt = f"【当前资源全文】\n{full}\n\n【修改要求】\n{user_text}"
+
+            collected: list = []
+            llm = _make_llm(req)
+
+            def _on_token(ch: str):
+                collected.append(ch)
+                # 拍板③：流式只进对话流（answer token 直推 SSE），预览由前端 done 后刷新
+                sse_answers.append(ch)
+
+            sse_answers: list = []
+            llm.chat_stream(
+                [{"role": "system", "content": system},
+                 {"role": "user", "content": user_prompt}], _on_token)
+
+            reply = "".join(collected).strip()
+            if reply:
+                _persist_assistant_message(did, reply)
+                # 写回新行（append 语义=新版本；同名同 type，列表按时间排序即版本序列）
+                pg_client.execute(
+                    "INSERT INTO resources(id, name, content, project_id, type) VALUES (%s,%s,%s,%s,%s)",
+                    (__import__("hashlib").md5((str(res["name"]) + str(request_id)).encode()).hexdigest()[:16],
+                     res["name"], reply, res["project_id"], "gen:" + str(res["type"] or "").removeprefix("gen:")))
+            for ch in sse_answers:   # 生成完再统一吐流（隔离分支自带泵，与主 queue 泵解耦）
+                yield f"data: {json.dumps({'type': 'answer_token', 'chunk': ch})}\n\n"
+            yield f"data: {json.dumps({'type': 'done', 'reply': reply, 'resource_id': rid, 'dialogue_id': did})}\n\n"
+        except Exception as e:
+            logger.exception("[v2] 资源编辑分支失败 rid=%s", rid)
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)[:200]})}\n\n"
+        finally:
+            from engine.cancel import ACTIVE_CANCELS
+            ACTIVE_CANCELS.pop(request_id, None)
+    return StreamingResponse(stream(), media_type="text/event-stream")
+
+
 def _v2_worker(req, token_queue, cancel_evt, request_id):
     """S0+S4 最小链路（线程体）。后续 Loop 在此扩展 Plan/Retrieve/Assess/Review。"""
     try:
@@ -494,7 +571,11 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
 
 
 async def stream_response(req):
-    """v2 引擎入口：返回与 v1 同构的 StreamingResponse。"""
+    """v2 引擎入口：返回与 v1 同构的 StreamingResponse。
+    闭环六：edit_resource_id 在场 → 资源编辑独立分支（结构性隔离，不进主管线）。"""
+    if getattr(req, "edit_resource_id", None):
+        return await _stream_resource_edit(req)
+
     async def stream():
         import asyncio as _asyncio
         request_id = __import__("uuid").uuid4().hex[:16]

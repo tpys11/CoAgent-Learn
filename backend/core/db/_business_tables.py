@@ -119,6 +119,11 @@ class BusinessTablesMixin:
                 self.execute("ALTER TABLE dialogues ADD COLUMN " + _col + " " + _ddl)
             except sqlite3.OperationalError:
                 pass  # 幂等迁移：列已存在
+        # 闭环六：会话种类标记（''=主对话 / 'resource'=资源编辑会话——不进列表不进学情管线）
+        try:
+            self.execute("ALTER TABLE dialogues ADD COLUMN kind TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass  # 幂等迁移：列已存在
         self.execute("CREATE INDEX IF NOT EXISTS idx_dialogues_project ON dialogues (project_id, created_at)")
         self.execute("""
             CREATE TABLE IF NOT EXISTS messages (
