@@ -127,33 +127,49 @@ async def _stream_resource_edit(req):
             )
             user_prompt = f"【当前资源全文】\n{full}\n\n【修改要求】\n{user_text}"
 
+            # 真流式（照搬主对话 _v2_worker 机制）：LLM 在后台线程逐 token 推队列，
+            # SSE 泵边读边吐——与主对话观感一致，不再"先囤后吐"。
+            token_queue: queue.Queue = queue.Queue()
             collected: list = []
-            llm = _make_llm(req)
 
-            def _on_token(ch: str):
-                collected.append(ch)
-                # 拍板③：流式只进对话流（answer token 直推 SSE），预览由前端 done 后刷新
-                sse_answers.append(ch)
+            def _worker():
+                try:
+                    llm = _make_llm(req)
+                    llm.chat_stream(
+                        [{"role": "system", "content": system},
+                         {"role": "user", "content": user_prompt}],
+                        lambda ch: (collected.append(ch),
+                                    token_queue.put(("answer", ch))))
+                    reply = "".join(collected).strip()
+                    if reply:
+                        _persist_assistant_message(did, reply)
+                        # 写回新行（append 语义=新版本；同名同 type，列表按时间排序即版本序列）
+                        pg_client.execute(
+                            "INSERT INTO resources(id, name, content, project_id, type) VALUES (%s,%s,%s,%s,%s)",
+                            (__import__("hashlib").md5((str(res["name"]) + str(request_id)).encode()).hexdigest()[:16],
+                             res["name"], reply, res["project_id"], "gen:" + str(res["type"] or "").removeprefix("gen:")))
+                    token_queue.put(("done", reply))
+                except Exception as e:
+                    logger.exception("[v2] 资源编辑分支失败 rid=%s", rid)
+                    token_queue.put(("error", str(e)[:200]))
 
-            sse_answers: list = []
-            llm.chat_stream(
-                [{"role": "system", "content": system},
-                 {"role": "user", "content": user_prompt}], _on_token)
+            threading.Thread(target=_worker, daemon=True).start()
 
-            reply = "".join(collected).strip()
-            if reply:
-                _persist_assistant_message(did, reply)
-                # 写回新行（append 语义=新版本；同名同 type，列表按时间排序即版本序列）
-                pg_client.execute(
-                    "INSERT INTO resources(id, name, content, project_id, type) VALUES (%s,%s,%s,%s,%s)",
-                    (__import__("hashlib").md5((str(res["name"]) + str(request_id)).encode()).hexdigest()[:16],
-                     res["name"], reply, res["project_id"], "gen:" + str(res["type"] or "").removeprefix("gen:")))
-            for ch in sse_answers:   # 生成完再统一吐流（隔离分支自带泵，与主 queue 泵解耦）
-                yield f"data: {json.dumps({'type': 'answer_token', 'chunk': ch})}\n\n"
-            yield f"data: {json.dumps({'type': 'done', 'reply': reply, 'resource_id': rid, 'dialogue_id': did})}\n\n"
-        except Exception as e:
-            logger.exception("[v2] 资源编辑分支失败 rid=%s", rid)
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)[:200]})}\n\n"
+            while True:
+                try:
+                    kind, payload = token_queue.get(timeout=0.05)
+                except queue.Empty:
+                    await _asyncio.sleep(0.05)
+                    yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
+                    continue
+                if kind == "answer":
+                    yield f"data: {json.dumps({'type': 'answer_token', 'chunk': payload})}\n\n"
+                elif kind == "done":
+                    yield f"data: {json.dumps({'type': 'done', 'reply': payload, 'resource_id': rid, 'dialogue_id': did})}\n\n"
+                    break
+                else:  # error
+                    yield f"data: {json.dumps({'type': 'error', 'message': payload})}\n\n"
+                    break
         finally:
             from engine.cancel import ACTIVE_CANCELS
             ACTIVE_CANCELS.pop(request_id, None)

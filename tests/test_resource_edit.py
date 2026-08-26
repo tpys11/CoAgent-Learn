@@ -65,13 +65,48 @@ async def _collect(coro):
 
 
 def test_resource_edit_happy_path(env, monkeypatch):
-    """正常改写：资源+1 新行、消息成对、done 帧带 reply、system 注入全文。"""
+    """正常改写：资源+1 新行、消息成对、done 帧带 reply、user prompt 注入全文、真流式（answer 在 LLM 完成前陆续到达）。"""
     import engine.pipeline_v2 as eng
     _seed_resource(env)
-    monkeypatch.setattr(eng, "_make_llm", lambda req, model_override=None: FakeLLM("新版讲义内容"))
-    frames = asyncio.run(_collect(eng.stream_response(_mk_req("r1"))))
+
+    class SlowFakeLLM:
+        """慢速假件：逐 token 吐，token 间隔触发队列泵轮转——验证真流式时序。"""
+        def __init__(self):
+            FakeLLM.last = self
+            self.messages = None
+
+        def chat_stream(self, messages, on_token, **kw):
+            self.messages = messages
+            import time as _t
+            for ch in "新版讲义内容":
+                on_token(ch)
+                _t.sleep(0.06)  # > 泵轮询 0.05s：若先囤后吐，帧时间戳会挤在一起
+
+    monkeypatch.setattr(eng, "_make_llm", lambda req, model_override=None: SlowFakeLLM())
+    import time as _t0
+    t_start = _t0.monotonic()
+    answer_times: list = []
+
+    async def _collect_timed(coro):
+        resp = await coro
+        frames = []
+        async for chunk in resp.body_iterator:
+            text = chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk)
+            for line in text.split("\n"):
+                if line.startswith("data: "):
+                    f = json.loads(line[6:])
+                    if f.get("type") == "answer_token":
+                        answer_times.append(_t0.monotonic() - t_start)
+                    frames.append(f)
+        return frames
+
+    frames = asyncio.run(_collect_timed(eng.stream_response(_mk_req("r1"))))
     assert frames[0]["type"] == "start" and frames[-1]["type"] == "done"
     assert frames[-1]["reply"] == "新版讲义内容"
+    # 真流式断言：首个 answer 帧远早于全部完成（6 token × 0.06s + 泵轮询 ≈ 0.4s+）
+    assert len(answer_times) == 6
+    assert answer_times[0] < 0.3, f"首个 answer 帧过晚到达 {answer_times[0]:.2f}s——疑似先囤后吐"
+    assert answer_times[-1] - answer_times[0] > 0.15, "answer 帧间隔无展开——疑似一次性批发"
     # 写回：同名同 type 新行（版本历史 +1）
     rows = env.execute("SELECT name, type, content FROM resources WHERE project_id='pX' ORDER BY rowid")
     assert len(rows) == 2 and rows[1]["content"] == "新版讲义内容"
