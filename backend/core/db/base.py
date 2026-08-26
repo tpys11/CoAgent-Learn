@@ -98,6 +98,18 @@ class SQLiteClient:
             "doc_id TEXT, project_id TEXT, source TEXT, content TEXT, file_path TEXT,"
             "mime TEXT, embedding float[1024])"
         )
+        # 闭环四·B1：每块生成问题旁路表（决策 D-新2：vec0 虚拟表实测禁止 ALTER 加列，
+        # OperationalError: virtual tables may not be altered——新列方案不可行改旁路表）。
+        # questions 为 JSON 数组字符串；仅作 BM25 语料增量，不进向量不进检索返回结构。
+        self.execute(
+            "CREATE TABLE IF NOT EXISTS kb_gen_questions("
+            "project_id TEXT, source TEXT, doc_id TEXT, questions TEXT, "
+            "PRIMARY KEY(project_id, doc_id))"
+        )
+        self.execute(
+            "CREATE INDEX IF NOT EXISTS idx_kbgen_project_source "
+            "ON kb_gen_questions(project_id, source)"
+        )
         # 知识库文档标题树（上传时提取 markdown 标题层级，供项目记忆知识图谱使用）
         self.execute(
             "CREATE TABLE IF NOT EXISTS kb_tree("
@@ -438,6 +450,32 @@ class SQLiteClient:
             (project_id,),
         )
 
+    def upsert_gen_questions_bulk(self, items: list):
+        """闭环四·B1：批量写每块生成问题（旁路表幂等 upsert，重传同 doc_id 直接覆盖）。
+        items: [(project_id, source, doc_id, questions_json_str)]"""
+        if not items:
+            return
+        with self._lock:
+            conn = self._new_conn()
+            try:
+                conn.executemany(
+                    "INSERT INTO kb_gen_questions(project_id, source, doc_id, questions) "
+                    "VALUES (?, ?, ?, ?) ON CONFLICT(project_id, doc_id) "
+                    "DO UPDATE SET source=excluded.source, questions=excluded.questions",
+                    items,
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+    def get_gen_questions(self, project_id: str) -> dict:
+        """闭环四·B1：项目全部每块问题 {doc_id: questions_json_str}，供 BM25 语料拼接"""
+        rows = self.execute(
+            "SELECT doc_id, questions FROM kb_gen_questions WHERE project_id = ?",
+            (project_id,),
+        )
+        return {r["doc_id"]: r["questions"] for r in rows or []}
+
     def delete_kb_by_source(self, project_id: str, source: str) -> int:
         """删除某来源：跨全部文本向量版本（任何代际里的残留都清掉）"""
         total = 0
@@ -451,6 +489,9 @@ class SQLiteClient:
                 ph = ",".join("?" * len(ids))
                 self.execute(f"DELETE FROM {self._safe_table(table)} WHERE rowid IN ({ph})", tuple(ids))
                 total += len(ids)
+        # B1 旁路表级联：问题文本与向量块同源同生命周期
+        self.execute("DELETE FROM kb_gen_questions WHERE project_id = ? AND source = ?",
+                     (project_id, source))
         return total
 
     def delete_kb_project(self, project_id: str) -> int:
@@ -464,6 +505,8 @@ class SQLiteClient:
                 ph = ",".join("?" * len(ids))
                 self.execute(f"DELETE FROM {self._safe_table(table)} WHERE rowid IN ({ph})", tuple(ids))
                 total += len(ids)
+        # B1 旁路表级联
+        self.execute("DELETE FROM kb_gen_questions WHERE project_id = ?", (project_id,))
         return total
 
     # ── 业务表 ──

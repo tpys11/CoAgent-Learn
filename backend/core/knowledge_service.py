@@ -3,6 +3,7 @@
 替换原 Chroma 实现；embedding 用 bge-small-zh-v1.5（中文，512维）。
 """
 import hashlib
+import json
 import logging
 import re
 
@@ -147,8 +148,13 @@ def _get_bm25(project_id: str, table: str):
         return None
     if not rows:
         return None
+    try:
+        qmap = _db.get_gen_questions(project_id)      # B1：每块问题拼入语料（换说法命中）
+    except Exception:
+        qmap = {}
     ids = [r["doc_id"] for r in rows]
-    tokenized = [_tokenize(r["content"]) for r in rows]
+    tokenized = [_tokenize(r["content"] + " " + str(qmap.get(r["doc_id"]) or ""))
+                 for r in rows]
     from rank_bm25 import BM25Okapi
     bm25 = BM25Okapi(tokenized)
     _bm25_cache[key] = (ids, tokenized, bm25)
@@ -309,6 +315,66 @@ def _chunk_markdown(text: str, size: int, overlap: int) -> list:
     return [c.strip() for c in out if c and c.strip()]
 
 
+def _percentile(vals: list, p: float) -> float:
+    """线性插值百分位（与 numpy.percentile 默认 linear 语义逐点一致），免 numpy 硬依赖。"""
+    s = sorted(vals)
+    if not s:
+        return 0.0
+    k = (len(s) - 1) * p / 100.0
+    f = int(k)
+    c = min(f + 1, len(s) - 1)
+    return s[f] + (s[c] - s[f]) * (k - f)
+
+
+def _cos_dist(a: list, b: list) -> float:
+    """余弦距离 1-cos；零向量视为同向（距离 0，不产生断点）。"""
+    da = sum(x * x for x in a) ** 0.5
+    db = sum(x * x for x in b) ** 0.5
+    if da <= 0 or db <= 0:
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b))
+    return 1.0 - max(-1.0, min(1.0, dot / (da * db)))
+
+
+def _chunk_semantic(text: str, embed_fn, size: int = 512, overlap: int = 50,
+                    buffer: int = 1, pct: float = 95) -> list:
+    """语义断点切块（A3）：算法与默认参数照抄 llama-index-core SemanticSplitterNodeParser
+    （容器实装源码摘证 2026-08-27：buffer=1 时组合句=i±1 邻句拼接后整句嵌入，
+    相邻组合句余弦距离超过 95 百分位处开新块）。句切复用 _split_sentences；
+    超长语义组内部回退 _chunk_text（对齐 _chunk_markdown 超长节模式）。
+    embed_fn(texts)->vecs 注入式（生产 _embed / 测试确定性假函数）。
+    软着陆：<2 句 / 嵌入异常 / 返回数不符 → _chunk_text 兜底，本函数绝不抛。"""
+    text = (text or "").strip()
+    if not text:
+        return []
+    sents = _split_sentences(text)
+    if len(sents) < 2:
+        return _chunk_text(text, size=size, overlap=overlap)
+    try:
+        combined = [" ".join(sents[max(0, i - buffer): i + buffer + 1])
+                    for i in range(len(sents))]
+        vecs = embed_fn(combined)
+        if not vecs or len(vecs) != len(sents):
+            return _chunk_text(text, size=size, overlap=overlap)
+        dists = [_cos_dist(vecs[i], vecs[i + 1]) for i in range(len(sents) - 1)]
+        thresh = _percentile(dists, pct)
+        groups: list[list[str]] = [[sents[0]]]
+        for i in range(1, len(sents)):
+            if dists[i - 1] > thresh:
+                groups.append([])
+            groups[-1].append(sents[i])
+        chunks: list = []
+        for g in groups:
+            piece = " ".join(g)
+            if len(piece) <= size:
+                chunks.append(piece)
+            else:
+                chunks.extend(_chunk_text(piece, size=size, overlap=overlap))
+        return [c.strip() for c in chunks if c and c.strip()]
+    except Exception:
+        return _chunk_text(text, size=size, overlap=overlap)
+
+
 # ── 上传进度（内存态：进程重启即清；仅 URL 摄取链路轮询用） ──────────────
 _progress: dict = {}
 
@@ -363,11 +429,72 @@ def fetch_section_texts(project_id: str, source: str,
         return {}
 
 
+def enhance_questions(project_id: str, chunks: list, doc_ids: list, source: str = "",
+                      api_key: str = "", group_size: int = 12, max_groups: int = 8,
+                      llm_factory=None) -> int:
+    """闭环四·B1 元数据增强：入库后为每块生成 ≤3 个「该块能具体回答、别处不易找到」的问题，
+    存旁路表 kb_gen_questions 并拼入 BM25 语料（换说法提问可命中）。
+    提示词骨架中文化移植自 llama-index QuestionsAnsweredExtractor（独特性约束保留）。
+    预算：每 group_size 块一次 flash 调用，单文档封顶 max_groups 组（超出不增强不阻断）；
+    任何组失败 = 该组无问题文本，绝不抛。门控：KB_META_ENHANCE=0 关；无 key 静默跳过。
+    llm_factory(key)->llm 测试注入缝；生产走 DeepSeekLLM(thinking=False)。
+    返回成功写库的块数。"""
+    from core.config import config as _cfg
+    if not int(getattr(_cfg, "KB_META_ENHANCE", 1) or 0):
+        return 0
+    key = api_key or getattr(_cfg, "DEEPSEEK_API_KEY", "")
+    if not key or not chunks or not doc_ids:
+        return 0
+    if llm_factory is None:
+        def llm_factory(k):
+            from engine.pipeline_v2 import DEFAULT_MODEL
+            from core.base_llm import DeepSeekLLM
+            return DeepSeekLLM(api_key=k, model=DEFAULT_MODEL, thinking=False)
+    try:
+        llm = llm_factory(key)
+    except Exception:
+        logger.warning("[B1] 问题增强 LLM 构造失败，跳过", exc_info=True)
+        return 0
+    system = (
+        "你是知识库预处理器。为以下每段文本各生成不超过3个问题：该段能具体回答、"
+        "且在其他地方不易找到答案的问题。\n"
+        '只输出 JSON：[{"i": 段落序号(从0), "questions": ["问题1", "问题2"]}]'
+    )
+    written = 0
+    n_groups = min(max_groups, (len(chunks) + group_size - 1) // group_size)
+    for g in range(n_groups):
+        lo, hi = g * group_size, min((g + 1) * group_size, len(chunks))
+        batch = chunks[lo:hi]
+        user = "\n".join(f"段{i}：{(c or '')[:400]}" for i, c in enumerate(batch))
+        try:
+            raw = llm.chat([{"role": "system", "content": system},
+                            {"role": "user", "content": user}], temperature=0.2)
+            m = re.search(r'\[[\s\S]*\]', raw or "")
+            data = json.loads(m.group()) if m else []
+            rows = []
+            for item in data if isinstance(data, list) else []:
+                try:
+                    i = int(item.get("i"))
+                    qs = [str(q).strip() for q in (item.get("questions") or []) if str(q).strip()][:3]
+                except Exception:
+                    continue
+                if qs and 0 <= i < len(batch):
+                    rows.append((project_id, source, doc_ids[lo + i],
+                                 json.dumps(qs, ensure_ascii=False)))
+            if rows:
+                _db.upsert_gen_questions_bulk(rows)
+                written += len(rows)
+        except Exception:
+            logger.warning("[B1] 第%d组问题生成失败（该组无问题文本，继续）", g, exc_info=True)
+    return written
+
+
 def add_document(project_id: str, text: str, source: str = "", session_id: str = "", api_key: str = "", skip_context: bool = False) -> int:
     """上传文本：切块 → 向量化 → 入库，返回入库块数。
-    已移除「每块 LLM 生成上下文前缀」（_gen_context，2026-08-15 删除）：
-    对齐 DeepTutor，上传链路零 LLM 调用，几百块从分钟级降到秒级；
-    上下文连续性由 512/50 重叠切块保证，检索质量由 bge+BM25+rerank 保证。
+    已移除「每块 LLM 生成上下文前缀」（_gen_context，2026-08-15 删除）。
+    闭环四·B1：入库后按 KB_META_ENHANCE 门控做分组批量问题增强（默认开，
+    失败不阻断、无 key 静默跳过）——「上传链路零 LLM 调用」旧约定就此有条件打破。
+    上下文连续性由切块重叠保证，检索质量由 bge+BM25（含问题语料）+rerank 保证。
     skip_context 参数保留仅为兼容旧调用方，不再起作用。"""
     from core.config import config as _cfg
     size = int(getattr(_cfg, "KB_CHUNK_SIZE", 512) or 512)
@@ -401,6 +528,15 @@ def add_document(project_id: str, text: str, source: str = "", session_id: str =
             logger.warning("[chunker] llamaindex 切块失败，回退自研", exc_info=True)
             chunks = _chunk_markdown(text, size=size, overlap=overlap) or \
                      _chunk_text(text, size=size, overlap=overlap)
+    elif chunker == "semantic" and not has_heading:
+        # 闭环四·A3：语义断点切块——仅无标题文本生效，有标题仍走 markdown 主道。
+        # 双通道对比日志照 llamaindex 刀1 模式；_chunk_semantic 内部软着陆绝不抛。
+        _sem = _chunk_semantic(text, _embed, size=size, overlap=overlap)
+        _self = _chunk_text(text, size=size, overlap=overlap)
+        logger.info("[chunker] semantic=%d块/均长%.0f vs self=%d块/均长%.0f",
+                    len(_sem), (sum(map(len, _sem)) / len(_sem)) if _sem else 0,
+                    len(_self), (sum(map(len, _self)) / len(_self)) if _self else 0)
+        chunks = _sem or _self
     elif mode in ("markdown", "auto") and has_heading:
         chunks = _chunk_markdown(text, size=size, overlap=overlap) or \
                  _chunk_text(text, size=size, overlap=overlap)
@@ -443,6 +579,14 @@ def add_document(project_id: str, text: str, source: str = "", session_id: str =
             _db.upsert_kb_tree(project_id, source, _extract_tree(text))
     except Exception:
         logger.warning("保存文档标题树失败 source=%s", source, exc_info=True)
+    # 闭环四·B1：入库后为每块生成 ≤3 个可答问题存旁路表（换说法提问的 BM25 命中文本）。
+    # 门控 KB_META_ENHANCE（默认开）；任何失败不阻断上传（enhance_questions 内部已兜底，
+    # 此层再兜一道与标题树同级的保险）。
+    try:
+        enhance_questions(project_id, chunks, [b[0] for b in bulk],
+                          source=source, api_key=api_key)
+    except Exception:
+        logger.warning("问题增强失败（不阻断上传）source=%s", source, exc_info=True)
     _invalidate_bm25(project_id)
     return len(chunks)
 

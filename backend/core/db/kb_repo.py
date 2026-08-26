@@ -135,6 +135,14 @@ class KbRepo:
     def get_kb_docs(self, project_id, table="kb_vectors"):
         return self._db.get_kb_docs(project_id, table=table)
 
+    def upsert_gen_questions_bulk(self, items):
+        """闭环四·B1：批量写每块生成问题（旁路表）"""
+        self._db.upsert_gen_questions_bulk(items)
+
+    def get_gen_questions(self, project_id):
+        """闭环四·B1：{doc_id: questions_json}，供 BM25 语料拼接"""
+        return self._db.get_gen_questions(project_id)
+
     def get_resources(self, project_id):
         """resources 表：取项目全部已上传资源（name + type + content 长度）"""
         return self._db.execute(

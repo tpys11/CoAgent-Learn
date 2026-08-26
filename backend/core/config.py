@@ -45,8 +45,10 @@ class Config:
     # ── 切块与检索参数（对齐 DeepTutor SentenceSplitter 可配置语义）──
     # 改动仅影响之后入库的内容；已有文档需删除重传才会按新参数重切。
     KB_CHUNK_MODE: str = os.getenv("KB_CHUNK_MODE", "auto")        # window | markdown | auto
+    KB_CHUNKER: str = os.getenv("KB_CHUNKER", "self")              # self | llamaindex | semantic（semantic 仅无标题文本生效）
     KB_CHUNK_SIZE: int = int(os.getenv("KB_CHUNK_SIZE", "512"))    # 块大小（字符）
     KB_CHUNK_OVERLAP: int = int(os.getenv("KB_CHUNK_OVERLAP", "50"))  # 相邻块重叠（字符）
+    KB_META_ENHANCE: int = int(os.getenv("KB_META_ENHANCE", "1"))  # B1：入库后为每块生成≤3个可答问题存旁路表喂 BM25（0 关）
     KB_RRF_K: int = int(os.getenv("KB_RRF_K", "60"))               # RRF 融合常数 score=Σ1/(k+rank)
     KB_FETCH_MULT: int = int(os.getenv("KB_FETCH_MULT", "3"))      # 向量/BM25 召回倍数（top_k×此值）
     # 独立审核模型（走硅基流动）：开关 + 模型；关闭时审核回退主模型快模型（deepseek v4 flash）
