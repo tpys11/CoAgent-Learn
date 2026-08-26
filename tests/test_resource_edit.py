@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """闭环六：资源编辑会话守卫（独立分支三态 / 隔离四断言 / dialogues.kind 迁移与过滤）。"""
 import asyncio
 import json
@@ -11,7 +11,7 @@ from core.db.project_repo import ProjectRepo
 
 
 class FakeLLM:
-    """主模型假件：流式吐新版全文；记录 system prompt 供断言。"""
+    """主模型假件：模拟 chat_stream 双通道契约——on_content=正文（分支消费），on_token=思考流（分支丢弃）。"""
     last = None
 
     def __init__(self, text="修订后的全文内容"):
@@ -21,8 +21,11 @@ class FakeLLM:
 
     def chat_stream(self, messages, on_token, **kw):
         self.messages = messages
+        on_content = kw.get("on_content")
         for ch in self.text:
-            on_token(ch)
+            on_token(ch)              # 思考流（分支应丢弃）
+            if on_content:
+                on_content(ch)        # 正文流（分支消费）
 
 
 def _mk_req(rid, did="dRE"):
@@ -78,8 +81,11 @@ def test_resource_edit_happy_path(env, monkeypatch):
         def chat_stream(self, messages, on_token, **kw):
             self.messages = messages
             import time as _t
+            on_content = kw.get("on_content")
             for ch in "新版讲义内容":
                 on_token(ch)
+                if on_content:
+                    on_content(ch)
                 _t.sleep(0.06)  # > 泵轮询 0.05s：若先囤后吐，帧时间戳会挤在一起
 
     monkeypatch.setattr(eng, "_make_llm", lambda req, model_override=None: SlowFakeLLM())
@@ -111,11 +117,13 @@ def test_resource_edit_happy_path(env, monkeypatch):
     rows = env.execute("SELECT name, type, content FROM resources WHERE project_id='pX' ORDER BY rowid")
     assert len(rows) == 2 and rows[1]["content"] == "新版讲义内容"
     assert rows[1]["name"] == "生成·讲义" and rows[1]["type"] == "gen:guide"
-    # 消息成对 + 全文注入 user prompt（system 为角色指令；【当前资源全文】标记在 user 侧）
+    # 消息成对 + 全文注入 user prompt（system 为角色契约；【当前资源全文】标记在 user 侧）
     msgs = env.execute("SELECT role, content FROM messages WHERE dialogue_id='dRE' ORDER BY rowid")
     assert [m["role"] for m in msgs] == ["user", "assistant"]
     assert FakeLLM.last.messages[1]["content"].find("原版讲义内容") > 0
-    assert "【当前资源全文】" in FakeLLM.last.messages[1]["content"]
+    assert "【当前资源全文（在此版本上修订）】" in FakeLLM.last.messages[1]["content"]
+    # 执行契约：system 声明"输出自动保存为新版本"（模型知道自己能执行）
+    assert "自动保存" in FakeLLM.last.messages[0]["content"]
     # kind 隔离标记在案
     dlg = env.execute("SELECT kind, name FROM dialogues WHERE id='dRE'")
     assert dlg[0]["kind"] == "resource" and "编辑·" in dlg[0]["name"]
@@ -131,7 +139,8 @@ def test_resource_edit_missing_resource(env):
 
 
 def test_resource_edit_second_round_continues(env, monkeypatch):
-    """二轮续聊：同 dialogue 不重建行，历史累计（user/assistant 交替 4 条）。"""
+    """二轮续聊：同 dialogue 不重建行，历史累计（user/assistant 交替 4 条）；
+    且第二轮 prompt 基于最新版本（第一版内容在场）+ 历史注入（首轮指令可见）。"""
     import engine.pipeline_v2 as eng
     _seed_resource(env)
     monkeypatch.setattr(eng, "_make_llm", lambda req, model_override=None: FakeLLM("第一版"))
@@ -142,6 +151,40 @@ def test_resource_edit_second_round_continues(env, monkeypatch):
     assert [m["role"] for m in msgs] == ["user", "assistant", "user", "assistant"]
     assert env.execute("SELECT COUNT(*) c FROM dialogues WHERE id='dRE'")[0]["c"] == 1
     assert env.execute("SELECT COUNT(*) c FROM resources WHERE project_id='pX'")[0]["c"] == 3
+    # 根因修复断言：第二轮的【当前资源全文】必须是最新版（第一版），而非原始行
+    assert "【当前资源全文（在此版本上修订）】" in FakeLLM.last.messages[-1]["content"]
+    assert "第一版" in FakeLLM.last.messages[-1]["content"]
+    assert "原版讲义内容" not in FakeLLM.last.messages[-1]["content"].split("【修改要求】")[0]
+    # 历史注入：首轮指令在对白序列中
+    assert any(m["role"] == "user" and m["content"] == "把内容改得更口语化"
+               for m in FakeLLM.last.messages[1:-1])
+
+
+def test_edit_loads_latest_version_not_original(env, monkeypatch):
+    """根因修复守卫：同源多版本在场时，编辑必须基于最新版而非 id 指向的原始行。"""
+    import engine.pipeline_v2 as eng
+    _seed_resource(env, rid="r1", name="生成·讲义", content="V1 原始内容")
+    env.execute(
+        "INSERT INTO resources(id, name, content, project_id, type) VALUES (%s,%s,%s,%s,%s)",
+        ("r1-v2", "生成·讲义", "V2 最新内容", "pX", "gen:guide"))
+    monkeypatch.setattr(eng, "_make_llm", lambda req, model_override=None: FakeLLM("V3"))
+    asyncio.run(_collect(eng.stream_response(_mk_req("r1"))))
+    prompt = FakeLLM.last.messages[-1]["content"]
+    assert "V2 最新内容" in prompt and "V1 原始内容" not in prompt
+
+
+def test_chat_turn_no_version(env, monkeypatch):
+    """💬 问答协议：提问轮只留消息不产版本；修改轮照常产版本。"""
+    import engine.pipeline_v2 as eng
+    _seed_resource(env)
+    monkeypatch.setattr(eng, "_make_llm",
+                        lambda req, model_override=None: FakeLLM("💬 这份资料讲的是修订流程。"))
+    frames = asyncio.run(_collect(eng.stream_response(_mk_req("r1"))))
+    assert frames[-1]["type"] == "done" and frames[-1]["reply"].startswith("💬")
+    # 问答轮不产版本：资源行数不变
+    assert env.execute("SELECT COUNT(*) c FROM resources WHERE project_id='pX'")[0]["c"] == 1
+    # 消息仍留档（可回看）
+    assert env.execute("SELECT COUNT(*) c FROM messages WHERE dialogue_id='dRE'")[0]["c"] == 2
 
 
 # ---------- 切片②：隔离与 kind 过滤 ----------

@@ -113,22 +113,57 @@ async def _stream_resource_edit(req):
                     "INSERT INTO dialogues(id,project_id,session_id,name,kind) VALUES(%s,%s,%s,%s,'resource')",
                     (did, pid, req.session_id or "default", "编辑·" + (res["name"] or "资源")))
 
+            # 上下文①：加载最新版本（历轮修改写回的是同名同 type 新行，按 id 读到的永远是
+            # 原始行——本轮编辑必须基于最新版，否则 AI"看不见"上轮修改，表现即答非所问）
+            latest = pg_client.execute(
+                "SELECT content FROM resources WHERE project_id=%s AND name=%s AND type=%s "
+                "ORDER BY rowid DESC LIMIT 1",
+                (res["project_id"], res["name"], res["type"]))
+            full = str((latest[0] if latest else res)["content"] or "")
+
+            # 上下文②：对话历史（当前消息落库前取，天然不含本轮；末 6 轮逐条 cap 1500）
+            history = list(reversed(pg_client.execute(
+                "SELECT role, content FROM messages WHERE dialogue_id=%s ORDER BY rowid DESC LIMIT 6",
+                (did,)) or []))
+
             user_text = (req.message or "").strip() or "请修订这份资料"
             pg_client.execute(
                 "INSERT INTO messages(dialogue_id,role,content) VALUES(%s,%s,%s)",
                 (did, "user", user_text))
 
-            full = str(res["content"] or "")
             if len(full) > 12000:
                 full = full[:12000] + "\n\n（原文超长，以上为截断版——修订时保持既有结构）"
             system = (
-                "你是资料修订助手。根据用户的修改要求，输出修订后的完整 markdown 全文；"
-                "保持原文结构与小标题风格，只改用户要求的部分，不要输出任何解释性文字。"
+                "你是「资源修订助手」。用户给你一份 markdown 资料和修改要求，你直接执行修订。\n"
+                "两种工作模式：\n"
+                "A. 修改类请求（改写/精简/扩写/换风格…）→ 直接输出修订后的完整 markdown 全文，"
+                "第一个字就是正文标题，禁止输出「我们/我会/好的」等任何过程性文字。"
+                "你的输出会被系统自动保存为新版本。\n"
+                "B. 提问/讨论类请求（这是什么/建议怎么改）→ 第一行以 💬 开头，简短回答即可。\n"
+                "示例——\n"
+                "用户：把第一段改短\n"
+                "助手：# 标题\n\n（直接给改后的全文，没有任何说明文字）\n"
+                "用户：这份资料讲了什么？\n"
+                "助手：💬 这份资料讲了…\n"
+                "修改是累积的：对话记录为历轮修订，本轮基于其中最新版本继续。"
             )
-            user_prompt = f"【当前资源全文】\n{full}\n\n【修改要求】\n{user_text}"
+            user_prompt = (
+                f"【修改要求】\n{user_text}\n\n"
+                f"【当前资源全文（在此版本上修订）】\n{full}\n\n"
+                "【你的输出】按规则 A 或 B 直接作答，现在开始："
+            )
+
+            # 组装消息序列：system + 历史轮次 + 本轮（助手历史条目截断，防历轮全文撑爆上下文）
+            msgs = [{"role": "system", "content": system}]
+            for m in history:
+                role = "user" if m["role"] == "user" else "assistant"
+                msgs.append({"role": role, "content": str(m["content"] or "")[:1500]})
+            msgs.append({"role": "user", "content": user_prompt})
 
             # 真流式（照搬主对话 _v2_worker 机制）：LLM 在后台线程逐 token 推队列，
             # SSE 泵边读边吐——与主对话观感一致，不再"先囤后吐"。
+            # 关键：用 on_content 通道（纯正文）——thinking 默认开启，on_token 会混入
+            # reasoning_content 思考流（"我们需要理解用户请求…"），把草稿当答案直播即用户所见症状。
             token_queue: queue.Queue = queue.Queue()
             collected: list = []
 
@@ -136,18 +171,20 @@ async def _stream_resource_edit(req):
                 try:
                     llm = _make_llm(req)
                     llm.chat_stream(
-                        [{"role": "system", "content": system},
-                         {"role": "user", "content": user_prompt}],
-                        lambda ch: (collected.append(ch),
-                                    token_queue.put(("answer", ch))))
+                        msgs,
+                        lambda _ch: None,                      # 思考流丢弃（主对话进思维链，本分支无思维链面板）
+                        on_content=lambda ch: (collected.append(ch),
+                                               token_queue.put(("answer", ch))))
                     reply = "".join(collected).strip()
-                    if reply:
+                    if reply and not reply.startswith("💬"):
                         _persist_assistant_message(did, reply)
                         # 写回新行（append 语义=新版本；同名同 type，列表按时间排序即版本序列）
                         pg_client.execute(
                             "INSERT INTO resources(id, name, content, project_id, type) VALUES (%s,%s,%s,%s,%s)",
                             (__import__("hashlib").md5((str(res["name"]) + str(request_id)).encode()).hexdigest()[:16],
                              res["name"], reply, res["project_id"], "gen:" + str(res["type"] or "").removeprefix("gen:")))
+                    elif reply:
+                        _persist_assistant_message(did, reply)   # 💬 问答轮：只留消息，不产版本
                     token_queue.put(("done", reply))
                 except Exception as e:
                     logger.exception("[v2] 资源编辑分支失败 rid=%s", rid)
