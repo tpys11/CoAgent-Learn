@@ -327,7 +327,7 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                 plan_thinking, plan = "", {"complexity": "standard"}
         if plan_thinking.strip():
             mindchain_entries.append({"agent": "学习助手·规划",
-                                      "content": plan_thinking.strip()[:800]})
+                                      "content": plan_thinking.strip()})
         _trace("plan", input_digest=req.message[:200],
                output_digest=json.dumps({"complexity": plan["complexity"]}, ensure_ascii=False))
         ctx_steps.append({"agent": "学习助手·规划", "status": "done", "detail": "意图分类完成"})
@@ -435,7 +435,7 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                 assess_exec.shutdown(wait=False)
         if assess_thinking:
             mindchain_entries.append({"agent": "学情与记忆管理",
-                                      "content": assess_thinking[:800]})
+                                      "content": assess_thinking})
         ctx_steps.append({"agent": "学情与记忆管理", "status": "done",
                           "detail": ("水平评估完成" if assess_score is not None else "规则地板")})
         _trace("assess", input_digest=req.message[:200],
@@ -577,7 +577,7 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         gen_reasoning_text = "".join(gen_reasoning).strip()
         if gen_reasoning_text:
             mindchain_entries.append({"agent": "学习助手·生成",
-                                      "content": gen_reasoning_text[:1500]})
+                                      "content": gen_reasoning_text})
         _trace("generate", input_digest=working_message[:200],
                output_digest=json.dumps({"reply_len": len(reply), "attempts": attempt + 1},
                                         ensure_ascii=False),
