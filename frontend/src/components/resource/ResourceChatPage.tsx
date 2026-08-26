@@ -114,15 +114,18 @@ export default function ResourceChatPage({ resourceId, resourceName, projectId, 
     : (versions[previewIdx]?.content ?? '')
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'var(--bg-app, #f7f7f8)' }}>
-      {/* 顶部返回条（照 SubAgentPage） */}
-      <div className="flex items-center justify-between px-4 py-2.5 flex-shrink-0 border-b hairline">
+    <div className="fixed inset-0 z-50 flex flex-col" style={{ background: 'var(--bg-root)' }}>
+      {/* 顶部返回条（照 SubAgentPage 顶栏范式：hairline 分隔 + row-hover 按钮） */}
+      <div className="flex items-center justify-between px-5 py-3 flex-shrink-0 border-b hairline">
         <button onClick={() => { if (!streaming) onBack() }}
-          className="flex items-center gap-1.5 text-[12px] text-dim hover:text-[var(--text)] transition-colors">
+          title="返回 (Esc)"
+          className="inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1 rounded-lg border hairline row-hover transition-colors">
           <ArrowLeft size={14} /> 返回对话
         </button>
-        <span className="text-[12px] font-semibold truncate max-w-[50%]">AI 修改 · {resourceName}</span>
-        <button onClick={() => setShowPreview(s => !s)} className="p-1.5 rounded icon-btn" title="展开/收起资源预览">
+        <span className="text-[13px] font-semibold truncate max-w-[50%]">AI 修改 · {resourceName}</span>
+        <button onClick={() => setShowPreview(s => !s)}
+          title="展开/收起资源预览"
+          className="p-1.5 rounded-lg border hairline row-hover transition-colors">
           {showPreview ? <PanelRightClose size={15} /> : <PanelRightOpen size={15} />}
         </button>
       </div>
@@ -165,7 +168,7 @@ export default function ResourceChatPage({ resourceId, resourceName, projectId, 
               rows={2} disabled={streaming}
               className="flex-1 px-3 py-2 input-surface rounded-xl text-xs outline-none resize-none disabled:opacity-60" />
             <button onClick={send} disabled={streaming || !input.trim()}
-              className="px-3 py-2 rounded-lg text-[11px] font-semibold bg-[#1a1a1a] text-white disabled:opacity-50 flex items-center gap-1.5">
+              className="btn-primary px-4 py-2 text-[11px] font-semibold disabled:opacity-50 flex items-center gap-1.5">
               {streaming ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} 发送
             </button>
           </div>
