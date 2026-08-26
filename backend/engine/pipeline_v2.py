@@ -443,6 +443,20 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         except Exception:
             logger.exception("[v2] Trace 落库失败（不影响主流程）")
 
+        # 评测 debug：组装 internals（画像/检索到的知识库/审核），仅 debug=True 时输出
+        _kb_list = []
+        for _s in (search_results or []):
+            if not isinstance(_s, dict):
+                continue
+            _kb_list.append({
+                "content": str(_s.get("content") or "")[:600],
+                "metadata": {"source": str(_s.get("title") or _s.get("url") or "")[:120], "chunk": 0},
+            })
+        _internals = {
+            "knowledge": _kb_list,
+            "profile": profile_cache or {"level_score": assess_score},
+            "reviewed": reviewed_info,
+        }
         result = {
             "final_reply": reply,
             "steps": ctx_steps,
@@ -451,6 +465,8 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
             "complexity": plan["complexity"],
             **({"reviewed": reviewed_info} if reviewed_info else {}),
         }
+        if getattr(req, "debug", False):
+            result["internals"] = _internals
         token_queue.put(("done", result))
 
         from core.background import submit
@@ -539,6 +555,8 @@ def _frame(msg) -> tuple[str, bool]:
             "special_suggestions": result.get("special_suggestions", []),
             "retrieved_images": retrieved_images, "review": result.get("reviewed"),
         }
+        if result.get("internals"):
+            frame["internals"] = result["internals"]
         return f"data: {json.dumps(frame)}\n\n", True
     if kind == "error":
         return f"data: {json.dumps({'type': 'error', 'message': msg[1]})}\n\n", True
