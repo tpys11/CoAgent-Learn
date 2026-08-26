@@ -253,6 +253,8 @@ function ReasoningBlock({ items, streaming, activeAgent, activeStatus, flowAgent
   const merged = useMemo(() => {
     const list = (items || []).map(it => typeof it === 'string' ? { agent: '', content: it, run_ids: [] as string[] } : { ...it, run_ids: Array.from(new Set(it.run_ids || [])) })
       .filter(it => it.agent !== '运行统计')
+      // 完成态不显示空内容占位（step 帧的"进行中"标记在流式期有意义，结束后是杂乱光杆标题）
+      .filter(it => streaming || (it.content || '').trim().length > 0)
     return list.reduce<Array<{ agent: string; content: string; run_ids: string[] }>>((acc, it) => {
       const dn = displayAgent(it.agent)
       const last = acc[acc.length - 1]
