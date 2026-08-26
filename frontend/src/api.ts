@@ -94,6 +94,16 @@ export const api = {
   saveSettings: (body: unknown) => apiFetch<any>('/api/settings', jsonInit('PUT', body)),
   testSettings: (body: unknown) => apiFetch<any>('/api/settings/test', jsonInit('POST', body)),
 
+  /** 答题反馈上报（闭环D）：后端落 quiz_answers 并合流 level_score，下轮策略指令随之变化 */
+  submitQuizAnswers: (body: {
+    dialogue_id: string
+    project_id: string
+    answers: { question_id: string; kp_tag: string; correct: boolean }[]
+  }) => apiFetch<{
+    saved: number; total: number; correct: number
+    accuracy: number | null; old_score: number | null; new_score: number | null
+  }>('/api/quiz/submit', jsonInit('POST', body)),
+
   listProjects: () => apiFetch<ProjectList>('/api/projects'),
   createProject: (body: { name: string; domain?: string; simple?: boolean }) =>
     apiFetch<{ id: string }>('/api/projects', jsonInit('POST', body)),

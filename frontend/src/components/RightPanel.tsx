@@ -278,7 +278,7 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
                 </div>
               </div>
             )}
-            {w.key === 'special' && <SpecialOutputPane projectId={projectId} />}
+            {w.key === 'special' && <SpecialOutputPane projectId={projectId} dialogueId={sideDialogueIdRef.current} />}
           </Pane>
         </Fragment>
       ))}
