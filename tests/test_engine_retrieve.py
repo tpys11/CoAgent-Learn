@@ -8,7 +8,8 @@ from tests._engine_helpers import ScriptedLLM
 def test_rewrite_ok():
     llm = ScriptedLLM(['{"need_search": true, "queries": ["RAG 原理", "检索增强生成 教程"]}'])
     out = rt.rewrite_queries(llm, "讲讲RAG")
-    assert out == {"need_search": True, "queries": ["RAG 原理", "检索增强生成 教程"]}
+    assert out == {"need_search": True, "queries": ["RAG 原理", "检索增强生成 教程"],
+                   "decomposed": False}
 
 
 def test_rewrite_no_need():
@@ -20,7 +21,8 @@ def test_rewrite_crash_falls_to_false():
     class _Boom:
         def chat_stream(self, *a, **k):
             raise RuntimeError("x")
-    assert rt.rewrite_queries(_Boom(), "任何") == {"need_search": False, "queries": []}
+    assert rt.rewrite_queries(_Boom(), "任何") == {"need_search": False, "queries": [],
+                                                   "decomposed": False}
 
 
 def test_fetch_all_parallel_both_sources(monkeypatch):

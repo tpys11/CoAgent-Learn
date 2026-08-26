@@ -202,7 +202,8 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
 
         # --- S2 Retrieve（模式权威：思考/研究必检索，极速不检索；simple_direct 已在上方短路） ---
         search_results: list = []
-        # 研究档强制两轮递归（模式契约"必开两轮"，设计稿S2/矩阵）；research_deep 分类同样两轮
+        # 研究档进 B2-lite 分解链（契约替代 D-新1：旧"强制两轮 angle 递归"已退役，见 retrieve.py）；
+        # rounds≥2 即研究链，research_deep 分类同享
         _rounds = 2 if (template == "研究" or plan["complexity"] == "research_deep") else 1
         _search_meta: dict = {}
         if plan["complexity"] != "simple_direct" and template != "极速":

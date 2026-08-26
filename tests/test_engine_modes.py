@@ -2,7 +2,7 @@
 """Loop4.5 补强 · 三模式矩阵端到端验证（CHAT_ENGINE=v2）：
 T1 多轮上下文注入（画像/偏好/早期摘要/近期原文 全段落进 generate 的 user 内容）
 T2 极速档矩阵（跳过学情/检索/审核 + 字数指令回归）
-T3 研究档全链（两轮递归检索 + 审核未通过携因重生成一次后通过）
+T3 研究档全链（B2-lite 分解式检索 + 审核未通过携因重生成一次后通过）
 隔离策略与 test_chat_golden 相同；检索源定值化防真实网络。"""
 import json
 
@@ -194,14 +194,13 @@ def test_research_full_chain_with_review(v2_env, monkeypatch):
     app, eng, client, _rt = v2_env
 
     class ResearchFastLLM:
-        """研究档专用：分类恒 research_deep；规划器按轮次产出不同查询。"""
+        """研究档专用：分类恒 research_deep；规划器按 B2-lite 契约产出分解子问。"""
         def __init__(self):
             self.calls = []
-            self.qn = 0
 
         def chat_stream(self, messages, on_token, **kw):
             s = messages[0]["content"]
-            self.calls.append(s[:20])
+            self.calls.append(s)  # 全文入档：供断言分解提示词标记
             if "意图分类器" in s:
                 # 前导自然语言 + 围栏json：思考原文非空（Loop6 思维链持久化验证点）
                 raw = ('用户想深入了解RAG。\n```json\n'
@@ -210,9 +209,9 @@ def test_research_full_chain_with_review(v2_env, monkeypatch):
                 raw = ('近期术语使用准确。\n```json\n'
                        '{"level_score": 0.9, "evidence": "术语准确"}\n```')
             elif "查询规划器" in s:
-                self.qn += 1
                 raw = json.dumps({"need_search": True,
-                                  "queries": [f"r{self.qn}a", f"r{self.qn}b"]},
+                                  "queries": ["RAG 核心原理拆解", "RAG 最新进展调研"],
+                                  "decomposed": True},
                                  ensure_ascii=False)
             elif "检索候选" in s:
                 raw = '{"keep": [0, 1]}'
@@ -239,9 +238,10 @@ def test_research_full_chain_with_review(v2_env, monkeypatch):
     monkeypatch.setattr(rv_mod, "pick_judge_llm", lambda template, req: judge)
 
     frames = _run(app, body_research())
-    # 研究档两轮：查询规划器至少调用两次（轮次感知的不同查询）
+    # B2-lite 新契约：研究档分解式规划恰一次（替代旧"强制两轮改写"），提示词含分解标记
     planner_calls = [c for c in fast.calls if "查询规划器" in c]
-    assert len(planner_calls) >= 2
+    assert len(planner_calls) == 1
+    assert "子问题分解" in planner_calls[0]
     # 审核未通过→重生成→通过：审核脚注与最终 reviewed 都要体现
     audit_notes = [f.get("chunk") for f in frames
                    if f["type"] == "thought_token" and f.get("agent") == "审核"]
@@ -260,7 +260,8 @@ def test_research_full_chain_with_review(v2_env, monkeypatch):
     rid = sa[0]["run_id"]
     assert all(f["run_id"] == rid for f in sa)
     deltas = [f.get("text", "") for f in sa if f["event"] == "delta"]
-    assert any("改写查询" in t for t in deltas), deltas
+    assert any("子问题分解" in t for t in deltas), deltas
+    assert any("补搜 2 面" in t for t in deltas), deltas  # 夹具每查询仅1条→双列均未达阈
     assert any("终筛留存" in t for t in deltas), deltas
     assert any("章节展开" in t for t in deltas), deltas  # A1：兄弟聚合发生
     assert sa[-1]["status"] == "ok" and "留存" in (sa[-1].get("summary") or "")
