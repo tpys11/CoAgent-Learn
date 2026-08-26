@@ -45,6 +45,18 @@ const displayAgent = (name: string) => {
   return base
 }
 
+/** 闭环六规范·两级标题：L1 流程节点（弱化灰字）映射表——帧名 → 五段式节点名。
+ *  映射表外（如「视觉理解」及任何未知名）返回 null = L2 按 agent 名展示（真实数据取证定稿）。 */
+const FLOW_NODE_MAP: Record<string, string> = {
+  '学习助手·规划': '规划',
+  '知识库管理': '检索',
+  '学情与记忆管理': '反思',
+  '审核': '反思',
+  '学习助手·生成': '生成',
+}
+/** 导出仅供测试（streaming.test 同模式）；运行时组件内使用 */
+export const isFlowNode = (name: string): string | null => FLOW_NODE_MAP[name] ?? null
+
 interface AssistantMessageProps {
   msg: Message
   isLoading: boolean
@@ -78,7 +90,8 @@ export default function AssistantMessage({
       {/* 思考过程区块（DeepSeek 式：流式展开逐字 / 完成自动折叠为一行） */}
       {msg.think && msg.think.length > 0 && (
         <div className="mb-3">
-          <ReasoningBlock items={msg.think} streaming={streaming} activeAgent={flowActiveAgent} activeStatus={flowStatus} flowAgents={flowAgents} />
+          <ReasoningBlock items={msg.think} streaming={streaming} activeAgent={flowActiveAgent} activeStatus={flowStatus} flowAgents={flowAgents}
+            hasAnswer={streaming && !!msg.content} />
         </div>
       )}
       {/* 回答正文：流式逐字纯文本（绝不 markdown）/ 完成一次性 markdown 渲染 */}
@@ -248,8 +261,9 @@ function StreamingMd({ text, streaming }: { text: string; streaming?: boolean })
   )
 }
 
-/** 思考过程区块（DeepSeek 式独立区块）。条目4：run_ids 并集保留——前端合并与后端 _merge_mindchain 同款陷阱，重建时不得剥字段。 */
-function ReasoningBlock({ items, streaming, activeAgent, activeStatus, flowAgents }: { items: Array<{ agent: string; content: string; run_ids?: string[] }> | string[]; streaming?: boolean; activeAgent?: string | null; activeStatus?: string; flowAgents?: string[] }) {
+/** 思考过程区块（DeepSeek 式独立区块）。条目4：run_ids 并集保留——前端合并与后端 _merge_mindchain 同款陷阱，重建时不得剥字段。
+ *  闭环六规范·生命周期：首个正文 token 到达 → 整块收为「思考 Xs」（计时自首个思考条目出现起）；完成态保持折叠可重展。 */
+function ReasoningBlock({ items, streaming, activeAgent, activeStatus, flowAgents, hasAnswer }: { items: Array<{ agent: string; content: string; run_ids?: string[] }> | string[]; streaming?: boolean; activeAgent?: string | null; activeStatus?: string; flowAgents?: string[]; hasAnswer?: boolean }) {
   const merged = useMemo(() => {
     const list = (items || []).map(it => typeof it === 'string' ? { agent: '', content: it, run_ids: [] as string[] } : { ...it, run_ids: Array.from(new Set(it.run_ids || [])) })
       .filter(it => it.agent !== '运行统计')
@@ -270,6 +284,12 @@ function ReasoningBlock({ items, streaming, activeAgent, activeStatus, flowAgent
   const [open, setOpen] = useState(true)
   // 块级折叠（5.2）：流式中非当前输出的 agent 块折叠为小标题行；完成后整块折叠
   const [folded, setFolded] = useState<Record<number, boolean>>({})
+  // 闭环六规范·思考计时：首个思考条目出现起表；首个正文 token 到达收拢并停表（拍板②「思考 Xs」）
+  const [thinkStart, setThinkStart] = useState<number | null>(null)
+  const [thinkSeconds, setThinkSeconds] = useState<number | null>(null)
+  const [answerArrived, setAnswerArrived] = useState(false)
+  // 切片④：节点数量上限的「展开全部」开关
+  const [expandAll, setExpandAll] = useState(false)
   const prevStreaming = useRef(streaming)
   useEffect(() => {
     if (streaming) {
@@ -286,8 +306,32 @@ function ReasoningBlock({ items, streaming, activeAgent, activeStatus, flowAgent
     if (prevStreaming.current && !streaming) setOpen(false)
     prevStreaming.current = streaming
   }, [streaming, activeAgent, merged.length])
+  // 计时起表：首个思考内容到达（流式中且 merged 非空且未起表）
+  useEffect(() => {
+    if (streaming && merged.length > 0 && thinkStart === null) {
+      setThinkStart(Date.now())
+    }
+  }, [streaming, merged.length, thinkStart])
+  // 生命周期锚点：首个正文 token 到达（hasAnswer 翻转 true）→ 收拢 + 停表。完成态不做此转换（保持折叠逻辑）
+  useEffect(() => {
+    if (streaming && hasAnswer && !answerArrived) {
+      setAnswerArrived(true)
+      setOpen(false)
+      setThinkSeconds(ts => (thinkStart && ts === null) ? Math.max(1, Math.round((Date.now() - thinkStart) / 1000)) : ts)
+    }
+    if (!streaming) setAnswerArrived(false)
+  }, [streaming, hasAnswer, answerArrived, thinkStart])
   if (merged.length === 0) return null
   const toggle = () => { if (!streaming) setOpen(o => !o) }
+  const collapsedLabel = thinkSeconds !== null ? `思考 ${thinkSeconds}s` : '思考中…'
+  // 切片④·节点数量上限（拍板确认）：>8 条收中段，首 2 + 尾 6，「+N 早期步骤」展开全部
+  const NODE_CAP = 8
+  const overflow = !expandAll && merged.length > NODE_CAP
+  const visible = overflow
+    ? [...merged.slice(0, 2).map((it, i) => ({ ...it, _i: i })),
+       ...merged.slice(-(NODE_CAP - 2)).map((it, i) => ({ ...it, _i: merged.length - (NODE_CAP - 2) + i }))]
+    : merged.map((it, i) => ({ ...it, _i: i }))
+  const hiddenCount = merged.length - visible.length
   return (
     <div className="reasoning-block">
       <button onClick={toggle} className="flex items-center gap-1 reasoning-title hover:opacity-80 transition-opacity text-left w-full">
@@ -296,27 +340,39 @@ function ReasoningBlock({ items, streaming, activeAgent, activeStatus, flowAgent
         {streaming
           ? (flowAgents && flowAgents.length > 0
               ? <span className="ml-1 font-normal text-[10px] flex items-center gap-0.5">
-                  {flowAgents.map((a, i) => (
-                    <span key={i} className="flex items-center gap-0.5">
-                      {i > 0 && <span className="text-dim">→</span>}
-                      <span className={activeAgent && displayAgent(a) === displayAgent(activeAgent) ? 'text-[var(--accent)]' : ''}>{displayAgent(a)}</span>
-                    </span>
-                  ))}
+                  {flowAgents.map((a, i) => {
+                    const node = isFlowNode(a)
+                    const label = node ?? displayAgent(a)
+                    return (
+                      <span key={i} className="flex items-center gap-0.5">
+                        {i > 0 && <span className="text-dim">→</span>}
+                        <span className={activeAgent && displayAgent(a) === displayAgent(activeAgent)
+                          ? (node ? 'text-[var(--accent)]' : 'text-[var(--accent)] font-semibold')
+                          : 'text-dim'}>{label}</span>
+                      </span>
+                    )
+                  })}
                 </span>
               : <span className="ml-1 font-normal text-[10px]">{activeStatus || '思考中…'}</span>)
-          : <span className="ml-1 font-normal text-[10px] text-dim">已完成</span>}
+          : <span className="ml-1 font-normal text-[10px] text-dim">{collapsedLabel !== '思考中…' ? collapsedLabel : '已完成'}</span>}
       </button>
       {open && (
         <div className="mt-1.5 flex flex-col gap-2">
-          {merged.map((it, i) => {
+          {visible.map((it, idx) => {
+            const i = it._i            // 原始索引（folded/展开态 keyed by 全量序列）
             const isFolded = !!folded[i]
+            const node = isFlowNode(it.agent)          // L1：流程节点名（null = L2 agent 名）
+            const l2name = displayAgent(it.agent)
             return (
             <div key={i} className="animate-[fadeIn_0.15s_ease]">
               {it.agent && merged.length > 1 && (
                 <button onClick={() => setFolded(f => ({ ...f, [i]: !f[i] }))}
-                  className="flex items-center gap-1 text-[11px] font-semibold mb-0.5 text-[var(--text)] hover:opacity-80 text-left">
-                  <span className="text-[9px] text-dim flex-shrink-0">{isFolded ? '▸' : '▾'}</span>
-                  {displayAgent(it.agent)}
+                  className={"flex items-center gap-1 mb-0.5 text-left hover:opacity-80 " +
+                    (node
+                      ? 'text-[11px] text-dim'                       // L1 流程节点：弱化灰字
+                      : 'text-[11px] font-semibold text-[var(--text)]')}>  {/* L2 agent 名：当前样式 */}
+                  <span className="text-[9px] flex-shrink-0">{isFolded ? '▸' : '▾'}</span>
+                  {node ?? l2name}
                   {isFolded && <span className="text-[9px] font-normal text-dim">（已折叠）</span>}
                 </button>
               )}
@@ -331,17 +387,23 @@ function ReasoningBlock({ items, streaming, activeAgent, activeStatus, flowAgent
                 </button>
               )}
               {!isFolded && (
-              <div className="text-[11px] leading-relaxed text-dim">
+              <div className="text-[11px] leading-relaxed text-dim md-think-body">
                 {streaming ? (
                   <div className="whitespace-pre-wrap break-words">{it.content}</div>
                 ) : (
-                  <div className="md-think-body" dangerouslySetInnerHTML={{ __html: renderMdCached(it.content) }} />
+                  <div dangerouslySetInnerHTML={{ __html: renderMdCached(it.content) }} />
                 )}
               </div>
               )}
             </div>
             )
           })}
+          {overflow && (
+            <button onClick={() => setExpandAll(true)}
+              className="self-center text-[10px] text-dim hover:text-[var(--text)] px-2 py-0.5 rounded-lg border hairline row-hover transition-colors">
+              +{hiddenCount} 个早期步骤
+            </button>
+          )}
         </div>
       )}
     </div>

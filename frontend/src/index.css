@@ -107,6 +107,8 @@ button { transition-property: color, background-color, border-color, box-shadow,
 /* 思考过程区块（DeepSeek 式独立区块：浅底 + 左边框 accent + 圆角，与回答正文视觉分离） */
 .reasoning-block { background: var(--bg-input); border-radius: 12px; border-left: 3px solid var(--accent); padding: 10px 14px; }
 .reasoning-block .reasoning-title { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+/* 闭环六规范：单节点思考内容面板内滚动（布局约束非内容约束——完整入库不截断，展开超长不撑爆整屏） */
+.md-think-body { max-height: 320px; overflow-y: auto; }
 
 /* ============ 主题覆盖（组件内硬编码 Tailwind 类的主题适配） ============ */
 
