@@ -17,8 +17,10 @@ const md = new MarkdownIt({ html: false, linkify: true, breaks: true })
 interface VersionItem { id: string; content: string; created_at?: string }
 interface ChatMsg { role: 'user' | 'assistant'; content: string }
 
-/** 资源级 dialogue id 的本地映射键（跨会话续聊同一资源的编辑记录） */
-const RES_DLG_KEY = 'resDialogues'
+/** 资源级 dialogue id 的本地映射键（跨会话续聊同一资源的编辑记录）。
+ * v2：v1 键下的映射可能指向被旧后端污染的主对话管系会话（bind mount 不触发 uvicorn
+ * --reload 的历史遗留），升键即全部作废重来。 */
+const RES_DLG_KEY = 'resDialogues-v2'
 
 export default function ResourceChatPage({ resourceId, resourceName, projectId, onBack }: {
   resourceId: string; resourceName: string; projectId?: string | null; onBack: () => void
