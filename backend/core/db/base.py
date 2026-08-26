@@ -64,7 +64,7 @@ class SQLiteClient:
                 try:
                     conn = self._new_conn()
                     cur = conn.execute(sql, params or ())
-                    if sql.strip().upper().startswith(("SELECT", "PRAGMA")):
+                    if sql.strip().upper().startswith(("SELECT", "PRAGMA", "EXPLAIN")):
                         rows = cur.fetchall()
                         return [dict(r) for r in rows]
                     conn.commit()
@@ -597,6 +597,9 @@ class SQLiteClient:
         except sqlite3.OperationalError:
             pass  # 幂等迁移：列已存在
         self.execute("CREATE INDEX IF NOT EXISTS idx_messages_dialogue ON messages (dialogue_id, created_at)")
+        # 资源列表按项目查询的主索引：缺它时全表 SCAN 会路过巨型 content 溢出页
+        # （实测单行 4MB 测试残留拖慢每次 /api/resources 200-780ms，2026-08-26 性能回归）
+        self.execute("CREATE INDEX IF NOT EXISTS idx_resources_project ON resources (project_id, created_at)")
         self.execute("""
             CREATE TABLE IF NOT EXISTS global_profile (
                 id INTEGER PRIMARY KEY DEFAULT 1,
