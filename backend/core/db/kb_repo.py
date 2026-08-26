@@ -143,6 +143,14 @@ class KbRepo:
         """闭环四·B1：{doc_id: questions_json}，供 BM25 语料拼接"""
         return self._db.get_gen_questions(project_id)
 
+    def upsert_kg_edges_bulk(self, items):
+        """闭环五·B4-lite：批量写先修/相关边"""
+        self._db.upsert_kg_edges_bulk(items)
+
+    def get_kg_edges(self, project_id):
+        """闭环五：项目全部关系边 [{src, dst, rel}]"""
+        return self._db.get_kg_edges(project_id)
+
     def get_resources(self, project_id):
         """resources 表：取项目全部已上传资源（name + type + content 长度）"""
         return self._db.execute(

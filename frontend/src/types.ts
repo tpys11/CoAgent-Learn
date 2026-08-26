@@ -269,6 +269,6 @@ export interface MatchReportData {
   kp_accuracy: Array<{ kp: string; total: number; correct: number; accuracy: number }>
   weak_points: string[]
   strong_points: string[]
-  path_tree: Array<{ name: string; status: 'blind' | 'learning' | 'mastered' | 'untouched'; children: MatchReportData['path_tree'] }>
+  path_tree: Array<{ name: string; status: 'blind' | 'learning' | 'mastered' | 'untouched'; prereq?: string[]; children: MatchReportData['path_tree'] }>
   thresholds: { blind: number; master: number }
 }

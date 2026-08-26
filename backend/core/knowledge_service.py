@@ -489,6 +489,95 @@ def enhance_questions(project_id: str, chunks: list, doc_ids: list, source: str 
     return written
 
 
+KG_REL_WHITELIST = ("先修", "相关")
+KG_MAX_NAMES = 24      # 抽取输入的章节名清单上限（成本/防幻觉白名单可靠性）
+KG_MAX_EDGES = 12      # 单文档关系边封顶
+
+
+def _flatten_tree_names(tree: list) -> list[str]:
+    """标题树拍平去重保序（父前子后），供 KG 抽取输入清单。"""
+    out: list[str] = []
+    seen: set = set()
+
+    def walk(nodes):
+        for n in nodes or []:
+            if not isinstance(n, dict):
+                continue
+            name = str(n.get("name") or "").strip()
+            if name and name not in seen:
+                seen.add(name)
+                out.append(name)
+            walk(n.get("children"))
+
+    walk(tree)
+    return out
+
+
+def extract_kg_edges(project_id: str, source: str, tree: list, api_key: str = "",
+                     llm_factory=None) -> int:
+    """闭环五·B4-lite：从标题树推断章节间先修/相关关系，存 kg_edges。
+    输入只喂章节名清单（≤24 名+来源标题，拍板③）——成本最低、端点白名单防幻觉最可靠。
+    解析纪律照抄 DeepTutor spine（防御式 coerce：非 list→[]、逐项 strip、rel 白名单、
+    端点必须逐字命中清单——防 LLM 幻觉出新名字）。任何失败→0 不阻断上传。
+    llm_factory 注入缝/门控哲学与 B1 enhance_questions 同款。返回入库边数。"""
+    from core.config import config as _cfg
+    if not int(getattr(_cfg, "KB_KG_EDGES", 1) or 0):
+        return 0
+    key = api_key or getattr(_cfg, "DEEPSEEK_API_KEY", "")
+    names = _flatten_tree_names(tree)[:KG_MAX_NAMES]
+    if not key or len(names) < 2:
+        return 0
+    if llm_factory is None:
+        def llm_factory(k):
+            from engine.pipeline_v2 import DEFAULT_MODEL
+            from core.base_llm import DeepSeekLLM
+            return DeepSeekLLM(api_key=k, model=DEFAULT_MODEL, thinking=False)
+    try:
+        llm = llm_factory(key)
+    except Exception:
+        logger.warning("[KG] 关系抽取 LLM 构造失败，跳过", exc_info=True)
+        return 0
+    system = (
+        "你是课程设计专家。以下是一份文档《" + (source or "未命名") + "》的章节名清单"
+        "（按文档顺序）。推断章节之间的概念依赖关系：rel 只能取「先修」（学 A 前需先学 B，"
+        "输出 src=A, dst=B）或「相关」（同层关联）。\n"
+        '只输出 JSON：{"edges": [{"src": "章节名", "dst": "章节名", "rel": "先修"}]}，'
+        "最多 " + str(KG_MAX_EDGES) + " 条；src 和 dst 必须逐字取自清单，不许编造。"
+    )
+    user = "\n".join(f"{i + 1}. {n}" for i, n in enumerate(names))
+    name_set = set(names)
+    try:
+        raw = llm.chat([{"role": "system", "content": system},
+                        {"role": "user", "content": user}], temperature=0.2)
+        m = re.search(r'\{[\s\S]*\}', raw or "")
+        data = json.loads(m.group()) if m else {}
+        edges, seen = [], set()
+        for e in (data.get("edges") or []) if isinstance(data, dict) else []:
+            try:
+                src = str(e.get("src") or "").strip()
+                dst = str(e.get("dst") or "").strip()
+                rel = str(e.get("rel") or "").strip()
+            except Exception:
+                continue
+            if rel not in KG_REL_WHITELIST or src == dst:
+                continue
+            if src not in name_set or dst not in name_set:   # 白名单：端点幻觉直接丢弃
+                continue
+            pair = (src, dst, rel)
+            if pair not in seen:
+                seen.add(pair)
+                edges.append(pair)
+            if len(edges) >= KG_MAX_EDGES:
+                break
+        if edges:
+            _db.upsert_kg_edges_bulk(
+                [(project_id, source, s, d, r) for s, d, r in edges])
+        return len(edges)
+    except Exception:
+        logger.warning("[KG] 关系抽取失败（不阻断上传）source=%s", source, exc_info=True)
+        return 0
+
+
 def add_document(project_id: str, text: str, source: str = "", session_id: str = "", api_key: str = "", skip_context: bool = False) -> int:
     """上传文本：切块 → 向量化 → 入库，返回入库块数。
     已移除「每块 LLM 生成上下文前缀」（_gen_context，2026-08-15 删除）。
@@ -574,11 +663,20 @@ def add_document(project_id: str, text: str, source: str = "", session_id: str =
         bulk.append((uid, project_id, source, i, session_id, False, chunks[i], embeddings[i]))
     _db.upsert_kb_vectors_bulk(bulk, table=table)
     # 标题树：复用文档自身的形式分类逻辑（markdown 标题层级），供项目记忆知识图谱
+    tree: list = []
     try:
         if source:
-            _db.upsert_kb_tree(project_id, source, _extract_tree(text))
+            tree = _extract_tree(text)
+            _db.upsert_kb_tree(project_id, source, tree)
     except Exception:
         logger.warning("保存文档标题树失败 source=%s", source, exc_info=True)
+    # 闭环五·B4-lite：标题树先修/相关关系抽取（门控 KB_KG_EDGES 默认开；
+    # 内部静默容错，此层再兜一道与 B1 同款保险）
+    try:
+        if source and tree:
+            extract_kg_edges(project_id, source, tree, api_key=api_key)
+    except Exception:
+        logger.warning("关系抽取失败（不阻断上传）source=%s", source, exc_info=True)
     # 闭环四·B1：入库后为每块生成 ≤3 个可答问题存旁路表（换说法提问的 BM25 命中文本）。
     # 门控 KB_META_ENHANCE（默认开）；任何失败不阻断上传（enhance_questions 内部已兜底，
     # 此层再兜一道与标题树同级的保险）。

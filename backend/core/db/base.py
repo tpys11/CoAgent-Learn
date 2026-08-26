@@ -110,6 +110,18 @@ class SQLiteClient:
             "CREATE INDEX IF NOT EXISTS idx_kbgen_project_source "
             "ON kb_gen_questions(project_id, source)"
         )
+        # 闭环五·B4-lite：先修/相关关系边表（决策：LI SimplePropertyGraphStore 的
+        # graph_dict[subj]=[rel,obj] 形状直译为普通 SQLite 表——无需图 DB）。
+        # rel 白名单 {"先修","相关"}；仅新上传抽取，存量不补跑；冻结线砍环时整表闲置无害。
+        self.execute(
+            "CREATE TABLE IF NOT EXISTS kg_edges("
+            "project_id TEXT, source TEXT, src TEXT, dst TEXT, rel TEXT, "
+            "PRIMARY KEY(project_id, source, src, dst, rel))"
+        )
+        self.execute(
+            "CREATE INDEX IF NOT EXISTS idx_kg_project_source "
+            "ON kg_edges(project_id, source)"
+        )
         # 知识库文档标题树（上传时提取 markdown 标题层级，供项目记忆知识图谱使用）
         self.execute(
             "CREATE TABLE IF NOT EXISTS kb_tree("
@@ -476,6 +488,32 @@ class SQLiteClient:
         )
         return {r["doc_id"]: r["questions"] for r in rows or []}
 
+    def upsert_kg_edges_bulk(self, items: list):
+        """闭环五·B4-lite：批量写先修/相关边（主键五元组幂等 upsert）。
+        items: [(project_id, source, src, dst, rel)]"""
+        if not items:
+            return
+        with self._lock:
+            conn = self._new_conn()
+            try:
+                conn.executemany(
+                    "INSERT INTO kg_edges(project_id, source, src, dst, rel) "
+                    "VALUES (?, ?, ?, ?, ?) ON CONFLICT(project_id, source, src, dst, rel) "
+                    "DO NOTHING",
+                    items,
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+    def get_kg_edges(self, project_id: str) -> list[dict]:
+        """闭环五：项目全部关系边 [{src, dst, rel}]，供报告先修注解"""
+        rows = self.execute(
+            "SELECT src, dst, rel FROM kg_edges WHERE project_id = ?",
+            (project_id,),
+        )
+        return [dict(r) for r in rows or []]
+
     def delete_kb_by_source(self, project_id: str, source: str) -> int:
         """删除某来源：跨全部文本向量版本（任何代际里的残留都清掉）"""
         total = 0
@@ -492,6 +530,9 @@ class SQLiteClient:
         # B1 旁路表级联：问题文本与向量块同源同生命周期
         self.execute("DELETE FROM kb_gen_questions WHERE project_id = ? AND source = ?",
                      (project_id, source))
+        # 闭环五级联：关系边同源同生命周期
+        self.execute("DELETE FROM kg_edges WHERE project_id = ? AND source = ?",
+                     (project_id, source))
         return total
 
     def delete_kb_project(self, project_id: str) -> int:
@@ -507,6 +548,8 @@ class SQLiteClient:
                 total += len(ids)
         # B1 旁路表级联
         self.execute("DELETE FROM kb_gen_questions WHERE project_id = ?", (project_id,))
+        # 闭环五级联
+        self.execute("DELETE FROM kg_edges WHERE project_id = ?", (project_id,))
         return total
 
     # ── 业务表 ──
