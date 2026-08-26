@@ -14,7 +14,7 @@ def call_chat(message, profile, debug=True):
             "message": message,
             "project_id": "eval_test",
             "api_key": config.SYSTEM_API_KEY,
-            "settings": {"profile": profile},
+            "settings": {"profile": profile, "template": "极速"},  # 极速档：快模型最短响应，省 token
             "debug": debug,
         },
         stream=True,

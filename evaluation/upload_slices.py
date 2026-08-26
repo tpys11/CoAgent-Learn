@@ -8,10 +8,16 @@ import config
 PROJECT_ID = "eval_test"
 
 
+# 评测问题只覆盖"监督学习"切片（questions.json 的 kb_key），其余切片不上传以省 token
+ONLY_KEYS = ["监督学习"]
+
+
 def main():
     slice_dir = "datasets/kb_slice"
     for fn in sorted(os.listdir(slice_dir)):
         if not fn.endswith(".txt"):
+            continue
+        if ONLY_KEYS and fn[:-4] not in ONLY_KEYS:
             continue
         name = fn[:-4]
         text = open(os.path.join(slice_dir, fn), encoding="utf-8").read()
