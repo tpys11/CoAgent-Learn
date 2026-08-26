@@ -118,6 +118,16 @@ class ChatRequest(BaseModel):
 class StopRequest(BaseModel):
     request_id: str  # /api/chat 的 start 事件返回的生成请求 id（用户手动停止时置位取消）
 
+class QuizAnswerIn(BaseModel):
+    question_id: str
+    kp_tag: str = ""      # 关联知识点（kb_tree 标题 / gen_quiz explanation 主题）
+    correct: bool
+
+class QuizSubmitReq(BaseModel):
+    dialogue_id: str
+    project_id: str = "default"
+    answers: list[QuizAnswerIn]
+
 class ChatStep(BaseModel):
     agent: str
     status: str
@@ -193,6 +203,17 @@ async def export_eval_traces():
     all_rows = repo._db.execute(
         "SELECT * FROM eval_traces ORDER BY request_id, id")
     return {"count": len(all_rows), "traces": all_rows}
+
+
+@app.post("/api/quiz/submit")
+async def quiz_submit(req: QuizSubmitReq):
+    """分阶题作答上报（L5 反馈回路）：落库 → 近窗正确率 → 合流更新 level_score。
+    下一轮生成的输出策略指令将随新 level_score 可见地变化（官方"动态决策更新"）。"""
+    from starlette.concurrency import run_in_threadpool
+    from engine.assess import apply_quiz_feedback
+    return await run_in_threadpool(
+        apply_quiz_feedback, req.dialogue_id, req.project_id,
+        [a.model_dump() for a in req.answers])
 
 
 def _build_preloaded(pid: str, did: str, user_input: str) -> dict:

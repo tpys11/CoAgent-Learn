@@ -294,13 +294,14 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                    {"level_score": assess_score, "evidence": (assess_evidence or "")[:120]},
                    ensure_ascii=False))
 
-        # --- 输出策略：T 路由 → 指令注入 → 脚注观测 ---
+        # --- 输出策略：T 路由 → 指令注入 → 脚注观测（依据数值亮进思维链，缺口③可见性） ---
         from engine import output_strategy as _os
         t_val = _os.compute_t(profile_cache, assess_score)
         strategy_id = _os.route(template, t_val)
         strategy_text = _os.directive(strategy_id, t_val)
+        _basis = (f"level={assess_score:.2f}" if assess_score is not None else "规则地板")
         token_queue.put(("token", "输出策略",
-                         f"{_os.strategy_name(strategy_id)} T={t_val:.2f}"))
+                         f"{_os.strategy_name(strategy_id)} T={t_val:.2f}（{_basis}）"))
 
         # --- S4 Generate × S5 ReviewGate（研究必开/思考可配/极速关） ---
         from engine.review import REVIEW_MAX_RETRY, pick_judge_llm, review_enabled, review_once

@@ -14,7 +14,7 @@
  {
   "type": "thought_token",
   "agent": "输出策略",
-  "chunk": "②用户语域 T=0.74"
+  "chunk": "②用户语域 T=0.74（level=0.80）"
  },
  {
   "type": "step",

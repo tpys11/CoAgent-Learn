@@ -79,3 +79,40 @@ def assess_and_store(llm_fast, did: str, message: str, history_text: str = "",
         return None, thinking, ""
     store_level_score(did, out["level_score"], out.get("evidence", ""))
     return out["level_score"], thinking, out.get("evidence", "")  # 评估值即使落库失败也可供本轮使用
+
+
+# ---------------- 答题反馈合流（L5 反馈回路 / 缺口①②钉死项） ----------------
+
+QUIZ_WEIGHT_NEW = 0.6   # 答题正确率权重（主信号，缺口①规范定稿）
+QUIZ_WEIGHT_OLD = 0.4   # 现有画像分权重
+QUIZ_WINDOW = 10        # 正确率统计窗口（最近 N 题）
+
+
+def merge_quiz_signal(old_score: float | None, accuracy: float) -> float:
+    """程序规则合流（无 LLM）：new = clamp01(0.6×acc + 0.4×old)；无旧分冷启动直采 acc。
+    连续答错拉低 → 下轮 T 变小 → 策略③降维；连续答对抬高 → 策略②进阶——演示镜头的机制基础。"""
+    if old_score is None:
+        return max(0.0, min(1.0, float(accuracy)))
+    merged = QUIZ_WEIGHT_NEW * float(accuracy) + QUIZ_WEIGHT_OLD * float(old_score)
+    return max(0.0, min(1.0, merged))
+
+
+def apply_quiz_feedback(dialogue_id: str, project_id: str, answers: list) -> dict:
+    """quiz 提交服务入口：落库 → 近窗正确率 → 合流更新 level_score（加键写回）。
+    返回 {saved, total, correct, accuracy, old_score, new_score}；全程失败软着陆不抛。"""
+    try:
+        from core.db.quiz_repo import get_quiz_repo
+        saved = get_quiz_repo().insert_many(dialogue_id, answers)
+        agg = get_quiz_repo().recent_accuracy(dialogue_id, limit=QUIZ_WINDOW)
+    except Exception:
+        return {"saved": 0, "total": 0, "correct": 0, "accuracy": None,
+                "old_score": None, "new_score": None}
+    old = load_profile_cache(dialogue_id).get("level_score")
+    old = coerce_score(old)
+    new_score = None
+    if agg["accuracy"] is not None:
+        new_score = merge_quiz_signal(old, agg["accuracy"])
+        store_level_score(dialogue_id, new_score,
+                          f"答题反馈：近{agg['total']}题正确率{agg['accuracy']:.0%}")
+    return {"saved": saved, "total": agg["total"], "correct": agg["correct"],
+            "accuracy": agg["accuracy"], "old_score": old, "new_score": new_score}

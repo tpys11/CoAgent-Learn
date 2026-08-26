@@ -139,6 +139,9 @@ def test_multi_turn_context_injection(v2_env):
     assert done["type"] == "done"
     step_agents = _steps(frames)
     assert "学情与记忆管理" in step_agents and "知识库管理" in step_agents
+    # 缺口③可见性：输出策略脚注亮出依据数值（本轮学情分或规则地板）
+    foot = [f for f in frames if f["type"] == "thought_token" and f.get("agent") == "输出策略"]
+    assert foot and ("level=" in foot[0]["chunk"] or "规则地板" in foot[0]["chunk"]), foot
 
 
 def test_extreme_mode_matrix(v2_env):
