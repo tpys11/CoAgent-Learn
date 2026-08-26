@@ -2,7 +2,7 @@
  * 极薄 API 封装：统一 fetch 错误处理，避免 12 个组件各自裸 fetch 且错误处理不一致。
  * SSE 长连接不在这里封装（见 sse.ts）。
  */
-import type { ProjectList, DialogueList, MessagesData, ProfileData, ResourceList, StatsData, SettingsData, CapabilityList, SkillList, SubAgentRun } from './types'
+import type { ProjectList, DialogueList, MessagesData, ProfileData, ResourceList, StatsData, SettingsData, CapabilityList, SkillList, SubAgentRun, MatchReportData } from './types'
 
 export interface ApiError extends Error {
   status?: number
@@ -103,6 +103,11 @@ export const api = {
     saved: number; total: number; correct: number
     accuracy: number | null; old_score: number | null; new_score: number | null
   }>('/api/quiz/submit', jsonInit('POST', body)),
+
+  /** 学情匹配度报告（评估体系 §五）：盲区/level曲线/kp正确率/路径树着色 */
+  getMatchReport: (projectId: string, dialogueId?: string) =>
+    apiFetch<MatchReportData>('/api/report/match?project_id=' + encodeURIComponent(projectId)
+      + (dialogueId ? '&dialogue_id=' + encodeURIComponent(dialogueId) : ''), { cache: 'no-store' }),
 
   listProjects: () => apiFetch<ProjectList>('/api/projects'),
   createProject: (body: { name: string; domain?: string; simple?: boolean }) =>

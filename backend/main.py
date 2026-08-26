@@ -216,6 +216,15 @@ async def quiz_submit(req: QuizSubmitReq):
         [a.model_dump() for a in req.answers])
 
 
+@app.get("/api/report/match")
+async def match_report(project_id: str, dialogue_id: str = ""):
+    """学情匹配度报告聚合（评估体系 §五 v1）：盲区定位+level曲线+kp正确率+路径树着色。"""
+    from starlette.concurrency import run_in_threadpool
+    from services.match_report import build_match_report
+    return await run_in_threadpool(
+        build_match_report, project_id, dialogue_id or None)
+
+
 def _build_preloaded(pid: str, did: str, user_input: str) -> dict:
     """生成节点上下文预查（main.py 预取 → 塞 state["preloaded"]，generate_node 不再直接查库）。
     各段独立容错：单段失败不影响其他段，生成节点按 preloaded 有无决定注入。"""

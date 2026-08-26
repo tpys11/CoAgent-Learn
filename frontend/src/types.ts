@@ -260,3 +260,15 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
     example: '',
   },
 ]
+
+/** 学情匹配度报告（GET /api/report/match，评估体系 §五 v1） */
+export interface MatchReportData {
+  overall: { score: number | null; label: string; basis: 'quiz' | 'level_score' | 'empty' }
+  level_now: { score: number | null; evidence?: string; updated_at?: string }
+  trend: Array<{ t: string | null; score: number }>
+  kp_accuracy: Array<{ kp: string; total: number; correct: number; accuracy: number }>
+  weak_points: string[]
+  strong_points: string[]
+  path_tree: Array<{ name: string; status: 'blind' | 'learning' | 'mastered' | 'untouched'; children: MatchReportData['path_tree'] }>
+  thresholds: { blind: number; master: number }
+}
