@@ -228,7 +228,7 @@ def get_learning_log(project_id: str = ""):
                         pd = {}
                 topic = pd.get("topic", "") if isinstance(pd, dict) else ""
         except Exception:
-            pass
+            logger.debug("对话画像 topic 读取失败（置空继续）", exc_info=True)
         arts: list = []
         try:
             msgs = prepo.get_dialogue_plain_messages(d["id"])
@@ -239,7 +239,7 @@ def get_learning_log(project_id: str = ""):
                 if len(c) >= 100 and not any(a["type"] == "讲义" for a in arts):
                     arts.append({"type": "讲义", "title": "讲义"})
         except Exception:
-            pass
+            logger.debug("对话产物扫描失败（置空继续）", exc_info=True)
         item = {
             "project_id": d.get("project_id"), "project_name": pname.get(d.get("project_id"), d.get("project_id")),
             "dialogue_id": d["id"], "dialogue_name": d.get("name") or "对话",

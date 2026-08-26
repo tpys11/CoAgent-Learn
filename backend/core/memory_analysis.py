@@ -1,4 +1,7 @@
 import json
+import logging
+
+logger = logging.getLogger("coagent.memory_analysis")
 
 
 def _as_dict(data):
@@ -192,7 +195,7 @@ def update_memories(api_key, project_id, dialogue_id, db, session_id="default"):
                     if _courses:
                         old["学习情况"] = {"总体概述": "", "课程": _courses}
                 except Exception:
-                    pass
+                    logger.debug("画像项目摘要→课程迁移跳过", exc_info=True)
             has = db.execute("SELECT session_id FROM global_profile WHERE session_id=%s", (session_id,))
             if has:
                 db.execute("UPDATE global_profile SET data=%s,updated_at=CURRENT_TIMESTAMP WHERE session_id=%s", (json.dumps(old, ensure_ascii=False), session_id))

@@ -3,6 +3,7 @@
 接口兼容原 pg_client（execute 返回 list[dict]），替换 PostgreSQL+Chroma。
 """
 import hashlib
+import logging
 import os
 import re
 import sqlite3
@@ -10,6 +11,8 @@ import threading
 import time
 
 import sqlite_vec
+
+logger = logging.getLogger("coagent.db")
 
 # 数据目录默认锚定仓库根 data/（与进程 CWD 无关）——历史教训：相对 ./data 曾因启动目录不同
 # 分裂出三个 app.db（根data / backend/data / docker命名卷）。环境变量 SQLITE_DIR 仍可覆盖。
@@ -48,7 +51,7 @@ class SQLiteClient:
                     if 'conn' in dir() and conn:
                         conn.close()
                 except Exception:
-                    pass
+                    logger.debug("重试前清理旧连接失败", exc_info=True)
                 time.sleep(1)
         raise last_err
 
@@ -79,7 +82,7 @@ class SQLiteClient:
                         try:
                             conn.close()
                         except Exception:
-                            pass
+                            logger.debug("短命连接关闭失败", exc_info=True)
 
     # ── 向量操作（sqlite-vec）──
 

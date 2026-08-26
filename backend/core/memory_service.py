@@ -228,6 +228,6 @@ def generate_dialogue_profile(did, api_key=""):
             from core.db.base import get_db
             get_db().execute("UPDATE dialogues SET profile_status='failed' WHERE id=%s", (did,))
         except Exception:
-            pass
+            logger.debug("profile_status 失败标记亦失败", exc_info=True)
         logger.exception("画像合成失败 did=%s err=%s", did, str(e)[:120])
         return False

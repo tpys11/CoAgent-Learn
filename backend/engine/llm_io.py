@@ -5,7 +5,10 @@
   2. 其余分支（```json 围栏 → 裸花括号 → 纯文本兜底）逐字保留
 旧 agents/graph.py 内的同名副本继续服务旧路径，Loop5 删除时一并消亡。"""
 import json
+import logging
 import re
+
+logger = logging.getLogger("coagent.llm_io")
 
 
 def think_then_json(llm, system_prompt: str, user_prompt: str, agent_name: str,
@@ -24,7 +27,7 @@ def think_then_json(llm, system_prompt: str, user_prompt: str, agent_name: str,
             try:
                 on_delta(chunk)
             except Exception:
-                pass
+                logger.debug("on_delta 直播回调异常（不扰主链）", exc_info=True)
     try:
         llm.chat_stream(
             [{"role": "system", "content": system_prompt},

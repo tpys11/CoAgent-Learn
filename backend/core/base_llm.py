@@ -108,14 +108,14 @@ class BaseLLM:
             import json
             return json.loads(raw)
         except json.JSONDecodeError:
-            pass
+            logger.debug("模型输出直出 JSON 解析失败，回退正则提取")
         match = re.search(r"\{[\s\S]*\}", raw)
         if match:
             try:
                 import json
                 return json.loads(match.group())
             except json.JSONDecodeError:
-                pass
+                logger.debug("围栏片段 JSON 解析失败，放弃解析")
         raise ValueError(f"无法从模型输出中解析JSON: {raw[:200]}")
 
     def _log_tokens(self, resp, call_type: str, attempt: int):

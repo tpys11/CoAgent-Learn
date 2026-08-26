@@ -7,6 +7,7 @@ fetch_site_pages 返回 [{url,title,markdown}]，调用方按「站点→页面�
 历史硬伤修复：12 页/200k 字符双上限导致的缺章节与伪标题污染。
 """
 
+import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
 # ── 链接摄取通道（后端保留 · 前端入口已下线 2026-08-24）────────────────
@@ -21,6 +22,8 @@ MAX_PAGE_CHARS = 300_000  # 单页字符保险丝
 MIN_PAGE_CHARS = 20
 
 GITHUB_API = "https://api.github.com"
+
+logger = logging.getLogger("coagent.web_fetch")
 GITHUB_RAW = "https://raw.githubusercontent.com"
 
 
@@ -34,7 +37,7 @@ def is_disallowed_host(host: str) -> bool:
         return (ip.is_private or ip.is_loopback or ip.is_link_local
                 or ip.is_multicast or ip.is_reserved or ip.is_unspecified)
     except ValueError:
-        pass
+        logger.debug("主机非 IP 字面量，按域名继续校验: %s", candidate)
     lower = candidate.lower()
     if lower in {"localhost", "ip6-localhost", "ip6-loopback"} or lower.endswith(".local"):
         return True
@@ -134,7 +137,7 @@ def fetch_site_pages(base_url: str, max_pages: int | None = None,
         page_urls = [u for u in re.findall(r"<loc>([^<]+)</loc>", r)
                      if urlparse(u).netloc == base_host and "/index." not in u]
     except Exception:
-        pass
+        logger.debug("sitemap 预扫失败（仅抓首页兜底）: %s", base_url, exc_info=True)
     if base_url not in page_urls:
         page_urls.insert(0, base_url)
     # 语言门前置（分段码可确定，提前释放抓取预算）；角色过滤与同名去重在取回正文后进行
@@ -378,7 +381,7 @@ def probe_url(url: str) -> dict:
         urls = [u for u in re.findall(r"<loc>([^<]+)</loc>", r)
                 if _up(u).netloc == base_host and "/index." not in u]
     except Exception:
-        pass
+        logger.debug("sitemap 预扫失败（仅抓首页兜底）: %s", url, exc_info=True)
     if url not in urls:
         urls.insert(0, url)
     kept_urls = [u for u in urls if _doc_is_simplified(url, u)]

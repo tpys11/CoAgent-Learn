@@ -299,7 +299,7 @@ def _parse_special_inputs(message: str) -> str:
             if r.get("results"):
                 return "【网页内容: " + u + "】\n" + str(r["results"][0].get("content") or "")[:3000]
         except Exception:
-            pass
+            logger.debug("URL 解析失败（将抛给上层汇总）: %s", u, exc_info=True)
         raise RuntimeError("fetch failed: " + u)
     parts = []
     logger.info("特殊格式并行解析启动：%d 个 URL", len(urls))

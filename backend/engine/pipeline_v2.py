@@ -223,7 +223,7 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                     try:
                         _sa_record(_sa_rid, type_, **payload)
                     except Exception:
-                        pass
+                        logger.debug("观察窗档案写入失败（SSE 通道不受扰）", exc_info=True)
                     token_queue.put(("subagent", {"type": type_, "run_id": _sa_rid,
                                                   "agent": "知识库管理", **payload}))
 
@@ -261,7 +261,7 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                                                       "agent": "知识库管理", "status": "error",
                                                       "summary": "检索降级或观测中断"}))
                     except Exception:
-                        pass
+                        logger.debug("error 路径观察窗收尾失败", exc_info=True)
             ctx_steps.append({"agent": "知识库管理", "status": "done",
                               "detail": f"检索{len(search_results)}条"})
             _trace("retrieve", input_digest=req.message[:200],

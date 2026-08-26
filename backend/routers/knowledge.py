@@ -339,7 +339,7 @@ async def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
         if _cached and (_cached.get("content") or "").strip():
             text = _cached["content"]
     except Exception:
-        pass
+        logger.debug("URL 摄取缓存读取失败（走重新抓取）", exc_info=True)
 
     page_count = 0
     if not text:
@@ -376,7 +376,7 @@ async def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
                     from core.db import get_kb_repo as _g
                     _g().save_preset_doc(_cache_key, source, text)  # 全量缓存，不再截断
                 except Exception:
-                    pass
+                    logger.debug("URL 摄取缓存写入失败（不影响本次结果）", exc_info=True)
         except Exception as e:
             logger.warning("链接结构化摄取失败 %s: %s", url, e)
             return {"status": "error", "msg": "抓取链接失败（链接不可访问、站点需登录，或 GitHub 私有仓库不支持）"}
