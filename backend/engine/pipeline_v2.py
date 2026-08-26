@@ -207,14 +207,60 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         _search_meta: dict = {}
         if plan["complexity"] != "simple_direct" and template != "极速":
             token_queue.put(("step", "知识库管理"))
+            # 🛰 检索观察窗（1.5 复活）：SSE subagent 帧 + subagent_runs 档案双写。
+            # 观测任何失败只降级日志，绝不打断主检索链路（与 v1 语义对齐）。
+            try:
+                from services.subagent_runs import (
+                    create_run as _sa_create,
+                    emit as _sa_record,
+                    finish_run as _sa_finish,
+                )
+                _sa_rid = _sa_create(project_id=pid, dialogue_id=did, agent="知识库管理",
+                                     title="🛰 检索观察窗", input_text=working_message[:300])
+
+                def _sa_emit(type_: str, **payload):
+                    try:
+                        _sa_record(_sa_rid, type_, **payload)
+                    except Exception:
+                        pass
+                    token_queue.put(("subagent", {"type": type_, "run_id": _sa_rid,
+                                                  "agent": "知识库管理", **payload}))
+
+                _sa_emit("start", title="🛰 检索观察窗")
+                _sa_emit("input", content=working_message[:200])
+                _sa_gate_ok = True
+            except Exception:
+                logger.exception("[v2] 检索观察窗建档失败（降级为无观测）")
+                _sa_emit = None
+                _sa_rid = None
+                _sa_gate_ok = False
             try:
                 from engine.retrieve import retrieve_stage
                 _rr = retrieve_stage(_make_fast_llm(req), req.message, template, pid,
-                                     rounds=_rounds)
+                                     rounds=_rounds,
+                                     emit=_sa_emit if _sa_gate_ok else None)
                 search_results = _rr["search_results"]
                 _search_meta = _rr.get("search_meta") or {}
             except Exception:
                 logger.exception("[v2] 检索阶段失败，降级无检索生成")
+                _sa_gate_ok = False
+            if _sa_gate_ok:
+                _kept = len(search_results)
+                _raw = _search_meta.get("raw_count", _kept)
+                _summary = f"候选 {_raw} → 留存 {_kept}"
+                _sa_finish(_sa_rid, status="ok", summary=_summary)
+                token_queue.put(("subagent", {"type": "end", "run_id": _sa_rid,
+                                              "agent": "知识库管理",
+                                              "status": "ok", "summary": _summary}))
+            else:
+                if _sa_rid:
+                    try:
+                        _sa_finish(_sa_rid, status="error", summary="检索降级或观测中断")
+                        token_queue.put(("subagent", {"type": "end", "run_id": _sa_rid,
+                                                      "agent": "知识库管理", "status": "error",
+                                                      "summary": "检索降级或观测中断"}))
+                    except Exception:
+                        pass
             ctx_steps.append({"agent": "知识库管理", "status": "done",
                               "detail": f"检索{len(search_results)}条"})
             _trace("retrieve", input_digest=req.message[:200],

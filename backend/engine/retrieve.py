@@ -92,8 +92,10 @@ def filter_results(llm_fast, candidates: list, keep: int = 6) -> list:
 
 
 def retrieve_stage(llm_fast, message: str, template: str, project_id: str,
-                   use_kb: bool = True, rounds: int = 1) -> dict:
+                   use_kb: bool = True, rounds: int = 1, emit=None) -> dict:
     """阶段入口：rounds≥2 时执行多轮递归检索（研究档），候选按 url+title 去重合并后统一终筛。
+    emit：可选观测回调 emit(type_, **payload)——里程碑（改写/取回/终筛）实时上报，
+    供管线接 🛰 检索观察窗（subagent 帧 + 档案双写）；None 时零开销静默。
     返回 ctx.search_results 结构；极速档由调用方决定是否进入本阶段。"""
     all_web: list = []
     all_kb: list = []
@@ -107,7 +109,11 @@ def retrieve_stage(llm_fast, message: str, template: str, project_id: str,
             break
         actual_rounds = rnd
         queries_log.extend(rw["queries"])
+        if emit:
+            emit("delta", text="改写查询：" + "、".join(rw["queries"]))
         web, kb = _fetch_all(rw["queries"], project_id, use_kb=use_kb)
+        if emit:
+            emit("delta", text=f"第{rnd}轮取回：web {len(web)} 条 / kb {len(kb)} 条")
         for r in kb:
             key = ("kb", str(r.get("title") or ""), str(r.get("url") or ""))
             if key in seen:
@@ -132,6 +138,8 @@ def retrieve_stage(llm_fast, message: str, template: str, project_id: str,
                 "content": str(r.get("content") or r.get("snippet") or "")[:600],
             })
     kept = filter_results(llm_fast, candidates)
+    if emit:
+        emit("delta", text=f"终筛留存 {len(kept)} 条（候选共 {len(candidates)}）")
     return {"search_results": kept,
             "search_meta": {"queries": queries_log, "raw_count": len(candidates),
                             "rounds": actual_rounds}}

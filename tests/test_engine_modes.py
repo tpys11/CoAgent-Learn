@@ -241,6 +241,16 @@ def test_research_full_chain_with_review(v2_env, monkeypatch):
     assert "学习助手·规划" in mc_agents and "学情与记忆管理" in mc_agents, mc_agents
     assert any("深入了解RAG" in e["content"] for e in done["mindchain"])
     assert done["reply"] == "合成回答内容"
+    # 1.5 观测复活：🛰 检索观察窗 subagent 帧序列（start→delta…→end，同 run_id）
+    sa = [f for f in frames if f["type"] == "subagent"]
+    assert sa, "研究档必须产出检索观察窗事件"
+    assert sa[0]["event"] == "start" and sa[-1]["event"] == "end"
+    rid = sa[0]["run_id"]
+    assert all(f["run_id"] == rid for f in sa)
+    deltas = [f.get("text", "") for f in sa if f["event"] == "delta"]
+    assert any("改写查询" in t for t in deltas), deltas
+    assert any("终筛留存" in t for t in deltas), deltas
+    assert sa[-1]["status"] == "ok" and "留存" in (sa[-1].get("summary") or "")
 
 
 def body_research():
