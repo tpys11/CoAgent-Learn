@@ -351,10 +351,26 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                 f"{m.get('role')}: {str(m.get('content'))[:200]}" for m in recent[-6:]) + "\n"
         user_content = context_blocks + working_message
         if search_results:
-            user_content = ("【检索结果】\n" + json.dumps(search_results, ensure_ascii=False)
-                            + "\n\n（优先基于以上检索结果回答；凡取自检索内容的论断，"
-                            "须在句末标注来源，格式：[来源: 文档标题]；未覆盖部分用通识作答，"
-                            "并注明为模型自有知识。）\n\n" + user_content)
+            # A1 父子块：兄弟聚合出的章节全文单独成块（引用粒度仍指子块）
+            sections = []
+            seen_sec: set = set()
+            for r in search_results:
+                pc = (r or {}).get("parent_context") or {}
+                p = pc.get("path")
+                if p and p not in seen_sec and pc.get("text"):
+                    seen_sec.add(p)
+                    sections.append((p, pc["text"]))
+                if len(sections) >= 2:
+                    break
+            blocks = "【检索结果】\n" + json.dumps(search_results, ensure_ascii=False) \
+                     + "\n\n（优先基于以上检索结果回答；凡取自检索内容的论断，" \
+                       "须在句末标注来源，格式：[来源: 文档标题]；未覆盖部分用通识作答，" \
+                       "并注明为模型自有知识。）"
+            if sections:
+                sec_text = "\n\n".join(f"◇ {p}\n{t}" for p, t in sections)
+                blocks += "\n\n【相关章节全文】\n" + sec_text \
+                          + "\n（上列为命中片段所在章节的完整上下文，供你通读定位，不必逐条引用。）"
+            user_content = blocks + "\n\n" + user_content
         elif template != "极速" and plan["complexity"] != "simple_direct":
             # 诚实边界（主Agent文档定稿）：知识型问题检索零留存 → 第一句强制申明，通识标注自有
             user_content = ("⚠️ 本轮检索未获得相关内容。你的回答第一句话必须是："

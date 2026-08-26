@@ -321,6 +321,48 @@ def get_progress(project_id: str, source: str) -> dict:
     return _progress.get((project_id, source)) or {"status": "none"}
 
 
+def parse_section_path(content: str) -> str | None:
+    """从块文本首行解析章节路径（_chunk_markdown 的"路径\\n正文"约定）。
+    识别特征：首行含 " > " 且不含 markdown 标记 #；导语节/无前缀块返回 None。"""
+    first = (content or "").lstrip().split("\n", 1)[0].strip()
+    if not first or " > " not in first or first.startswith("#"):
+        return None
+    if len(first) > 120:   # 路径异常长多为普通句子误判
+        return None
+    return first
+
+
+def fetch_section_texts(project_id: str, source: str,
+                        want_paths: set[str], max_chars: int = 2000) -> dict:
+    """兄弟块聚合（A1 父子块的"父"侧）：同源下首行路径命中 want_paths 的所有块，
+    剥去重复路径行后按 chunk 序拼接为章节全文，每章封顶 max_chars。
+    数据走 get_kb_docs 全量拉取（百级文档规模零压力）；任何失败返回空 dict 不抛。"""
+    if not want_paths or not source:
+        return {}
+    try:
+        docs = _db.get_kb_docs(project_id)
+        by_sec: dict[str, list] = {}
+        for d in docs or []:
+            if (d.get("source") or "") != source:
+                continue
+            content = str(d.get("content") or "")
+            path = parse_section_path(content)
+            if path and path in want_paths:
+                body = content.split("\n", 1)[1].strip() if "\n" in content else ""
+                body_lines = [ln for ln in body.splitlines() if ln.strip() != path]
+                by_sec.setdefault(path, []).append(
+                    (int(d.get("chunk") or 0), "\n".join(body_lines).strip()))
+        out = {}
+        for path, parts in by_sec.items():
+            parts.sort(key=lambda t: t[0])
+            text = "\n\n".join(p for _, p in parts if p)
+            out[path] = text[:max_chars]
+        return out
+    except Exception:
+        logger.warning("章节全文聚合失败 project=%s source=%s", project_id, source, exc_info=True)
+        return {}
+
+
 def add_document(project_id: str, text: str, source: str = "", session_id: str = "", api_key: str = "", skip_context: bool = False) -> int:
     """上传文本：切块 → 向量化 → 入库，返回入库块数。
     已移除「每块 LLM 生成上下文前缀」（_gen_context，2026-08-15 删除）：
@@ -343,9 +385,13 @@ def add_document(project_id: str, text: str, source: str = "", session_id: str =
             for _n in MarkdownNodeParser().get_nodes_from_documents([Document(text=text)]):
                 _md = _n.metadata or {}
                 _path = " > ".join([_md.get(k, "") for k in ("Header_1", "Header_2", "Header_3", "Header_4") if _md.get(k)])
-                _t = ((_path + "\n") if _path else "" + _n.get_content()).strip()
-                if _t:
-                    _li.append(_t)
+                # 修复 2026-08-26：原式 `(_path+"\n") if _path else ""+get_content()` 因三目
+                # 优先级在路径非空时丢弃正文（块只剩标题路径）。恒拼接路径前缀+正文，
+                # 对齐 _chunk_markdown 的"首行=路径"约定，使父子块兄弟聚合对全库一致可用。
+                _body = (_n.get_content() or "").strip()
+                _t = ((_path + "\n") if _path else "") + _body
+                if _t.strip():
+                    _li.append(_t.strip())
             _self = _chunk_markdown(text, size=size, overlap=overlap)
             logger.info("[chunker] llamaindex=%d块/均长%.0f vs self=%d块/均长%.0f",
                         len(_li), (sum(map(len, _li)) / len(_li)) if _li else 0,

@@ -116,6 +116,52 @@ def _is_quality_source(url: str) -> bool:
     return any(d in u for d in QUALITY_SOURCE_POOL)
 
 
+def _parse_section_path(content: str) -> str | None:
+    """块首行 → 章节路径（knowledge_service._chunk_markdown 的"路径\\n正文"约定）。
+    含 " > " 且不以 # 开头才认作路径；kb 命中之外的 web 条目天然不匹配。"""
+    first = (content or "").lstrip().split("\n", 1)[0].strip()
+    if not first or " > " not in first or first.startswith("#") or len(first) > 120:
+        return None
+    return first
+
+
+def _expand_sections(kept: list, project_id: str, emit=None) -> int:
+    """A1 父子块的"父"侧：kb 命中项按章节路径聚合兄弟块全文，条目挂 parent_context。
+    仅对带 metadata.source 的 kb 条目生效；失败静默返回0，绝不扰检索主链。"""
+    try:
+        from core.knowledge_service import fetch_section_texts
+        want: dict[str, str] = {}   # path -> source
+        for c in kept:
+            meta = (c or {}).get("metadata") or {}
+            src = str(meta.get("source") or "")
+            if not src:
+                continue
+            p = _parse_section_path(str((c or {}).get("content") or ""))
+            if p:
+                want[p] = src
+        expanded = 0
+        seen_pairs: set = set()
+        for path, src in want.items():
+            if (src, path) in seen_pairs:
+                continue
+            seen_pairs.add((src, path))
+            texts = fetch_section_texts(project_id, src, {path})
+            text = texts.get(path) or ""
+            if not text:
+                continue
+            for c in kept:
+                m = ((c or {}).get("metadata") or {})
+                if m.get("source") == src and \
+                        _parse_section_path(str(c.get("content") or "")) == path:
+                    c["parent_context"] = {"path": path, "text": text}
+                    expanded += 1
+        if emit and expanded:
+            emit("delta", text=f"章节展开 {expanded} 处")
+        return expanded
+    except Exception:
+        return 0
+
+
 def filter_results(llm_fast, candidates: list, keep: int = 6) -> list:
     """R3 批量筛选：一次 flash 调用从候选中留 keep 条。异常→保留前keep条（不丢证据）。
     brief 携带优质源标注（rules.QUALITY_SOURCE_POOL 命中），提示词声明同等相关时优先。"""
@@ -177,8 +223,11 @@ def retrieve_stage(llm_fast, message: str, template: str, project_id: str,
                 "title": str(r.get("title") or "")[:120],
                 "url": str(r.get("url") or ""),
                 "content": str(r.get("content") or r.get("snippet") or "")[:600],
+                # A1：KB 命中携带原 metadata(source/chunk)，供兄弟聚合定位；web 条目无此键
+                **({"metadata": r["metadata"]} if r.get("metadata") else {}),
             })
     kept = filter_results(llm_fast, candidates)
+    _expand_sections(kept, project_id, emit=emit)
     if emit:
         emit("delta", text=f"终筛留存 {len(kept)} 条（候选共 {len(candidates)}）")
     return {"search_results": kept,

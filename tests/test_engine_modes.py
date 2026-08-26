@@ -224,6 +224,15 @@ def test_research_full_chain_with_review(v2_env, monkeypatch):
     fast = ResearchFastLLM()
     monkeypatch.setattr(eng, "_make_fast_llm", lambda req: fast)
 
+    # A1：kb 命中携带 metadata + 首行路径 → 断言 pipeline 注入【相关章节全文】
+    monkeypatch.setattr(_rt, "_kb_search",
+                        lambda q, pid: [{"content": "第1章 > 1.1 节\n角动量核心块。",
+                                         "metadata": {"source": "讲义R", "chunk": 0}}])
+    import core.knowledge_service as _ks
+    monkeypatch.setattr(_ks, "fetch_section_texts",
+                        lambda pid, src, paths, max_chars=2000:
+                        {list(paths)[0]: "整章全文内容，含兄弟乙与推导细节。"})
+
     judge = ScriptedLLM(['{"passed": false, "score": 40, "reasons": "密度不足"}',
                          '{"passed": true, "score": 88, "reasons": ""}'])
     import engine.review as rv_mod
@@ -253,7 +262,11 @@ def test_research_full_chain_with_review(v2_env, monkeypatch):
     deltas = [f.get("text", "") for f in sa if f["event"] == "delta"]
     assert any("改写查询" in t for t in deltas), deltas
     assert any("终筛留存" in t for t in deltas), deltas
+    assert any("章节展开" in t for t in deltas), deltas  # A1：兄弟聚合发生
     assert sa[-1]["status"] == "ok" and "留存" in (sa[-1].get("summary") or "")
+    # A1 注入断言：主模型 user 内容含【相关章节全文】与受控章节文本
+    user_t = ModeProbeLLM.last.messages[1]["content"]
+    assert "【相关章节全文】" in user_t and "含兄弟乙与推导细节" in user_t
 
 
 def body_research():
