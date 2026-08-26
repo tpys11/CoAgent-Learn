@@ -20,7 +20,7 @@ def main():
             "input": {
                 "学习者画像": r["learner"],
                 "问题": r["question"]["text"],
-                "知识库切片": r["question"].get("kb_key", ""),
+                "关联切片标识": r["question"].get("kb_key", ""),
             },
             "events": {
                 "学情画像": internals.get("profile"),
