@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { FileText, Workflow, Network, ClipboardList, Wrench, Stethoscope, Send, Loader2, X } from 'lucide-react'
+import { FileText, Workflow, Network, ClipboardList, Wrench, Stethoscope, Send, Loader2, X, Pencil } from 'lucide-react'
 import MarkdownIt from 'markdown-it'
 import mermaid from 'mermaid'
 import * as echarts from 'echarts'
@@ -7,6 +7,7 @@ import { api } from '../api'
 import { LS, lsGet, lsGetJSON } from '../storage'
 import QuizViewer from './quiz/QuizViewer'
 import KbReaderModal from './KbReaderModal'
+import ResourceChatPage from './resource/ResourceChatPage'
 
 mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', theme: 'default' })
 let mmdSeq = 0
@@ -71,6 +72,10 @@ export default function SpecialOutputPane({ projectId, dialogueId }: { projectId
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<GenResult | null>(null)
   const [history, setHistory] = useState<GenItem[]>([])
+  // 闭环六：AI 修改会话（编辑界面唤起——携带资源 id 与名称）
+  const [editing, setEditing] = useState<{ id: string; name: string } | null>(null)
+  /** 当前预览内容对应的资源行（历史按钮/新生成都会更新；AI 修改入口按此定位资源行） */
+  const [resultMeta, setResultMeta] = useState<{ id: string; name: string } | null>(null)
 
   useEffect(() => {
     api.listCapabilities().then(d => {
@@ -103,7 +108,8 @@ export default function SpecialOutputPane({ projectId, dialogueId }: { projectId
         setResult(r)
         if (projectId) {
           try {
-            await api.saveResource({ name: `生成·${r.label}`, content: r.content, project_id: projectId, type: 'gen:' + form, append: true })
+            const saved = await api.saveResource({ name: `生成·${r.label}`, content: r.content, project_id: projectId, type: 'gen:' + form, append: true })
+            setResultMeta({ id: saved?.id || '', name: `生成·${r.label}` })
             api.listResources(projectId).then(d => {
               const rows: GenItem[] = (d.resources || []).filter(x => (x.type || '') === ('gen:' + form)).map(x => ({ id: x.id, name: x.name, content: x.content || '', created_at: x.created_at }))
               setHistory(rows)
@@ -165,7 +171,7 @@ export default function SpecialOutputPane({ projectId, dialogueId }: { projectId
             <p className="text-[10px] font-semibold text-dim">已生成 · {cur?.label || ''}（{history.length}）</p>
             {history.map(h => (
               <button key={h.id}
-                onClick={() => setResult({ key: form, label: cur?.label || form, output: cur?.output || 'markdown', content: h.content })}
+                onClick={() => { setResult({ key: form, label: cur?.label || form, output: cur?.output || 'markdown', content: h.content }); setResultMeta({ id: h.id, name: h.name }) }}
                 className="text-left px-2.5 py-1.5 rounded-lg border hairline text-[11px] hover:bg-[var(--bg-hover)] truncate">
                 {h.name}
                 {h.created_at ? <span className="text-[9px] text-dim ml-1.5">{(h.created_at || '').slice(0, 10)}</span> : null}
@@ -182,7 +188,7 @@ export default function SpecialOutputPane({ projectId, dialogueId }: { projectId
         </div>
       </div>
 
-      {/* 生成结果弹窗：测验用模态壳包 QuizViewer（可交互），其余复用阅读器（标题自动成树） */}
+      {/* 生成结果弹窗：测验用模态壳包 QuizViewer（可交互）；其余走阅读器，非 quiz 带「AI 修改」入口 */}
       {result && (form === 'quiz' ? (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setResult(null)}>
           <div className="bg-[var(--bg-panel)] rounded-2xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col mx-4" onClick={e => e.stopPropagation()}>
@@ -198,8 +204,25 @@ export default function SpecialOutputPane({ projectId, dialogueId }: { projectId
           </div>
         </div>
       ) : (
-        <KbReaderModal title={result.label} content={result.content} onClose={() => setResult(null)} />
+        <KbReaderModal title={result.label} content={result.content} onClose={() => setResult(null)}
+                       extraAction={resultMeta?.id && projectId ? {
+                         label: 'AI 修改', icon: Pencil,
+                         onClick: () => { setResult(null); setEditing(resultMeta) },
+                       } : undefined} />
       ))}
+
+      {/* 闭环六：资源编辑独立会话（左对话右预览，kind='resource' 隔离）；返回后静默刷新版本列表 */}
+      {editing && (
+        <ResourceChatPage resourceId={editing.id} resourceName={editing.name}
+                          projectId={projectId}
+                          onBack={() => {
+                            setEditing(null)
+                            if (projectId) api.listResources(projectId).then(d => {
+                              const rows: GenItem[] = (d.resources || []).filter(r => (r.type || '') === ('gen:' + form)).map(r => ({ id: r.id, name: r.name, content: r.content || '', created_at: r.created_at }))
+                              setHistory(rows)
+                            }).catch(() => {})
+                          }} />
+      )}
 
       <style>{`
         .rp-mermaid { background: var(--bg-panel); border: 1px solid var(--border-color, #e5e5e5); border-radius: 10px; padding: 0.8em; text-align: center; overflow-x: auto; }

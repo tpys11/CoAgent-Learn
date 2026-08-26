@@ -176,7 +176,7 @@ function splitSections(text: string): Array<{ title: string; body: string }> {
 /** 标题归一化：去 markdown 链接/强调符号后比较（树名来自原文，DOM 标题来自渲染结果） */
 const normHeading = (s: string) => (s || '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_`~]/g, '').trim()
 
-export default function KbReaderModal({ title, content, projectId, source, focusChunk, seq, onClose }: {
+export default function KbReaderModal({ title, content, projectId, source, focusChunk, seq, onClose, extraAction }: {
   title?: string
   content?: string
   projectId?: string | null
@@ -184,6 +184,8 @@ export default function KbReaderModal({ title, content, projectId, source, focus
   focusChunk?: number | null
   seq?: number
   onClose: () => void
+  /** 闭环六：header 附加动作（如资源编辑会话的「AI 修改」入口）；缺省不渲染，既有调用方零感知 */
+  extraAction?: { label: string; icon?: any; onClick: () => void }
 }) {
   const [doc, setDoc] = useState<string | null>(content ?? null)
   const [backendTree, setBackendTree] = useState<TreeNode[] | null>(null)
@@ -333,7 +335,15 @@ export default function KbReaderModal({ title, content, projectId, source, focus
             <FileText size={16} className="flex-shrink-0" />
             <span className="truncate">{title || source || '知识库文档'}</span>
           </h3>
-          <button onClick={onClose} className="p-1 hover:bg-[var(--bg-hover)] rounded flex-shrink-0"><X size={18} /></button>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {extraAction && (
+              <button onClick={extraAction.onClick}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#1a1a1a] text-white hover:opacity-85 transition-opacity">
+                {extraAction.icon ? <extraAction.icon size={12} /> : null} {extraAction.label}
+              </button>
+            )}
+            <button onClick={onClose} className="p-1 hover:bg-[var(--bg-hover)] rounded flex-shrink-0"><X size={18} /></button>
+          </div>
         </div>
         {loading ? (
           <div className="flex-1 flex items-center justify-center gap-2 text-[11px] text-dim">
