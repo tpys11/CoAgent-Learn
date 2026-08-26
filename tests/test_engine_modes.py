@@ -153,6 +153,40 @@ def test_extreme_mode_matrix(v2_env):
     assert "输出策略指令" in sys_text
 
 
+def test_word_limits_and_citation_rules(v2_env):
+    """N1+N2 对齐：思考/研究档字数约束注入；有检索结果时引用格式规则注入。"""
+    app, eng, client, _rt = v2_env
+    # 思考档：800-1200/max1500
+    frames = _run(app, {"message": "请讲解RAG的原理与应用", "api_key": "d",
+                        "project_id": "pX", "dialogue_id": "dW1",
+                        "session_id": "sX", "settings": {"template": "思考"}})
+    sys_text = ModeProbeLLM.last.messages[0]["content"]
+    assert "800-1200" in sys_text and "1500" in sys_text
+    # 有检索留存 → 引用格式规则随检索块注入
+    user_text = _user_text(ModeProbeLLM.last)
+    assert "[来源: " in user_text and "【检索结果】" in user_text
+    # 研究档：1500-2000/max3000
+    frames = _run(app, {"message": "请讲解RAG的原理与应用", "api_key": "d",
+                        "project_id": "pX", "dialogue_id": "dW2",
+                        "session_id": "sX", "settings": {"template": "研究"}})
+    sys_text = ModeProbeLLM.last.messages[0]["content"]
+    assert "1500-2000" in sys_text and "3000" in sys_text
+
+
+def test_kb_miss_declaration(v2_env, monkeypatch):
+    """N1 诚实边界：检索执行但零留存 → 第一句强制申明规则注入 user 内容。"""
+    app, eng, client, rt = v2_env
+    monkeypatch.setattr(rt, "_web_search", lambda q: [])
+    monkeypatch.setattr(rt, "_kb_search", lambda q, pid: [])
+    frames = _run(app, {"message": "请讲解RAG的原理与应用", "api_key": "d",
+                        "project_id": "pX", "dialogue_id": "dMiss",
+                        "session_id": "sX", "settings": {"template": "思考"}})
+    assert frames[-1]["type"] == "done"
+    user_text = _user_text(ModeProbeLLM.last)
+    assert "未在知识库中检索到相关内容" in user_text
+    assert "模型自有知识" in user_text
+
+
 def test_research_full_chain_with_review(v2_env, monkeypatch):
     app, eng, client, _rt = v2_env
 

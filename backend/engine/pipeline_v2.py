@@ -22,6 +22,12 @@ DEFAULT_MODEL = "deepseek-v4-flash-vision-exp"
 
 # 极速档字数约束（自旧引擎常量平移，语义不变）
 FAST_WORD_MIN, FAST_WORD_MAX, FAST_WORD_HARD = 500, 800, 1000
+# 思考/研究档字数约束（对话模式.md 定稿；Loop4.5 仅重建了极速档，此处补齐另两档）
+THINK_WORD_MIN, THINK_WORD_MAX, THINK_WORD_HARD = 800, 1200, 1500
+RESEARCH_WORD_MIN, RESEARCH_WORD_MAX, RESEARCH_WORD_HARD = 1500, 2000, 3000
+# 思考/研究档字数约束（对话模式.md 定稿；Loop4.5 仅重建了极速档，此处补齐另两档）
+THINK_WORD_MIN, THINK_WORD_MAX, THINK_WORD_HARD = 800, 1200, 1500
+RESEARCH_WORD_MIN, RESEARCH_WORD_MAX, RESEARCH_WORD_HARD = 1500, 2000, 3000
 
 from engine.mindchain import merge_consecutive  # noqa: E402
 
@@ -274,6 +280,12 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
             # 极速字数约束（自旧引擎平移）：目标区间 + 硬上限
             base_system += (f"\n【输出要求】回答控制在 {FAST_WORD_MIN}-{FAST_WORD_MAX} 字以内"
                             f"（硬上限 {FAST_WORD_HARD} 字），直接给结论要点，不展开长篇。")
+        elif template == "研究":
+            base_system += (f"\n【输出要求】回答控制在 {RESEARCH_WORD_MIN}-{RESEARCH_WORD_MAX} 字"
+                            f"（硬上限 {RESEARCH_WORD_HARD} 字），深入展开但保持结构清晰。")
+        else:
+            base_system += (f"\n【输出要求】回答控制在 {THINK_WORD_MIN}-{THINK_WORD_MAX} 字"
+                            f"（硬上限 {THINK_WORD_HARD} 字）。")
         # 画像/历史上下文注入（v1 对齐）：用户背景、偏好、早期摘要、近期原文
         context_blocks = ""
         if profile_cache.get("用户背景"):
@@ -293,7 +305,14 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         user_content = context_blocks + working_message
         if search_results:
             user_content = ("【检索结果】\n" + json.dumps(search_results, ensure_ascii=False)
-                            + "\n\n（优先基于以上检索结果回答；未覆盖部分用通识并注明。）\n\n"
+                            + "\n\n（优先基于以上检索结果回答；凡取自检索内容的论断，"
+                            "须在句末标注来源，格式：[来源: 文档标题]；未覆盖部分用通识作答，"
+                            "并注明为模型自有知识。）\n\n" + user_content)
+        elif template != "极速" and plan["complexity"] != "simple_direct":
+            # 诚实边界（主Agent文档定稿）：知识型问题检索零留存 → 第一句强制申明，通识标注自有
+            user_content = ("⚠️ 本轮检索未获得相关内容。你的回答第一句话必须是："
+                            "\"⚠️ 未在知识库中检索到相关内容\"；随后以模型通识作答，"
+                            "并明确注明哪些内容属于模型自有知识、未经知识库验证。\n\n"
                             + user_content)
         user_msg = {"role": "user", "content": user_content}
         if req.image:
