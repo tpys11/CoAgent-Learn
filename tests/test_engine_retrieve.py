@@ -26,8 +26,9 @@ def test_rewrite_crash_falls_to_false():
 def test_fetch_all_parallel_both_sources(monkeypatch):
     monkeypatch.setattr(rt, "_web_search", lambda q: [{"title": f"w-{q}", "content": "c"}])
     monkeypatch.setattr(rt, "_kb_search", lambda q, pid: [{"title": f"kb-{q}", "content": "k"}])
-    web, kb = rt._fetch_all(["q1", "q2"], "proj-1", use_kb=True)
-    assert len(web) == 2 and len(kb) >= 1
+    groups, kb = rt._fetch_all(["q1", "q2"], "proj-1", use_kb=True)
+    assert len(groups) == 2 and all(len(g) == 1 for g in groups)  # 每查询独立排名组（RRF契约）
+    assert len(kb) >= 1
 
 
 def test_fetch_all_tolerates_exceptions(monkeypatch):
@@ -35,8 +36,8 @@ def test_fetch_all_tolerates_exceptions(monkeypatch):
         raise RuntimeError("搜索源挂了")
     monkeypatch.setattr(rt, "_web_search", _boom)
     monkeypatch.setattr(rt, "_kb_search", lambda q, pid: [{"title": "kb-only"}])
-    web, kb = rt._fetch_all(["q1"], "proj-1", use_kb=True)
-    assert web == [] and len(kb) == 1
+    groups, kb = rt._fetch_all(["q1"], "proj-1", use_kb=True)
+    assert groups == [[]] and len(kb) == 1  # 异常路兜底为空组，不冒泡
 
 
 def test_filter_keeps_six_and_falls_back_on_error():
