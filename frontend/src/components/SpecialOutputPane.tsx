@@ -64,7 +64,7 @@ interface GenResult { key: string; label: string; output: string; content: strin
 interface GenItem { id: string; name: string; content: string; created_at?: string }
 
 /** 资源生成：能力注册表驱动的生成器（从后端 /api/resources/capabilities 拉取能力清单） */
-export default function SpecialOutputPane({ projectId }: { projectId?: string | null }) {
+export default function SpecialOutputPane({ projectId, dialogueId }: { projectId?: string | null; dialogueId?: string | null }) {
   const [caps, setCaps] = useState<Capability[]>([])
   const [form, setForm] = useState('report')
   const [source, setSource] = useState('')
@@ -95,7 +95,7 @@ export default function SpecialOutputPane({ projectId }: { projectId?: string | 
     const apiKey = keys[prov] || lsGet(LS.apiKey, '')
     if (!apiKey) { alert('请先在设置中填写主模型 API Key'); return }
     const baseUrl = prov === 'zhipu' ? 'https://open.bigmodel.cn/api/paas/v4' : 'https://api.deepseek.com/v1'
-    const model = prov === 'zhipu' ? 'glm-4-flash' : 'deepseek-v4-flash'
+    const model = prov === 'zhipu' ? 'glm-4-flash' : 'deepseek-v4-flash-vision-exp'
     setLoading(true)
     try {
       const r = await api.generateResource({ key: form, content: source, api_key: apiKey, base_url: baseUrl, model })
@@ -122,8 +122,14 @@ export default function SpecialOutputPane({ projectId }: { projectId?: string | 
 
   const Icon = ICONS[form] || FileText
   const cur = caps.find(c => c.key === form)
-  // 交互式测验优先组件渲染；组件解析失败（null）时回退 Markdown（兼容存量静态测试题）
-  const quizEl = result && form === 'quiz' ? <QuizViewer content={result.content} /> : null
+  // 交互式测验优先组件渲染；组件解析失败（null）时回退 Markdown（兼容存量静态测试题）。
+  // key=result.id：换题即重挂载——作答收集器随新测验重置，防跨题串档
+  const quizEl = result && form === 'quiz'
+    ? <QuizViewer key={result.key + ':' + result.content.slice(0, 40)}
+                  content={result.content}
+                  dialogueId={dialogueId}
+                  projectId={projectId} />
+    : null
 
   return (
     <div className="w-full h-full flex flex-col min-h-0">

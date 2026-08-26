@@ -25,12 +25,12 @@ def _ensure_default_project():
 
 
 @router.get("/api/projects")
-async def list_projects():
+def list_projects():
     return {"projects": get_project_repo().list_projects()}
 
 
 @router.post("/api/projects")
-async def create_project(req: ProjectCreate):
+def create_project(req: ProjectCreate):
     pid = time.strftime("%Y%m%d%H%M%S") + str(int(time.time() * 1000))[-4:]
     get_project_repo().insert_project(pid, req.name, req.simple, req.domain)
     try:
@@ -43,13 +43,13 @@ async def create_project(req: ProjectCreate):
 
 
 @router.patch("/api/projects/{pid}")
-async def update_project(pid: str, req: ProjectCreate):
+def update_project(pid: str, req: ProjectCreate):
     get_project_repo().update_project(pid, req.name, req.domain, req.simple)
     return {"status": "ok"}
 
 
 @router.delete("/api/projects/{pid}")
-async def delete_project(pid: str):
+def delete_project(pid: str):
     """级联删除项目：对话+消息+画像+知识库+图谱"""
     repo = get_project_repo()
     mrepo = get_memory_repo()
@@ -76,12 +76,12 @@ async def delete_project(pid: str):
 
 
 @router.get("/api/projects/{pid}/dialogues")
-async def list_dialogues(pid: str):
+def list_dialogues(pid: str):
     return {"dialogues": get_project_repo().list_dialogues(pid)}
 
 
 @router.post("/api/dialogues")
-async def create_dialogue(req: dict):
+def create_dialogue(req: dict):
     """创建对话（落库，前端本地 id 与后端一致：用前端生成 id 或后端生成）"""
     pid = req.get("project_id") or "default"
     name = req.get("name") or "对话"
@@ -110,13 +110,13 @@ async def create_dialogue(req: dict):
 
 
 @router.get("/api/dialogues/{did}/profile_status")
-async def get_dialogue_profile_status(did: str):
+def get_dialogue_profile_status(did: str):
     status = get_project_repo().get_dialogue_status(did)
     return {"status": status or "ready"}
 
 
 @router.get("/api/dialogues/{did}/messages")
-async def get_dialogue_messages(did: str):
+def get_dialogue_messages(did: str):
     rows = get_project_repo().get_dialogue_messages(did)
     for r in rows or []:
         t = r.get("think") or ""
@@ -125,7 +125,7 @@ async def get_dialogue_messages(did: str):
 
 
 @router.post("/api/dialogues/{did}/messages")
-async def post_dialogue_message(did: str, req: dict):
+def post_dialogue_message(did: str, req: dict):
     """写入一条对话消息（静态引导等），保证 dialogue 存在"""
     role = req.get("role") if req.get("role") in ("user", "assistant", "thinking") else "assistant"
     content = str(req.get("content") or "")
@@ -138,7 +138,7 @@ async def post_dialogue_message(did: str, req: dict):
 
 
 @router.delete("/api/dialogues/{did}")
-async def delete_dialogue(did: str):
+def delete_dialogue(did: str):
     """级联删除对话：消息+对话画像；并作为一次事件更新项目记忆（移除该对话概要）"""
     repo = get_project_repo()
     mrepo = get_memory_repo()

@@ -1,21 +1,31 @@
-/** 上传资源面板（文本 / 文件 / 链接，仿 DeepTutor add resource；ResourceView 拆分子组件，5.1） */
-import { useState, useRef } from 'react'
-import { Upload, FileText, ExternalLink, Sparkles, Loader2, X } from 'lucide-react'
+/** 上传资源面板（文本 / 文件两种方式；链接通道已下线，保留件见 resource/linkIngest/） */
+import { useState, useRef, useEffect } from 'react'
+import { Upload, FileText, Sparkles, Loader2, X } from 'lucide-react'
 import { LS, lsGet } from '../../storage'
 import { api } from '../../api'
 
-type UpItem = { id: string; kind: 'file' | 'text' | 'link'; name: string; file?: File; body?: string; url?: string }
+type UpItem = { id: string; kind: 'file' | 'text'; name: string; file?: File; body?: string }
 
 export function UploadPanel({ projectId, onUploaded }: { projectId: string | null; onUploaded: () => void }) {
-  const [upMode, setUpMode] = useState<'text' | 'file' | 'link'>('text')
+  const [upMode, setUpMode] = useState<'text' | 'file'>('text')
   const [upTitle, setUpTitle] = useState('')
   const [upText, setUpText] = useState('')
-  const [upUrl, setUpUrl] = useState('')
   const [upItems, setUpItems] = useState<UpItem[]>([])
   const [upUploading, setUpUploading] = useState('')
   const [upDone, setUpDone] = useState('')
   const [upDropActive, setUpDropActive] = useState(false)
   const upFileRef = useRef<HTMLInputElement>(null)
+  // 支持格式单一事实源：以后端 upload-constraints 为准（对齐 DeepTutor SupportedFileTypesInfo）
+  const [accept, setAccept] = useState('.txt,.md,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml,.pdf,.docx,.pptx')
+  const [allowedExts, setAllowedExts] = useState<string[]>([])
+  useEffect(() => {
+    api.getUploadConstraints().then(d => {
+      if (d && Array.isArray(d.extensions)) {
+        setAccept(d.accept || accept)
+        setAllowedExts(d.extensions.map((x: string) => x.replace('.', '')))
+      }
+    }).catch(() => {})
+  }, [])
 
   const upAddText = () => {
     const title = upTitle.trim() || '文本资料'
@@ -23,16 +33,16 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
     setUpItems(prev => [...prev, { id: 'u' + Date.now() + Math.random().toString(36).slice(2, 6), kind: 'text', name: title, body: upText }])
     setUpTitle(''); setUpText('')
   }
-  const upAddLink = () => {
-    const url = upUrl.trim()
-    if (!url) { alert('请输入链接'); return }
-    if (!/^https?:\/\//.test(url)) { alert('链接需以 http:// 或 https:// 开头'); return }
-    const title = upTitle.trim() || url
-    setUpItems(prev => [...prev, { id: 'u' + Date.now() + Math.random().toString(36).slice(2, 6), kind: 'link', name: title, url }])
-    setUpTitle(''); setUpUrl('')
-  }
   const upAddFiles = (fs: FileList | File[]) => {
-    const incoming = Array.from(fs)
+    let incoming: File[] = Array.from(fs)
+    if (allowedExts.length) {
+      const bad = incoming.filter(f => {
+        const ext = f.name.slice(f.name.lastIndexOf('.') + 1).toLowerCase()
+        return !allowedExts.includes(ext)
+      })
+      if (bad.length) alert(`不支持的文件格式：${bad.map(f => f.name).join('、')}（支持：${allowedExts.join('/')} 等）`)
+      incoming = incoming.filter(f => allowedExts.includes(f.name.slice(f.name.lastIndexOf('.') + 1).toLowerCase()))
+    }
     setUpItems(prev => {
       const names = new Set(prev.filter(x => x.kind === 'file' && x.file).map(x => x.name))
       return [...prev, ...incoming.filter(f => !names.has(f.name)).map(f => ({ id: 'u' + Date.now() + Math.random().toString(36).slice(2, 6), kind: 'file' as const, name: f.name, file: f }))]
@@ -54,10 +64,9 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
           d = await api.uploadKnowledgeFile(fd)
         } else if (it.kind === 'text') {
           d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, source: it.name, session_id: 'project-res', api_key: lsGet(LS.apiKey, '') })
-        } else if (it.kind === 'link') {
-          d = await api.uploadKnowledgeUrl({ project_id: projectId, url: it.url, source: it.name, session_id: 'project-res', api_key: lsGet(LS.apiKey, '') })
         }
         if (d && d.status === 'ok') { total += (d.chunks || 0); ok++ }
+        else if (d && d.duplicate) { /* 重复内容视为成功跳过 */ }
         else alert(`「${it.name}」接入失败：${(d && d.msg) || '处理失败'}`)
       } catch (e) {
         alert(`「${it.name}」上传失败：${(e as any)?.message || '网络异常'}`)
@@ -77,9 +86,9 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
         {upUploading && <span className="text-[11px] text-dim">上传中：{upUploading}</span>}
         {!upUploading && upDone && <span className="text-[11px] text-emerald-600 font-medium">✓ {upDone}</span>}
       </div>
-      {/* 三种方式切换 */}
+      {/* 两种方式切换 */}
       <div className="flex gap-2">
-        {([['text', '文本'], ['file', '文件'], ['link', '链接']] as const).map(([k, label]) => (
+        {([['text', '文本'], ['file', '文件']] as const).map(([k, label]) => (
           <button key={k} onClick={() => setUpMode(k)}
             className={`px-3.5 py-1.5 rounded-full text-xs font-medium transition-colors ${upMode === k ? 'bg-[#1a1a1a] text-white shadow-soft' : 'bg-[var(--bg-hover)] text-dim hover:bg-[var(--bg-active)]'}`}>
             {label}
@@ -110,20 +119,8 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
           <span className="text-[11.5px] text-dim">点击选择文件，或拖拽到此处</span>
         </button>
       )}
-      {/* 链接方式 */}
-      {upMode === 'link' && (
-        <div className="flex flex-col gap-2">
-          <input value={upTitle} onChange={e => setUpTitle(e.target.value)} placeholder="标题（可选，默认取链接）"
-            className="px-3 py-2 text-xs input-surface rounded-xl outline-none" />
-          <input value={upUrl} onChange={e => setUpUrl(e.target.value)} placeholder="https://…"
-            className="px-3 py-2 text-xs input-surface rounded-xl outline-none" />
-          <div className="flex justify-end">
-            <button onClick={upAddLink} className="px-3.5 py-1.5 text-[11px] bg-[#1a1a1a] text-white font-semibold rounded-xl hover:bg-[#333333] transition-colors">加入上传</button>
-          </div>
-        </div>
-      )}
       <input ref={upFileRef} type="file" multiple className="hidden"
-        accept=".txt,.md,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml,.pdf,.docx,.pptx"
+        accept={accept}
         onChange={e => { if (e.target.files?.length) upAddFiles(e.target.files); e.target.value = '' }} />
       {/* 待上传列表 + 确认上传 */}
       {upItems.length > 0 && (
@@ -132,10 +129,10 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
           {upItems.map(it => (
             <div key={it.id} className="flex items-center gap-2 rounded-lg border hairline px-2.5 py-1.5">
               <span className="w-6 h-6 rounded-md bg-[#1a1a1a] text-white flex items-center justify-center flex-shrink-0">
-                {it.kind === 'file' ? <FileText size={11} /> : it.kind === 'link' ? <ExternalLink size={11} /> : <Sparkles size={11} />}
+                {it.kind === 'file' ? <FileText size={11} /> : <Sparkles size={11} />}
               </span>
               <span className="text-[11px] font-medium truncate flex-1">{it.name}</span>
-              <span className="text-[9px] text-dim flex-shrink-0">{it.kind === 'file' ? '文件' : it.kind === 'link' ? '链接' : '文本'}</span>
+              <span className="text-[9px] text-dim flex-shrink-0">{it.kind === 'file' ? '文件' : '文本'}</span>
               <button onClick={() => setUpItems(prev => prev.filter(x => x.id !== it.id))} className="p-1 rounded text-dim hover:text-red-500 flex-shrink-0" title="移除"><X size={11} /></button>
             </div>
           ))}

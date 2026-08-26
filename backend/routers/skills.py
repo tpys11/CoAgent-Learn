@@ -10,13 +10,13 @@ logger = logging.getLogger("coagent.skills")
 
 
 @router.get("/api/skills")
-async def list_skills():
+def list_skills():
     from skills.registry import registry
     return {"skills": registry.list_all()}
 
 
 @router.get("/api/skills/{name}/source")
-async def skill_source(name: str):
+def skill_source(name: str):
     """Skill 实现源码（详情弹层展示具体实现）"""
     try:
         from skills.registry import registry

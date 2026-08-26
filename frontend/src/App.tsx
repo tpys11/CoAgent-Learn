@@ -1,4 +1,5 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { lazy, Suspense, useState, useCallback, useRef, useEffect } from 'react'
+import type { ReactNode } from 'react'
 import { PanelLeftOpen, PanelRightOpen } from 'lucide-react'
 
 // 模块级 session：页面刷新(JS重载)时重新生成一次；组件重挂载不改变
@@ -10,19 +11,29 @@ const SESSION_ID = (() => {
 import ProjectSidebar from './components/ProjectSidebar'
 import CenterPanel from './components/CenterPanel'
 import RightPanel from './components/RightPanel'
-import SettingsModal, { ApiKeyPrompt } from './components/SettingsModal'
-import ProjectConfigModal from './components/ProjectConfigModal'
-import ObsidianView from './components/ObsidianView'
-import HomeView from './components/HomeView'
-import ProfileWizard from './components/ProfileWizard'
 import ActivityBar, { type ViewKey } from './components/ActivityBar'
-import TutorialView from './components/TutorialView'
-import ResourceView from './components/ResourceView'
-import MemoryView from './components/MemoryView'
-import KnowledgeView from './components/KnowledgeView'
-import AgentsView from './components/AgentsView'
 import IntroPanel from './components/IntroPanel'
-import KbReaderModal from './components/KbReaderModal'
+
+// 首屏瘦身（perf）：重组件视图按需懒加载——主包 2.5MB→亚 MB，刷新秒开。
+// 全部为条件挂载视图，Suspense fallback=null 保证布局零抖动。
+const SubAgentPage = lazy(() => import('./components/chat/subagent').then(m => ({ default: m.SubAgentPage })))
+const ObsidianView = lazy(() => import('./components/ObsidianView'))
+const HomeView = lazy(() => import('./components/HomeView'))
+const ProfileWizard = lazy(() => import('./components/ProfileWizard'))
+const TutorialView = lazy(() => import('./components/TutorialView'))
+const ResourceView = lazy(() => import('./components/ResourceView'))
+const MemoryView = lazy(() => import('./components/MemoryView'))
+const KnowledgeView = lazy(() => import('./components/KnowledgeView'))
+const AgentsView = lazy(() => import('./components/AgentsView'))
+const SettingsModal = lazy(() => import('./components/SettingsModal'))
+const ApiKeyPrompt = lazy(() => import('./components/SettingsModal').then(m => ({ default: m.ApiKeyPrompt })))
+const ProjectConfigModal = lazy(() => import('./components/ProjectConfigModal'))
+const KbReaderModal = lazy(() => import('./components/KbReaderModal'))
+
+// 懒加载统一轻包裹：chunk 加载期间保持原布局（不闪骨架）
+function LSusp({ children }: { children: ReactNode }) {
+  return <Suspense fallback={null}>{children}</Suspense>
+}
 import { initTheme } from './theme'
 import type { Project, Dialogue, AgentConfig, Message } from './types'
 import { DEFAULT_AGENTS } from './types'
@@ -103,6 +114,16 @@ function App() {
     profilePollTimer.current = setInterval(check, 1500)
   }, [])
   const [view, setView] = useState<ViewKey>('chat')
+  // 条目4：子agent独立界面（OpenCode 式会话切换）——深层 chip 经 open-subagent 事件唤起；返回/Esc 即回原视图
+  const [subPageRuns, setSubPageRuns] = useState<string[] | null>(null)
+  useEffect(() => {
+    const h = (e: Event) => {
+      const ids = (e as CustomEvent<{ runIds?: string[] }>).detail?.runIds
+      if (Array.isArray(ids) && ids.length) setSubPageRuns(ids)
+    }
+    window.addEventListener('open-subagent', h)
+    return () => window.removeEventListener('open-subagent', h)
+  }, [])
   // 主页模式：view=chat 时默认显示主页（按项目展开），进入项目后才显示对话界面
   const [chatOpen, setChatOpen] = useState(false)
   // 记忆修改预填：从记忆界面跳转时，输入框以 [模块名] 引用并提示补充想法
@@ -139,16 +160,20 @@ function App() {
       .then(async (d) => {
         if (cancelled) return
         const projs: Project[] = (d.projects || []).map((p: any) => ({ id: p.id, name: p.name, domain: p.domain || '' }))
-        setProjects(projs)
-        // 加载每个项目下的对话
-        const allD: Dialogue[] = []
-        for (const p of projs) {
-          const d2 = await api.listProjectDialogues(p.id)
-          ;(d2.dialogues || []).forEach((dd: any) => allD.push({ id: dd.id, name: dd.name, projectId: p.id, createdAt: dd.created_at || '', archived: false }))
-        }
+        setProjects(projs)   // 项目列表先行渲染（渐进式，不等对话）
+        // perf：并行拉取所有项目对话——原串行 for-await N+1 瀑布是进入课程迟缓的主因之一
+        const settled = await Promise.all(
+          projs.map(p =>
+            api.listProjectDialogues(p.id)
+              .then(d2 => ({ pid: p.id, ds: d2.dialogues || [] }))
+              .catch(() => ({ pid: p.id, ds: [] as any[] }))))
         if (cancelled) return
+        const allD: Dialogue[] = []
+        settled.forEach(({ pid, ds }) =>
+          (ds as any[]).forEach((dd: any) =>
+            allD.push({ id: dd.id, name: dd.name, projectId: pid, createdAt: dd.created_at || '', archived: false })))
         setDialogues(allD)
-        // 默认选中第一个项目
+        // 默认选中第一个项目；其历史消息随即并行补取
         if (projs.length > 0) {
           setCurrentProjectId(projs[0].id)
           const first = allD.find(d => d.projectId === projs[0].id)
@@ -374,12 +399,12 @@ function App() {
           <PanelLeftOpen size={15} />
         </button>
       )}
-      {view === 'tutorial' && <TutorialView agents={agents} onSave={handleSaveAgent} onReplace={handleReplaceAgents} projectId={currentProjectId} />}
-      {view === 'resources' && <ResourceView projectId={currentProjectId} />}
-      {view === 'memory' && <MemoryView projectId={currentProjectId} onRequestModify={handleRequestModify} onRequestAnalyze={handleRequestAnalyze} />}
-      {view === 'knowledge' && <KnowledgeView projectId={projectKBId ?? currentProjectId} onClose={() => { setView('chat'); setChatOpen(true) }} />}
-      {view === 'agents' && <AgentsView agents={agents} onSave={handleSaveAgent} onReplace={handleReplaceAgents} projectId={currentProjectId} />}
-      {view === 'obsidian' && <ObsidianView />}
+      {view === 'tutorial' && <LSusp><TutorialView agents={agents} onSave={handleSaveAgent} onReplace={handleReplaceAgents} projectId={currentProjectId} /></LSusp>}
+      {view === 'resources' && <LSusp><ResourceView projectId={currentProjectId} /></LSusp>}
+      {view === 'memory' && <LSusp><MemoryView projectId={currentProjectId} onRequestModify={handleRequestModify} onRequestAnalyze={handleRequestAnalyze} /></LSusp>}
+      {view === 'knowledge' && <LSusp><KnowledgeView projectId={projectKBId ?? currentProjectId} onClose={() => { setView('chat'); setChatOpen(true) }} /></LSusp>}
+      {view === 'agents' && <LSusp><AgentsView agents={agents} onSave={handleSaveAgent} onReplace={handleReplaceAgents} projectId={currentProjectId} /></LSusp>}
+      {view === 'obsidian' && <LSusp><ObsidianView /></LSusp>}
       {view === 'chat' && (chatOpen ? (<>
       {/* 左侧栏（tonal 面板） */}
       {!sidebarCollapsed && (
@@ -453,19 +478,22 @@ function App() {
         </>
       )}
       </>) : (
-        <HomeView
+        <LSusp><HomeView
           projects={projects}
           onEnter={(id) => { setCurrentProjectId(id); setChatOpen(true); setSidebarCollapsed(false) }}
           onCreate={handleCreateProject}
           onDelete={handleDeleteProject}
           onRename={handleRenameProject}
-        />
+        /></LSusp>
       ))}
       </div>
 
-      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} projectId={currentProjectId} />}
+      {/* 条目4：子agent独立界面（全屏页，非浮层）——返回/Esc 即回原视图 */}
+      {subPageRuns && <LSusp><SubAgentPage runIds={subPageRuns} onBack={() => setSubPageRuns(null)} /></LSusp>}
+
+      {showSettings && <LSusp><SettingsModal onClose={() => setShowSettings(false)} projectId={currentProjectId} /></LSusp>}
       {showProjectConfig && (
-        <ProjectConfigModal
+        <LSusp><ProjectConfigModal
           projectId={projectKBId ?? currentProjectId}
           projectName={(projectKBId ? projects.find(x => x.id === projectKBId) : currentProject)?.name || ''}
           initialTab={projectConfigTab}
@@ -475,9 +503,9 @@ function App() {
           onRequestAnalyze={handleRequestAnalyze}
           onClose={() => { setShowProjectConfig(false); setManualSetupOnly(false) }}
           onUploaded={() => setKbRefreshKey(k => k + 1)}
-        />
+        /></LSusp>
       )}
-      {wizard && <ProfileWizard mode={wizard.mode} projectName={wizard.name} onClose={() => {
+      {wizard && <LSusp><ProfileWizard mode={wizard.mode} projectName={wizard.name} onClose={() => {
         // 跳过：项目标记为无画像（simple），名字加 [简]，后续对话不弹向导
         if (wizard.mode === 'project') {
           api.saveProjectProfile(wizard.id, {})
@@ -490,12 +518,12 @@ function App() {
           if (wizard.mode === 'project') api.saveProjectProfile(wizard.id, profile)
           else api.saveDialogueProfile(wizard.id, profile)
           setWizard(null)
-        }} />}
-      {showApiKeyPrompt && <ApiKeyPrompt provider={lsGet(LS.provider, 'deepseek')} onClose={() => { setShowApiKeyPrompt(false); lsSet(LS.apiKeySkipped, '1') }} />}
+        }} /></LSusp>}
+      {showApiKeyPrompt && <LSusp><ApiKeyPrompt provider={lsGet(LS.provider, 'deepseek')} onClose={() => { setShowApiKeyPrompt(false); lsSet(LS.apiKeySkipped, '1') }} /></LSusp>}
       {showIntro && <IntroPanel onClose={() => { setShowIntro(false); lsSet(LS.introSeen, '1') }} />}
       {/* 知识库阅读器弹窗（5.1）：左栏资源条目点击 / 引用跳转共用 */}
       {reader && (
-        <KbReaderModal
+        <LSusp><KbReaderModal
           title={reader.title}
           content={reader.content}
           projectId={reader.projectId}
@@ -503,7 +531,7 @@ function App() {
           focusChunk={reader.focusChunk}
           seq={reader.seq}
           onClose={() => setReader(null)}
-        />
+        /></LSusp>
       )}
       {/* 删除对话确认弹窗 */}
       {deleteDialogueTarget && (

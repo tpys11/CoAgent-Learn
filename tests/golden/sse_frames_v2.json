@@ -1,0 +1,53 @@
+[
+ {
+  "type": "start",
+  "request_id": "<RID>"
+ },
+ {
+  "type": "step",
+  "agent": "学习助手·规划"
+ },
+ {
+  "type": "step",
+  "agent": "学情与记忆管理"
+ },
+ {
+  "type": "thought_token",
+  "agent": "输出策略",
+  "chunk": "②用户语域 T=0.74（level=0.80）"
+ },
+ {
+  "type": "step",
+  "agent": "学习助手·生成"
+ },
+ {
+  "type": "answer_token",
+  "chunk": "黄金回答内容"
+ },
+ {
+  "type": "done",
+  "reply": "黄金回答内容",
+  "steps": [
+   {
+    "agent": "学习助手·规划",
+    "status": "done",
+    "detail": "意图分类完成"
+   },
+   {
+    "agent": "学情与记忆管理",
+    "status": "done",
+    "detail": "水平评估完成"
+   },
+   {
+    "agent": "学习助手·生成",
+    "status": "done",
+    "detail": "生成输出"
+   }
+  ],
+  "mindchain": [],
+  "task_stats": {},
+  "special_suggestions": [],
+  "retrieved_images": [],
+  "review": null
+ }
+]

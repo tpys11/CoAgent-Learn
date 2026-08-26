@@ -2,8 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { FileText, BookOpen, Upload, Trash2, Save, X, Loader2, CheckCircle2, ExternalLink, Plus } from 'lucide-react'
 import MemoryView from './MemoryView'
 import ResourceView from './ResourceView'
+import { UploadPanel } from './resource/UploadPanel'
 import { LS, lsGet, lsGetJSON, lsSetJSON } from '../storage'
 import { api } from '../api'
+import { watchIngestProgress } from './resource/ingestProgress'
 
 /** 课程记忆与资源窗口：两个页签（记忆与进程 / 资源）可切换；initialTab 决定打开时默认页签。
  * 新建课程引导消息的「手动填写」按钮也复用此弹窗（initialOnly=true：仅初次创建可手动填写，
@@ -129,9 +131,8 @@ function ProjectResources({ projectId, naturalHeight, onUploaded }: { projectId:
   const [uploading, setUploading] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
   const [dragOver, setDragOver] = useState(false)
-  // 系统文件管理器：hidden input，空态点击或尾部虚线按钮触发
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const pickFiles = () => { if (!uploading) fileInputRef.current?.click() }
+  // 上传面板展开态：虚线框点击后展开「文本 / 文件」上传面板（系统资源卡在下方直接点选）
+  const [showUpload, setShowUpload] = useState(false)
   // 拖入/选择仅占位进待上传列表，点「确认上传」才真正上传（文件与卡片文本统一）
   const [doneMsg, setDoneMsg] = useState('')
   type PendingItem =
@@ -155,6 +156,7 @@ const uploadItems = async () => {
     let okCount = 0
     let dupCount = 0
     const count = pendingItems.length
+    let asyncCount = 0
     for (const it of pendingItems) {
       setUploading(it.kind === 'file' ? it.file.name : it.title)
       try {
@@ -172,13 +174,21 @@ const uploadItems = async () => {
           }
           else alert(`「${it.file.name}」接入失败：${d.msg || '处理失败'}`)
         } else if (it.kind === 'link') {
-          // 链接资源：后端抓取网页正文入库（真实内容，非空转）
-const d = await api.uploadKnowledgeUrl({ project_id: projectId, url: it.url, source: it.title, session_id: 'project-res', api_key: lsGet(LS.apiKey, '') })
-          if (d.status === 'ok') {
+          const d = await api.uploadKnowledgeUrl({ project_id: projectId, url: it.url, source: it.title, session_id: 'project-res', api_key: lsGet(LS.apiKey, '') })
+          if (d.status === 'processing') {
+            okCount++; asyncCount++
+            const srcTitle = it.title
+            void watchIngestProgress(projectId, srcTitle, (dn, tt) =>
+              setDoneMsg(`「${srcTitle}」入库中 ${dn}/${tt} 块…`)).then(st => {
+              setDoneMsg(st === 'done' ? `「${srcTitle}」已完成接入课程知识库` : `「${srcTitle}」仍在后台处理`)
+              load()
+            })
+          }
+          else if (d.status === 'ok') {
             if (d.duplicate) { dupCount++ }
             else { total += (d.chunks || 0); okCount++ }
           }
-          else alert(`「${it.title}」接入失败：${d.msg || '处理失败'}`)
+          else alert(`「${it.title}」接入失败：${(d && d.msg) || '处理失败'}`)
         } else {
           // wait 是后端 query 参数（非 body），必须放在 URL 上，否则走异步分支返回 processing
 const d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, source: it.title, session_id: 'project-res', api_key: lsGet(LS.apiKey, '') })
@@ -199,6 +209,7 @@ const d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, 
     const msgs = []
     if (okCount) msgs.push(`${okCount} 个新入库（${total} 个内容块）`)
     if (dupCount) msgs.push(`${dupCount} 个内容已存在（已跳过重复入库）`)
+    if (asyncCount) msgs.push(`${asyncCount} 项后台处理中，完成后自动出现`)
     if (failed) msgs.push(`${failed} 个失败`)
     setDoneMsg(msgs.join('，') || '处理完成')
     load()
@@ -229,10 +240,15 @@ const d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, 
   const addPreset = (title: string, body: string, url?: string) => {
     const u = (url || '').trim()
     if (u) { addLinkItem(title, u); return }
-    if ((body || '').trim().length >= 50) { addTextItem(title, body); return }
-    alert(`「${title}」还没有链接或正文内容，无法接入知识库（请先为该资源补充链接）`)
+    if ((body || '').trim().length >= 50) {
+      setPendingItems(prev => {
+        if (prev.some(x => x.kind === 'text' && x.title === title)) return prev
+        return [...prev, { kind: 'text' as const, id: 't' + Date.now() + Math.random().toString(36).slice(2, 7), title, body }]
+      })
+      return
+    }
+    alert(`「${title}」既没有链接也缺少正文内容，无法加入知识库（可编辑为普通资源或补链接）`)
   }
-  /** 加入链接占位 */
   const addLinkItem = (title: string, url: string) => {
     setPendingItems(prev => {
       if (prev.some(x => x.kind === 'link' && x.url === url)) return prev
@@ -265,13 +281,11 @@ const d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, 
   }
   return (
     <div className={`p-6 flex flex-col gap-5 ${naturalHeight ? '' : 'h-full overflow-hidden'}`}>
-      {/* 系统文件管理器：由空态/虚线按钮触发，选中后进待上传列表走确认上传 */}
-      <input ref={fileInputRef} type="file" multiple hidden
-        onChange={e => {
-          const fs = e.target.files
-          if (fs && fs.length) addFileItem(fs)
-          e.target.value = ''
-        }} />
+      {/* 上传面板：虚线框/空态点击展开，提供 文本 / 文件 两种来源（系统资源卡在下方点选） */}
+      {showUpload && (
+        <UploadPanel projectId={projectId} onUploaded={() => { load(); onUploaded?.() }} />
+      )}
+      {/*
       {/* 上：项目资源（可上传 / 拖入） */}
       <div className="flex-shrink-0 flex flex-col gap-2.5"
         onDragOver={e => { e.preventDefault(); setDragOver(true) }}
@@ -323,16 +337,16 @@ const d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, 
               ))}
               {/* 有内容时：尾部虚线占位按钮，点击调系统文件管理器 */}
               {docs.length > 0 && (
-                <button type="button" onClick={pickFiles} disabled={!!uploading} title="选择文件上传"
+                <button type="button" onClick={() => setShowUpload(v => !v)} disabled={!!uploading} title="展开 / 收起上传面板"
                   className="flex items-center justify-center border border-dashed rounded-xl px-3 py-2 text-dim hover:text-[var(--text)] hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-50">
                   <Plus size={14} />
                 </button>
               )}
               {docs.length === 0 && pendingCount === 0 && (
-                <button type="button" onClick={pickFiles}
+                <button type="button" onClick={() => setShowUpload(v => !v)}
                   className="col-span-full p-6 flex flex-col items-center justify-center gap-1.5 text-xs text-dim cursor-pointer hover:text-[var(--text)] transition-colors">
                   <Upload size={18} className="opacity-50" />
-                  <span>暂无资源 — 点击此处或拖入文件</span>
+                  <span>暂无资源 — 点击展开上传面板（文本 / 文件），或拖入文件、点选下方系统资源</span>
                 </button>
               )}
             </>

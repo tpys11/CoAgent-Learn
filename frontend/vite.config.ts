@@ -11,6 +11,20 @@ export default defineConfig(({ mode }) => {
     // root 固定为 frontend 目录（无论从项目根还是 frontend 内启动 vite）
     root: fileURLToPath(new URL('.', import.meta.url)),
     plugins: [react()],
+    build: {
+      // vendor 稳定分包：长缓存 + 并行下载（echarts/katex/markdown 族各自独立 chunk）
+      chunkSizeWarningLimit: 1600,
+      rollupOptions: {
+        output: {
+          manualChunks(id: string) {
+            if (!id.includes('node_modules')) return
+            if (/[\\/]node_modules[\\/](echarts|zrender)/.test(id)) return 'echarts'
+            if (/[\\/]node_modules[\\/]katex[\\/]/.test(id)) return 'katex'
+            if (/[\\/]node_modules[\\/](markdown|remark|rehype|unified|micromark|mdast|hast|react-markdown)/.test(id)) return 'markdown'
+          },
+        },
+      },
+    },
     server: {
       port: 5173,
       host: true,

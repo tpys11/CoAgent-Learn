@@ -1,4 +1,4 @@
-fastapi>=0.115.6
+﻿fastapi>=0.115.6
 uvicorn[standard]>=0.34.0
 langgraph>=0.2.60
 langchain>=0.3.14
@@ -7,8 +7,9 @@ python-dotenv>=1.0.1
 pydantic>=2.10.4
 httpx>=0.28.1
 
-# 文件解析（markitdown 统一转 markdown，照 DeepTutor 解析引擎）
+# 文件解析（markitdown 统一转 markdown，照 DeepTutor 解析引擎；pymupdf4llm=ParsePort 本地快道）
 markitdown[pdf,docx,pptx,xlsx]>=0.0.1a2
+pymupdf4llm>=0.0.17
 
 # 数据库连接
 rank_bm25>=0.2.2
@@ -23,3 +24,4 @@ python-pptx>=1.0.0
 python-multipart>=0.0.9
 sqlite-vec>=0.1.6
 trafilatura>=2.0.0
+llama-index-core

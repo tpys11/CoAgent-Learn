@@ -72,7 +72,7 @@ class WebSearch(Skill):
                             r["quality"] = _quality_score(r.get("url", ""))
                             seen[key] = r
                     except Exception:
-                        continue
+                        continue  # 边界处保留宽口径：第三方搜索形状不可信，单查询失败跳过
             results = list(seen.values())
             # 优质源置顶（quality 降序），再按条数截断到 20
             results.sort(key=lambda r: -r.get("quality", 0))

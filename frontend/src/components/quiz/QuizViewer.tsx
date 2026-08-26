@@ -4,9 +4,16 @@
  * 数据契约：react-quiz-component 原生 JSON（后端 resource_gen 的 quiz 能力输出）。
  * 容错：content 剥 fence → JSON.parse → 结构校验；任何失败返回 null，
  * 由调用方（SpecialOutputPane）回退 Markdown 渲染，兼容存量静态测试题。
+ *
+ * 学情反馈（闭环D）：onQuestionSubmit 逐题收集对错（README 文档契约，非内部字段），
+ * onComplete 时批量提交 POST /api/quiz/submit → 后端合流 level_score →
+ * 下轮生成策略指令可见变化。无对话上下文或提交失败均静默降级，不扰作答体验。
  */
+import { useRef, useState } from 'react'
 import Quiz from 'react-quiz-component'
 import type { QuizData } from 'react-quiz-component'
+import { api } from '../../api'
+import { createQuizCollector } from './submit'
 
 /** 库默认文案全量中文化（key 与库 defaultLocale 一一对应，缺一即回退英文） */
 const APP_LOCALE: Record<string, string> = {
@@ -59,17 +66,52 @@ export function parseQuizContent(content: string): QuizData | null {
 }
 
 /** 交互式测试题：点击作答、即时反馈、计分、进度条（失败返回 null 由调用方回退） */
-export default function QuizViewer({ content }: { content: string }): React.ReactElement | null {
+export default function QuizViewer({ content, dialogueId, projectId }: {
+  content: string
+  dialogueId?: string | null
+  projectId?: string | null
+}): React.ReactElement | null {
   const data = parseQuizContent(content)
+  const collectorRef = useRef(createQuizCollector())
+  const [feedbackState, setFeedbackState] = useState<'idle' | 'sent' | 'failed'>('idle')
   if (!data) return null
+
+  const handleQuestionSubmit = (payload: unknown): void => {
+    // README 契约：{ question, userAnswer, isCorrect }；防御式窄化，异常静默
+    if (payload && typeof payload === 'object' && 'question' in payload && 'isCorrect' in payload) {
+      const p = payload as { question: unknown; isCorrect: unknown }
+      collectorRef.current.record(String(p.question ?? ''), p.isCorrect === true)
+    }
+  }
+
+  const handleComplete = (): void => {
+    if (!dialogueId || collectorRef.current.size() === 0) return
+    api.submitQuizAnswers({
+      dialogue_id: dialogueId,
+      project_id: projectId || 'default',
+      answers: collectorRef.current.toAnswers(),
+    }).then(() => setFeedbackState('sent'))
+      .catch(() => setFeedbackState('failed'))   // 静默降级：不打断结果页
+  }
+
   return (
     <div className="quiz-viewer">
+      {feedbackState !== 'idle' && (
+        <div className="quiz-viewer-feedback" style={{
+          fontSize: 11, color: feedbackState === 'sent' ? '#10b981' : 'var(--dim)',
+          marginBottom: 6,
+        }}>
+          {feedbackState === 'sent' ? '✓ 学情反馈已记录，将影响后续讲解难度' : '学情反馈未送达（离线或服务不可用）'}
+        </div>
+      )}
       <Quiz
         quiz={data}
         showInstantFeedback
         enableProgressBar
         allowNavigation
         appLocale={APP_LOCALE}
+        onQuestionSubmit={handleQuestionSubmit}
+        onComplete={handleComplete}
       />
       <style>{`
         .quiz-viewer .react-quiz-container { max-width: 100%; margin: 0; }

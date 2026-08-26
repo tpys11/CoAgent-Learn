@@ -5,6 +5,7 @@ import { LS, lsGet } from '../storage'
 import { api } from '../api'
 import { MiniMD } from './memoryView/MiniMD'
 import { PrefSummary } from './memoryView/PrefSummary'
+import MatchReport from './matchReport/MatchReport'
 
 /** 个人全局性记忆：基础信息字段（固定，纵向表单） */
 const BASIC_FIELDS = [
@@ -509,6 +510,11 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                           <p className="text-[10px] font-semibold text-dim uppercase tracking-wider">文档大纲</p>
                           <KnowledgeTree treeDocs={data?.treeDocs || []} progressItems={data?.progress.items || []} projectId={projectId} />
                         </div>
+                        )}
+
+                        {/* 学情匹配度报告（评估体系 §五）：盲区/曲线/正确率/路径树；初始化时不展示 */}
+                        {!initialEdit && projectId && (
+                          <MatchReport projectId={projectId} />
                         )}
 
                         {/* 进度：基础进度条；初始化时不展示 */}

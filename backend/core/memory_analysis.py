@@ -84,7 +84,7 @@ def update_memories(api_key, project_id, dialogue_id, db, session_id="default"):
                     continue
                 try:
                     _tl = json.loads(_t)
-                except Exception:
+                except json.JSONDecodeError:
                     continue
                 for _n in _tl if isinstance(_tl, list) else []:
                     if isinstance(_n, dict) and _n.get("title"):

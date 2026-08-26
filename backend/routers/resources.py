@@ -76,7 +76,7 @@ async def generate_domain(req: GenerateDomainReq):
 
 
 @router.get("/api/resources/capabilities")
-async def list_capabilities():
+def list_capabilities():
     """资源生成能力注册表：返回当前支持的资源形式（单一事实来源）。"""
     from services.resource_gen import list_capabilities as _list
     return {"capabilities": _list()}
@@ -91,14 +91,14 @@ async def generate_resource(req: ResourceGenReq):
 
 
 @router.get("/api/resources")
-async def list_resources(project_id: str = "default"):
+def list_resources(project_id: str = "default"):
     from core.postgres_client import pg_client
     rows = pg_client.execute("SELECT id, name, content, type, file_ext, file_size, created_at FROM resources WHERE project_id=%s ORDER BY created_at DESC", (project_id,))
     return {"resources": rows}
 
 
 @router.get("/api/resources/all")
-async def list_resources_all():
+def list_resources_all():
     """我的上传：聚合所有项目的资源（带项目名）"""
     from core.postgres_client import pg_client
     proj_names = {r["id"]: r["name"] for r in pg_client.execute("SELECT id, name FROM projects")}
@@ -109,7 +109,7 @@ async def list_resources_all():
 
 
 @router.post("/api/resources")
-async def save_resource(req: ResourceSave):
+def save_resource(req: ResourceSave):
     import time, hashlib
     from core.postgres_client import pg_client
     if req.append:
@@ -144,26 +144,36 @@ async def upload_resource(
     data = await file.read()
     name = file.filename or "file"
     ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
-    text = parse_file(name, data)
-    rid = hashlib.md5((name + project_id + str(time.time())).encode()).hexdigest()[:16]
-    up_dir = "/app/data/uploads"
-    os.makedirs(up_dir, exist_ok=True)
-    fname = rid + (("." + ext) if ext else "")
-    fpath = os.path.join(up_dir, fname)
-    try:
-        with open(fpath, "wb") as f:
-            f.write(data)
-    except Exception:
-        fpath = ""
-    pg_client.execute(
-        "INSERT INTO resources (id, name, content, project_id, type, file_ext, file_size, file_path) VALUES (%s,%s,%s,%s,'file',%s,%s,%s)",
-        (rid, name, text, project_id, ext, len(data), fpath),
-    )
-    return {"status": "ok", "id": rid, "name": name, "preview": text[:80]}
+
+    from starlette.concurrency import run_in_threadpool
+
+    def _ingest() -> tuple[str, str, str]:
+        """解析+落盘+入库（同步阻塞），线程池执行——解析器与 SQLite 都不得占用事件循环。"""
+        import time as _t
+        import hashlib as _h
+        text = parse_file(name, data)
+        rid = _h.md5((name + project_id + str(_t.time())).encode()).hexdigest()[:16]
+        up_dir = "/app/data/uploads"
+        os.makedirs(up_dir, exist_ok=True)
+        fname = rid + (("." + ext) if ext else "")
+        fpath = os.path.join(up_dir, fname)
+        try:
+            with open(fpath, "wb") as f:
+                f.write(data)
+        except Exception:
+            fpath = ""
+        pg_client.execute(
+            "INSERT INTO resources (id, name, content, project_id, type, file_ext, file_size, file_path) VALUES (%s,%s,%s,%s,'file',%s,%s,%s)",
+            (rid, name, text, project_id, ext, len(data), fpath),
+        )
+        return rid, name, text[:80]
+
+    rid, name, preview = await run_in_threadpool(_ingest)
+    return {"status": "ok", "id": rid, "name": name, "preview": preview}
 
 
 @router.delete("/api/resources/{rid}")
-async def delete_resource(rid: str):
+def delete_resource(rid: str):
     from core.postgres_client import pg_client
     pg_client.execute("DELETE FROM resources WHERE id=%s", (rid,))
     return {"status": "ok"}

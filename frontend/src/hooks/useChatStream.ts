@@ -2,8 +2,10 @@ import { useRef, useState, useCallback } from 'react'
 import type { Dispatch, SetStateAction, MutableRefObject } from 'react'
 import type { AgentConfig, Message, Dialogue, ReviewResult } from '../types'
 import { streamChatResponse, type ChatEvent } from '../sse'
+import { drainTake, feedThoughtChunk, newFenceState } from '../streaming'
 import { LS, lsGet, lsGetJSON, lsSetJSON } from '../storage'
 import { api } from '../api'
+import { subagentStore } from '../stores/subagentStore'
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 
@@ -54,13 +56,14 @@ export function useChatStream(args: UseChatStreamArgs) {
   const abortCtrlRef = useRef<AbortController | null>(null)
   const userStoppedRef = useRef(false)
   const requestIdRef = useRef<string | null>(null)
-  const fenceBufRef = useRef('')
-  const fenceInRef = useRef(false)
+  const fenceRef = useRef(newFenceState())
 
   const revealTick = () => {
     const pa = pendingAnswerRef.current
     if (pa) {
-      const take = Math.min(pa.length, pa.length > 40 ? 4 : 2)
+      // 自适应排水（速度修复）：每帧放行量随积压比例增长，≈6帧(约100ms)追平积压——
+      // 慢到哪显示到哪（小积压仍逐字平滑），快则贴模型原生速度，不再被固定2-4字/帧掐死
+      const take = drainTake(pa.length, 2)
       const out = pa.slice(0, take)
       pendingAnswerRef.current = pa.slice(take)
       setAllMessages(prev => {
@@ -74,7 +77,8 @@ export function useChatStream(args: UseChatStreamArgs) {
     }
     const pm = pendingMindRef.current
     if (pm) {
-      const take = Math.min(pm.text.length, 3)
+      // 同款自适应排水：思维链与回答保持一致节奏（100ms 追平）
+      const take = drainTake(pm.text.length, 1)
       const out = pm.text.slice(0, take)
       pm.text = pm.text.slice(take)
       if (pm.text.length === 0) pendingMindRef.current = null
@@ -148,14 +152,13 @@ export function useChatStream(args: UseChatStreamArgs) {
       setAllMessages(prev => ({ ...prev, [did || '']: [...(prev[did || ''] || []), { role: 'assistant', content: '' }] }))
     }
     setIsLoading(true)
-    if (!continuing) { setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = [] }
+    if (!continuing) { setFlowAgents([]); setFlowActiveAgent(null); setFlowMindchain([]); mindchainRef.current = []; subagentStore.reset() }
     setFlowStatus('正在等待模型响应…')
     setFlowActiveAgent(null)
     streamedRef.current = false
     userStoppedRef.current = false
     requestIdRef.current = null
-    fenceBufRef.current = ''
-    fenceInRef.current = false
+    fenceRef.current = newFenceState()
     pendingAnswerRef.current = ''
     pendingMindRef.current = null
     activeDidRef.current = did || null
@@ -170,12 +173,13 @@ export function useChatStream(args: UseChatStreamArgs) {
       const provKeys = lsGetJSON<Record<string, string>>(LS.providerKeys, {})
       const provider = lsGet(LS.provider, 'deepseek')
       const model = (() => {
-        const m = lsGet(LS.model, 'deepseek-v4-flash')
+        const m = lsGet(LS.model, 'deepseek-v4-flash-vision-exp')
         const alias: Record<string, string> = {
           'deepseek-chat': 'deepseek-v4-pro',
           'deepseek-reasoner': 'deepseek-v4-pro',
           'deepseek-pro': 'deepseek-v4-pro',
-          'deepseek-flash': 'deepseek-v4-flash',
+          'deepseek-flash': 'deepseek-v4-flash-vision-exp',
+          'deepseek-v4-flash': 'deepseek-v4-flash-vision-exp',   // 老用户存量 localStorage 迁移到视觉版
         }
         return alias[m] || m
       })()
@@ -264,21 +268,17 @@ export function useChatStream(args: UseChatStreamArgs) {
           setFlowAgents(prev => prev.includes(data.agent) ? prev : [...prev, data.agent])
           setFlowActiveAgent(data.agent)
           const c = data.chunk || ''
-          if (c === '`') {
-            fenceBufRef.current += '`'
-            if (fenceBufRef.current.length >= 3) { fenceInRef.current = !fenceInRef.current; fenceBufRef.current = '' }
-            return
-          }
-          fenceBufRef.current = ''
-          if (fenceInRef.current) return
-          if (!c) return
-          const cur = pendingMindRef.current
-          if (cur && cur.agent === data.agent) {
-            cur.text += c
-          } else {
-            pendingMindRef.current = { agent: data.agent, text: c }
-          }
-          ensureRevealLoop()
+          // 围栏检测必须逐字扫描：SSE 改按 chunk 原样直传（faa44b1）后 chunk 常为多字，
+          // 旧写法 `if (c === '\`')` 只认单字块，多字 chunk 会整体漏判导致代码围栏失效
+          const appended = feedThoughtChunk(fenceRef.current, c, data.agent, (ag, text) => {
+            const cur = pendingMindRef.current
+            if (cur && cur.agent === ag) {
+              cur.text += text
+            } else {
+              pendingMindRef.current = { agent: ag, text }
+            }
+          })
+          if (appended) ensureRevealLoop()
           return
         }
         if (data.type === 'answer_token') {
@@ -289,6 +289,11 @@ export function useChatStream(args: UseChatStreamArgs) {
             pendingAnswerRef.current += ch
             ensureRevealLoop()
           }
+          return
+        }
+        if (data.type === 'subagent') {
+          // 条目4：子agent实时事件 → 外置仓库（LiveStrip/子agent界面 经 useSyncExternalStore 订阅直播）
+          subagentStore.applySse(data)
           return
         }
         if (data.type === 'done') {
@@ -334,14 +339,29 @@ export function useChatStream(args: UseChatStreamArgs) {
         if (typingOn && streamedRef.current) {
           setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: finalContent, steps, think: thinkArr, special, retrievedImages, review }) }))
         } else if (typingOn) {
-          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: '', steps, think: thinkArr, special, retrievedImages, review }) }))
+          // 打字机必须钉住目标下标：isLoading 在动画结束前已复位，用户可再发消息——
+          // 旧写法盲写"数组末条"，会把旧回复的打字内容踩进新消息的占位气泡（真bug）
+          let typeIdx = -1
+          setAllMessages(prev => {
+            const next = upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: '', steps, think: thinkArr, special, retrievedImages, review })
+            typeIdx = next.length - 1
+            return { ...prev, [did || '']: next }
+          })
           let i = 0
           const iv = setInterval(() => {
             i += 3
             const chunk = finalContent.slice(0, i)
             setAllMessages(prev => {
               const arr = [...(prev[did || ''] || [])]
-              if (arr.length) arr[arr.length - 1] = { role: 'assistant', content: chunk, steps, think: thinkArr, special, retrievedImages, review }
+              const tgt = arr[typeIdx]
+              if (!tgt || tgt.role !== 'assistant') { clearInterval(iv); return prev }
+              if (arr.length !== typeIdx + 1) {
+                // 打字期间插入了新消息：本条立即终稿化并停表，绝不越过下标乱写
+                clearInterval(iv)
+                arr[typeIdx] = { role: 'assistant', content: finalContent, steps, think: thinkArr, special, retrievedImages, review }
+                return { ...prev, [did || '']: arr }
+              }
+              arr[typeIdx] = { role: 'assistant', content: chunk, steps, think: thinkArr, special, retrievedImages, review }
               return { ...prev, [did || '']: arr }
             })
             if (i >= finalContent.length) clearInterval(iv)

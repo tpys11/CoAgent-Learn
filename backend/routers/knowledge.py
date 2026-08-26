@@ -1,9 +1,10 @@
 """知识库上传、抓取、检索与文件解析路由。"""
 import hashlib
+import json
 import logging
 
 from core.background import submit
-from services.web_fetch import is_disallowed_host, fetch_site_text, MAX_LINK_CHARS
+from services.web_fetch import is_disallowed_host
 
 from fastapi import APIRouter, File, Form, UploadFile
 from pydantic import BaseModel
@@ -19,6 +20,22 @@ _IMG_MIME = {
     "webp": "image/webp",
     "bmp": "image/bmp",
 }
+
+
+def _describe_image_main(image_b64: str, prompt: str, mime: str, api_key: str = "") -> str:
+    """用视觉主模型生成图片描述（2026-08-22 移除独立视觉服务，图片理解统一走主模型）。
+    非流式一次调用（thinking=False 秒级返回）；失败抛异常由调用方转为错误响应。"""
+    from core.config import config as _cfg
+    from core.base_llm import DeepSeekLLM
+    key = api_key or getattr(_cfg, "DEEPSEEK_API_KEY", "")
+    if not key:
+        raise RuntimeError("未配置主模型 API Key（请求未携带且 .env 无 DEEPSEEK_API_KEY）")
+    llm = DeepSeekLLM(api_key=key, model="deepseek-v4-flash-vision-exp", thinking=False)
+    messages = [{"role": "user", "content": [
+        {"type": "text", "text": prompt},
+        {"type": "image_url", "image_url": {"url": f"data:{mime};base64," + image_b64}},
+    ]}]
+    return llm.chat(messages, temperature=0.2)
 
 
 def _process_upload(project_id, text, source, session_id, api_key, skip_context: bool = False, skip_graph: bool = False, content_hash: str = "") -> int:
@@ -72,7 +89,8 @@ def _store_image_vector(project_id: str, source: str, data: bytes, desc: str, ex
         from core.knowledge_service import add_image
         mime = _IMG_MIME.get(ext, "image/png")
         doc_id = _hl.md5((source + project_id).encode("utf-8")).hexdigest()[:24]
-        up_dir = "/app/data/uploads"
+        from core.db.base import DATA_DIR as _data_dir
+        up_dir = _os.path.join(_data_dir, "uploads")
         _os.makedirs(up_dir, exist_ok=True)
         fname = doc_id + (("." + ext) if ext else "")
         fpath = _os.path.join(up_dir, fname)
@@ -260,10 +278,43 @@ class KnowledgeUrlUpload(BaseModel):
     source: str = ""
     session_id: str = "default"
     api_key: str = ""
+    # 上传范围控制（来自 /upload-url/probe 的结构预览勾选）
+    include_groups: list[str] = []   # 目录/语言前缀白名单（空=不限制；无语言段内容不受影响）
+    exclude_groups: list[str] = []   # 目录/语言前缀黑名单
+    max_files: int | None = None     # 覆盖默认页数/文件数上限
+
+
+class UrlProbe(BaseModel):
+    url: str = ""
+
+
+# ── 链接摄取端点（保留 · 前端入口已下线 2026-08-24，见 resource/linkIngest/README）──
+@router.post("/api/knowledge/upload-url/probe")
+async def knowledge_upload_url_probe(req: UrlProbe):
+    """上传前轻量预扫描：只拉结构清单（GitHub 树 / sitemap），返回目录与语言分组
+    及默认勾选建议，供前端展示「将摄取什么」并让用户裁剪范围。"""
+    from urllib.parse import urlparse
+    url = (req.url or "").strip().split("#")[0]
+    if not url.startswith(("http://", "https://")):
+        return {"status": "error", "msg": "链接格式不正确（需以 http:// 或 https:// 开头）"}
+    host = (urlparse(url).hostname or "").strip()
+    if not host or is_disallowed_host(host):
+        return {"status": "error", "msg": "链接主机不可访问（私网/回环地址）"}
+    import asyncio
+    from services.web_fetch import probe_url
+
+    try:
+        return await asyncio.to_thread(probe_url, url)
+    except Exception as e:
+        logger.warning("链接预扫描失败 %s: %s", url, e)
+        return {"status": "error",
+                "msg": "无法识别该链接结构（站点不可访问或 GitHub 仓库不存在/私有）"}
 
 
 @router.post("/api/knowledge/upload-url")
-def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
+async def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
+    """URL 结构化摄取：来源分类（GitHub 仓库 / 文档站·sitemap / 单页兜底）→
+    多页结构化抓取 → 「站点(H1) → 页面(H2) → 页内标题」层级组装 → 现有入库管线。"""
     url = (req.url or "").strip().split("#")[0]
     if not url.startswith(("http://", "https://")):
         return {"status": "error", "msg": "链接格式不正确（需以 http:// 或 https:// 开头）"}
@@ -272,36 +323,100 @@ def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
     if not host or is_disallowed_host(host):
         return {"status": "error", "msg": "链接主机不可访问（私网/回环地址）"}
     source = (req.source or "").strip() or url
+
     text = ""
+    # 缓存键须包含范围选项指纹：同一 URL 不同勾选（如只要中文/只要某目录）是不同内容
+    # v3：大纲去重修复后旧组装文本作废，强制重新抓取
+    _opts_fp = json.dumps(
+        {"i": sorted(set(req.include_groups)), "e": sorted(set(req.exclude_groups)),
+         "m": req.max_files}, ensure_ascii=False, sort_keys=True)
+    _cache_key = "v3|" + hashlib.sha1(_opts_fp.encode("utf-8")).hexdigest()[:10] + "|" + url
     try:
+        import asyncio
         from core.db import get_kb_repo
-        _cached = get_kb_repo().get_preset_doc(url)
+        # 同步 SQLite 读必须离环，否则撞上写锁时整个事件循环停摆（busy_timeout 5s）
+        _cached = await asyncio.to_thread(get_kb_repo().get_preset_doc, _cache_key)
         if _cached and (_cached.get("content") or "").strip():
             text = _cached["content"]
     except Exception:
         pass
+
+    page_count = 0
     if not text:
+        import asyncio
+        from services.web_fetch import (
+            assemble_hierarchical,
+            classify_url,
+            derive_site_title,
+            fetch_github_repo_pages,
+            fetch_site_pages,
+            parse_github_url,
+        )
+
+        def _build() -> tuple[str, int]:
+            """阻塞 IO（多页并发抓取），线程池执行；返回 (组装后的层级 Markdown, 页数)。"""
+            kind = classify_url(url)
+            if kind == "github":
+                owner, repo, _ref = parse_github_url(url)
+                pages = fetch_github_repo_pages(
+                    url, max_files=req.max_files,
+                    include_groups=req.include_groups, exclude_groups=req.exclude_groups)
+                site_title = f"{owner}/{repo}"
+            else:
+                pages = fetch_site_pages(
+                    url, max_pages=req.max_files,
+                    include_groups=req.include_groups, exclude_groups=req.exclude_groups)
+                site_title = derive_site_title(url)
+            return assemble_hierarchical(site_title, pages), len(pages)
+
         try:
-            text = fetch_site_text(url)
+            text, page_count = await asyncio.to_thread(_build)
             if len(text.strip()) >= 20:
                 try:
-                    get_kb_repo().save_preset_doc(url, source, text[:MAX_LINK_CHARS])
+                    from core.db import get_kb_repo as _g
+                    _g().save_preset_doc(_cache_key, source, text)  # 全量缓存，不再截断
                 except Exception:
                     pass
         except Exception as e:
-            logger.warning("链接抓取失败 %s: %s", url, e)
-            return {"status": "error", "msg": "抓取链接失败（链接不可访问或内容无法解析）"}
+            logger.warning("链接结构化摄取失败 %s: %s", url, e)
+            return {"status": "error", "msg": "抓取链接失败（链接不可访问、站点需登录，或 GitHub 私有仓库不支持）"}
     if len(text.strip()) < 20:
         return {"status": "error", "msg": "链接内容过短或无法解析为文本"}
+    logger.info("URL 摄取完成 url=%s pages=%s chars=%s", url, page_count or "缓存", len(text))
     if wait:
+        from starlette.concurrency import run_in_threadpool
         _ch = hashlib.sha256(text.encode("utf-8")).hexdigest()
-        chunks = _process_upload(req.project_id, text, source, req.session_id, req.api_key, True, True, _ch)
+        chunks = await run_in_threadpool(
+            _process_upload, req.project_id, text, source, req.session_id, req.api_key, True, True, _ch)
         if chunks == -1:
             return {"status": "ok", "chunks": 0, "duplicate": True, "source": source, "msg": "内容已存在，已跳过重复入库"}
         return {"status": "ok", "chunks": chunks, "source": source}
     _ch2 = hashlib.sha256(text.encode("utf-8")).hexdigest()
     submit(_process_upload, req.project_id, text, source, req.session_id, req.api_key, True, True, _ch2)
-    return {"status": "processing", "msg": "正在处理，稍后刷新查看"}
+    return {"status": "processing", "msg": f"正在处理（{page_count} 页），稍后刷新查看" if page_count else "正在处理，稍后刷新查看"}
+
+
+# 支持格式单一事实源（对齐 DeepTutor SupportedFileTypesInfo）：前端 accept 与后端校验共用
+UPLOAD_CONSTRAINTS = {
+    "extensions": [".txt", ".md", ".markdown", ".py", ".js", ".ts", ".json", ".csv",
+                    ".html", ".css", ".log", ".yaml", ".yml",
+                    ".pdf", ".docx", ".pptx", ".xlsx", ".epub"],
+    "accept": ".txt,.md,.markdown,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml,.pdf,.docx,.pptx,.xlsx,.epub",
+    "max_file_size_bytes": 50 * 1024 * 1024,
+}
+
+
+@router.get("/api/knowledge/upload-constraints")
+def knowledge_upload_constraints():
+    """上传约束（支持扩展名 / accept 串 / 大小上限），前端据此渲染 accept 与预校验。"""
+    return UPLOAD_CONSTRAINTS
+
+
+@router.get("/api/knowledge/upload-progress")
+def knowledge_upload_progress(project_id: str, source: str):
+    """后台摄取进度（done/total 内容块），供前端轮询展示。"""
+    from core.knowledge_service import get_progress
+    return get_progress(project_id, source)
 
 
 @router.post("/api/knowledge/upload-file")
@@ -313,20 +428,45 @@ async def knowledge_upload_file(
     file: UploadFile = File(...),
 ):
     from core.file_parser import parse_file
+    from starlette.concurrency import run_in_threadpool
     data = await file.read()
+    _ALLOWED_EXTS = {"txt", "md", "markdown", "py", "js", "ts", "json", "csv", "html", "css",
+                     "log", "yaml", "yml", "pdf", "docx", "pptx", "xlsx", "epub",
+                     "png", "jpg", "jpeg", "gif", "webp", "bmp"}
+    if len(data) > UPLOAD_CONSTRAINTS["max_file_size_bytes"]:
+        return {"status": "error", "msg": "文件超过大小上限（50MB）"}
+    _fname0 = file.filename or "file"
+    _ext0 = _fname0.rsplit(".", 1)[-1].lower() if "." in _fname0 else ""
+    if _ext0 and _ext0 not in _ALLOWED_EXTS:
+        return {"status": "error",
+                "msg": f"不支持的文件格式 .{_ext0}（支持：txt/md/pdf/docx/pptx/xlsx/epub 及常见文本、代码、图片文件）"}
     fname = file.filename or "file"
     _IMG_EXTS = {"png", "jpg", "jpeg", "gif", "webp", "bmp"}
     _ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
     if _ext in _IMG_EXTS:
         import base64 as _b64
-        from core.vision_service import describe_image
         _b64str = _b64.b64encode(data).decode()
-        desc = describe_image(_b64str, "请详细描述这张图片的内容，包括文字、图表、概念，用于知识库检索。")
-        if desc.startswith("[视觉服务]"):
-            return {"status": "error", "msg": desc}
+        try:
+            # 视觉 LLM 是同步 HTTP 调用，必须离环执行（参照 DeepTutor #777 纪律）
+            desc = await run_in_threadpool(
+                _describe_image_main,
+                _b64str,
+                "请详细描述这张图片的内容，包括文字、图表、概念，用于知识库检索。",
+                _IMG_MIME.get(_ext, "image/png"),
+                api_key,
+            )
+        except Exception as e:
+            logger.warning("图片描述失败 fname=%s", fname, exc_info=True)
+            return {"status": "error", "msg": "图片描述失败：" + str(e)[:150]}
         text = "【图片内容】" + desc
     else:
-        text = parse_file(fname, data)
+        if _ext == "pdf":
+            # PDF 走可配置解析引擎（ParsePort：pymupdf4llm/mineru/mathpix，失败自动降级）
+            from core import parse_service
+            text, engine = await run_in_threadpool(parse_service.parse_document, fname, data)
+            logger.info("PDF 解析 fname=%s engine=%s chars=%s", fname, engine, len(text))
+        else:
+            text = await run_in_threadpool(parse_file, fname, data)
     if not text.strip():
         return {"status": "error", "msg": "无法解析该文件内容（可能为空或格式不支持）"}
     source = fname
@@ -346,13 +486,13 @@ async def knowledge_upload_file(
 
 
 @router.get("/api/knowledge/list")
-async def knowledge_list(project_id: str = "default"):
+def knowledge_list(project_id: str = "default"):
     from core.knowledge_service import list_docs
     return {"docs": list_docs(project_id)}
 
 
 @router.get("/api/knowledge/list-all")
-async def knowledge_list_all():
+def knowledge_list_all():
     from core.knowledge_service import list_docs
     from core.postgres_client import pg_client
     from core.db import get_kb_repo
@@ -367,32 +507,24 @@ async def knowledge_list_all():
 
 
 @router.get("/api/kb/{project_id}")
-async def kb_list(project_id: str):
+def kb_list(project_id: str):
     from core.knowledge_service import list_docs
     return list_docs(project_id)
 
 
 @router.delete("/api/knowledge/delete")
-async def knowledge_delete(project_id: str = "default", source: str = ""):
+def knowledge_delete(project_id: str = "default", source: str = ""):
     from core.knowledge_service import delete_doc
     n = delete_doc(project_id, source)
     return {"status": "ok", "deleted": n, "graph_relations": 0}
 
 
-@router.post("/api/vision")
-async def vision_understand(req: dict):
-    from core.vision_service import describe_image
-    image = req.get("image", "")
-    prompt = req.get("prompt", "请描述这张图片的内容")
-    desc = describe_image(image, prompt)
-    return {"status": "ok", "description": desc}
-
-
 @router.post("/api/file-to-text")
 async def file_to_text(file: UploadFile = File(...)):
     from core.file_parser import parse_file
+    from starlette.concurrency import run_in_threadpool
     data = await file.read()
-    text = parse_file(file.filename or "file", data)
+    text = await run_in_threadpool(parse_file, file.filename or "file", data)
     if not text.strip():
         return {"status": "error", "msg": "无法解析该文件内容"}
     return {"status": "ok", "text": text[:50000], "chars": len(text)}

@@ -49,6 +49,40 @@ export interface AgentConfig {
 export interface MindchainItem {
   agent: string
   content: string
+  /** 条目4：该条目关联的子agent运行档案 id（前端渲染按钮，点开子agent窗口） */
+  run_ids?: string[]
+}
+
+/** 条目4：子agent实时 SSE 载荷（信封 type='subagent'，event 为内部阶段） */
+export interface SubAgentSse {
+  type: 'subagent'
+  event: 'start' | 'input' | 'delta' | 'end'
+  run_id: string
+  agent?: string
+  title?: string
+  /** input 事件：主agent发给子的指令（截断版，完整看档案接口） */
+  content?: string
+  /** delta 事件：增量片段（v1 预留） */
+  text?: string
+  status?: 'ok' | 'error'
+  summary?: string
+}
+
+/** 条目4：子agent运行档案（GET /api/chat/subagent/{run_id} 返回 {run}） */
+export interface SubAgentRun {
+  id: string
+  project_id: string
+  dialogue_id: string
+  agent: string
+  title: string
+  /** 主agent发给子的完整指令 */
+  input: string
+  status: 'running' | 'ok' | 'error'
+  /** 最终报告/整理结果 */
+  output: string
+  events: Array<Record<string, unknown>>
+  created_at: string
+  finished_at: string | null
 }
 
 export interface ReviewIssue {
@@ -226,3 +260,15 @@ export const DEFAULT_AGENTS: AgentConfig[] = [
     example: '',
   },
 ]
+
+/** 学情匹配度报告（GET /api/report/match，评估体系 §五 v1） */
+export interface MatchReportData {
+  overall: { score: number | null; label: string; basis: 'quiz' | 'level_score' | 'empty' }
+  level_now: { score: number | null; evidence?: string; updated_at?: string }
+  trend: Array<{ t: string | null; score: number }>
+  kp_accuracy: Array<{ kp: string; total: number; correct: number; accuracy: number }>
+  weak_points: string[]
+  strong_points: string[]
+  path_tree: Array<{ name: string; status: 'blind' | 'learning' | 'mastered' | 'untouched'; children: MatchReportData['path_tree'] }>
+  thresholds: { blind: number; master: number }
+}

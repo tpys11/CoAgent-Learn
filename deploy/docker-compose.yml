@@ -29,17 +29,18 @@
       - "8000:8000"
     env_file:
       - ../.env
-    command: sh -c "pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --quiet sqlite-vec python-multipart pypdf python-docx python-pptx rank_bm25 jieba pytest mcp && uvicorn main:app --host 0.0.0.0 --port 8000"
+    environment:
+      # 主数据统一落地宿主机仓库根 data/（与本地 start-backend.bat 同库，终结双库分叉）
+      - SQLITE_DIR=/app-data
+    command: sh -c "pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --quiet sqlite-vec python-multipart pypdf python-docx python-pptx rank_bm25 jieba pytest mcp pymupdf4llm trafilatura markitdown llama-index-core && uvicorn main:app --host 0.0.0.0 --port 8000"
     volumes:
       - ../backend:/app
-      - ../agents:/app/agents
       - ../skills:/app/skills
       - ../tests:/app/tests
-      - ../data:/app/data
+      - ../data:/app-data
     networks:
       - guashuai-network
 
 networks:
   guashuai-network:
     driver: bridge
-

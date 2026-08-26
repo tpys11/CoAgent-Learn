@@ -11,7 +11,7 @@ from core.db import get_kb_repo
 _db = get_kb_repo()
 logger = logging.getLogger("coagent.knowledge")
 
-# BM25 缓存：project_id -> (ids, tokenized_docs, bm25)
+# BM25 缓存：(project_id, table) -> (ids, tokenized_docs, bm25)；table 维度隔离不同索引代际
 _bm25_cache = {}
 
 # embedding 模型（懒加载）
@@ -32,15 +32,17 @@ def _get_embedder():
 
 
 def _embed_local(texts: list[str]) -> list[list[float]]:
-    """本地模型批量向量化；模型不可用时降级为哈希伪向量（仍可检索但效果差）"""
+    """本地模型批量向量化；模型不可用时降级为确定性伪向量（仍可检索但效果差）。
+    伪向量维度跟随 EMBEDDING_DIM 配置（2026-08-23 修复：原硬编码 512，插入 1024 维表必炸）。"""
     emb = _get_embedder()
     if emb:
         return emb.encode(texts, normalize_embeddings=True).tolist()
-    # 降级：确定性伪向量（相同文本得到相同向量）
+    from core.config import config as _cfg
+    dim = int(getattr(_cfg, "EMBEDDING_DIM", 1024) or 1024)
     vecs = []
     for t in texts:
-        v = [0.0] * 512
-        for i, ch in enumerate((t or "")[:512]):
+        v = [0.0] * dim
+        for i, ch in enumerate((t or "")[:dim]):
             v[i] = (ord(ch) % 100) / 100.0
         vecs.append(v)
     return vecs
@@ -133,13 +135,14 @@ def _tokenize(text: str) -> list:
         return list((text or "").lower())
 
 
-def _get_bm25(project_id: str):
-    """获取项目 BM25 索引（带缓存，数据变更后失效）"""
-    cache = _bm25_cache.get(project_id)
+def _get_bm25(project_id: str, table: str):
+    """获取项目 BM25 索引（按版本表隔离缓存；数据变更后失效）"""
+    key = (project_id, table)
+    cache = _bm25_cache.get(key)
     if cache is not None:
         return cache
     try:
-        rows = _db.get_kb_docs(project_id)
+        rows = _db.get_kb_docs(project_id, table=table)
     except Exception:
         return None
     if not rows:
@@ -148,12 +151,13 @@ def _get_bm25(project_id: str):
     tokenized = [_tokenize(r["content"]) for r in rows]
     from rank_bm25 import BM25Okapi
     bm25 = BM25Okapi(tokenized)
-    _bm25_cache[project_id] = (ids, tokenized, bm25)
-    return _bm25_cache[project_id]
+    _bm25_cache[key] = (ids, tokenized, bm25)
+    return _bm25_cache[key]
 
 
 def _invalidate_bm25(project_id: str):
-    _bm25_cache.pop(project_id, None)
+    for key in [k for k in list(_bm25_cache) if k[0] == project_id]:
+        _bm25_cache.pop(key, None)
 
 
 def _is_junk_heading(name: str) -> bool:
@@ -252,28 +256,141 @@ def _chunk_text(text: str, size: int = 512, overlap: int = 50) -> list:
     return chunks
 
 
+def _split_markdown_sections(text: str) -> list[tuple[str, str]]:
+    """按 markdown 标题把文本切成节：返回 [(标题路径, 节正文)]。
+    - ``` 围栏内的 # 是代码注释不是标题（复用 _extract_tree 的围栏语义）
+    - 垃圾标题过滤复用 _is_junk_heading
+    - 首个标题前的导语也保留为一节（路径为空串）"""
+    sections: list[tuple[str, str]] = []
+    stack: list[tuple[int, str]] = []   # (层级, 标题名)
+    buf: list[str] = []
+
+    def emit():
+        nonlocal buf
+        body = "\n".join(buf).strip()
+        buf = []
+        path = " > ".join(name for _, name in stack)
+        if body:
+            sections.append((path, body))
+
+    in_fence = False
+    for line in (text or "").splitlines():
+        s = line.strip()
+        if s.startswith("```"):
+            in_fence = not in_fence
+            buf.append(line)
+            continue
+        if not in_fence and s.startswith("#"):
+            m = re.match(r"^(#{1,6})\s+(.+)$", line.rstrip())
+            if m and not _is_junk_heading(m.group(2).strip()):
+                emit()                                   # 先收束上一节（旧栈）
+                lvl, name = len(m.group(1)), m.group(2).strip()
+                while stack and stack[-1][0] >= lvl:
+                    stack.pop()
+                stack.append((lvl, name))
+                buf.append(line)                         # 标题行留在节内
+                continue
+        buf.append(line)
+    emit()
+    return sections
+
+
+def _chunk_markdown(text: str, size: int, overlap: int) -> list:
+    """按标题结构切块：每节一块；超长节内部回退句子级窗口切分。
+    每块自带标题路径前缀（如「第2章 动力学 > 2.3 角动量」），保证块自含检索上下文。"""
+    out: list = []
+    for path, body in _split_markdown_sections(text):
+        prefix = (path + "\n") if path else ""
+        if len(body) <= size:
+            out.append(prefix + body)
+        else:
+            for piece in _chunk_text(body, size=size, overlap=overlap):
+                out.append(prefix + piece)
+    return [c.strip() for c in out if c and c.strip()]
+
+
+# ── 上传进度（内存态：进程重启即清；仅 URL 摄取链路轮询用） ──────────────
+_progress: dict = {}
+
+
+def _set_progress(project_id: str, source: str, done: int, total: int) -> None:
+    _progress[(project_id, source)] = {"status": "ok", "done": int(done), "total": int(total)}
+
+
+def get_progress(project_id: str, source: str) -> dict:
+    return _progress.get((project_id, source)) or {"status": "none"}
+
+
 def add_document(project_id: str, text: str, source: str = "", session_id: str = "", api_key: str = "", skip_context: bool = False) -> int:
     """上传文本：切块 → 向量化 → 入库，返回入库块数。
     已移除「每块 LLM 生成上下文前缀」（_gen_context，2026-08-15 删除）：
     对齐 DeepTutor，上传链路零 LLM 调用，几百块从分钟级降到秒级；
     上下文连续性由 512/50 重叠切块保证，检索质量由 bge+BM25+rerank 保证。
     skip_context 参数保留仅为兼容旧调用方，不再起作用。"""
-    chunks = _chunk_text(text)
+    from core.config import config as _cfg
+    size = int(getattr(_cfg, "KB_CHUNK_SIZE", 512) or 512)
+    overlap = int(getattr(_cfg, "KB_CHUNK_OVERLAP", 50) or 0)
+    mode = (getattr(_cfg, "KB_CHUNK_MODE", "auto") or "auto").lower()
+    has_heading = bool(re.search(r"^#{1,6}\s+\S", text or "", flags=re.M))
+    # 结构切块仅在文本确有有效标题时启用（window 模式 / 无标题文本 → 句子级窗口）
+    chunker = (getattr(_cfg, "KB_CHUNKER", "self") or "self").lower()
+    if chunker == "llamaindex" and has_heading:
+        # 刀1·库式借用：LlamaIndex MarkdownNodeParser 切块（对照日志+失败回退自研，门面/下游零改动）
+        try:
+            from llama_index.core.node_parser import MarkdownNodeParser
+            from llama_index.core.schema import Document
+            _li: list = []
+            for _n in MarkdownNodeParser().get_nodes_from_documents([Document(text=text)]):
+                _md = _n.metadata or {}
+                _path = " > ".join([_md.get(k, "") for k in ("Header_1", "Header_2", "Header_3", "Header_4") if _md.get(k)])
+                _t = ((_path + "\n") if _path else "" + _n.get_content()).strip()
+                if _t:
+                    _li.append(_t)
+            _self = _chunk_markdown(text, size=size, overlap=overlap)
+            logger.info("[chunker] llamaindex=%d块/均长%.0f vs self=%d块/均长%.0f",
+                        len(_li), (sum(map(len, _li)) / len(_li)) if _li else 0,
+                        len(_self), (sum(map(len, _self)) / len(_self)) if _self else 0)
+            chunks = _li or _chunk_markdown(text, size=size, overlap=overlap) or _chunk_text(text, size=size, overlap=overlap)
+        except Exception:
+            logger.warning("[chunker] llamaindex 切块失败，回退自研", exc_info=True)
+            chunks = _chunk_markdown(text, size=size, overlap=overlap) or \
+                     _chunk_text(text, size=size, overlap=overlap)
+    elif mode in ("markdown", "auto") and has_heading:
+        chunks = _chunk_markdown(text, size=size, overlap=overlap) or \
+                 _chunk_text(text, size=size, overlap=overlap)
+    else:
+        chunks = _chunk_text(
+            text,
+            size=size,
+            overlap=overlap,
+        )
     if not chunks:
         return 0
+    # 解析当前 embedding 签名对应的活跃索引版本（签名变化时自动开新物理表，旧表保留只读）
+    table = _db.resolve_active_text_table()
+    # 清同源旧块（跨版本）：改切块参数/更新内容后重传，避免新旧边界块混存污染检索
+    try:
+        removed = _db.delete_kb_by_source(project_id, source)
+        if removed:
+            logger.info("入库前清理同源旧块 source=%s removed=%s", source, removed)
+            _invalidate_bm25(project_id)
+    except Exception:
+        logger.warning("清理同源旧块失败 source=%s", source, exc_info=True)
     # 入库前确认向量表维度与当前 embedding 配置一致；不一致直接报错，不再静默返回 0 块
-    _db.ensure_vector_dim("kb_vectors")
-    # 向量化（分批，模型一次 32 条）
+    _db.ensure_vector_dim(table)
+    # 向量化（分批，模型一次 32 条）；每批写进度供前端轮询
     embeddings = []
     batch = 32
+    _set_progress(project_id, source, done=0, total=len(chunks))
     for i in range(0, len(chunks), batch):
         embeddings.extend(_embed(chunks[i:i + batch]))
+        _set_progress(project_id, source, done=min(i + batch, len(chunks)), total=len(chunks))
     # 入库（批量单事务：大批量从逐条 commit 降到一次 commit，避免分钟级锁窗口）
     bulk = []
     for i, c in enumerate(chunks):
         uid = hashlib.md5((source + str(i) + c[:80]).encode("utf-8")).hexdigest()[:24]
         bulk.append((uid, project_id, source, i, session_id, False, chunks[i], embeddings[i]))
-    _db.upsert_kb_vectors_bulk(bulk)
+    _db.upsert_kb_vectors_bulk(bulk, table=table)
     # 标题树：复用文档自身的形式分类逻辑（markdown 标题层级），供项目记忆知识图谱
     try:
         if source:
@@ -339,7 +456,8 @@ def search(project_id: str, query: str, top_k: int = 3, include_images: bool = T
     from core.config import config as _cfg
     if getattr(_cfg, "KB_MODE", "full") == "light":
         include_images = False
-    docs = _db.get_kb_docs(project_id)
+    _table = _db.peek_active_text_table()
+    docs = _db.get_kb_docs(project_id, table=_table)
     # 图片跨模态检索（仅项目有图片向量时触发，避免无谓调用 VL 接口）
     image_hits: list = []
     if include_images:
@@ -350,28 +468,32 @@ def search(project_id: str, query: str, top_k: int = 3, include_images: bool = T
             logger.warning("图片跨模态检索失败 project_id=%s", project_id, exc_info=True)
     if not docs:
         return image_hits
-    # 1. 向量检索（取 3 倍候选）
+    # 活跃索引版本：检索与 BM25 只在当前代际进行（旧版本保留只读，不参与检索）
+    table = _table
+    rrf_k = int(getattr(_cfg, "KB_RRF_K", 60) or 60)
+    fetch_mult = max(1, int(getattr(_cfg, "KB_FETCH_MULT", 3) or 3))
+    # 1. 向量检索（召回倍数候选）
     qvec = _embed([query])[0]
-    vec_rows = _db.search_kb_vectors(project_id, qvec, k=top_k * 3)
+    vec_rows = _db.search_kb_vectors(project_id, qvec, k=top_k * fetch_mult, table=table)
     vec = {r["doc_id"]: r for r in vec_rows}
     # 2. BM25 检索
-    bm = _get_bm25(project_id)
+    bm = _get_bm25(project_id, table)
     bm_hits = {}
     if bm:
         ids, tokenized, bm25 = bm
         scores = bm25.get_scores(_tokenize(query))
         order = sorted(range(len(scores)), key=lambda i: -scores[i])
-        for idx in order[: top_k * 3]:
+        for idx in order[: top_k * fetch_mult]:
             if scores[idx] > 0:
                 bm_hits[ids[idx]] = idx
-    # 3. RRF 融合：score = sum(1/(60+rank))
+    # 3. RRF 融合：score = sum(1/(k+rank))
     rrf = {}
     for i, h in enumerate(vec.keys()):
-        rrf[h] = 1.0 / (60 + i)
+        rrf[h] = 1.0 / (rrf_k + i)
     if bm:
         sorted_bm = sorted(bm_hits.keys(), key=lambda k: bm_hits[k])
-        for i, k in enumerate(sorted_bm[: top_k * 3]):
-            rrf[k] = rrf.get(k, 0) + 1.0 / (60 + i)
+        for i, k in enumerate(sorted_bm[: top_k * fetch_mult]):
+            rrf[k] = rrf.get(k, 0) + 1.0 / (rrf_k + i)
     # 4. 合并：向量结果 + BM25 独有命中
     all_hits = {}
     for h, r in vec.items():
@@ -394,8 +516,8 @@ def search(project_id: str, query: str, top_k: int = 3, include_images: bool = T
                                      "session_id": d["session_id"], "has_context": bool(d["has_context"])},
                         "distance": None,
                     }
-    # 5. 按 RRF 分数取候选（多取一些供 P3 精排）
-    candidate_n = max(top_k * 6, 12)
+    # 5. 按 RRF 分数取候选（多取一些供 P3 精排；候选池=召回倍数×2，保底 12）
+    candidate_n = max(top_k * fetch_mult * 2, 12)
     ranked = sorted(rrf.keys(), key=lambda k: -rrf[k])[:candidate_n]
     cands = []
     for h in ranked:
@@ -482,8 +604,8 @@ def list_docs(project_id: str) -> list:
     生成类（gen: 前缀 / 生成· / 对话生成·）条目过滤不显示（资源库保留，左栏不展示）。"""
     # 从 resources 表取全部资源（原文已存）
     res_rows = _db.get_resources(project_id)
-    # 从 kb_vectors 取已有向量块（按 source 聚合）
-    vec_rows = _db.get_kb_docs(project_id)
+    # 从活跃版本向量表取已有向量块（按 source 聚合；旧版本代际不计入展示）
+    vec_rows = _db.get_kb_docs(project_id, table=_db.peek_active_text_table())
     vec_map: dict[str, int] = {}
     for r in vec_rows:
         src = r["source"] or "未命名"

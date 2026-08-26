@@ -10,6 +10,18 @@ class KbRepo:
     def create_vector_tables(self):
         self._db.create_vector_tables()
 
+    def embedding_signature(self) -> str:
+        return self._db.embedding_signature()
+
+    def list_text_version_tables(self) -> list:
+        return self._db.list_text_version_tables()
+
+    def peek_active_text_table(self) -> str:
+        return self._db.peek_active_text_table()
+
+    def resolve_active_text_table(self) -> str:
+        return self._db.resolve_active_text_table()
+
     def vector_table_dim(self, table):
         return self._db.vector_table_dim(table)
 
@@ -31,8 +43,8 @@ class KbRepo:
     def upsert_kb_vector(self, *args, **kwargs):
         self._db.upsert_kb_vector(*args, **kwargs)
 
-    def upsert_kb_vectors_bulk(self, items):
-        self._db.upsert_kb_vectors_bulk(items)
+    def upsert_kb_vectors_bulk(self, items, table="kb_vectors"):
+        self._db.upsert_kb_vectors_bulk(items, table=table)
 
     def upsert_image_vectors_bulk(self, items):
         self._db.upsert_image_vectors_bulk(items)
@@ -65,7 +77,7 @@ class KbRepo:
                 continue
             try:
                 t = _json.loads(r["tree"])
-            except Exception:
+            except _json.JSONDecodeError:
                 continue
             if isinstance(t, list):
                 out.append({"source": r.get("source"), "tree": t})
@@ -74,36 +86,54 @@ class KbRepo:
     def delete_kb_tree_by_source(self, project_id, source):
         return self._db.delete_kb_tree_by_source(project_id, source)
 
+    def _text_tables_for_read(self, tables=None) -> list:
+        """读取类方法的候选表序列：显式指定 > 全部版本（最新在前）。
+        老文档可能停留在旧版本表里，读取时逐版本回退保证仍可读。"""
+        if tables:
+            return [self._db._safe_table(t) for t in tables]
+        return self._db.list_text_version_tables()
+
     def find_chunk_index(self, project_id, source, probe):
-        """在 kb_vectors 找 content 含 probe 的最小 chunk 序号（节点正文起始块定位）。"""
+        """在文本向量各版本中找 content 含 probe 的最小 chunk 序号（节点正文起始块定位）。
+        活跃版本优先，未命中自动回退旧版本（老文档不重灌也能定位）。"""
         if not probe:
             return None
-        rows = self._db.execute(
-            "SELECT MIN(chunk) c FROM kb_vectors WHERE project_id=? AND source=? AND content LIKE ?",
-            (project_id, source, "%" + probe + "%"),
-        )
-        return rows[0]["c"] if rows and rows[0]["c"] is not None else None
+        for table in self._text_tables_for_read():
+            rows = self._db.execute(
+                f"SELECT MIN(chunk) c FROM {table} WHERE project_id=? AND source=? AND content LIKE ?",
+                (project_id, source, "%" + probe + "%"),
+            )
+            if rows and rows[0]["c"] is not None:
+                return rows[0]["c"]
+        return None
 
     def get_kb_chunk(self, project_id, source, chunk):
-        """按 source+chunk 序号取单块原文（旧数据兜底用）。"""
-        rows = self._db.execute(
-            "SELECT content FROM kb_vectors WHERE project_id=? AND source=? AND chunk=?",
-            (project_id, source, chunk),
-        )
-        return rows[0]["content"] if rows else ""
+        """按 source+chunk 序号取单块原文：活跃版本优先，跨版本回退。"""
+        for table in self._text_tables_for_read():
+            rows = self._db.execute(
+                f"SELECT content FROM {table} WHERE project_id=? AND source=? AND chunk=?",
+                (project_id, source, chunk),
+            )
+            if rows:
+                return rows[0]["content"]
+        return ""
 
     def get_kb_chunks(self, project_id, source):
-        """按 source 取全部向量块（chunk 序），供阅读器全文重组。"""
-        return self._db.execute(
-            "SELECT chunk, content FROM kb_vectors WHERE project_id=? AND source=? ORDER BY chunk",
-            (project_id, source),
-        )
+        """按 source 取全部向量块（chunk 序），供阅读器全文重组：含该来源的版本优先。"""
+        for table in self._text_tables_for_read():
+            rows = self._db.execute(
+                f"SELECT chunk, content FROM {table} WHERE project_id=? AND source=? ORDER BY chunk",
+                (project_id, source),
+            )
+            if rows:
+                return rows
+        return []
 
     def search_kb_vectors(self, *args, **kwargs):
         return self._db.search_kb_vectors(*args, **kwargs)
 
-    def get_kb_docs(self, project_id):
-        return self._db.get_kb_docs(project_id)
+    def get_kb_docs(self, project_id, table="kb_vectors"):
+        return self._db.get_kb_docs(project_id, table=table)
 
     def get_resources(self, project_id):
         """resources 表：取项目全部已上传资源（name + type + content 长度）"""
@@ -120,10 +150,12 @@ class KbRepo:
         )
         return rows[0]["content"] if rows else ""
 
-    def count_kb_by_source(self, project_id, source):
-        """按 source 统计向量块数（幽灵 hash 自愈判定用）"""
+    def count_kb_by_source(self, project_id, source, table=None):
+        """按 source 统计向量块数（幽灵 hash 自愈判定用）。
+        默认只查活跃版本——切版后旧代际计数归零，现有自愈逻辑自动允许内容重灌进新版本。"""
+        table = self._db.peek_active_text_table() if not table else self._db._safe_table(table)
         rows = self._db.execute(
-            "SELECT COUNT(*) c FROM kb_vectors WHERE project_id=? AND source=?",
+            f"SELECT COUNT(*) c FROM {table} WHERE project_id=? AND source=?",
             (project_id, source),
         )
         return rows[0]["c"] if rows else 0
@@ -137,8 +169,12 @@ class KbRepo:
         return rows[0]["source"] if rows else ""
 
     def list_project_ids(self):
-        rows = self._db.execute("SELECT DISTINCT project_id FROM kb_vectors")
-        return [r["project_id"] for r in rows]
+        """全部文本向量版本的并集去重（旧版本里的项目也算存在）"""
+        ids: dict = {}
+        for table in self._text_tables_for_read():
+            for r in self._db.execute(f"SELECT DISTINCT project_id FROM {table}"):
+                ids[r["project_id"]] = True
+        return list(ids)
 
     def delete_kb_by_source(self, project_id, source):
         return self._db.delete_kb_by_source(project_id, source)
