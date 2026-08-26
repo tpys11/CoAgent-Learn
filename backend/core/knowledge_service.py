@@ -1,12 +1,29 @@
 # -*- coding: utf-8 -*-
-"""知识库服务：文本切块 → 向量化 → SQLite(sqlite-vec) 存储/检索（按项目隔离）
-替换原 Chroma 实现；embedding 用 bge-small-zh-v1.5（中文，512维）。
+"""知识库服务门面：上传编排 → 向量化 → SQLite(sqlite-vec) 存储/检索（按项目隔离）。
+embedding 用 bge-small-zh-v1.5（中文，512维）→ 现统一 Qwen3-VL-Embedding-8B@1024。
+
+B1 拆分（2026-08-27）：按职责迁出三个模块并在本门面回收命名空间——
+- core.chunkers      切块器族（句子级/markdown/语义断点 A3/标题树）
+- core.embeddings    向量化族（本地/API/伪向量降级 + VL 跨模态）
+- core.ingest_enhancers  入库增强器（B1 问题生成 / B4-lite 关系抽取，db 显式注入）
+回收后 ks._embed / ks._chunk_semantic / ks.enhance_questions 等
+测试补丁面照旧可 patch（运行时名解析走本模块命名空间）。
+本文件保留：BM25 检索 / 上传编排 add_document / 混合检索 search / 重排 / 列表与删除。
 """
 import hashlib
 import json
 import logging
 import re
 
+from core.chunkers import (_chunk_markdown, _chunk_semantic, _chunk_text,
+                            _extract_tree, _is_junk_heading, _percentile,
+                            _split_markdown_sections, _split_sentences)
+from core.embeddings import (_embed, _embed_api, _embed_local, _embed_vl,
+                             _get_embedder, _vl_key, embed_vl_images,
+                             embed_vl_query)
+from core.ingest_enhancers import (KG_MAX_EDGES, KG_MAX_NAMES, KG_REL_WHITELIST,
+                                   _flatten_tree_names, enhance_questions,
+                                   extract_kg_edges)
 from core.db import get_kb_repo
 
 _db = get_kb_repo()
@@ -14,117 +31,6 @@ logger = logging.getLogger("coagent.knowledge")
 
 # BM25 缓存：(project_id, table) -> (ids, tokenized_docs, bm25)；table 维度隔离不同索引代际
 _bm25_cache = {}
-
-# embedding 模型（懒加载）
-_embedder = None
-
-
-def _get_embedder():
-    """加载本地部署 embedding 模型（模型名/路径由配置 EMBEDDING_LOCAL_MODEL 指定，默认 bge-small-zh-v1.5）"""
-    global _embedder
-    if _embedder is None:
-        try:
-            from core.config import config as _cfg
-            from sentence_transformers import SentenceTransformer
-            _embedder = SentenceTransformer(getattr(_cfg, "EMBEDDING_LOCAL_MODEL", "BAAI/bge-small-zh-v1.5"))
-        except Exception:
-            _embedder = False
-    return _embedder or None
-
-
-def _embed_local(texts: list[str]) -> list[list[float]]:
-    """本地模型批量向量化；模型不可用时降级为确定性伪向量（仍可检索但效果差）。
-    伪向量维度跟随 EMBEDDING_DIM 配置（2026-08-23 修复：原硬编码 512，插入 1024 维表必炸）。"""
-    emb = _get_embedder()
-    if emb:
-        return emb.encode(texts, normalize_embeddings=True).tolist()
-    from core.config import config as _cfg
-    dim = int(getattr(_cfg, "EMBEDDING_DIM", 1024) or 1024)
-    vecs = []
-    for t in texts:
-        v = [0.0] * dim
-        for i, ch in enumerate((t or "")[:dim]):
-            v[i] = (ord(ch) % 100) / 100.0
-        vecs.append(v)
-    return vecs
-
-
-def _embed_api(texts: list[str]) -> list[list[float]]:
-    """OpenAI 兼容 embedding API（Qwen3-VL-Embedding-8B，MRL dimensions=1024）"""
-    import requests as _req
-    from core.config import config as _cfg
-    url = (_cfg.EMBEDDING_BASE_URL or "").rstrip("/") + "/embeddings"
-    h = {"Authorization": "Bearer " + _cfg.EMBEDDING_API_KEY, "Content-Type": "application/json"}
-    resp = _req.post(url, json={"model": _cfg.EMBEDDING_MODEL, "input": list(texts), "dimensions": int(_cfg.EMBEDDING_DIM)}, headers=h, timeout=60)
-    resp.raise_for_status()
-    data = resp.json().get("data") or []
-    data.sort(key=lambda d: d.get("index", 0))  # 部分服务乱序返回，按 index 复原
-    vecs = [d["embedding"] for d in data]
-    # 维度断言：与配置不符立即报错（向量表维度固定，维度变了需清库重灌）
-    for v in vecs:
-        if len(v) != _cfg.EMBEDDING_DIM:
-            raise RuntimeError(
-                f"embedding 维度 {len(v)} 与配置 EMBEDDING_DIM={_cfg.EMBEDDING_DIM} 不符；"
-                "切换 embedding 后端后请清空知识库重新入库"
-            )
-    return vecs
-
-
-def _embed(texts: list[str]) -> list[list[float]]:
-    """批量向量化，按配置路由：api 后端 > 本地模型 > 伪向量降级"""
-    from core.config import config as _cfg
-    if _cfg.EMBEDDING_BACKEND == "api" and _cfg.EMBEDDING_API_KEY:
-        try:
-            return _embed_api(texts)
-        except Exception:
-            logger.warning("embedding API 失败，降级本地", exc_info=True)
-    return _embed_local(texts)
-
-
-def _vl_key() -> str:
-    """视觉/跨模态向量 key：VL_API_KEY 优先，未配置复用硅基流动 embedding key"""
-    from core.config import config as _cfg
-    return getattr(_cfg, "VL_API_KEY", "") or getattr(_cfg, "EMBEDDING_API_KEY", "")
-
-
-def _embed_vl(inputs: list) -> list[list[float]]:
-    """Qwen3-VL-Embedding：把文本/图片映射到同一 4096 维空间（跨模态检索基础）。
-    inputs 元素为字符串（文本）或 {"image": data_uri}（图片）。"""
-    key = _vl_key()
-    if not key:
-        raise RuntimeError("未配置 VL_API_KEY / EMBEDDING_API_KEY")
-    import requests as _req
-    from core.config import config as _cfg
-    url = (getattr(_cfg, "VL_BASE_URL", "https://api.siliconflow.cn/v1") or "").rstrip("/") + "/embeddings"
-    model = getattr(_cfg, "VL_MODEL", "Qwen/Qwen3-VL-Embedding-8B")
-    dim = int(getattr(_cfg, "VL_EMBEDDING_DIM", 1024) or 1024)
-    resp = _req.post(
-        url,
-        json={"model": model, "input": inputs, "dimensions": dim},
-        headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"},
-        timeout=120,
-    )
-    resp.raise_for_status()
-    data = resp.json().get("data") or []
-    data.sort(key=lambda d: d.get("index", 0))
-    vecs = [d["embedding"] for d in data]
-    for v in vecs:
-        if len(v) != dim:
-            raise RuntimeError(
-                f"VL embedding 维度 {len(v)} 与配置 VL_EMBEDDING_DIM={dim} 不符"
-            )
-    return vecs
-
-
-def embed_vl_images(image_data_uris: list) -> list[list[float]]:
-    """图片向量化（data URI 列表）"""
-    return _embed_vl([{"image": u} for u in image_data_uris])
-
-
-def embed_vl_query(text: str) -> list[float] | None:
-    """文本查询向量化（跨模态：文本查询与图片向量同空间）"""
-    vecs = _embed_vl([(text or "")])
-    return vecs[0] if vecs else None
 
 
 def _tokenize(text: str) -> list:
@@ -164,215 +70,6 @@ def _get_bm25(project_id: str, table: str):
 def _invalidate_bm25(project_id: str):
     for key in [k for k in list(_bm25_cache) if k[0] == project_id]:
         _bm25_cache.pop(key, None)
-
-
-def _is_junk_heading(name: str) -> bool:
-    """垃圾标题判定：代码块外的残留代码行 / 过长的伪标题（如 ── xxx ──、=> 2、results = [）"""
-    n = name.strip()
-    if not (2 <= len(n) <= 60):
-        return True
-    if n.startswith(("──", "=>", "=", "|", "//", "#")):
-        return True
-    if "://" in n or n.count("_") > 4:
-        return True
-    return False
-
-
-def _extract_tree(text: str) -> list:
-    """从文档文本提取标题层级树（文档大纲：markdown 标题即章节层级）
-    标题行开新节点；标题间的正文累积进节点 content（预览截断 2000 字）；
-    ``` 围栏内的 # 行（代码注释）跳过；垃圾标题过滤。
-    文档开头（首个标题前）的正文不归属任何节点。无标题时返回空列表（前端显示空树占位）。"""
-    def _append_content(node: dict, line: str):
-        c = node.get("content", "")
-        if len(c) >= 2000:
-            return
-        piece = line.strip()
-        if not piece:
-            return
-        node["content"] = (c + "\n" + piece) if c else piece
-        if len(node["content"]) > 2000:
-            node["content"] = node["content"][:2000]
-    tree = []
-    stack: list[tuple[int, dict]] = []
-    pending: dict | None = None  # 正在累积正文的节点（最近的标题）
-    in_fence = False  # ``` 代码块内：# 是注释不是标题
-    for line in (text or "").splitlines():
-        s = line.strip()
-        if s.startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-        m = re.match(r"^(#{1,6})\s+(.+)$", line.rstrip()) if s.startswith("#") else None
-        if m:
-            lvl = len(m.group(1))
-            name = m.group(2).strip()
-            if _is_junk_heading(name):
-                continue
-            node = {"name": name, "children": []}
-            while stack and stack[-1][0] >= lvl:
-                stack.pop()
-            if stack:
-                stack[-1][1]["children"].append(node)
-            else:
-                tree.append(node)
-            stack.append((lvl, node))
-            pending = node
-        else:
-            if not stack:
-                continue  # 文档开头正文（标题前）不归属任何节点
-            _append_content(pending if pending is not None else stack[-1][1], line)
-    return tree
-
-
-def _split_sentences(text: str) -> list:
-    """句子级切分：中文句号/问号/感叹号/分号 + 换行视为句界（对齐 DeepTutor 的句子级切块思想）"""
-    # 先按行拆，再按中文/英文句末标点拆
-    pieces = re.split(r"(?<=[。！？!?；;])\s*|\n", text)
-    return [p.strip() for p in pieces if p.strip()]
-
-
-def _chunk_text(text: str, size: int = 512, overlap: int = 50) -> list:
-    """切块：句子级 + 512 字符窗口 + 50 重叠（照 DeepTutor SentenceSplitter chunk_size=512, chunk_overlap=50）。
-    按句子累积成块，超过 size 则收束当前块并开新块；相邻块保留 overlap 的重叠尾巴避免语义被切断。"""
-    text = (text or "").strip()
-    if not text:
-        return []
-    sentences = _split_sentences(text)
-    chunks: list = []
-    cur = ""
-    for s in sentences:
-        if len(s) > size:
-            # 超长单句：先收当前块，再硬切该句（带重叠）
-            if cur:
-                chunks.append(cur)
-            s = s[:size]  # 超长句截断，避免单块过大
-            cur = s
-            continue
-        if cur and len(cur) + 1 + len(s) > size:
-            # 当前块放不下：收束（保留尾部 overlap 作下块开头）
-            tail = cur[-overlap:] if overlap and len(cur) > overlap else ""
-            chunks.append(cur)
-            cur = (tail + " " + s).strip() if tail else s
-        else:
-            cur = (cur + " " + s).strip() if cur else s
-    if cur:
-        chunks.append(cur)
-    return chunks
-
-
-def _split_markdown_sections(text: str) -> list[tuple[str, str]]:
-    """按 markdown 标题把文本切成节：返回 [(标题路径, 节正文)]。
-    - ``` 围栏内的 # 是代码注释不是标题（复用 _extract_tree 的围栏语义）
-    - 垃圾标题过滤复用 _is_junk_heading
-    - 首个标题前的导语也保留为一节（路径为空串）"""
-    sections: list[tuple[str, str]] = []
-    stack: list[tuple[int, str]] = []   # (层级, 标题名)
-    buf: list[str] = []
-
-    def emit():
-        nonlocal buf
-        body = "\n".join(buf).strip()
-        buf = []
-        path = " > ".join(name for _, name in stack)
-        if body:
-            sections.append((path, body))
-
-    in_fence = False
-    for line in (text or "").splitlines():
-        s = line.strip()
-        if s.startswith("```"):
-            in_fence = not in_fence
-            buf.append(line)
-            continue
-        if not in_fence and s.startswith("#"):
-            m = re.match(r"^(#{1,6})\s+(.+)$", line.rstrip())
-            if m and not _is_junk_heading(m.group(2).strip()):
-                emit()                                   # 先收束上一节（旧栈）
-                lvl, name = len(m.group(1)), m.group(2).strip()
-                while stack and stack[-1][0] >= lvl:
-                    stack.pop()
-                stack.append((lvl, name))
-                buf.append(line)                         # 标题行留在节内
-                continue
-        buf.append(line)
-    emit()
-    return sections
-
-
-def _chunk_markdown(text: str, size: int, overlap: int) -> list:
-    """按标题结构切块：每节一块；超长节内部回退句子级窗口切分。
-    每块自带标题路径前缀（如「第2章 动力学 > 2.3 角动量」），保证块自含检索上下文。"""
-    out: list = []
-    for path, body in _split_markdown_sections(text):
-        prefix = (path + "\n") if path else ""
-        if len(body) <= size:
-            out.append(prefix + body)
-        else:
-            for piece in _chunk_text(body, size=size, overlap=overlap):
-                out.append(prefix + piece)
-    return [c.strip() for c in out if c and c.strip()]
-
-
-def _percentile(vals: list, p: float) -> float:
-    """线性插值百分位（与 numpy.percentile 默认 linear 语义逐点一致），免 numpy 硬依赖。"""
-    s = sorted(vals)
-    if not s:
-        return 0.0
-    k = (len(s) - 1) * p / 100.0
-    f = int(k)
-    c = min(f + 1, len(s) - 1)
-    return s[f] + (s[c] - s[f]) * (k - f)
-
-
-def _cos_dist(a: list, b: list) -> float:
-    """余弦距离 1-cos；零向量视为同向（距离 0，不产生断点）。"""
-    da = sum(x * x for x in a) ** 0.5
-    db = sum(x * x for x in b) ** 0.5
-    if da <= 0 or db <= 0:
-        return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
-    return 1.0 - max(-1.0, min(1.0, dot / (da * db)))
-
-
-def _chunk_semantic(text: str, embed_fn, size: int = 512, overlap: int = 50,
-                    buffer: int = 1, pct: float = 95) -> list:
-    """语义断点切块（A3）：算法与默认参数照抄 llama-index-core SemanticSplitterNodeParser
-    （容器实装源码摘证 2026-08-27：buffer=1 时组合句=i±1 邻句拼接后整句嵌入，
-    相邻组合句余弦距离超过 95 百分位处开新块）。句切复用 _split_sentences；
-    超长语义组内部回退 _chunk_text（对齐 _chunk_markdown 超长节模式）。
-    embed_fn(texts)->vecs 注入式（生产 _embed / 测试确定性假函数）。
-    软着陆：<2 句 / 嵌入异常 / 返回数不符 → _chunk_text 兜底，本函数绝不抛。"""
-    text = (text or "").strip()
-    if not text:
-        return []
-    sents = _split_sentences(text)
-    if len(sents) < 2:
-        return _chunk_text(text, size=size, overlap=overlap)
-    try:
-        combined = [" ".join(sents[max(0, i - buffer): i + buffer + 1])
-                    for i in range(len(sents))]
-        vecs = embed_fn(combined)
-        if not vecs or len(vecs) != len(sents):
-            return _chunk_text(text, size=size, overlap=overlap)
-        dists = [_cos_dist(vecs[i], vecs[i + 1]) for i in range(len(sents) - 1)]
-        thresh = _percentile(dists, pct)
-        groups: list[list[str]] = [[sents[0]]]
-        for i in range(1, len(sents)):
-            if dists[i - 1] > thresh:
-                groups.append([])
-            groups[-1].append(sents[i])
-        chunks: list = []
-        for g in groups:
-            piece = " ".join(g)
-            if len(piece) <= size:
-                chunks.append(piece)
-            else:
-                chunks.extend(_chunk_text(piece, size=size, overlap=overlap))
-        return [c.strip() for c in chunks if c and c.strip()]
-    except Exception:
-        return _chunk_text(text, size=size, overlap=overlap)
 
 
 # ── 上传进度（内存态：进程重启即清；仅 URL 摄取链路轮询用） ──────────────
@@ -427,155 +124,6 @@ def fetch_section_texts(project_id: str, source: str,
     except Exception:
         logger.warning("章节全文聚合失败 project=%s source=%s", project_id, source, exc_info=True)
         return {}
-
-
-def enhance_questions(project_id: str, chunks: list, doc_ids: list, source: str = "",
-                      api_key: str = "", group_size: int = 12, max_groups: int = 8,
-                      llm_factory=None) -> int:
-    """闭环四·B1 元数据增强：入库后为每块生成 ≤3 个「该块能具体回答、别处不易找到」的问题，
-    存旁路表 kb_gen_questions 并拼入 BM25 语料（换说法提问可命中）。
-    提示词骨架中文化移植自 llama-index QuestionsAnsweredExtractor（独特性约束保留）。
-    预算：每 group_size 块一次 flash 调用，单文档封顶 max_groups 组（超出不增强不阻断）；
-    任何组失败 = 该组无问题文本，绝不抛。门控：KB_META_ENHANCE=0 关；无 key 静默跳过。
-    llm_factory(key)->llm 测试注入缝；生产走 DeepSeekLLM(thinking=False)。
-    返回成功写库的块数。"""
-    from core.config import config as _cfg
-    if not int(getattr(_cfg, "KB_META_ENHANCE", 1) or 0):
-        return 0
-    key = api_key or getattr(_cfg, "DEEPSEEK_API_KEY", "")
-    if not key or not chunks or not doc_ids:
-        return 0
-    if llm_factory is None:
-        def llm_factory(k):
-            from engine.pipeline_v2 import DEFAULT_MODEL
-            from core.base_llm import DeepSeekLLM
-            return DeepSeekLLM(api_key=k, model=DEFAULT_MODEL, thinking=False)
-    try:
-        llm = llm_factory(key)
-    except Exception:
-        logger.warning("[B1] 问题增强 LLM 构造失败，跳过", exc_info=True)
-        return 0
-    system = (
-        "你是知识库预处理器。为以下每段文本各生成不超过3个问题：该段能具体回答、"
-        "且在其他地方不易找到答案的问题。\n"
-        '只输出 JSON：[{"i": 段落序号(从0), "questions": ["问题1", "问题2"]}]'
-    )
-    written = 0
-    n_groups = min(max_groups, (len(chunks) + group_size - 1) // group_size)
-    for g in range(n_groups):
-        lo, hi = g * group_size, min((g + 1) * group_size, len(chunks))
-        batch = chunks[lo:hi]
-        user = "\n".join(f"段{i}：{(c or '')[:400]}" for i, c in enumerate(batch))
-        try:
-            raw = llm.chat([{"role": "system", "content": system},
-                            {"role": "user", "content": user}], temperature=0.2)
-            m = re.search(r'\[[\s\S]*\]', raw or "")
-            data = json.loads(m.group()) if m else []
-            rows = []
-            for item in data if isinstance(data, list) else []:
-                try:
-                    i = int(item.get("i"))
-                    qs = [str(q).strip() for q in (item.get("questions") or []) if str(q).strip()][:3]
-                except Exception:
-                    continue
-                if qs and 0 <= i < len(batch):
-                    rows.append((project_id, source, doc_ids[lo + i],
-                                 json.dumps(qs, ensure_ascii=False)))
-            if rows:
-                _db.upsert_gen_questions_bulk(rows)
-                written += len(rows)
-        except Exception:
-            logger.warning("[B1] 第%d组问题生成失败（该组无问题文本，继续）", g, exc_info=True)
-    return written
-
-
-KG_REL_WHITELIST = ("先修", "相关")
-KG_MAX_NAMES = 24      # 抽取输入的章节名清单上限（成本/防幻觉白名单可靠性）
-KG_MAX_EDGES = 12      # 单文档关系边封顶
-
-
-def _flatten_tree_names(tree: list) -> list[str]:
-    """标题树拍平去重保序（父前子后），供 KG 抽取输入清单。"""
-    out: list[str] = []
-    seen: set = set()
-
-    def walk(nodes):
-        for n in nodes or []:
-            if not isinstance(n, dict):
-                continue
-            name = str(n.get("name") or "").strip()
-            if name and name not in seen:
-                seen.add(name)
-                out.append(name)
-            walk(n.get("children"))
-
-    walk(tree)
-    return out
-
-
-def extract_kg_edges(project_id: str, source: str, tree: list, api_key: str = "",
-                     llm_factory=None) -> int:
-    """闭环五·B4-lite：从标题树推断章节间先修/相关关系，存 kg_edges。
-    输入只喂章节名清单（≤24 名+来源标题，拍板③）——成本最低、端点白名单防幻觉最可靠。
-    解析纪律照抄 DeepTutor spine（防御式 coerce：非 list→[]、逐项 strip、rel 白名单、
-    端点必须逐字命中清单——防 LLM 幻觉出新名字）。任何失败→0 不阻断上传。
-    llm_factory 注入缝/门控哲学与 B1 enhance_questions 同款。返回入库边数。"""
-    from core.config import config as _cfg
-    if not int(getattr(_cfg, "KB_KG_EDGES", 1) or 0):
-        return 0
-    key = api_key or getattr(_cfg, "DEEPSEEK_API_KEY", "")
-    names = _flatten_tree_names(tree)[:KG_MAX_NAMES]
-    if not key or len(names) < 2:
-        return 0
-    if llm_factory is None:
-        def llm_factory(k):
-            from engine.pipeline_v2 import DEFAULT_MODEL
-            from core.base_llm import DeepSeekLLM
-            return DeepSeekLLM(api_key=k, model=DEFAULT_MODEL, thinking=False)
-    try:
-        llm = llm_factory(key)
-    except Exception:
-        logger.warning("[KG] 关系抽取 LLM 构造失败，跳过", exc_info=True)
-        return 0
-    system = (
-        "你是课程设计专家。以下是一份文档《" + (source or "未命名") + "》的章节名清单"
-        "（按文档顺序）。推断章节之间的概念依赖关系：rel 只能取「先修」（学 A 前需先学 B，"
-        "输出 src=A, dst=B）或「相关」（同层关联）。\n"
-        '只输出 JSON：{"edges": [{"src": "章节名", "dst": "章节名", "rel": "先修"}]}，'
-        "最多 " + str(KG_MAX_EDGES) + " 条；src 和 dst 必须逐字取自清单，不许编造。"
-    )
-    user = "\n".join(f"{i + 1}. {n}" for i, n in enumerate(names))
-    name_set = set(names)
-    try:
-        raw = llm.chat([{"role": "system", "content": system},
-                        {"role": "user", "content": user}], temperature=0.2)
-        m = re.search(r'\{[\s\S]*\}', raw or "")
-        data = json.loads(m.group()) if m else {}
-        edges, seen = [], set()
-        for e in (data.get("edges") or []) if isinstance(data, dict) else []:
-            try:
-                src = str(e.get("src") or "").strip()
-                dst = str(e.get("dst") or "").strip()
-                rel = str(e.get("rel") or "").strip()
-            except Exception:
-                continue
-            if rel not in KG_REL_WHITELIST or src == dst:
-                continue
-            if src not in name_set or dst not in name_set:   # 白名单：端点幻觉直接丢弃
-                continue
-            pair = (src, dst, rel)
-            if pair not in seen:
-                seen.add(pair)
-                edges.append(pair)
-            if len(edges) >= KG_MAX_EDGES:
-                break
-        if edges:
-            _db.upsert_kg_edges_bulk(
-                [(project_id, source, s, d, r) for s, d, r in edges])
-        return len(edges)
-    except Exception:
-        logger.warning("[KG] 关系抽取失败（不阻断上传）source=%s", source, exc_info=True)
-        return 0
 
 
 def add_document(project_id: str, text: str, source: str = "", session_id: str = "", api_key: str = "", skip_context: bool = False) -> int:
@@ -674,7 +222,7 @@ def add_document(project_id: str, text: str, source: str = "", session_id: str =
     # 内部静默容错，此层再兜一道与 B1 同款保险）
     try:
         if source and tree:
-            extract_kg_edges(project_id, source, tree, api_key=api_key)
+            extract_kg_edges(project_id, source, tree, api_key=api_key, db=_db)
     except Exception:
         logger.warning("关系抽取失败（不阻断上传）source=%s", source, exc_info=True)
     # 闭环四·B1：入库后为每块生成 ≤3 个可答问题存旁路表（换说法提问的 BM25 命中文本）。
@@ -682,7 +230,7 @@ def add_document(project_id: str, text: str, source: str = "", session_id: str =
     # 此层再兜一道与标题树同级的保险）。
     try:
         enhance_questions(project_id, chunks, [b[0] for b in bulk],
-                          source=source, api_key=api_key)
+                          source=source, api_key=api_key, db=_db)
     except Exception:
         logger.warning("问题增强失败（不阻断上传）source=%s", source, exc_info=True)
     _invalidate_bm25(project_id)

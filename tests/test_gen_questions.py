@@ -128,9 +128,9 @@ def test_enhance_happy_path(monkeypatch, quiet_cfg):
                                    {"i": 1, "questions": ["乙如何？", "乙为何？"]}],
                                   ensure_ascii=False)])
     repo = _Repo()
-    monkeypatch.setattr(ks, "_db", repo)
     n = ks.enhance_questions("p1", ["甲块内容。", "乙块内容。"], ["id0", "id1"],
-                             api_key="k", llm_factory=lambda key: llm, source="s1")
+                             api_key="k", llm_factory=lambda key: llm, source="s1",
+                             db=repo)
     assert n == 2 and len(repo.items) == 2
     assert repo.items[0] == ("p1", "s1", "id0", json.dumps(["甲是什么？"], ensure_ascii=False))
     assert "乙为何？" in repo.items[1][3]
@@ -141,19 +141,19 @@ def test_enhance_group_failure_continues(monkeypatch, quiet_cfg):
     llm = FakeChatLLM([RuntimeError("第一组炸"),
                        json.dumps([{"i": 0, "questions": ["补救？"]}], ensure_ascii=False)])
     repo = _Repo()
-    monkeypatch.setattr(ks, "_db", repo)
     n = ks.enhance_questions("p1", ["块" + str(i) + "内容。" for i in range(13)],
                              ["id" + str(i) for i in range(13)],
-                             api_key="k", llm_factory=lambda key: llm, source="s1")
+                             api_key="k", llm_factory=lambda key: llm, source="s1",
+                             db=repo)
     assert n == 1 and repo.items[0][2] == "id12"
 
 
 def test_enhance_all_groups_fail_never_blocks(monkeypatch, quiet_cfg):
     llm = FakeChatLLM([RuntimeError("全炸")])
     repo = _Repo()
-    monkeypatch.setattr(ks, "_db", repo)
     n = ks.enhance_questions("p1", ["内容。", "内容。"], ["a", "b"],
-                             api_key="k", llm_factory=lambda key: llm, source="s1")
+                             api_key="k", llm_factory=lambda key: llm, source="s1",
+                             db=repo)
     assert n == 0 and repo.items == []
 
 
@@ -181,9 +181,9 @@ def test_enhance_over_cap_skips_extra(monkeypatch, quiet_cfg):
                               ensure_ascii=False)
 
     repo = _Repo()
-    monkeypatch.setattr(ks, "_db", repo)
     n = ks.enhance_questions("p1", ["块"] * 100, ["id" + str(i) for i in range(100)],
-                             api_key="k", llm_factory=lambda key: _CountLLM(), source="s1")
+                             api_key="k", llm_factory=lambda key: _CountLLM(), source="s1",
+                             db=repo)
     assert len(calls) == 8 and n == 96  # 8 组 × 12 块
 
 

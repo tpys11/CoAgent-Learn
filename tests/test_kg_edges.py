@@ -53,29 +53,37 @@ class FakeChatLLM:
         return r
 
 
+class _KgRepo:
+    """upsert 捕获桩（B1 拆分拍板 (b)：db 显式注入替代 ks._db 补丁）。"""
+
+    def __init__(self):
+        self.items = []
+
+    def upsert_kg_edges_bulk(self, items):
+        self.items.extend(items)
+
+
 @pytest.fixture()
 def kg_on(monkeypatch):
     monkeypatch.setattr(_cfg, "KB_KG_EDGES", 1)
     monkeypatch.setattr(_cfg, "DEEPSEEK_API_KEY", "test-key", raising=False)
 
 
-def test_extract_happy_path(db, monkeypatch, kg_on):
+def test_extract_happy_path(kg_on):
     llm = FakeChatLLM([json.dumps(
         {"edges": [{"src": "运动学", "dst": "牛顿定律", "rel": "先修"},
                    {"src": "角动量", "dst": "牛顿定律", "rel": "相关"}]},
         ensure_ascii=False)])
-    wrote = []
-    monkeypatch.setattr(ks._db, "upsert_kg_edges_bulk",
-                        lambda items: wrote.extend(items), raising=False)
+    repo = _KgRepo()
     n = ks.extract_kg_edges("p1", "力学讲义", TREE, api_key="k",
-                            llm_factory=lambda key: llm)
+                            llm_factory=lambda key: llm, db=repo)
     assert n == 2
-    assert ("p1", "力学讲义", "运动学", "牛顿定律", "先修") in wrote
+    assert ("p1", "力学讲义", "运动学", "牛顿定律", "先修") in repo.items
     # 输入口径：章节名清单在 user，来源标题在 system prompt
     assert any("运动学" in p for p in llm.user_prompts)
 
 
-def test_extract_hallucinated_endpoints_dropped(db, monkeypatch, kg_on):
+def test_extract_hallucinated_endpoints_dropped(kg_on):
     """端点不在清单 → 白名单直接丢弃（防幻觉核心断言）；自环/rel 越界同滤。"""
     llm = FakeChatLLM([json.dumps({"edges": [
         {"src": "四脚坐标系", "dst": "牛顿定律", "rel": "先修"},   # src 幻觉
@@ -83,11 +91,10 @@ def test_extract_hallucinated_endpoints_dropped(db, monkeypatch, kg_on):
         {"src": "运动学", "dst": "角动量", "rel": "依赖"},          # rel 越界
         {"src": "运动学", "dst": "牛顿定律", "rel": "先修"},       # 唯一合法
     ]}, ensure_ascii=False)])
-    wrote = []
-    monkeypatch.setattr(ks._db, "upsert_kg_edges_bulk",
-                        lambda items: wrote.extend(items), raising=False)
-    n = ks.extract_kg_edges("p1", "s", TREE, api_key="k", llm_factory=lambda key: llm)
-    assert n == 1 and wrote[0][2:] == ("运动学", "牛顿定律", "先修")
+    repo = _KgRepo()
+    n = ks.extract_kg_edges("p1", "s", TREE, api_key="k",
+                            llm_factory=lambda key: llm, db=repo)
+    assert n == 1 and repo.items[0][2:] == ("运动学", "牛顿定律", "先修")
 
 
 def test_extract_crash_returns_zero(db, monkeypatch, kg_on):
