@@ -14,6 +14,23 @@ import { LS, lsGet, lsGetJSON, lsSetJSON } from '../../storage'
 
 const md = new MarkdownIt({ html: false, linkify: true, breaks: true })
 
+/** markdown 渲染缓存（照 AssistantMessage.renderMdCached）：历史消息/版本预览 content 不变，
+ *  命中即跳过 markdown-it 全量解析——流式期间该组件整体重渲染频繁，缓存是卡顿第二道闸。 */
+const _mdCache = new Map<string, string>()
+const renderMdCached = (text: string) => {
+  const key = text || ''
+  let h = _mdCache.get(key)
+  if (h === undefined) {
+    h = md.render(key)
+    if (_mdCache.size > 200) {
+      const first = _mdCache.keys().next().value
+      if (first !== undefined) _mdCache.delete(first)
+    }
+    _mdCache.set(key, h)
+  }
+  return h
+}
+
 interface VersionItem { id: string; content: string; created_at?: string }
 interface ChatMsg { role: 'user' | 'assistant'; content: string }
 
@@ -149,7 +166,7 @@ export default function ResourceChatPage({ resourceId, resourceName, projectId, 
                 <div key={i} className="self-start w-full max-w-[92%] flex flex-col gap-1">
                   <span className="text-[10px] text-dim">AI · 修订版全文</span>
                   <div className="w-full text-sm leading-7 card-surface px-4 py-3"
-                       dangerouslySetInnerHTML={{ __html: md.render(m.content) }} />
+                       dangerouslySetInnerHTML={{ __html: renderMdCached(m.content) }} />
                 </div>
               )
             ))}
@@ -191,7 +208,7 @@ export default function ResourceChatPage({ resourceId, resourceName, projectId, 
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-5">
               <div className="md-answer-body text-[12px] leading-relaxed"
-                   dangerouslySetInnerHTML={{ __html: md.render(previewContent || '（空）') }} />
+                   dangerouslySetInnerHTML={{ __html: renderMdCached(previewContent || '（空）') }} />
             </div>
           </div>
         )}

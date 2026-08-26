@@ -109,10 +109,10 @@ def test_resource_edit_happy_path(env, monkeypatch):
     frames = asyncio.run(_collect_timed(eng.stream_response(_mk_req("r1"))))
     assert frames[0]["type"] == "start" and frames[-1]["type"] == "done"
     assert frames[-1]["reply"] == "新版讲义内容"
-    # 真流式断言：首个 answer 帧远早于全部完成（6 token × 0.06s + 泵轮询 ≈ 0.4s+）
-    assert len(answer_times) == 6
-    assert answer_times[0] < 0.3, f"首个 answer 帧过晚到达 {answer_times[0]:.2f}s——疑似先囤后吐"
-    assert answer_times[-1] - answer_times[0] > 0.15, "answer 帧间隔无展开——疑似一次性批发"
+    # flush 节流契约：6 字符攒批（≥24字或≥80ms）→ 帧数远少于字符数（字符级帧雨=回退信号）
+    assert 0 < len(answer_times) <= 3, f"answer 帧数异常 {len(answer_times)}——疑似回退到逐字符帧"
+    # 时序展开仍在：慢速 LLM 下帧间隔应被 80ms flush 闸拉开（全囤到底=一次性批发也是回退）
+    assert answer_times[-1] - answer_times[0] > 0.08, "answer 帧间隔无展开——疑似先囤后吐"
     # 写回：同名同 type 新行（版本历史 +1）
     rows = env.execute("SELECT name, type, content FROM resources WHERE project_id='pX' ORDER BY rowid")
     assert len(rows) == 2 and rows[1]["content"] == "新版讲义内容"

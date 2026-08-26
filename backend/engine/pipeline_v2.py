@@ -13,6 +13,7 @@ import json
 import logging
 import queue
 import threading
+import time
 
 from fastapi.responses import StreamingResponse
 
@@ -160,21 +161,38 @@ async def _stream_resource_edit(req):
                 msgs.append({"role": role, "content": str(m["content"] or "")[:1500]})
             msgs.append({"role": "user", "content": user_prompt})
 
-            # 真流式（照搬主对话 _v2_worker 机制）：LLM 在后台线程逐 token 推队列，
-            # SSE 泵边读边吐——与主对话观感一致，不再"先囤后吐"。
-            # 关键：用 on_content 通道（纯正文）——thinking 默认开启，on_token 会混入
-            # reasoning_content 思考流（"我们需要理解用户请求…"），把草稿当答案直播即用户所见症状。
+            # 真流式 + flush 节流（照 opencode/主流产品批量 flush 思想）：逐字符帧会把 SSE
+            # 打成字符级 HTTP 帧雨（帧开销 50+ 字节运 1 字节货）+ 前端逐帧 setState 重渲染风暴。
+            # worker 攒 buf，≥24 字符或 ≥80ms 才投递一帧——帧量降一个数量级，观感仍是逐句流出。
+            # 仍走 on_content 通道（纯正文）——thinking 默认开启，on_token 会混入
+            # reasoning_content 思考流（"我们需要理解用户请求…"），把草稿当答案直播即此前症状。
             token_queue: queue.Queue = queue.Queue()
             collected: list = []
+            FLUSH_CHARS, FLUSH_SECS = 24, 0.08
 
             def _worker():
                 try:
                     llm = _make_llm(req)
+                    buf: list = []
+                    last_flush = time.monotonic()
+
+                    def _on_content(ch: str):
+                        nonlocal last_flush
+                        collected.append(ch)
+                        buf.append(ch)
+                        now = time.monotonic()
+                        if len(buf) >= FLUSH_CHARS or (now - last_flush) >= FLUSH_SECS:
+                            token_queue.put(("answer", "".join(buf)))
+                            buf.clear()
+                            last_flush = now
+
                     llm.chat_stream(
                         msgs,
                         lambda _ch: None,                      # 思考流丢弃（主对话进思维链，本分支无思维链面板）
-                        on_content=lambda ch: (collected.append(ch),
-                                               token_queue.put(("answer", ch))))
+                        on_content=_on_content)
+                    if buf:                                    # 尾flush：余量必须出清
+                        token_queue.put(("answer", "".join(buf)))
+                        buf.clear()
                     reply = "".join(collected).strip()
                     if reply and not reply.startswith("💬"):
                         _persist_assistant_message(did, reply)
