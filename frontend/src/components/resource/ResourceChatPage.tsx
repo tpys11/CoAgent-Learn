@@ -48,6 +48,10 @@ export default function ResourceChatPage({ resourceId, resourceName, projectId, 
   })
   const dlgRef = useRef(dialogueId)
   const [msgs, setMsgs] = useState<ChatMsg[]>([])
+  const [histLoading, setHistLoading] = useState(true)
+  /** 首屏只渲染尾部窗口（opencode 式最小虚拟化）：编辑会话可能几十轮全文修订，
+   *  全量 md 解析会拖死挂载；向上滚到顶逐步扩大窗口。 */
+  const [renderWindow, setRenderWindow] = useState(8)
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
   const [liveText, setLiveText] = useState('')
@@ -78,16 +82,25 @@ export default function ResourceChatPage({ resourceId, resourceName, projectId, 
       lsSetJSON(RES_DLG_KEY, map)
     }
     dlgRef.current = did
-    api.getDialogueMessages(did).then((d: any) => {
+    api.getDialogueMessagesLight(did).then((d: any) => {
       const hist: ChatMsg[] = (d.messages || []).map((m: any) => ({ role: m.role, content: m.content }))
       setMsgs(hist.filter((m: ChatMsg) => m.role === 'user' || m.role === 'assistant'))
-    }).catch(() => {})
+      setHistLoading(false)
+    }).catch(() => setHistLoading(false))
     loadVersions()
   }, [resourceId])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
   }, [msgs, liveText])
+
+  /** 滚到顶 → 窗口扩大（每次 +6），让更早的历史逐步进入渲染 */
+  const onScroll = () => {
+    const el = scrollRef.current
+    if (el && el.scrollTop === 0 && renderWindow < msgs.length) {
+      setRenderWindow(w => Math.min(w + 6, msgs.length))
+    }
+  }
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !streaming) onBack() }
@@ -152,11 +165,29 @@ export default function ResourceChatPage({ resourceId, resourceName, projectId, 
       <div className="flex-1 min-h-0 flex">
         {/* 左：对话流 */}
         <div className="flex-1 min-w-0 flex flex-col">
-          <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto px-6 py-4 flex flex-col gap-3">
-            {msgs.length === 0 && (
+          <div ref={scrollRef} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto px-6 py-4 flex flex-col gap-3">
+            {histLoading && (
+              <div className="flex flex-col gap-3 animate-pulse" aria-label="加载中">
+                {[0, 1].map(i => (
+                  <div key={i} className={i % 2 ? 'self-start w-[85%]' : 'self-end w-[60%]'}>
+                    <div className="card-surface px-4 py-3">
+                      <div className="h-3 rounded bg-[var(--bg-hover)] w-3/4 mb-2" />
+                      <div className="h-3 rounded bg-[var(--bg-hover)] w-1/2" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            {!histLoading && msgs.length === 0 && (
               <p className="text-center text-[12px] text-dim mt-8">用一句话告诉 AI 怎么改这份资料，例如「把第二段改得更口语化」</p>
             )}
-            {msgs.map((m, i) => (
+            {msgs.length > renderWindow && (
+              <button onClick={() => setRenderWindow(msgs.length)}
+                className="self-center text-[11px] text-dim hover:text-[var(--text)] px-3 py-1 rounded-lg border hairline row-hover transition-colors">
+                ↑ 加载更早的 {msgs.length - renderWindow} 条
+              </button>
+            )}
+            {msgs.slice(Math.max(0, msgs.length - renderWindow)).map((m, i) => (
               m.role === 'user' ? (
                 <div key={i} className="flex flex-col items-end">
                   <div className="self-end max-w-[85%] card-surface px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap break-words"

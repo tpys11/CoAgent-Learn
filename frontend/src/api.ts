@@ -124,6 +124,10 @@ export const api = {
     apiFetch<{ status: string }>('/api/dialogues/' + encodeURIComponent(did) + '/profile_status', { cache: 'no-store' }),
   getDialogueMessages: (did: string) =>
     apiFetch<MessagesData>('/api/dialogues/' + encodeURIComponent(did) + '/messages', { cache: 'no-store' }),
+
+  /** 闭环六：编辑会话历史轻量版（后端跳过 think 解析，长会话挂载提速） */
+  getDialogueMessagesLight: (did: string) =>
+    apiFetch<MessagesData>('/api/dialogues/' + encodeURIComponent(did) + '/messages?light=true', { cache: 'no-store' }),
   /** 条目4：子agent运行档案事后拉档（回看通道） */
   getSubAgentRun: (runId: string) =>
     apiFetch<{ run: SubAgentRun }>('/api/chat/subagent/' + encodeURIComponent(runId), { cache: 'no-store' }),
