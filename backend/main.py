@@ -145,6 +145,7 @@ class ChatRequest(BaseModel):
     followup_focus: str | None = None  # 追问风格：purpose=目的推进（默认）/ expand=横向拓展闲聊
     extra_followup_did: str | None = None  # 额外生成追问的目标对话（主对话完成后同步给第二对话）
     extra_followup_focus: str | None = None  # 额外追问风格（默认 expand）
+    debug: bool = False  # 评测用：为 True 时 done 事件附带回 internals（画像/检索/审核中间数据）
 class StopRequest(BaseModel):
     request_id: str  # /api/chat 的 start 事件返回的生成请求 id（用户手动停止时置位取消）
 
@@ -549,7 +550,10 @@ async def chat(req: ChatRequest):
                                 "file_path": _meta.get("file_path", ""),
                                 "mime": _meta.get("mime", ""),
                             })
-                    yield f"data: {json.dumps({'type': 'done', 'reply': result.get('final_reply', '处理完成'), 'steps': result.get('steps', []), 'mindchain': result.get('mindchain', []), 'task_stats': result.get('task_stats', {}), 'special_suggestions': result.get('special_suggestions', []), 'retrieved_images': retrieved_images, 'review': result.get('reviewed')})}\n\n"
+                    _internals = None
+                    if req.debug:
+                        _internals = {"profile": result.get("profile"), "knowledge": result.get("knowledge"), "reviewed": result.get("reviewed")}
+                    yield f"data: {json.dumps({'type': 'done', 'reply': result.get('final_reply', '处理完成'), 'steps': result.get('steps', []), 'mindchain': result.get('mindchain', []), 'task_stats': result.get('task_stats', {}), 'special_suggestions': result.get('special_suggestions', []), 'retrieved_images': retrieved_images, 'review': result.get('reviewed'), 'internals': _internals})}\n\n"
                     break
                 elif msg[0] == "error":
                     yield f"data: {json.dumps({'type': 'error', 'message': msg[1]})}\n\n"

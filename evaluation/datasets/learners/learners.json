@@ -1,0 +1,20 @@
+[
+  {
+    "name": "零基础新手",
+    "level": "初级",
+    "expected_level": "初级",
+    "background": "无基础，第一次接触该领域"
+  },
+  {
+    "name": "非专业本科生",
+    "level": "中级",
+    "expected_level": "中级",
+    "background": "学过基础课程"
+  },
+  {
+    "name": "专业进阶",
+    "level": "高级",
+    "expected_level": "高级",
+    "background": "本专业高年级/研究生水平"
+  }
+]

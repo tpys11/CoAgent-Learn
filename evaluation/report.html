@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh"><head><meta charset="utf-8"><title>评测报告</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<style>
+body { font-family: "Microsoft YaHei", sans-serif; padding: 24px; background: #fff; }
+h1 { font-size: 22px; } table { border-collapse: collapse; margin: 12px 0; }
+td, th { border: 1px solid #ddd; padding: 6px 14px; font-size: 14px; }
+th { background: #f5f5f5; }
+#radar { width: 100%; height: 420px; }
+</style></head><body>
+<h1>多智能体个性化学习系统 · 评测报告</h1>
+<p>生成时间：20260826-153248 · 用例数：3</p>
+<table><tr><th>指标</th><th>本次结果</th><th>官方目标</th></tr>
+<tr><td>幻觉率(越低越好)</td><td>11.8%</td><td><5%</td></tr>
+<tr><td>适配准确率</td><td>83.3%</td><td>≥85%</td></tr>
+<tr><td>覆盖率</td><td>34.4%</td><td>≥90%</td></tr>
+<tr><td>Faithfulness</td><td>100.0%</td><td>—</td></tr>
+<tr><td>ContextRecall</td><td>100.0%</td><td>—</td></tr>
+</table>
+<p><b>与上次对比：</b></p><ul>
+<li>幻觉率(越低越好): 11.8% → 11.8%（—0.0%）</li>
+<li>适配准确率: 83.3% → 83.3%（—0.0%）</li>
+<li>覆盖率: 34.4% → 34.4%（—0.0%）</li>
+<li>Faithfulness: 100.0% → 100.0%（—0.0%）</li>
+<li>ContextRecall: 100.0% → 100.0%（—0.0%）</li>
+</ul>
+<div id="radar"></div>
+<script>
+var chart = echarts.init(document.getElementById('radar'));
+chart.setOption({
+  title: { text: '五项指标雷达图', left: 'center' },
+  tooltip: {},
+  legend: { data: ['本次', 'baseline（上次）'], bottom: 0 },
+  radar: {
+    indicator: [{"name": "幻觉率(越低越好)", "max": 1}, {"name": "适配准确率", "max": 1}, {"name": "覆盖率", "max": 1}, {"name": "Faithfulness", "max": 1}, {"name": "ContextRecall", "max": 1}],
+    radius: '62%'
+  },
+  series: [{
+    type: 'radar',
+    data: [
+      { value: [0.8824, 0.8333, 0.3444, 1.0, 1.0], name: '本次',
+         areaStyle: { color: 'rgba(54,162,235,0.35)' }, lineStyle: { color: '#36a2eb' } }
+      ,
+        { name: 'baseline（上次）', type: 'radar',
+          data: [ { value: [0.8824, 0.8333, 0.3444, 1.0, 1.0], lineStyle: { color: '#999', type: 'dashed' } } ] }
+    ]
+  }]
+});
+window.addEventListener('resize', function() { chart.resize(); });
+</script>
+</body></html>
