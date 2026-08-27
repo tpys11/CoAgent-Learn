@@ -149,24 +149,6 @@ def test_generate_report_empty(monkeypatch):
     assert r == {"status": "error", "msg": "模型未返回内容"}
 
 
-def test_generate_flow_keeps_fence(monkeypatch):
-    md = "```mermaid\ngraph TD\nA-->B\n```"
-    monkeypatch.setattr(FakeLLM, "chat_result", md)
-    r = generate_resource("k", "flow", "内容")
-    assert r["status"] == "ok"
-    assert r["output"] == "mermaid"
-    assert r["content"] == md  # 保留 fence（资源面板直接渲染）
-
-
-def test_generate_tree_keeps_fence(monkeypatch):
-    md = "```mermaid\nmindmap\n  A\n    B\n```"
-    monkeypatch.setattr(FakeLLM, "chat_result", md)
-    r = generate_resource("k", "tree", "内容")
-    assert r["status"] == "ok"
-    assert r["output"] == "mermaid"
-    assert r["content"] == md
-
-
 def test_generate_quiz_ok(monkeypatch):
     quiz = _valid_quiz()
     monkeypatch.setattr(FakeLLM, "json_result", quiz)
@@ -541,16 +523,15 @@ def test_diagnosis_execute_embeds_charts(monkeypatch):
 
 def test_list_capabilities_order_and_no_prompt():
     caps = list_capabilities()
-    assert [c["key"] for c in caps] == ["report", "flow", "tree", "quiz", "guide", "diagnosis"]
+    assert [c["key"] for c in caps] == ["report", "quiz", "guide", "diagnosis"]
     assert all("prompt" not in c for c in caps)
 
 
 def test_capabilities_skill_mapping():
     assert CAPABILITIES["report"]["skill"] == "gen_report"
-    assert CAPABILITIES["flow"]["skill"] == "gen_flow"
-    assert CAPABILITIES["tree"]["skill"] == "gen_tree"
     assert CAPABILITIES["quiz"]["skill"] == "gen_quiz"
     assert CAPABILITIES["guide"]["skill"] == "gen_guide"
     assert CAPABILITIES["diagnosis"]["skill"] == "gen_diagnosis"
-    assert len(CAPABILITIES) == 6
+    # 2026-08-28 赛前裁剪：flow/tree 移出注册表（技能代码保留，赛后恢复时一并恢复用例）
+    assert len(CAPABILITIES) == 4
     assert "prompt" not in CAPABILITIES["quiz"]

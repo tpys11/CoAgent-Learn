@@ -27,8 +27,12 @@ def test_parse_section_path_miss_cases():
 
 def test_llamaindex_precedence_fix_via_source_scan():
     """用源码扫描锁定优先级缺陷已修：路径分支必须恒拼接 get_content()。"""
-    src = open(os.path.join(os.path.dirname(__file__), "..", "backend",
-                            "core", "knowledge_service.py"), encoding="utf-8").read()
+    _kp = os.path.join(os.path.dirname(__file__), "..", "backend",
+                       "core", "knowledge_service.py")
+    if not os.path.exists(_kp):
+        # 容器扁平布局（/app 即后端根，无 backend/ 嵌套层）
+        _kp = os.path.join(os.path.dirname(__file__), "..", "core", "knowledge_service.py")
+    src = open(_kp, encoding="utf-8").read()
     part = src.split("def add_document", 1)[1]           # add_document 体内
     branch = part.split('chunker == "llamaindex"', 1)[1].split("elif mode", 1)[0]
     assert 'else "" + ' not in branch, "llamaindex 分支仍存在三目优先级丢正文的写法"
