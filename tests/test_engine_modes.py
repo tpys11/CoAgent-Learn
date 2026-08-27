@@ -232,8 +232,14 @@ def test_research_full_chain_with_review(v2_env, monkeypatch):
                         lambda pid, src, paths, max_chars=2000:
                         {list(paths)[0]: "整章全文内容，含兄弟乙与推导细节。"})
 
-    judge = ScriptedLLM(['{"passed": false, "score": 40, "reasons": "密度不足"}',
-                         '{"passed": true, "score": 88, "reasons": ""}'])
+    # 断言级审核契约（Loop7）：首轮检出虚构断言→重生成→次轮全支撑通过
+    judge = ScriptedLLM([
+        '{"claims": [{"claim": "RAG 检索 top-k 是 5", "label": "unsupported", '
+        '"confidence": 0.8, "reason": "证据说 3", "diag": "hallucination"}], '
+        '"instruction_ok": true, "instruction_note": ""}',
+        '{"claims": [{"claim": "RAG 检索 top-k 是 3", "label": "supported", '
+        '"confidence": 0.9, "reason": "证据支持", "diag": ""}], '
+        '"instruction_ok": true, "instruction_note": ""}'])
     import engine.review as rv_mod
     monkeypatch.setattr(rv_mod, "pick_judge_llm", lambda template, req: judge)
 
@@ -242,12 +248,15 @@ def test_research_full_chain_with_review(v2_env, monkeypatch):
     planner_calls = [c for c in fast.calls if "查询规划器" in c]
     assert len(planner_calls) == 1
     assert "子问题分解" in planner_calls[0]
-    # 审核未通过→重生成→通过：审核脚注与最终 reviewed 都要体现
+    # 审核未通过→重生成→通过：审核脚注带诊断类型，最终 reviewed 为断言级契约
     audit_notes = [f.get("chunk") for f in frames
                    if f["type"] == "thought_token" and f.get("agent") == "审核"]
-    assert any("密度不足" in (c or "") for c in audit_notes)
+    assert any("未通过" in (c or "") for c in audit_notes)
+    assert any("hallucination" in (c or "") for c in audit_notes)
     done = frames[-1]
-    assert done["review"]["passed"] is True and done["review"]["score"] == 88
+    assert done["review"]["passed"] is True and done["review"]["score"] == 100
+    assert done["review"]["skipped"] is False and done["review"]["issues"] == []
+    assert done["review"]["claims"] and done["review"]["claims"][0]["label"] == "supported"
     # Loop6：思维链持久化——done.mindchain 携带各阶段思考原文（规划/学情）
     mc_agents = [e.get("agent") for e in done.get("mindchain", [])]
     assert "学习助手·规划" in mc_agents and "学情与记忆管理" in mc_agents, mc_agents

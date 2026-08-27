@@ -38,3 +38,33 @@ def test_silent_blocks_on_token_but_llm_error_caught():
     thinking, result = think_then_json(
         _Boom(), "s", "u", "t", silent=True, on_delta=lambda c: seen.append(c))
     assert result == {} and "执行异常" in thinking
+
+
+def test_temperature_none_not_forwarded():
+    """默认（None）：不透传 temperature，沿用 chat_stream 默认——老消费者零影响。"""
+
+    class _Spy:
+        def __init__(self):
+            self.kw = None
+
+        def chat_stream(self, messages, on_token, **kw):
+            self.kw = kw
+
+    spy = _Spy()
+    think_then_json(spy, "s", "u", "t")
+    assert "temperature" not in spy.kw
+
+
+def test_temperature_zero_forwarded():
+    """判卷消费者固定低温：显式传 0 必须原样转发。"""
+
+    class _Spy:
+        def __init__(self):
+            self.kw = None
+
+        def chat_stream(self, messages, on_token, **kw):
+            self.kw = kw
+
+    spy = _Spy()
+    think_then_json(spy, "s", "u", "t", temperature=0)
+    assert spy.kw.get("temperature") == 0

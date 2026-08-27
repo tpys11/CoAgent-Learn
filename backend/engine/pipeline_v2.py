@@ -453,7 +453,8 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                          f"{_os.strategy_name(strategy_id)} T={t_val:.2f}（{_basis}）"))
 
         # --- S4 Generate × S5 ReviewGate（研究必开/思考可配/极速关） ---
-        from engine.review import REVIEW_MAX_RETRY, pick_judge_llm, review_enabled, review_once
+        from engine.review import (REVIEW_MAX_RETRY, pick_judge_llm, review_claims,
+                                   review_enabled, review_once)
         gate_on = review_enabled(template, raw_settings)
         token_queue.put(("step", "学习助手·生成"))
         collected: list[str] = []
@@ -553,12 +554,22 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                 break
             if not gate_on:
                 break
-            verdict = review_once(pick_judge_llm(template, req), reply,
-                                  json.dumps(search_results[:3], ensure_ascii=False),
-                                  strategy_text)
-            # reviewed 形状对齐前端 ReviewResult {passed,score,suggestion}
+            # 研究档走断言级忠实度审核（参照系=全量留存块，非 top3）；
+            # 思考档保持整体两维度评审（review_once 原样）
+            verdict = (review_claims if template == "研究" else review_once)(
+                pick_judge_llm(template, req), reply,
+                search_results if template == "研究"
+                else json.dumps(search_results[:3], ensure_ascii=False),
+                strategy_text)
+            # reviewed 形状对齐前端 ReviewResult {passed,score,suggestion}；
+            # 研究档附加 issues（unsupported 断言映射，前端既有样式直接渲染）、
+            # claims 全表（幻觉率统计源）、skipped（fail-open 可见性）
             reviewed_info = {"passed": verdict["passed"], "score": verdict["score"],
                              "suggestion": verdict["reasons"][:200]}
+            if template == "研究":
+                reviewed_info.update(issues=verdict.get("issues") or [],
+                                     claims=verdict.get("claims") or [],
+                                     skipped=bool(verdict.get("skipped")))
             if verdict["passed"]:
                 break
             token_queue.put(("token", "审核",
@@ -589,10 +600,17 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                               "status": "done",
                               "detail": ("审核通过" if reviewed_info["passed"]
                                          else "未通过：" + reviewed_info["suggestion"])})
-        _trace("review", output_digest=json.dumps(
-            {"passed": reviewed_info["passed"] if reviewed_info else None,
-             "score": reviewed_info["score"] if reviewed_info else None},
-            ensure_ascii=False))
+        _review_digest = {"passed": reviewed_info["passed"] if reviewed_info else None,
+                          "score": reviewed_info["score"] if reviewed_info else None}
+        if template == "研究" and reviewed_info:
+            _by_diag = {"hallucination": 0, "retrieval_gap": 0, "no_evidence": 0}
+            for _c in reviewed_info["claims"]:
+                if _c.get("diag") in _by_diag:
+                    _by_diag[_c["diag"]] += 1
+            _review_digest.update(claims_total=len(reviewed_info["claims"]),
+                                  unsupported=len(reviewed_info["issues"]),
+                                  by_diag=_by_diag, skipped=reviewed_info["skipped"])
+        _trace("review", output_digest=json.dumps(_review_digest, ensure_ascii=False))
         special_suggestions = []
         if plan["complexity"] != "simple_direct":
             try:

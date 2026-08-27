@@ -90,12 +90,25 @@ export interface ReviewIssue {
   fix?: string
 }
 
+/** 断言级核查单条（研究档）：issues 即其中 unsupported 子集的映射视图 */
+export interface ReviewClaim {
+  claim: string
+  label: 'supported' | 'unsupported'
+  confidence?: number
+  reason?: string
+  diag?: 'hallucination' | 'retrieval_gap' | 'no_evidence'
+}
+
 export interface ReviewResult {
   passed: boolean
   score: number
   issues?: ReviewIssue[]
   suggestion?: string
   verdict?: string
+  /** 断言级核查全表（研究档审核），随 done.review 透传 */
+  claims?: ReviewClaim[]
+  /** fail-open 跳过标记：审核器异常/不可解析时 true（当轮视为通过） */
+  skipped?: boolean
 }
 
 export interface Message {
