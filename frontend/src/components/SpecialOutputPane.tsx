@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { FileText, Workflow, Network, ClipboardList, Wrench, Stethoscope, Send, Loader2, X, Pencil } from 'lucide-react'
+import { FileText, ClipboardList, Wrench, Stethoscope, Send, Loader2, X, Pencil } from 'lucide-react'
 import MarkdownIt from 'markdown-it'
 import mermaid from 'mermaid'
 import * as echarts from 'echarts'
@@ -53,8 +53,6 @@ const renderMd = (t: string) => md.render(t || '')
 
 const ICONS: Record<string, any> = {
   report: FileText,
-  flow: Workflow,
-  tree: Network,
   quiz: ClipboardList,
   guide: Wrench,
   diagnosis: Stethoscope,

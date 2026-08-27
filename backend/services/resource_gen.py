@@ -17,20 +17,7 @@ CAPABILITIES: dict = {
         "output": "markdown",
         "skill": "gen_report",
     },
-    "flow": {
-        "key": "flow",
-        "label": "流程图",
-        "desc": "把流程步骤整理为 Mermaid 流程图",
-        "output": "mermaid",
-        "skill": "gen_flow",
-    },
-    "tree": {
-        "key": "tree",
-        "label": "树状图",
-        "desc": "把层级结构整理为 Mermaid 树状图",
-        "output": "mermaid",
-        "skill": "gen_tree",
-    },
+    # flow/tree 赛前暂下线（赛后可恢复——技能代码保留在 skills/ 中未删除）
     "quiz": {
         "key": "quiz",
         "label": "测试题",
