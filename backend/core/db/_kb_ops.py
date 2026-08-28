@@ -84,13 +84,21 @@ class KbOpsMixin:
 
     def fetch_kb_rows(self, project_id: str, source: str):
         """跨项目复用读取（P0-2 根因1）：按 (project_id, source) 读全部块。
+        必须返回原生 tuple（不走统一 execute 的 dict 化——tuple 解包 dict 会得到键名
+        字符串，曾导致复制行 embedding 变成字面量 "embedding" 被(vec0)拒收）。
         embedding 为存储态 BLOB 原样返回，写入端不得再 serialize。"""
         table = self.peek_active_text_table()
-        return self.execute(
-            f"SELECT chunk, has_context, content, embedding FROM {table} "
-            "WHERE project_id = ? AND source = ? ORDER BY chunk",
-            (project_id, source),
-        )
+        with self._lock:
+            conn = self._new_conn()
+            try:
+                cur = conn.execute(
+                    f"SELECT chunk, has_context, content, embedding FROM {table} "
+                    "WHERE project_id = ? AND source = ? ORDER BY chunk",
+                    (project_id, source),
+                )
+                return cur.fetchall()
+            finally:
+                conn.close()
 
     def find_donor_by_hash(self, sha256: str, exclude_project_id: str):
         """跨项目复用：找其他项目中"同 sha256 且向量仍完整在库"的 donor（排除幽灵 hash）。
@@ -112,6 +120,7 @@ class KbOpsMixin:
         同 doc_id 先按 (project_id, doc_id) 删除，语义与 upsert 对齐。"""
         if not items:
             return
+        _BATCH = 500
         with self._lock:
             conn = self._new_conn()
             try:

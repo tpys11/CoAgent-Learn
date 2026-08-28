@@ -279,6 +279,7 @@ def copy_document_across_projects(src_project_id: str, src_source: str,
     session_id 改挂目标上传会话；B1 问题/kg_edges/kb_tree 为派生增强，暂不复制（P2 取舍，
     目标项目召回质量略降属预期）。返回复制块数；源无块返回 0（调用方回退全量入库）。"""
     dst_source = dst_source or src_source
+    session_id = str(session_id) if session_id is not None else ""  # vec0 TEXT 元数据列不收 NULL
     rows = _db.fetch_kb_rows(src_project_id, src_source)
     if not rows:
         return 0
