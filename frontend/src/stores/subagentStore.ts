@@ -5,7 +5,7 @@
  */
 import type { SubAgentSse } from '../types'
 
-export interface SubAgentEventItem {
+interface SubAgentEventItem {
   event: 'start' | 'input' | 'delta' | 'end'
   content?: string
   text?: string

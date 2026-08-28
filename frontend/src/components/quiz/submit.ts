@@ -9,7 +9,7 @@
  * - 本模块保持零 React / 零 fetch 依赖，纯函数可 vitest 直测
  */
 
-export interface QuizAnswerOut {
+interface QuizAnswerOut {
   question_id: string
   kp_tag: string
   correct: boolean

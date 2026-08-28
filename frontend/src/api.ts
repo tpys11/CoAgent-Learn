@@ -4,11 +4,11 @@
  */
 import type { ProjectList, DialogueList, MessagesData, ProfileData, ResourceList, StatsData, SettingsData, CapabilityList, SkillList, SubAgentRun, MatchReportData } from './types'
 
-export interface ApiError extends Error {
+interface ApiError extends Error {
   status?: number
 }
 
-export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init)
   if (!res.ok) {
     let msg = 'HTTP ' + res.status
@@ -40,7 +40,7 @@ function jsonInit(method: string, body?: unknown, init?: RequestInit): RequestIn
 /* ---------- URL 摄取预检（probe）契约 ---------- */
 
 /** 可勾选的摄取分区（GitHub 目录前缀 / 文档站路径前缀）。 */
-export interface UrlProbeGroup {
+interface UrlProbeGroup {
   key: string
   label: string
   count: number
@@ -48,14 +48,14 @@ export interface UrlProbeGroup {
 }
 
 /** 语言类分区的便捷镜像（其内容同样出现在 groups 中）。 */
-export interface UrlProbeLanguage {
+interface UrlProbeLanguage {
   code: string
   label: string
   count: number
   key: string
 }
 
-export interface UrlProbeOk {
+interface UrlProbeOk {
   status: 'ok'
   kind: 'github' | 'docs'
   title_hint: string
@@ -68,9 +68,8 @@ export interface UrlProbeOk {
   warnings?: string[]
 }
 
-export interface UrlProbeError {
+interface UrlProbeError {
   status: 'error'
-  msg?: string
 }
 
 export type UrlProbeResult = UrlProbeOk | UrlProbeError

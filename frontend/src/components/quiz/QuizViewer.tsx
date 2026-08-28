@@ -40,7 +40,7 @@ const APP_LOCALE: Record<string, string> = {
 }
 
 /** 从 content 中提取并解析测验 JSON；不合法返回 null */
-export function parseQuizContent(content: string): QuizData | null {
+function parseQuizContent(content: string): QuizData | null {
   let raw = (content || '').trim()
   if (!raw) return null
   // 剥 ```json / ``` fence

@@ -10,7 +10,6 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@xyflow/react": "^12.5.0",
     "echarts": "^6.1.0",
     "katex": "^0.18.2",
     "lucide-react": "^0.460.0",
@@ -20,7 +19,6 @@
     "mermaid": "^11.16.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-markdown": "^9.0.0",
     "react-quiz-component": "^1.1.1"
   },
   "devDependencies": {

@@ -13,7 +13,7 @@ export interface Dialogue {
   archived: boolean
 }
 
-export interface AgentMode {
+interface AgentMode {
   label: string
   promptOverride: string
 }
@@ -85,13 +85,13 @@ export interface SubAgentRun {
   finished_at: string | null
 }
 
-export interface ReviewIssue {
+interface ReviewIssue {
   problem: string
   fix?: string
 }
 
 /** 断言级核查单条（研究档）：issues 即其中 unsupported 子集的映射视图 */
-export interface ReviewClaim {
+interface ReviewClaim {
   claim: string
   label: 'supported' | 'unsupported'
   confidence?: number
@@ -147,7 +147,7 @@ export interface MessagesData {
 /** 画像类接口（个人全局 / 项目记忆 / 对话画像）返回的松散结构。 */
 export type ProfileData = Record<string, any>
 
-export interface ResourceItem {
+interface ResourceItem {
   id: string
   name: string
   content?: string

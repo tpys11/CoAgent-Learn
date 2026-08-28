@@ -61,7 +61,7 @@ function sanitizeLabel(name: string): string {
 /** 水平 tidy-tree：后序遍历，叶子按序占一行，内部节点 y=子树叶子区间中点。
  * collapsedPaths 中的路径视为叶子（其子树不参与布局）——展开/收起驱动重排。
  * 列 x 按各层最宽盒子动态推进，长标签不会侵入下一列。 */
-export function layoutTree(tree: any[], collapsedPaths?: Set<string>): LayoutResult {
+function layoutTree(tree: any[], collapsedPaths?: Set<string>): LayoutResult {
   const nodes: LayoutNode[] = []
   const edges: LayoutEdge[] = []
   const parentMap = new Map<string, string | null>()
