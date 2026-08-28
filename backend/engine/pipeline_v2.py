@@ -507,13 +507,6 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                                   unsupported=len(reviewed_info["issues"]),
                                   by_diag=_by_diag, skipped=reviewed_info["skipped"])
         _trace("review", output_digest=json.dumps(_review_digest, ensure_ascii=False))
-        special_suggestions = []
-        if plan["complexity"] != "simple_direct":
-            try:
-                from services.special_forms import suggest_special_forms
-                special_suggestions = suggest_special_forms(req.api_key, reply, req.base_url)
-            except Exception:
-                logger.exception("[v2] 特殊形式建议失败")
 
         # --- Trace 批量落库（旁路，失败不影响主流程） ---
         try:
@@ -628,7 +621,6 @@ def _frame(msg) -> tuple[str, bool]:
             "type": "done", "reply": result.get("final_reply", "处理完成"),
             "steps": result.get("steps", []), "mindchain": result.get("mindchain", []),
             "task_stats": result.get("task_stats", {}),
-            "special_suggestions": result.get("special_suggestions", []),
             "retrieved_images": retrieved_images, "review": result.get("reviewed"),
         }
         return f"data: {json.dumps(frame)}\n\n", True

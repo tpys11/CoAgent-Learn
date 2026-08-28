@@ -102,7 +102,7 @@ def test_v2_golden_sequence(isolated_app, monkeypatch):
                      "answer_token", "subagent", "done", "error"} for t in types)
     done = frames[-1]
     assert done["reply"] == "黄金回答内容"
-    assert done["special_suggestions"] == [] and done["retrieved_images"] == []
+    assert done["retrieved_images"] == []
     if os.environ.get("GOLDEN_REGEN"):
         GOLDEN_PATH.parent.mkdir(exist_ok=True)
         GOLDEN_PATH.write_text(json.dumps(frames, ensure_ascii=False, indent=1), encoding="utf-8")
