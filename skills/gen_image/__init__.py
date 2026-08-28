@@ -144,9 +144,10 @@ class GenImage(Skill):
         """长内容 → LLM 提取 2 个关键词；失败/空回退 text[:40]。"""
         try:
             from core.base_llm import DeepSeekLLM
+            from core.model_provider import MODEL_MAIN
             llm = DeepSeekLLM(
                 api_key=api_key,
-                model=model or "deepseek-v4-flash",
+                model=model or MODEL_MAIN,
                 base_url=base_url,
                 thinking=False,
             )

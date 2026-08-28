@@ -35,9 +35,10 @@ class GenGuide(Skill):
         try:
             from core.base_llm import DeepSeekLLM
             from skills.gen_report import embed_images, sanitize_echarts_blocks
+            from core.model_provider import MODEL_MAIN
             llm = DeepSeekLLM(
                 api_key=api_key,
-                model=model or "deepseek-v4-flash",
+                model=model or MODEL_MAIN,
                 base_url=base_url,
                 thinking=False,
             )

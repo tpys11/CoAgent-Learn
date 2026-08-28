@@ -136,7 +136,8 @@ class ChatStep(BaseModel):
 def _auto_settings(api_key: str, message: str, template: str = "思考", infer_model: bool = False) -> dict:
     """Auto 模式：让 AI 读取用户输入，基于用户所选模板自动推断其余设置；infer_model=True 时同时推断模型；失败时返回空 dict（保持默认）"""
     from core.config import config as _cfg
-    _model_field = "\"model\": \"deepseek-v4-pro|deepseek-v4-flash|glm-4-plus|glm-4-flash\", " if infer_model else ""
+    from core.model_provider import MODEL_FAST, MODEL_MAIN, MODEL_PRO
+    _model_field = "\"model\": \"" + MODEL_PRO + "|" + MODEL_MAIN + "|glm-4-plus|glm-4-flash\", " if infer_model else ""
     prompt = (
         "你是对话设置分析器。模板已由用户选定，请根据用户的输入内容，推断其余最适合的对话设置，只输出 JSON：\n"
         "{" + _model_field + "\"outputFormat\": \"低结构化|高结构化\", "
@@ -144,14 +145,14 @@ def _auto_settings(api_key: str, message: str, template: str = "思考", infer_m
         "\"outputVolume\": \"精简|适中|拓展\", \"depth\": \"浅|中|深\"}\n"
         f"已选档位：{template}（极速=快模型最短响应、思考=完整流程+轻量单审、研究=完整流程+严格检测，推断时可参考）\n"
         "推断规则：涉及学习/讲解/推导用较深深度与适中输出；复杂主题适当加重输出量；简单问答用精简。\n"
-        "模型推断规则（仅在要求推断模型时）：复杂/长篇任务用 deepseek-v4-pro 或 glm-4-plus；简单问答用 deepseek-v4-flash 或 glm-4-flash。\n"
+        f"模型推断规则（仅在要求推断模型时）：复杂/长篇任务用 {MODEL_PRO} 或 glm-4-plus；简单问答用 {MODEL_MAIN} 或 glm-4-flash。\n"
         f"用户输入：{message[:1500]}"
     )
     h = {"Authorization": "Bearer " + (api_key or _cfg.DEEPSEEK_API_KEY), "Content-Type": "application/json"}
     try:
         import requests as _req
         resp = _req.post(_cfg.DEEPSEEK_BASE_URL + "/chat/completions",
-                         json={"model": "deepseek-v4-flash", "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]},
+                         json={"model": MODEL_FAST, "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]},
                          headers=h, timeout=60)
         if resp.status_code != 200:
             return {}
@@ -168,7 +169,7 @@ def _auto_settings(api_key: str, message: str, template: str = "思考", infer_m
             "depth": ["浅", "中", "深"],
         }
         if infer_model:
-            ok["model"] = ["deepseek-v4-pro", "deepseek-v4-flash", "glm-4-plus", "glm-4-flash"]
+            ok["model"] = [MODEL_PRO, MODEL_MAIN, "glm-4-plus", "glm-4-flash"]
         out = {}
         for k, vals in ok.items():
             v = str(d.get(k, "")).strip()

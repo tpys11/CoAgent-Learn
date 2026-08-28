@@ -23,7 +23,7 @@ class _Req:
 
 def test_pick_judge_llm_by_mode():
     j1 = pick_judge_llm("思考", _Req())
-    assert j1.model_name == "deepseek-v4-flash"
+    assert j1.model_name == "deepseek-v4-flash-vision-exp"
     j2 = pick_judge_llm("研究", _Req())
     assert j2.model_name == "qwen2.5-72b-instruct"
 

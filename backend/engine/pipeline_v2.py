@@ -18,14 +18,13 @@ from fastapi.responses import StreamingResponse
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "deepseek-v4-flash-vision-exp"
+from core.model_provider import MODEL_MAIN  # noqa: E402  # 模型名单一事实源
+
+DEFAULT_MODEL = MODEL_MAIN
 
 # 极速档字数约束（自旧引擎常量平移，语义不变）
 FAST_WORD_MIN, FAST_WORD_MAX, FAST_WORD_HARD = 500, 800, 1000
-# 思考/研究档字数约束（对话模式.md 定稿；Loop4.5 仅重建了极速档，此处补齐另两档）
-THINK_WORD_MIN, THINK_WORD_MAX, THINK_WORD_HARD = 800, 1200, 1500
-RESEARCH_WORD_MIN, RESEARCH_WORD_MAX, RESEARCH_WORD_HARD = 1500, 2000, 3000
-# 思考/研究档字数约束（对话模式.md 定稿；Loop4.5 仅重建了极速档，此处补齐另两档）
+# 思考/研究档字数约束（对话模式.md 定稿）
 THINK_WORD_MIN, THINK_WORD_MAX, THINK_WORD_HARD = 800, 1200, 1500
 RESEARCH_WORD_MIN, RESEARCH_WORD_MAX, RESEARCH_WORD_HARD = 1500, 2000, 3000
 

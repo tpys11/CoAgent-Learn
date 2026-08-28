@@ -7,10 +7,11 @@ claims 全表交由调用方落 eval_traces 供幻觉率统计（L1）。
 诊断分类抄 FactEval（证据强度×判定结果）：hallucination/retrieval_gap/no_evidence。"""
 import json
 
+from core.model_provider import MODEL_MAIN
 from engine.llm_io import think_then_json
 
 REVIEW_MAX_RETRY = 2
-JUDGE_THINKING_MODEL = "deepseek-v4-flash"
+JUDGE_THINKING_MODEL = MODEL_MAIN
 JUDGE_RESEARCH_MODEL = "qwen2.5-72b-instruct"
 
 _CLAIMS_MAX = 15        # 声明条数上限（防碎化，FactEval MAX_CLAIMS 同思路）

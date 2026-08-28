@@ -6,6 +6,7 @@ import json
 import re
 
 from core.helpers import _as_dict, extract_json_obj
+from core.model_provider import MODEL_FAST
 
 
 GLOBAL_MEM_KEYS = ["身份", "学习目标", "擅长领域", "学习方式", "兴趣方向", "补充信息"]
@@ -53,7 +54,7 @@ def memory_edit(api_key: str, message: str, project_id: str, session_id: str) ->
     try:
         import requests as _req
         resp = _req.post(_cfg.DEEPSEEK_BASE_URL + "/chat/completions",
-                         json={"model": "deepseek-v4-flash", "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]},
+                         json={"model": MODEL_FAST, "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]},
                          headers=h, timeout=60)
         if resp.status_code != 200:
             return {"reply": f"⚠️ 修改失败：LLM 调用错误（{resp.status_code}）", "steps": [{"agent": "记忆管理", "status": "done", "detail": "修改失败"}]}
@@ -105,7 +106,7 @@ def memory_chat(api_key: str, message: str, project_id: str, session_id: str = "
         import requests as _req
         resp = _req.post(
             _cfg.DEEPSEEK_BASE_URL + "/chat/completions",
-            json={"model": "deepseek-v4-flash", "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]},
+            json={"model": MODEL_FAST, "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]},
             headers=h, timeout=90,
         )
         if resp.status_code != 200:

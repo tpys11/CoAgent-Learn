@@ -1,6 +1,8 @@
 import json
 import logging
 
+from core.model_provider import MODEL_FAST
+
 logger = logging.getLogger("coagent.memory_analysis")
 
 
@@ -47,7 +49,7 @@ def update_memories(api_key, project_id, dialogue_id, db, session_id="default"):
         h = {"Authorization": "Bearer " + (api_key or _cfg.DEEPSEEK_API_KEY), "Content-Type": "application/json"}
         try:
             resp = _req.post(_cfg.DEEPSEEK_BASE_URL + "/chat/completions",
-                json={"model": "deepseek-v4-flash", "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]},
+                json={"model": MODEL_FAST, "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]},
                 headers=h, timeout=60)
             if resp.status_code == 200:
                 return resp.json()["choices"][0]["message"]["content"] or ""

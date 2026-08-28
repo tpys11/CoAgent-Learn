@@ -6,6 +6,11 @@
 """
 from core.config import config
 
+# ── DeepSeek 模型名单一事实源（换模型只改这里）──
+MODEL_PRO = "deepseek-v4-pro"
+MODEL_MAIN = "deepseek-v4-flash-vision-exp"   # 主对话/生成/审核默认（视觉版）
+MODEL_FAST = MODEL_MAIN                        # 轻调用道（规划/分类/学情/追问/记忆），当前跟随主模型
+
 
 # 主对话模型厂家定义（后端单点；前端 CenterPanel / SettingsModal 的厂家列表后续对齐这里）
 MAIN_PROVIDERS = {
@@ -13,7 +18,7 @@ MAIN_PROVIDERS = {
         "name": "DeepSeek",
         "base_url": "https://api.deepseek.com/v1",
         "models": ["deepseek-v4-flash-vision-exp", "deepseek-v4-flash", "deepseek-v4-pro"],
-        "fast_model": "deepseek-v4-flash",
+        "fast_model": MODEL_FAST,
     },
     "zhipu": {
         "name": "智谱 GLM",
@@ -25,7 +30,7 @@ MAIN_PROVIDERS = {
 
 # 快模型映射（按 base_url 域名自动解析；映射不到则与主模型一致）
 FAST_MODEL_BY_BASE = {
-    "api.deepseek.com": "deepseek-v4-flash",
+    "api.deepseek.com": MODEL_FAST,
     "open.bigmodel.cn": "glm-4-flash",
 }
 

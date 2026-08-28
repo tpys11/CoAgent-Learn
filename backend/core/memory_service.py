@@ -12,6 +12,7 @@ import logging
 
 from core.db.memory_repo import get_memory_repo
 from core.db.project_repo import get_project_repo
+from core.model_provider import MODEL_FAST
 from core.helpers import _as_dict
 
 logger = logging.getLogger("coagent.memory_service")
@@ -195,7 +196,7 @@ def _synthesize_profile(api_key, gp, mem):
     )
     h = {"Authorization": "Bearer " + (api_key or _cfg.DEEPSEEK_API_KEY), "Content-Type": "application/json"}
     resp = _req.post(_cfg.DEEPSEEK_BASE_URL + "/chat/completions",
-                     json={"model": "deepseek-v4-flash", "thinking": {"type": "disabled"},
+                     json={"model": MODEL_FAST, "thinking": {"type": "disabled"},
                            "messages": [{"role": "user", "content": prompt}]},
                      headers=h, timeout=60)
     if resp.status_code != 200:
