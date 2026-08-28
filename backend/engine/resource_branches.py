@@ -163,15 +163,17 @@ async def stream_resource_edit(req):
     return StreamingResponse(stream(), media_type="text/event-stream")
 
 
-async def stream_resource_gen(req):
+async def stream_resource_gen(req, regen_id=None):
     """闭环七：资源生成管线分支——主管线阶段的研究档变体。
     plan(无LLM,校验能力key) → fan-out(学情∥检索,rounds=2 走B2-lite) → KB蒸馏(5-10条)
-    → CAPABILITIES技能生成(合成content注入materials) → review_claims断言审核(重试≤2)
+    → 生成（create=技能生成伪流式｜regen=直连主模型修订全文真流式） → review_claims断言审核(重试≤2)
     → resources落库(difficulty自标,失败NULL不阻断) → eval_traces全阶段(旁路)。
     会话 kind='resource' 隔离（重开可续聊，后续轮带 edit_resource_id 自动转编辑分支）。
     SSE 全帧（step/thought/answer/done）；前端生成页 v1 仅消费 answer/done，其余帧忽略。
-    done 携 resource_id/name/difficulty/review。技能生成为同步调用，正文在审核定稿后
-    分批注入 answer 帧（伪流式——真流式列资源生成赛后优化）。"""
+    done 携 resource_id/name/difficulty/review。
+    regen 形态（单步4）：regen_id 在场 → 非指向修正修订【现有资源】：生成段直连主模型
+    （全文最多12000字，超技能4000截断上限），persist 同 name/type 新行（版本续接），
+    done 回传原 resource_id（前端绑定不变）。"""
     from engine import pipeline_v2 as _pv   # 接缝经属性查找：monkeypatch pipeline_v2.<name> 仍生效
     import asyncio as _asyncio
     import hashlib as _hashlib
@@ -186,7 +188,16 @@ async def stream_resource_gen(req):
         token_queue: queue.Queue = queue.Queue()
         try:
             pid = req.project_id or "default"
-            key = (req.gen_resource or "").strip()
+            regen_row = None
+            if regen_id:
+                _rows = pg_client.execute(
+                    "SELECT id, name, type, content FROM resources WHERE id=%s", (regen_id,))
+                if not _rows:
+                    yield f"data: {json.dumps({'type': 'error', 'message': '资源不存在或已删除'})}\n\n"
+                    return
+                regen_row = _rows[0]
+            key = ((req.gen_resource or "").strip()
+                   or (str(regen_row["type"] or "").removeprefix("gen:") if regen_row else ""))
             user_text = (req.message or "").strip() or "请生成本领域学习资源"
             # 能力 key 前置校验：非法请求零写库软着陆
             from services.resource_gen import CAPABILITIES
@@ -225,8 +236,10 @@ async def stream_resource_gen(req):
                     cap = CAPABILITIES.get(key)
                     token_queue.put(("step", "学习助手·规划"))
                     _trace("plan", input_digest=user_text[:200],
-                           output_digest=json.dumps({"capability": key, "label": cap["label"]},
-                                                    ensure_ascii=False))
+                           output_digest=json.dumps(
+                               {"capability": key, "label": cap["label"],
+                                "mode": "regen" if regen_row else "create"},
+                               ensure_ascii=False))
 
                     # S2×S3 fan-out：学情 ∥ 检索（研究档级，rounds=2 走 B2-lite 分解链）
                     token_queue.put(("step", "学情与记忆管理"))
@@ -294,9 +307,14 @@ async def stream_resource_gen(req):
                     gen_content = (
                         f"【用户需求】\n{user_text}\n\n"
                         f"【画像学情】{profile_line}{evidence_line}\n"
-                        f"{kb_line}\n\n"
-                        "【附加要求】正文最后一行单独输出注释 <!--difficulty:0.85--> 格式"
-                        "（0-1 小数，估计本资源面向的学习者水平，应与画像学情贴合）。")
+                        f"{kb_line}")
+                    if regen_row:
+                        regen_full = str(regen_row["content"] or "")
+                        gen_content += (f"\n\n【当前资源全文（在此版本上修订）】\n{regen_full[:12000]}"
+                                        + ("" if len(regen_full) <= 12000
+                                           else "\n（原文超长，以上为截断版——保持既有结构修订）"))
+                    gen_content += ("\n\n【附加要求】正文最后一行单独输出注释 <!--difficulty:0.85--> 格式"
+                                    "（0-1 小数，估计本资源面向的学习者水平，应与画像学情贴合）。")
 
                     # 生成 × 断言审核重试环（fail-open 内置于 review_claims）
                     token_queue.put(("step", "学习助手·生成"))
@@ -304,12 +322,25 @@ async def stream_resource_gen(req):
                     content, difficulty = "", None
                     review_payload: dict = {}
                     while True:
-                        r = generate_resource(req.api_key or "", key, gen_content,
-                                              req.base_url, req.model)
-                        if r.get("status") != "ok":
-                            token_queue.put(("error", r.get("msg") or "生成失败"))
-                            return
-                        content = r.get("content") or ""
+                        if regen_row:
+                            # regen：直连主模型（全文+素材最多1.4万字，超技能4000截断上限）
+                            _sys = ("你是「资源修订助手」，禁止输出虚假信息。基于【知识库要点】与【画像学情】"
+                                    "按【用户需求】修订资料全文：未涉及部分保持既有结构与语言风格；"
+                                    "凡取自知识库要点的论断在句末标注 [来源: 文档标题]。")
+                            content = (_pv._make_llm(req).chat(
+                                [{"role": "system", "content": _sys},
+                                 {"role": "user", "content": gen_content}],
+                                temperature=0.3) or "").strip()
+                            if not content:
+                                token_queue.put(("error", "模型未返回内容"))
+                                return
+                        else:
+                            r = generate_resource(req.api_key or "", key, gen_content,
+                                                  req.base_url, req.model)
+                            if r.get("status") != "ok":
+                                token_queue.put(("error", r.get("msg") or "生成失败"))
+                                return
+                            content = r.get("content") or ""
                         m = _re.search(r"<!--\s*difficulty:\s*([0-9.]+)\s*-->", content)
                         if m:
                             try:
@@ -346,21 +377,30 @@ async def stream_resource_gen(req):
                                         "请据此修正后按全部要求重新输出。")
 
                     # 落库：append 语义=版本历史；difficulty 自标值随行（NULL=未自标）
-                    name = (user_text.splitlines()[0] if user_text else "").strip()[:24] \
-                        or (cap["label"] + "资源")
+                    if regen_row:
+                        name = str(regen_row["name"] or "")
+                        rtype = str(regen_row["type"] or "")
+                        bind_rid = str(regen_row["id"])      # 前端绑定不变（原 rid）
+                    else:
+                        name = (user_text.splitlines()[0] if user_text else "").strip()[:24] \
+                            or (cap["label"] + "资源")
+                        rtype = "gen:" + key
+                        bind_rid = rid = _hashlib.md5((name + pid + request_id).encode()).hexdigest()[:16]
                     rid = _hashlib.md5((name + pid + request_id).encode()).hexdigest()[:16]
                     pg_client.execute(
                         "INSERT INTO resources(id,name,content,project_id,type,difficulty) "
                         "VALUES (%s,%s,%s,%s,%s,%s)",
-                        (rid, name, content, pid, "gen:" + key, difficulty))
+                        (rid, name, content, pid, rtype, difficulty))
                     _trace("resource_gen", output_digest=json.dumps(
-                        {"key": key, "resource_id": rid, "name": name, "difficulty": difficulty},
+                        {"key": key, "resource_id": bind_rid, "name": name,
+                         "difficulty": difficulty,
+                         "mode": "regen" if regen_row else "create"},
                         ensure_ascii=False))
                     _pv._persist_assistant_message(did, content)
                     # 伪流式：正文分批注入 answer 帧（真流式=赛后优化项）
                     for i in range(0, len(content), 48):
                         token_queue.put(("answer", content[i:i + 48]))
-                    token_queue.put(("done", {"reply": content, "resource_id": rid,
+                    token_queue.put(("done", {"reply": content, "resource_id": bind_rid,
                                               "name": name, "difficulty": difficulty,
                                               "review": review_payload}))
                 except Exception as e:

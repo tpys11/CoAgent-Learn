@@ -564,8 +564,12 @@ async def stream_response(req):
         from engine.resource_branches import stream_resource_gen
         return await stream_resource_gen(req)
     if getattr(req, "edit_resource_id", None):
-        from engine.resource_branches import stream_resource_edit
-        return await stream_resource_edit(req)
+        from engine.resource_branches import stream_resource_edit, stream_resource_gen
+        from engine.resource_mode import classify_resource_mode
+        # 单步4：定向修改指令/纯提问 → 编辑分支（💬协议承接）；非指向修正 → 生成管线（检索供证+断言审核）
+        if classify_resource_mode(req.message) == "edit":
+            return await stream_resource_edit(req)
+        return await stream_resource_gen(req, regen_id=req.edit_resource_id)
 
     async def stream():
         import asyncio as _asyncio

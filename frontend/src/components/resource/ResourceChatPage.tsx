@@ -13,6 +13,7 @@ import { ArrowLeft, PanelRightClose, PanelRightOpen, Send, Loader2 } from 'lucid
 import { api } from '../../api'
 import { streamChatResponse } from '../../sse'
 import { LS, lsGet, lsGetJSON, lsSetJSON } from '../../storage'
+import { lineDiff, LineDiff } from './lineDiff'
 
 const md = new MarkdownIt({ html: false, linkify: true, breaks: true })
 
@@ -34,7 +35,7 @@ const renderMdCached = (text: string) => {
 }
 
 interface VersionItem { id: string; content: string; created_at?: string }
-interface ChatMsg { role: 'user' | 'assistant'; content: string }
+interface ChatMsg { role: 'user' | 'assistant'; content: string; diff?: LineDiff | null }
 
 /** 资源级 dialogue id 的本地映射键（跨会话续聊同一资源的编辑记录）。
  * v2：v1 键下的映射可能指向被旧后端污染的主对话管系会话（bind mount 不触发 uvicorn
@@ -121,6 +122,8 @@ export default function ResourceChatPage({ resourceId: initialId = '', resourceN
   const send = async (override?: string) => {
     const text = (override ?? input).trim()
     if (!text || streaming) return
+    const ridAtSend = resourceId                                    // 单步4：修改/regen 才有上一版可比
+    const prevVersion = versions[versions.length - 1]?.content ?? ''
     setInput('')
     setMsgs(prev => [...prev, { role: 'user', content: text }])
     setStreaming(true)
@@ -139,6 +142,7 @@ export default function ResourceChatPage({ resourceId: initialId = '', resourceN
       })
       let reply = ''
       let doneName = ''
+      let diff: LineDiff | null = null
       await streamChatResponse(resp, d => {
         if (d.type === 'answer_token') setLiveText(t => t + d.chunk)
         if (d.type === 'done') {
@@ -156,6 +160,17 @@ export default function ResourceChatPage({ resourceId: initialId = '', resourceN
       })
       setMsgs(prev => [...prev, { role: 'assistant', content: reply || '（无回复）' }])
       if (reply && !reply.startsWith('⚠')) loadVersions(doneName || resourceName)   // 拍板③：done 后才刷新预览
+      // 单步4：修订确认——有上一版且非问答轮（💬）时做行级 diff（熔断由 lineDiff 负责）
+      if (ridAtSend && reply && !reply.startsWith('⚠') && !reply.startsWith('💬')) {
+        diff = lineDiff(prevVersion, reply)
+        setMsgs(prev => {
+          const next = [...prev]
+          if (next.length && next[next.length - 1].role === 'assistant') {
+            next[next.length - 1] = { ...next[next.length - 1], diff }
+          }
+          return next
+        })
+      }
     } catch {
       setMsgs(prev => [...prev, { role: 'assistant', content: '⚠ 请求失败，请检查后端服务' }])
     }
@@ -230,6 +245,21 @@ export default function ResourceChatPage({ resourceId: initialId = '', resourceN
                   <span className="text-[10px] text-dim">{resourceId ? 'AI · 修订版全文' : 'AI · 生成全文'}</span>
                   <div className="w-full text-sm leading-7 card-surface px-4 py-3"
                        dangerouslySetInnerHTML={{ __html: renderMdCached(m.content) }} />
+                  {m.diff && (m.diff.added.length > 0 || m.diff.removed.length > 0) && (
+                    <details className="w-full border hairline rounded-lg px-2.5 py-1.5">
+                      <summary className="text-[10px] text-dim cursor-pointer select-none">
+                        查看变更（+{m.diff.added.length} / −{m.diff.removed.length} 行）
+                      </summary>
+                      <div className="mt-1 flex flex-col gap-0.5 max-h-56 overflow-y-auto">
+                        {m.diff.removed.slice(0, 60).map((l, k) => (
+                          <p key={'r' + k} className="text-[10px] text-red-500 break-all whitespace-pre-wrap">− {l}</p>
+                        ))}
+                        {m.diff.added.slice(0, 60).map((l, k) => (
+                          <p key={'a' + k} className="text-[10px] text-green-600 break-all whitespace-pre-wrap">+ {l}</p>
+                        ))}
+                      </div>
+                    </details>
+                  )}
                 </div>
               )
             ))}

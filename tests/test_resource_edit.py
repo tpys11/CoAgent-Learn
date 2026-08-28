@@ -8,6 +8,7 @@ import pytest
 from core.db.base import SQLiteClient
 from core.db import project_repo as pr_mod
 from core.db.project_repo import ProjectRepo
+from tests._engine_helpers import ScriptedLLM
 
 
 class FakeLLM:
@@ -28,12 +29,12 @@ class FakeLLM:
                 on_content(ch)        # 正文流（分支消费）
 
 
-def _mk_req(rid, did="dRE"):
+def _mk_req(rid, did="dRE", message="把内容改得更口语化"):
     from types import SimpleNamespace
     return SimpleNamespace(
-        message="把内容改得更口语化", session_id="sX", dialogue_id=did,
+        message=message, session_id="sX", dialogue_id=did,
         project_id="pX", api_key="k", model=None, base_url=None,
-        edit_resource_id=rid)
+        edit_resource_id=rid, gen_resource=None)
 
 
 @pytest.fixture()
@@ -207,3 +208,103 @@ def test_missing_branch_dispatch_off(env):
     assert not getattr(req, "edit_resource_id", None)
     req2 = _mk_req("r1")
     assert getattr(req2, "edit_resource_id", None) == "r1"
+
+
+# ---------- 单步4：修改/生成模式分类路由 ----------
+
+def test_routing_nondirected_goes_gen_regen(env, monkeypatch):
+    """资源对话跟进 + 非指向修正（无替换文本）→ 生成管线 regen 形态：
+    有审核、直连主模型（不走技能生成）、同 name/type 版本续接、done 绑定原 rid。"""
+    import engine.pipeline_v2 as eng
+    import engine.retrieve as rt_mod
+    import engine.review as rv_mod
+
+    _seed_resource(env, rid="r1", name="生成·讲义", content="V1 原始内容")
+
+    class FastFake:
+        def __init__(self):
+            self.calls = []
+
+        def chat_stream(self, messages, on_token, **kw):
+            s = messages[0]["content"]
+            self.calls.append(s)
+            if "学情评估器" in s:
+                raw = '{"level_score": 0.6, "evidence": "ok"}'
+            elif "查询规划器" in s:
+                raw = '{"need_search": true, "queries": ["qA"], "decomposed": true}'
+            elif "检索候选" in s:
+                raw = '{"keep": [1]}'
+            else:
+                raw = ""
+            for ch in raw:
+                on_token(ch)
+
+        def chat(self, messages, temperature=0.7, max_tokens=None):
+            self.calls.append(messages[0]["content"])
+            return "- 要点甲"
+
+    fast = FastFake()
+    monkeypatch.setattr(eng, "_make_fast_llm", lambda req: fast)
+    monkeypatch.setattr(rt_mod, "_kb_search",
+                        lambda q, pid: [{"title": "kb-修正", "content": "正确内容 45 天"}])
+    monkeypatch.setattr(rt_mod, "_web_search", lambda q: [])
+
+    class ChatFake:
+        last = None
+
+        def __init__(self, *a, **k):
+            self.messages = None
+            ChatFake.last = self
+
+        def chat(self, messages, temperature=0.7, max_tokens=None):
+            self.messages = messages
+            return "# 修订稿\n45 天 <!--difficulty:0.6-->"
+
+    monkeypatch.setattr(eng, "_make_llm", lambda req, model_override=None: ChatFake())
+
+    def _boom(*a, **k):
+        raise AssertionError("regen 形态不应走技能生成（直连主模型）")
+
+    monkeypatch.setattr("services.resource_gen.generate_resource", _boom)
+    judge = ScriptedLLM(['{"claims": [{"claim": "c", "label": "supported", "confidence": 0.9, '
+                         '"reason": "r", "diag": ""}], "instruction_ok": true, "instruction_note": ""}'])
+    monkeypatch.setattr(rv_mod, "pick_judge_llm", lambda template, req: judge)
+
+    frames = asyncio.run(_collect(eng.stream_response(
+        _mk_req("r1", message="这部分讲错了，帮我修正"))))
+    done = frames[-1]
+    assert done["type"] == "done" and done["review"]["passed"] is True
+    assert done["resource_id"] == "r1"                       # 前端绑定不变（原 rid）
+    assert done["difficulty"] == 0.6
+    rows = env.execute(
+        "SELECT name, type, content, difficulty FROM resources WHERE project_id='pX' ORDER BY rowid")
+    assert len(rows) == 2                                    # 版本续接：同 name/type 新行
+    assert rows[1]["name"] == "生成·讲义" and rows[1]["type"] == "gen:guide"
+    assert rows[1]["content"] == "# 修订稿\n45 天" and rows[1]["difficulty"] == 0.6
+    # 直连 prompt 携带当前全文 + KB 要点；审核参照系含原始检索块
+    assert "【当前资源全文（在此版本上修订）】" in ChatFake.last.messages[1]["content"]
+    assert "V1 原始内容" in ChatFake.last.messages[1]["content"]
+    assert "要点甲" in ChatFake.last.messages[1]["content"]
+    assert "正确内容 45 天" in judge.calls[0]["messages"][0]["content"]
+    # 问答历史留档（重开可续聊）
+    msgs = env.execute("SELECT role FROM messages WHERE dialogue_id='dRE' ORDER BY rowid")
+    assert [m["role"] for m in msgs] == ["user", "assistant"]
+
+
+def test_routing_directed_stays_edit(env, monkeypatch):
+    """定向替换指令 → 编辑分支（直连修订、无审核帧）；误入生成管线会被判卷炸弹引爆。"""
+    import engine.pipeline_v2 as eng
+    import engine.review as rv_mod
+    _seed_resource(env)
+    monkeypatch.setattr(eng, "_make_llm", lambda req, model_override=None: FakeLLM("V2 定向修订"))
+
+    def _boom(*a, **k):
+        raise AssertionError("定向修改不应触发断言审核")
+
+    monkeypatch.setattr(rv_mod, "pick_judge_llm", _boom)
+    frames = asyncio.run(_collect(eng.stream_response(
+        _mk_req("r1", message="把'30天'改成'45天'"))))
+    done = frames[-1]
+    assert done["type"] == "done" and done["reply"] == "V2 定向修订"
+    assert "review" not in done                              # 编辑分支无审核负载
+    assert env.execute("SELECT COUNT(*) c FROM resources WHERE project_id='pX'")[0]["c"] == 2
