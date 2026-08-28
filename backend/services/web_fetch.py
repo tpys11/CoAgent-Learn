@@ -281,7 +281,6 @@ def _doc_is_simplified(base_url: str, u: str) -> bool:
 
 def _slug_role(base_url: str, u: str) -> str:
     """抓取前用 URL 路径关键词估算内容类型；真实分类在取回正文后按标题进行。"""
-    from urllib.parse import urlparse as _up
     full = _doc_scope_path(base_url, u).lower()
     if any(k in full for k in ("quiz", "test", "question", "answer")):
         return "测试题·思考题"

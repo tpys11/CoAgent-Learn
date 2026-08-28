@@ -182,7 +182,6 @@ def init_course_profile(pid, name="", domain=""):
 
 def _synthesize_profile(api_key, gp, mem):
     """flash 合成对话学情画像（个人画像 + 课程画像 → 对话画像 JSON）。"""
-    import sys as _s
     import requests as _req
     from core.config import config as _cfg
     NL = chr(10)

@@ -138,7 +138,6 @@ async def upload_resource(
     file: UploadFile = File(...),
 ):
     """我的上传：上传文件存资源表（解析文本存 content，文件本体存 data/uploads）"""
-    import time, hashlib
     from core.postgres_client import pg_client
     from core.file_parser import parse_file
     data = await file.read()

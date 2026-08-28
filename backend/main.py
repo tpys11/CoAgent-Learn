@@ -3,16 +3,14 @@ CoAgent-Learn 纯 API 后端
 FastAPI + LangGraph 多智能体协同 + RAG 向量检索
 """
 import sys, os
-import re
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, File, UploadFile, Form
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
-import json
 import logging
 
 load_dotenv()
@@ -30,9 +28,8 @@ from routers.knowledge import router as knowledge_router
 from routers.resources import router as resources_router
 from routers.memory import router as memory_router
 from routers.skills import router as skills_router
-from core.helpers import _as_dict, extract_json_obj
-from services.special_forms import suggest_special_forms
-from services.memory_edit import memory_edit, memory_chat as _memory_chat_service
+from core.helpers import extract_json_obj
+from services.memory_edit import memory_chat as _memory_chat_service
 
 
 @asynccontextmanager

@@ -11,19 +11,29 @@ B1 拆分（2026-08-27）：按职责迁出三个模块并在本门面回收命�
 本文件保留：BM25 检索 / 上传编排 add_document / 混合检索 search / 重排 / 列表与删除。
 """
 import hashlib
-import json
 import logging
 import re
 
 from core.chunkers import (_chunk_markdown, _chunk_semantic, _chunk_text,
-                            _extract_tree, _is_junk_heading, _percentile,
-                            _split_markdown_sections, _split_sentences)
-from core.embeddings import (_embed, _embed_api, _embed_local, _embed_vl,
-                             _get_embedder, _vl_key, embed_vl_images,
+                            _extract_tree)
+from core.embeddings import (_embed, _vl_key, embed_vl_images,
                              embed_vl_query)
-from core.ingest_enhancers import (KG_MAX_EDGES, KG_MAX_NAMES, KG_REL_WHITELIST,
-                                   _flatten_tree_names, enhance_questions,
+from core.ingest_enhancers import (enhance_questions,
                                    extract_kg_edges)
+# —— B1 门面命名空间回收·测试补丁面（勿删：tests 经本模块转手导入/patch，
+#    见模块 docstring；noqa 压制 F401 属预期）——
+from core.chunkers import _is_junk_heading  # noqa: F401
+from core.chunkers import _percentile  # noqa: F401
+from core.chunkers import _split_markdown_sections  # noqa: F401
+from core.chunkers import _split_sentences  # noqa: F401
+from core.embeddings import _embed_api  # noqa: F401
+from core.embeddings import _embed_local  # noqa: F401
+from core.embeddings import _embed_vl  # noqa: F401
+from core.embeddings import _get_embedder  # noqa: F401
+from core.ingest_enhancers import KG_MAX_EDGES  # noqa: F401
+from core.ingest_enhancers import KG_MAX_NAMES  # noqa: F401
+from core.ingest_enhancers import KG_REL_WHITELIST  # noqa: F401
+from core.ingest_enhancers import _flatten_tree_names  # noqa: F401
 from core.db import get_kb_repo
 
 _db = get_kb_repo()

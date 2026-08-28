@@ -153,7 +153,6 @@ class KnowledgeUpload(BaseModel):
 def kb_node_content(project_id: str, source: str, path: str):
     """章节节点正文：path 为节点标题路径（/ 分隔，从根到节点），返回节点正文预览 + 起始 chunk 序号。
     节点无 content（旧数据）时按 source+标题在 kb_vectors 兜底取首块（见 2.3）。"""
-    import json as _json
     from core.db import get_kb_repo
     repo = get_kb_repo()
     node = None
@@ -460,7 +459,6 @@ async def knowledge_upload_file(
     wait: bool = Form(False),
     file: UploadFile = File(...),
 ):
-    from core.file_parser import parse_file
     from starlette.concurrency import run_in_threadpool
     data = await file.read()
     _ALLOWED_EXTS = {"txt", "md", "markdown", "py", "js", "ts", "json", "csv", "html", "css",
