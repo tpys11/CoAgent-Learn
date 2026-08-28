@@ -80,6 +80,39 @@ def _process_upload(project_id, text, source, session_id, api_key, skip_context:
     return n
 
 
+def _parse_for_upload(fname: str, data: bytes, ext: str) -> str:
+    """上传解析统一入口：PDF 走可配置引擎（pymupdf4llm/mineru/mathpix，失败自动降级），其余走 file_parser。"""
+    if ext == "pdf":
+        from core import parse_service
+        text, engine = parse_service.parse_document(fname, data)
+        logger.info("PDF 解析 fname=%s engine=%s chars=%s", fname, engine, len(text))
+        return text or ""
+    from core.file_parser import parse_file
+    return parse_file(fname, data) or ""
+
+
+def _process_file_bg(project_id: str, fname: str, data: bytes, source: str,
+                     session_id: str, api_key: str, content_hash: str, ext: str, desc: str = ""):
+    """后台文件处理全链（上传提速·单步2）：解析 → _process_upload（去重/原文存档/入库/记录hash）→ 图片向量。
+    解析从 HTTP 请求内移出（wait=false 时 HTTP 立即返回）；失败写进度错误终态（前端轮询可见）。"""
+    from core.knowledge_service import _set_progress, _set_progress_error
+    try:
+        _set_progress(project_id, source, done=0, total=1, stage="parsing")
+        if ext in {"png", "jpg", "jpeg", "gif", "webp", "bmp"}:
+            _process_upload(project_id, desc, source, session_id, api_key, False, False, content_hash)
+            _store_image_vector(project_id, source, data, desc, ext)
+            return
+        text = _parse_for_upload(fname, data, ext)
+        if not text.strip():
+            _set_progress_error(project_id, source, "无法解析该文件内容（可能为空或格式不支持）")
+            return
+        n = _process_upload(project_id, text, source, session_id, api_key, False, False, content_hash)
+        logger.info("后台入库完成 fname=%s chunks=%s", fname, n)
+    except Exception as e:
+        logger.exception("后台文件处理失败 fname=%s", fname)
+        _set_progress_error(project_id, source, "后台处理失败：" + str(e)[:150])
+
+
 def _store_image_vector(project_id: str, source: str, data: bytes, desc: str, ext: str):
     """把图片落盘到 data/uploads，并生成 Qwen3-VL-Embedding 图片向量入库（失败不阻塞文字入库）。"""
     try:
@@ -460,29 +493,25 @@ async def knowledge_upload_file(
             return {"status": "error", "msg": "图片描述失败：" + str(e)[:150]}
         text = "【图片内容】" + desc
     else:
-        if _ext == "pdf":
-            # PDF 走可配置解析引擎（ParsePort：pymupdf4llm/mineru/mathpix，失败自动降级）
-            from core import parse_service
-            text, engine = await run_in_threadpool(parse_service.parse_document, fname, data)
-            logger.info("PDF 解析 fname=%s engine=%s chars=%s", fname, engine, len(text))
-        else:
-            text = await run_in_threadpool(parse_file, fname, data)
-    if not text.strip():
-        return {"status": "error", "msg": "无法解析该文件内容（可能为空或格式不支持）"}
-    source = fname
-    _ch = hashlib.sha256(data).hexdigest()
-    if wait:
-        from starlette.concurrency import run_in_threadpool
-        chunks = await run_in_threadpool(_process_upload, project_id, text, source, session_id, api_key, False, False, _ch)
+        source = fname
+        _ch = hashlib.sha256(data).hexdigest()
+        if wait:
+            if _ext not in _IMG_EXTS:
+                text = await run_in_threadpool(_parse_for_upload, fname, data, _ext)
+                if not text.strip():
+                    return {"status": "error", "msg": "无法解析该文件内容（可能为空或格式不支持）"}
+            chunks = await run_in_threadpool(_process_upload, project_id, text, source, session_id, api_key, False, False, _ch)
+            if _ext in _IMG_EXTS:
+                await run_in_threadpool(_store_image_vector, project_id, source, data, desc, _ext)
+            if chunks == -1:
+                return {"status": "ok", "chunks": 0, "duplicate": True, "source": source, "msg": "内容已存在，已跳过重复入库"}
+            return {"status": "ok", "chunks": chunks, "source": source}
+        # 后台模式（上传提速·单步2）：解析+入库全链进后台——HTTP 立即返回，进度走 /upload-progress
+        submit(_process_file_bg, project_id, fname, data, source, session_id, api_key, _ch, _ext,
+               desc if _ext in _IMG_EXTS else "")
         if _ext in _IMG_EXTS:
-            await run_in_threadpool(_store_image_vector, project_id, source, data, desc, _ext)
-        if chunks == -1:
-            return {"status": "ok", "chunks": 0, "duplicate": True, "source": source, "msg": "内容已存在，已跳过重复入库"}
-        return {"status": "ok", "chunks": chunks, "source": source}
-    submit(_process_upload, project_id, text, source, session_id, api_key, False, False, _ch)
-    if _ext in _IMG_EXTS:
-        submit(_store_image_vector, project_id, source, data, desc, _ext)
-    return {"status": "processing", "msg": "正在处理，稍后刷新查看"}
+            submit(_store_image_vector, project_id, source, data, desc, _ext)
+        return {"status": "processing", "msg": "正在处理，稍后刷新查看"}
 
 
 @router.get("/api/knowledge/list")

@@ -76,8 +76,15 @@ def _invalidate_bm25(project_id: str):
 _progress: dict = {}
 
 
-def _set_progress(project_id: str, source: str, done: int, total: int) -> None:
-    _progress[(project_id, source)] = {"status": "ok", "done": int(done), "total": int(total)}
+def _set_progress(project_id: str, source: str, done: int, total: int,
+                  stage: str = "embedding") -> None:
+    _progress[(project_id, source)] = {"status": "ok", "done": int(done),
+                                       "total": int(total), "stage": stage}
+
+
+def _set_progress_error(project_id: str, source: str, msg: str) -> None:
+    """上传链失败终态（前端轮询可见），替代静默吞错。"""
+    _progress[(project_id, source)] = {"status": "error", "msg": str(msg)[:200]}
 
 
 def get_progress(project_id: str, source: str) -> dict:
@@ -185,6 +192,7 @@ def add_document(project_id: str, text: str, source: str = "", session_id: str =
         )
     if not chunks:
         return 0
+    _set_progress(project_id, source, done=len(chunks), total=len(chunks), stage="chunking")
     # 解析当前 embedding 签名对应的活跃索引版本（签名变化时自动开新物理表，旧表保留只读）
     table = _db.resolve_active_text_table()
     # 清同源旧块（跨版本）：改切块参数/更新内容后重传，避免新旧边界块混存污染检索
@@ -229,8 +237,10 @@ def add_document(project_id: str, text: str, source: str = "", session_id: str =
     # 门控 KB_META_ENHANCE（默认开）；任何失败不阻断上传（enhance_questions 内部已兜底，
     # 此层再兜一道与标题树同级的保险）。
     try:
+        _set_progress(project_id, source, done=0, total=1, stage="enhancing")
         enhance_questions(project_id, chunks, [b[0] for b in bulk],
                           source=source, api_key=api_key, db=_db)
+        _set_progress(project_id, source, done=1, total=1, stage="enhancing")
     except Exception:
         logger.warning("问题增强失败（不阻断上传）source=%s", source, exc_info=True)
     _invalidate_bm25(project_id)
