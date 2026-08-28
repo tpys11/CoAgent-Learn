@@ -114,6 +114,7 @@ class ChatRequest(BaseModel):
     agents: list = []
     followup_focus: str | None = None  # 追问风格：purpose=目的推进（默认）/ expand=横向拓展闲聊
     edit_resource_id: str | None = None  # 闭环六：在场 → 资源编辑独立会话分支（全文重生成，kind='resource' 隔离）
+    gen_resource: str | None = None  # 闭环七：在场（能力 key）→ 资源生成管线分支（研究档级，kind='resource' 隔离）
     extra_followup_did: str | None = None  # 额外生成追问的目标对话（主对话完成后同步给第二对话）
     extra_followup_focus: str | None = None  # 额外追问风格（默认 expand）
 class StopRequest(BaseModel):

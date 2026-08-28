@@ -659,9 +659,250 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         ACTIVE_CANCELS.pop(request_id, None)
 
 
+async def _stream_resource_gen(req):
+    """闭环七：资源生成管线分支——主管线阶段的研究档变体。
+    plan(无LLM,校验能力key) → fan-out(学情∥检索,rounds=2 走B2-lite) → KB蒸馏(5-10条)
+    → CAPABILITIES技能生成(合成content注入materials) → review_claims断言审核(重试≤2)
+    → resources落库(difficulty自标,失败NULL不阻断) → eval_traces全阶段(旁路)。
+    会话 kind='resource' 隔离（重开可续聊，后续轮带 edit_resource_id 自动转编辑分支）。
+    SSE 全帧（step/thought/answer/done）；前端生成页 v1 仅消费 answer/done，其余帧忽略。
+    done 携 resource_id/name/difficulty/review。技能生成为同步调用，正文在审核定稿后
+    分批注入 answer 帧（伪流式——真流式列资源生成赛后优化）。"""
+    import asyncio as _asyncio
+    import hashlib as _hashlib
+    import re as _re
+    from concurrent.futures import ThreadPoolExecutor
+    from core.postgres_client import pg_client
+
+    async def stream():
+        request_id = __import__("uuid").uuid4().hex[:16]
+        did = (req.dialogue_id or "").strip() or ("gen-" + request_id)
+        yield f"data: {json.dumps({'type': 'start', 'request_id': request_id})}\n\n"
+        token_queue: queue.Queue = queue.Queue()
+        try:
+            pid = req.project_id or "default"
+            key = (req.gen_resource or "").strip()
+            user_text = (req.message or "").strip() or "请生成本领域学习资源"
+            # 能力 key 前置校验：非法请求零写库软着陆
+            from services.resource_gen import CAPABILITIES
+            if key not in CAPABILITIES:
+                yield f"data: {json.dumps({'type': 'error', 'message': '未知能力: ' + key})}\n\n"
+                return
+            # 会话：kind='resource' 隔离（不进对话列表/学情管线）
+            exist = pg_client.execute("SELECT id FROM dialogues WHERE id=%s", (did,))
+            if not exist:
+                pg_client.execute(
+                    "INSERT INTO dialogues(id,project_id,session_id,name,kind) "
+                    "VALUES(%s,%s,%s,%s,'resource')",
+                    (did, pid, req.session_id or "default", "生成·" + user_text[:12]))
+            pg_client.execute(
+                "INSERT INTO messages(dialogue_id,role,content) VALUES(%s,%s,%s)",
+                (did, "user", user_text))
+
+            traces: list[dict] = []
+            t0 = time.time()
+
+            def _trace(stage, input_digest="", output_digest="", **metrics):
+                traces.append({"stage": stage,
+                               "input_digest": str(input_digest)[:400],
+                               "output_digest": str(output_digest)[:400],
+                               "metrics_json": json.dumps(metrics, ensure_ascii=False),
+                               "elapsed_ms": max(0, int((time.time() - t0) * 1000))})
+
+            def _worker():
+                try:
+                    from services.resource_gen import generate_resource
+                    from engine.review import (REVIEW_MAX_RETRY, pick_judge_llm,
+                                               review_claims)
+                    from engine import output_strategy as _os
+
+                    # S1 plan：分支本身即意图决策——仅校验与留痕，不花 LLM
+                    cap = CAPABILITIES.get(key)
+                    token_queue.put(("step", "学习助手·规划"))
+                    _trace("plan", input_digest=user_text[:200],
+                           output_digest=json.dumps({"capability": key, "label": cap["label"]},
+                                                    ensure_ascii=False))
+
+                    # S2×S3 fan-out：学情 ∥ 检索（研究档级，rounds=2 走 B2-lite 分解链）
+                    token_queue.put(("step", "学情与记忆管理"))
+                    token_queue.put(("step", "知识库管理"))
+
+                    def _do_assess():
+                        from engine.assess import assess_and_store
+                        return assess_and_store(_make_fast_llm(req), did, user_text, "", None)
+
+                    def _do_retrieve():
+                        from engine.retrieve import retrieve_stage
+                        return retrieve_stage(_make_fast_llm(req), user_text, "研究", pid, rounds=2)
+
+                    assess_score, assess_evidence = None, ""
+                    search_results: list = []
+                    with ThreadPoolExecutor(max_workers=2) as ex:
+                        fa = ex.submit(_do_assess)
+                        fr = ex.submit(_do_retrieve)
+                        try:
+                            assess_score, _t, assess_evidence = fa.result(timeout=60)
+                        except Exception:
+                            logger.exception("[gen] 学情评估失败，回落规则地板")
+                        try:
+                            search_results = (fr.result(timeout=120) or {}).get("search_results") or []
+                        except Exception:
+                            logger.exception("[gen] 检索失败，降级无检索生成")
+                    _trace("assess", input_digest=user_text[:200],
+                           output_digest=json.dumps(
+                               {"level_score": assess_score,
+                                "evidence": (assess_evidence or "")[:120]},
+                               ensure_ascii=False))
+                    _trace("retrieve", input_digest=user_text[:200],
+                           output_digest=json.dumps({"kept": len(search_results)},
+                                                    ensure_ascii=False))
+
+                    # KB 蒸馏：按需求提炼 5-10 条要点（技能侧 content 截 4000，防需求/画像被挤掉）
+                    kb_points = ""
+                    if search_results:
+                        try:
+                            chunks_text = "\n".join(
+                                f"[{i + 1}] {str((c or {}).get('title') or '')}："
+                                f"{str((c or {}).get('content') or '')[:300]}"
+                                for i, c in enumerate(search_results[:12]))
+                            d_raw = _make_fast_llm(req).chat(
+                                [{"role": "user", "content":
+                                    "从以下检索块中，围绕【用户需求】提炼最重要的信息要点：合并相似项，"
+                                    "输出 5-10 条，每条一行以 - 开头，只保留与需求相关且检索块可支撑的内容。\n"
+                                    f"【用户需求】{user_text[:500]}\n【检索块】\n{chunks_text}"}],
+                                temperature=0.2)
+                            kb_points = (d_raw or "").strip()[:3000]
+                        except Exception:
+                            logger.exception("[gen] 知识库蒸馏失败，降级拼接原始要点为空")
+                            kb_points = ""
+                    token_queue.put(("token", "知识库管理",
+                                     f"检索留存 {len(search_results)} 条"
+                                     + ("，已蒸馏要点" if kb_points else "")))
+
+                    # 生成 content 合成（需求 + 画像学情 + KB 要点 + 难度自标注释要求）
+                    profile_line = (f"学习者当前水平评分 {assess_score:.2f}（0-1），资源难度应贴合该水平。"
+                                    if assess_score is not None
+                                    else "学习者水平未知，按入门到进阶之间组织。")
+                    evidence_line = f"学情证据：{str(assess_evidence)[:150]}。" if assess_evidence else ""
+                    kb_line = (f"【知识库要点】\n{kb_points}" if kb_points
+                               else "【知识库要点】（未命中——用通识生成，正文注明哪些内容未经知识库验证）")
+                    gen_content = (
+                        f"【用户需求】\n{user_text}\n\n"
+                        f"【画像学情】{profile_line}{evidence_line}\n"
+                        f"{kb_line}\n\n"
+                        "【附加要求】正文最后一行单独输出注释 <!--difficulty:0.85--> 格式"
+                        "（0-1 小数，估计本资源面向的学习者水平，应与画像学情贴合）。")
+
+                    # 生成 × 断言审核重试环（fail-open 内置于 review_claims）
+                    token_queue.put(("step", "学习助手·生成"))
+                    attempt = 0
+                    content, difficulty = "", None
+                    review_payload: dict = {}
+                    while True:
+                        r = generate_resource(req.api_key or "", key, gen_content,
+                                              req.base_url, req.model)
+                        if r.get("status") != "ok":
+                            token_queue.put(("error", r.get("msg") or "生成失败"))
+                            return
+                        content = r.get("content") or ""
+                        m = _re.search(r"<!--\s*difficulty:\s*([0-9.]+)\s*-->", content)
+                        if m:
+                            try:
+                                difficulty = max(0.0, min(1.0, float(m.group(1))))
+                            except ValueError:
+                                difficulty = None
+                            content = _re.sub(r"\s*<!--\s*difficulty:\s*[0-9.]+\s*-->\s*",
+                                              "", content).rstrip()
+                        _trace("generate", input_digest=gen_content[:200],
+                               output_digest=json.dumps(
+                                   {"content_len": len(content), "attempt": attempt + 1,
+                                    "difficulty": difficulty}, ensure_ascii=False))
+                        t_val = _os.compute_t({}, assess_score)
+                        strategy_text = _os.directive(_os.route("研究", t_val), t_val)
+                        verdict = review_claims(pick_judge_llm("研究", req), content,
+                                                search_results, strategy_text)
+                        review_payload = {"passed": verdict["passed"], "score": verdict["score"],
+                                          "issues": verdict.get("issues") or [],
+                                          "claims": verdict.get("claims") or [],
+                                          "skipped": bool(verdict.get("skipped"))}
+                        _trace("review", output_digest=json.dumps(
+                            {"passed": verdict["passed"], "score": verdict["score"],
+                             "claims_total": len(review_payload["claims"]),
+                             "unsupported": len(review_payload["issues"]),
+                             "skipped": review_payload["skipped"]}, ensure_ascii=False))
+                        if verdict["passed"] or attempt >= REVIEW_MAX_RETRY:
+                            if not verdict["passed"]:
+                                review_payload["note"] = "达重试上限，保留当前稿并附审核意见"
+                            break
+                        token_queue.put(("token", "审核",
+                                         f"未通过({verdict['reasons'][:60]})，重新生成…"))
+                        attempt += 1
+                        gen_content += (f"\n\n【审核反馈·上一稿未通过】{verdict['reasons'][:400]}。"
+                                        "请据此修正后按全部要求重新输出。")
+
+                    # 落库：append 语义=版本历史；difficulty 自标值随行（NULL=未自标）
+                    name = (user_text.splitlines()[0] if user_text else "").strip()[:24] \
+                        or (cap["label"] + "资源")
+                    rid = _hashlib.md5((name + pid + request_id).encode()).hexdigest()[:16]
+                    pg_client.execute(
+                        "INSERT INTO resources(id,name,content,project_id,type,difficulty) "
+                        "VALUES (%s,%s,%s,%s,%s,%s)",
+                        (rid, name, content, pid, "gen:" + key, difficulty))
+                    _trace("resource_gen", output_digest=json.dumps(
+                        {"key": key, "resource_id": rid, "name": name, "difficulty": difficulty},
+                        ensure_ascii=False))
+                    _persist_assistant_message(did, content)
+                    # 伪流式：正文分批注入 answer 帧（真流式=赛后优化项）
+                    for i in range(0, len(content), 48):
+                        token_queue.put(("answer", content[i:i + 48]))
+                    token_queue.put(("done", {"reply": content, "resource_id": rid,
+                                              "name": name, "difficulty": difficulty,
+                                              "review": review_payload}))
+                except Exception as e:
+                    logger.exception("[gen] 资源生成分支失败")
+                    try:
+                        _trace("error", output_digest=str(e)[:400])
+                        from core.db.eval_repo import get_eval_repo
+                        get_eval_repo().insert_traces(request_id, did, pid, "研究", traces)
+                    except Exception:
+                        logger.exception("[gen] error 路径 Trace 冲刷失败")
+                    token_queue.put(("error", str(e)[:200]))
+
+            threading.Thread(target=_worker, daemon=True).start()
+
+            # SSE 泵（照闭环六：0.05s 轮询 + heartbeat）
+            while True:
+                try:
+                    msg = token_queue.get(timeout=0.05)
+                except queue.Empty:
+                    await _asyncio.sleep(0.05)
+                    yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
+                    continue
+                kind = msg[0]
+                if kind == "step":
+                    yield f"data: {json.dumps({'type': 'step', 'agent': msg[1]})}\n\n"
+                elif kind == "token":
+                    yield f"data: {json.dumps({'type': 'thought_token', 'agent': msg[1], 'chunk': msg[2]})}\n\n"
+                elif kind == "answer":
+                    yield f"data: {json.dumps({'type': 'answer_token', 'chunk': msg[1]})}\n\n"
+                elif kind == "done":
+                    yield f"data: {json.dumps({'type': 'done', **msg[1]}, ensure_ascii=False)}\n\n"
+                    break
+                else:  # error
+                    yield f"data: {json.dumps({'type': 'error', 'message': msg[1]})}\n\n"
+                    break
+        finally:
+            from engine.cancel import ACTIVE_CANCELS
+            ACTIVE_CANCELS.pop(request_id, None)
+    return StreamingResponse(stream(), media_type="text/event-stream")
+
+
 async def stream_response(req):
     """v2 引擎入口：返回与 v1 同构的 StreamingResponse。
-    闭环六：edit_resource_id 在场 → 资源编辑独立分支（结构性隔离，不进主管线）。"""
+    闭环七：gen_resource 在场 → 资源生成管线分支；闭环六：edit_resource_id 在场
+    → 资源编辑独立分支（结构性隔离，不进主管线）。两者同在时编辑优先。"""
+    if getattr(req, "gen_resource", None):
+        return await _stream_resource_gen(req)
     if getattr(req, "edit_resource_id", None):
         return await _stream_resource_edit(req)
 

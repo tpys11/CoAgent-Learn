@@ -17,6 +17,10 @@ export type ChatEvent =
       special_suggestions?: Array<{ key: string; label: string }>
       retrieved_images?: Array<{ source: string; content: string; file_path: string; mime: string }>
       review?: ReviewResult
+      /** 闭环七（资源生成分支）：资源收养三件套——前端据此绑定 dialogue→resource 转编辑模式 */
+      resource_id?: string
+      name?: string
+      difficulty?: number | null
     }
   | { type: 'error'; message: string }
 

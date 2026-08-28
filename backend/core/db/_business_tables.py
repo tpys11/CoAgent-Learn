@@ -81,6 +81,7 @@ class BusinessTablesMixin:
                 file_ext TEXT DEFAULT '',
                 file_size INTEGER DEFAULT 0,
                 file_path TEXT DEFAULT '',
+                difficulty REAL,
                 created_at TEXT DEFAULT (datetime('now'))
             )
         """)
@@ -90,6 +91,7 @@ class BusinessTablesMixin:
             ("file_ext", "TEXT DEFAULT ''"),
             ("file_size", "INTEGER DEFAULT 0"),
             ("file_path", "TEXT DEFAULT ''"),
+            ("difficulty", "REAL"),
         ]:
             try:
                 self.execute("ALTER TABLE resources ADD COLUMN " + _col + " " + _ddl)

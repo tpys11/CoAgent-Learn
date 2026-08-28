@@ -4,6 +4,8 @@
  * 对话流 = 用户指令右气泡 / AI 新版全文左气泡（answer_token 流式 → done 终稿）。
  * 预览（拍板③非实时）：done 后刷新为最新版；版本下拉 = listResources 同名过滤按时间排序，切版本即预览。
  * 历史回放：挂载时 GET /api/dialogues/{did}/messages 拉编辑记录（重开窗口可续聊）。
+ * 闭环七：生成模式——genKey 在场（无 resourceId）即生成会话（后端 gen_resource 分支）；
+ * done 收养 resource_id/name 并写入 RES_DLG_KEY 映射，后续消息自动转编辑分支（生命周期：生成一次→续聊即修订）。
  */
 import { useEffect, useRef, useState } from 'react'
 import MarkdownIt from 'markdown-it'
@@ -39,16 +41,23 @@ interface ChatMsg { role: 'user' | 'assistant'; content: string }
  * --reload 的历史遗留），升键即全部作废重来。 */
 const RES_DLG_KEY = 'resDialogues-v2'
 
-export default function ResourceChatPage({ resourceId, resourceName, projectId, onBack }: {
-  resourceId: string; resourceName: string; projectId?: string | null; onBack: () => void
+export default function ResourceChatPage({ resourceId: initialId = '', resourceName: initialName = '', projectId, onBack, genKey, genLabel, genPrompt }: {
+  resourceId?: string; resourceName?: string; projectId?: string | null; onBack: () => void
+  /** 闭环七：生成模式——genKey 在场（无 resourceId）即生成会话；done 收养资源后续聊自动转编辑 */
+  genKey?: string; genLabel?: string; genPrompt?: string
 }) {
+  const [resourceId, setResourceId] = useState(initialId)
+  const [resourceName, setResourceName] = useState(initialName)
+  const isGen = !resourceId && !!genKey
   const [dialogueId] = useState(() => {
+    if (genKey) return 'gen-' + Math.random().toString(36).slice(2) + Date.now().toString(36)
     const map = lsGetJSON<Record<string, string>>(RES_DLG_KEY, {}) || {}
-    return map[resourceId] || ''
+    return map[initialId] || ''
   })
   const dlgRef = useRef(dialogueId)
+  const genSentRef = useRef(false)
   const [msgs, setMsgs] = useState<ChatMsg[]>([])
-  const [histLoading, setHistLoading] = useState(true)
+  const [histLoading, setHistLoading] = useState(!genKey)
   /** 首屏只渲染尾部窗口（opencode 式最小虚拟化）：编辑会话可能几十轮全文修订，
    *  全量 md 解析会拖死挂载；向上滚到顶逐步扩大窗口。 */
   const [renderWindow, setRenderWindow] = useState(8)
@@ -61,24 +70,25 @@ export default function ResourceChatPage({ resourceId, resourceName, projectId, 
   const scrollRef = useRef<HTMLDivElement>(null)
 
   /** 版本列表：同 type 同名过滤由后端 name 精确匹配在前端完成（type 前缀 gen: 由资源本身保证） */
-  const loadVersions = () => {
-    if (!projectId) return
+  const loadVersions = (name: string = resourceName) => {
+    if (!projectId || !name) return
     api.listResources(projectId).then(d => {
       const rows: VersionItem[] = (d.resources || [])
-        .filter((r: any) => r.name === resourceName)
+        .filter((r: any) => r.name === name)
         .map((r: any) => ({ id: r.id, content: r.content || '', created_at: r.created_at }))
       setVersions(rows)
       setPreviewIdx(-1)
     }).catch(() => {})
   }
 
-  /** 挂载：取/建 dialogue → 回放历史 → 拉版本 */
+  /** 挂载：取/建 dialogue → 回放历史 → 拉版本（生成模式无历史可回放，直接就绪） */
   useEffect(() => {
+    if (genKey) return
     const map = lsGetJSON<Record<string, string>>(RES_DLG_KEY, {}) || {}
-    let did = map[resourceId]
+    let did = map[initialId]
     if (!did) {
       did = 'red-' + Math.random().toString(36).slice(2) + Date.now().toString(36)
-      map[resourceId] = did
+      map[initialId] = did
       lsSetJSON(RES_DLG_KEY, map)
     }
     dlgRef.current = did
@@ -87,8 +97,8 @@ export default function ResourceChatPage({ resourceId, resourceName, projectId, 
       setMsgs(hist.filter((m: ChatMsg) => m.role === 'user' || m.role === 'assistant'))
       setHistLoading(false)
     }).catch(() => setHistLoading(false))
-    loadVersions()
-  }, [resourceId])
+    loadVersions(initialName)
+  }, [initialId, genKey])
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
@@ -108,8 +118,8 @@ export default function ResourceChatPage({ resourceId, resourceName, projectId, 
     return () => window.removeEventListener('keydown', h)
   }, [onBack, streaming])
 
-  const send = async () => {
-    const text = input.trim()
+  const send = async (override?: string) => {
+    const text = (override ?? input).trim()
     if (!text || streaming) return
     setInput('')
     setMsgs(prev => [...prev, { role: 'user', content: text }])
@@ -123,23 +133,43 @@ export default function ResourceChatPage({ resourceId, resourceName, projectId, 
           message: text, dialogue_id: dlgRef.current,
           project_id: projectId || 'default',
           api_key: lsGet(LS.apiKey, '') || undefined,
-          edit_resource_id: resourceId,
+          edit_resource_id: resourceId || undefined,
+          gen_resource: (!resourceId && genKey) ? genKey : undefined,
         }),
       })
       let reply = ''
+      let doneName = ''
       await streamChatResponse(resp, d => {
         if (d.type === 'answer_token') setLiveText(t => t + d.chunk)
-        if (d.type === 'done') reply = d.reply || ''
-        if (d.type === 'error') reply = '⚠ ' + (d.message || '修改失败')
+        if (d.type === 'done') {
+          reply = d.reply || ''
+          // 闭环七：生成会话收养资源——绑定 dialogue 映射，后续消息自动转编辑分支
+          if (d.resource_id) {
+            setResourceId(d.resource_id)
+            if (d.name) { setResourceName(d.name); doneName = d.name }
+            const map = lsGetJSON<Record<string, string>>(RES_DLG_KEY, {}) || {}
+            map[d.resource_id] = dlgRef.current
+            lsSetJSON(RES_DLG_KEY, map)
+          }
+        }
+        if (d.type === 'error') reply = '⚠ ' + (d.message || '生成失败')
       })
       setMsgs(prev => [...prev, { role: 'assistant', content: reply || '（无回复）' }])
-      if (reply && !reply.startsWith('⚠')) loadVersions()   // 拍板③：done 后才刷新预览
+      if (reply && !reply.startsWith('⚠')) loadVersions(doneName || resourceName)   // 拍板③：done 后才刷新预览
     } catch {
       setMsgs(prev => [...prev, { role: 'assistant', content: '⚠ 请求失败，请检查后端服务' }])
     }
     setLiveText('')
     setStreaming(false)
   }
+
+  /** 闭环七：生成模式挂载就绪后自动首发提示词（一次） */
+  useEffect(() => {
+    if (genKey && genPrompt && !histLoading && !genSentRef.current) {
+      genSentRef.current = true
+      send(genPrompt)
+    }
+  }, [histLoading])
 
   const previewContent = previewIdx === -1
     ? (versions[versions.length - 1]?.content ?? '')
@@ -154,7 +184,7 @@ export default function ResourceChatPage({ resourceId, resourceName, projectId, 
           className="inline-flex items-center gap-1.5 text-[12px] px-2.5 py-1 rounded-lg border hairline row-hover transition-colors">
           <ArrowLeft size={14} /> 返回对话
         </button>
-        <span className="text-[13px] font-semibold truncate max-w-[50%]">AI 修改 · {resourceName}</span>
+        <span className="text-[13px] font-semibold truncate max-w-[50%]">{isGen ? `AI 生成 · ${genLabel || ''}` : `AI 修改 · ${resourceName}`}</span>
         <button onClick={() => setShowPreview(s => !s)}
           title="展开/收起资源预览"
           className="p-1.5 rounded-lg border hairline row-hover transition-colors">
@@ -179,7 +209,9 @@ export default function ResourceChatPage({ resourceId, resourceName, projectId, 
               </div>
             )}
             {!histLoading && msgs.length === 0 && (
-              <p className="text-center text-[12px] text-dim mt-8">用一句话告诉 AI 怎么改这份资料，例如「把第二段改得更口语化」</p>
+              <p className="text-center text-[12px] text-dim mt-8">
+                {isGen ? '正在生成资源：AI 将结合知识库要点与你的学情自主创作，完成后可在此继续修订…' : '用一句话告诉 AI 怎么改这份资料，例如「把第二段改得更口语化」'}
+              </p>
             )}
             {msgs.length > renderWindow && (
               <button onClick={() => setRenderWindow(msgs.length)}
@@ -195,7 +227,7 @@ export default function ResourceChatPage({ resourceId, resourceName, projectId, 
                 </div>
               ) : (
                 <div key={i} className="self-start w-full max-w-[92%] flex flex-col gap-1">
-                  <span className="text-[10px] text-dim">AI · 修订版全文</span>
+                  <span className="text-[10px] text-dim">{resourceId ? 'AI · 修订版全文' : 'AI · 生成全文'}</span>
                   <div className="w-full text-sm leading-7 card-surface px-4 py-3"
                        dangerouslySetInnerHTML={{ __html: renderMdCached(m.content) }} />
                 </div>
@@ -203,7 +235,7 @@ export default function ResourceChatPage({ resourceId, resourceName, projectId, 
             ))}
             {streaming && (
               <div className="self-start w-full max-w-[92%] flex flex-col gap-1">
-                <span className="text-[10px] text-dim">AI · 修订中…</span>
+                <span className="text-[10px] text-dim">{isGen ? 'AI · 生成中…' : 'AI · 修订中…'}</span>
                 <div className="w-full text-sm leading-7 whitespace-pre-wrap break-words card-surface px-4 py-3">
                   {liveText || '…'}<span className="inline-block w-1.5 h-4 align-middle bg-[var(--accent)] animate-pulse ml-0.5" />
                 </div>
@@ -214,10 +246,10 @@ export default function ResourceChatPage({ resourceId, resourceName, projectId, 
           <div className="flex items-end gap-2 px-4 py-3 flex-shrink-0 border-t hairline">
             <textarea value={input} onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
-              placeholder={streaming ? 'AI 修订中…' : '描述修改要求（Enter 发送，Shift+Enter 换行）'}
+              placeholder={streaming ? (isGen ? 'AI 生成中…' : 'AI 修订中…') : (isGen ? '补充生成要求（Enter 发送，Shift+Enter 换行）' : '描述修改要求（Enter 发送，Shift+Enter 换行）')}
               rows={2} disabled={streaming}
               className="flex-1 px-3 py-2 input-surface rounded-xl text-xs outline-none resize-none disabled:opacity-60" />
-            <button onClick={send} disabled={streaming || !input.trim()}
+            <button onClick={() => send()} disabled={streaming || !input.trim()}
               className="btn-primary px-4 py-2 text-[11px] font-semibold disabled:opacity-50 flex items-center gap-1.5">
               {streaming ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />} 发送
             </button>

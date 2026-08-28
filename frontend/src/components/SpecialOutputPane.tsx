@@ -72,6 +72,8 @@ export default function SpecialOutputPane({ projectId, dialogueId }: { projectId
   const [history, setHistory] = useState<GenItem[]>([])
   // 闭环六：AI 修改会话（编辑界面唤起——携带资源 id 与名称）
   const [editing, setEditing] = useState<{ id: string; name: string } | null>(null)
+  // 闭环七：AI 对话生成会话（生成模式——携带能力 key 与提示词，done 后收养资源）
+  const [genSession, setGenSession] = useState<{ key: string; label: string; prompt: string } | null>(null)
   /** 当前预览内容对应的资源行（历史按钮/新生成都会更新；AI 修改入口按此定位资源行） */
   const [resultMeta, setResultMeta] = useState<{ id: string; name: string } | null>(null)
 
@@ -126,6 +128,15 @@ export default function SpecialOutputPane({ projectId, dialogueId }: { projectId
 
   const Icon = ICONS[form] || FileText
   const cur = caps.find(c => c.key === form)
+
+  /** 闭环七：对话生成——源输入框内容即需求提示词，打开生成分支会话（研究档级管线） */
+  const openGenChat = () => {
+    if (!source.trim()) { alert('请先输入生成提示词（想让 AI 生成什么）'); return }
+    if (!projectId) { alert('请先选择项目'); return }
+    setGenSession({ key: form, label: cur?.label || form, prompt: source.trim() })
+    setSource('')
+  }
+
   // 交互式测验优先组件渲染；组件解析失败（null）时回退 Markdown（兼容存量静态测试题）。
   // key=result.id：换题即重挂载——作答收集器随新测验重置，防跨题串档
   const quizEl = result && form === 'quiz'
@@ -154,15 +165,22 @@ export default function SpecialOutputPane({ projectId, dialogueId }: { projectId
         <textarea
           value={source}
           onChange={e => setSource(e.target.value)}
-          placeholder="粘贴或输入要转换的源内容（例如一段讲解、一个流程、一组数据）…"
+          placeholder="粘贴或输入源内容（对话生成时作为你的需求提示词，AI 结合知识库与学情自主生成）…"
           rows={4}
           className="w-full px-2.5 py-2 input-surface rounded-xl text-xs outline-none resize-none"
         />
-        <button onClick={generate} disabled={loading}
-          className="self-end px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-[#1a1a1a] text-white disabled:opacity-50 flex items-center gap-1.5">
-          {loading ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
-          生成 {cur?.label || ''}
-        </button>
+        <div className="flex items-center justify-end gap-2">
+          <button onClick={openGenChat} disabled={loading}
+            title="不走同步转换，由多智能体管线检索知识库+评估学情后自主生成（较慢，质量更高）"
+            className="px-3 py-1.5 rounded-lg text-[11px] font-semibold border hairline row-hover disabled:opacity-50 flex items-center gap-1.5">
+            对话生成
+          </button>
+          <button onClick={generate} disabled={loading}
+            className="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-[#1a1a1a] text-white disabled:opacity-50 flex items-center gap-1.5">
+            {loading ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+            生成 {cur?.label || ''}
+          </button>
+        </div>
 
         {history.length > 0 && (
           <div className="flex flex-col gap-1">
@@ -208,6 +226,19 @@ export default function SpecialOutputPane({ projectId, dialogueId }: { projectId
                          onClick: () => { setResult(null); setEditing(resultMeta) },
                        } : undefined} />
       ))}
+
+      {/* 闭环七：资源生成管线会话（plan→学情∥检索→蒸馏→生成→断言审核→落库）；返回后静默刷新列表 */}
+      {genSession && (
+        <ResourceChatPage genKey={genSession.key} genLabel={genSession.label} genPrompt={genSession.prompt}
+                          projectId={projectId}
+                          onBack={() => {
+                            setGenSession(null)
+                            if (projectId) api.listResources(projectId).then(d => {
+                              const rows: GenItem[] = (d.resources || []).filter(r => (r.type || '') === ('gen:' + form)).map(r => ({ id: r.id, name: r.name, content: r.content || '', created_at: r.created_at }))
+                              setHistory(rows)
+                            }).catch(() => {})
+                          }} />
+      )}
 
       {/* 闭环六：资源编辑独立会话（左对话右预览，kind='resource' 隔离）；返回后静默刷新版本列表 */}
       {editing && (
