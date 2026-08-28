@@ -8,6 +8,8 @@ type UpItem = { id: string; kind: 'file' | 'text'; name: string; file?: File; bo
 
 export function UploadPanel({ projectId, onUploaded }: { projectId: string | null; onUploaded: () => void }) {
   const [upMode, setUpMode] = useState<'text' | 'file'>('text')
+  // 单步3：后台处理进度条（轮询 /api/knowledge/upload-progress：解析→切分→向量化→增强）
+  const [upProgress, setUpProgress] = useState<{ stage: string; pct: number } | null>(null)
   const [upTitle, setUpTitle] = useState('')
   const [upText, setUpText] = useState('')
   const [upItems, setUpItems] = useState<UpItem[]>([])
@@ -48,6 +50,40 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
       return [...prev, ...incoming.filter(f => !names.has(f.name)).map(f => ({ id: 'u' + Date.now() + Math.random().toString(36).slice(2, 6), kind: 'file' as const, name: f.name, file: f }))]
     })
   }
+  const STAGE_CN: Record<string, string> = {
+    parsing: '解析文档', chunking: '切分内容块', embedding: '向量化入库', enhancing: '问题增强',
+  }
+
+  /** 后台处理进度轮询：完成/错误/10 分钟超时退出；返回最终入库块数（用于汇总文案）。 */
+  const pollProgress = (source: string) => new Promise<{ ok: boolean; chunks: number }>(resolve => {
+    const started = Date.now()
+    let lastChunks = 0
+    let stable = 0
+    const timer = setInterval(async () => {
+      try {
+        const p: any = await api.uploadProgress(projectId || 'default', source)
+        if (p && p.status === 'error') {
+          clearInterval(timer); setUpProgress(null); resolve({ ok: false, chunks: 0 }); return
+        }
+        if (p && p.status === 'ok') {
+          lastChunks = Math.max(lastChunks, p.total || 0)
+          const pct = p.total ? Math.max(6, Math.min(99, Math.round(100 * p.done / p.total)))
+                              : (p.stage === 'parsing' ? 12 : 40)
+          setUpProgress({ stage: STAGE_CN[p.stage || ''] || '处理中', pct })
+          const embDone = p.stage === 'embedding' && p.done === p.total && p.total > 0
+          if (embDone) stable++; else stable = 0
+          // 完成判定：问题增强收尾（默认链路）或向量化满载连续两拍（增强被关闭的配置）
+          if ((p.stage === 'enhancing' && (p.done || 0) >= (p.total || 1)) || stable >= 2) {
+            clearInterval(timer); setUpProgress(null); resolve({ ok: true, chunks: lastChunks }); return
+          }
+        }
+        if (Date.now() - started > 10 * 60 * 1000) {
+          clearInterval(timer); setUpProgress(null); resolve({ ok: false, chunks: 0 })
+        }
+      } catch { /* 网络抖动：继续轮询（超时兜底） */ }
+    }, 1200)
+  })
+
   const upUploadAll = async () => {
     if (!projectId || !upItems.length || upUploading) return
     let total = 0; let ok = 0
@@ -60,14 +96,23 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
           const fd = new FormData()
           fd.append('project_id', projectId); fd.append('session_id', 'project-res')
           fd.append('api_key', lsGet(LS.apiKey, ''))
-          fd.append('wait', '1'); fd.append('file', it.file, it.file.name)
+          fd.append('wait', '0'); fd.append('file', it.file, it.file.name)
           d = await api.uploadKnowledgeFile(fd)
+          if (d && d.status === 'processing') {
+            // 单步3：后台处理 + 进度轮询（解析→切分→向量化→问题增强）
+            setUpProgress({ stage: '解析文档', pct: 6 })
+            const r = await pollProgress(it.name)               // source = 文件名（后端 source=fname）
+            if (r.ok) { ok++; total += r.chunks }
+            else alert(`「${it.name}」处理失败或超时，请稍后在知识库查看`)
+          } else if (d && d.status === 'ok') { total += (d.chunks || 0); ok++ }
+          else if (d && d.duplicate) { /* 重复内容视为成功跳过 */ }
+          else alert(`「${it.name}」接入失败：${(d && d.msg) || '处理失败'}`)
         } else if (it.kind === 'text') {
           d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, source: it.name, session_id: 'project-res', api_key: lsGet(LS.apiKey, '') })
+          if (d && d.status === 'ok') { total += (d.chunks || 0); ok++ }
+          else if (d && d.duplicate) { /* 重复内容视为成功跳过 */ }
+          else alert(`「${it.name}」接入失败：${(d && d.msg) || '处理失败'}`)
         }
-        if (d && d.status === 'ok') { total += (d.chunks || 0); ok++ }
-        else if (d && d.duplicate) { /* 重复内容视为成功跳过 */ }
-        else alert(`「${it.name}」接入失败：${(d && d.msg) || '处理失败'}`)
       } catch (e) {
         alert(`「${it.name}」上传失败：${(e as any)?.message || '网络异常'}`)
       }
@@ -86,6 +131,17 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
         {upUploading && <span className="text-[11px] text-dim">上传中：{upUploading}</span>}
         {!upUploading && upDone && <span className="text-[11px] text-emerald-600 font-medium">✓ {upDone}</span>}
       </div>
+      {/* 单步3：后台处理进度条（解析→切分→向量化→问题增强） */}
+      {upProgress && (
+        <div className="flex flex-col gap-1">
+          <div className="flex justify-between text-[10px] text-dim">
+            <span>{upProgress.stage}</span><span>{upProgress.pct}%</span>
+          </div>
+          <div className="h-1.5 rounded-full bg-[var(--bg-hover)] overflow-hidden">
+            <div className="h-full bg-[#1a1a1a] transition-all duration-300" style={{ width: `${upProgress.pct}%` }} />
+          </div>
+        </div>
+      )}
       {/* 两种方式切换 */}
       <div className="flex gap-2">
         {([['text', '文本'], ['file', '文件']] as const).map(([k, label]) => (
