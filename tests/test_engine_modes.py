@@ -285,5 +285,128 @@ def body_research():
             "session_id": "sX", "settings": {"template": "研究"}}
 
 
+# ---------- 召回审核（条件触发：retrieval_gap 驱动二次检索） ----------
+
+_GAP_FAIL = ('{"claims": [{"claim": "RAG 2026 新基准数据", "label": "unsupported", '
+             '"confidence": 0.7, "reason": "证据未覆盖该年度", "diag": "retrieval_gap"}], '
+             '"instruction_ok": true, "instruction_note": ""}')
+_HALLU_FAIL = ('{"claims": [{"claim": "RAG 检索 top-k 是 5", "label": "unsupported", '
+               '"confidence": 0.8, "reason": "证据说 3", "diag": "hallucination"}], '
+               '"instruction_ok": true, "instruction_note": ""}')
+_PASS_SUPPORTED = ('{"claims": [{"claim": "核心概念", "label": "supported", '
+                   '"confidence": 0.9, "reason": "证据支持", "diag": ""}], '
+                   '"instruction_ok": true, "instruction_note": ""}')
+
+
+def _patch_recall_judge(monkeypatch, responses):
+    """判卷假件只建一次实例（lambda 内新建会导致每轮判卷都拿到满弹药脚本——重试永不通过）。"""
+    import engine.review as rv_mod
+    judge = ScriptedLLM(list(responses))
+    monkeypatch.setattr(rv_mod, "pick_judge_llm", lambda template, req: judge)
+
+
+def _count_retrieve_stage(rt, monkeypatch):
+    calls = {"n": 0}
+    real_rs = rt.retrieve_stage
+
+    def counting_rs(*a, **k):
+        calls["n"] += 1
+        return real_rs(*a, **k)
+
+    monkeypatch.setattr(rt, "retrieve_stage", counting_rs)
+    return calls
+
+
+def _count_gen_llm(eng, monkeypatch):
+    """数"生成次数"而非 _make_llm 次数——重试环复用同一 llm_gen 实例，须数 chat_stream 调用。"""
+    gen_calls = {"n": 0}
+    base_make = eng._make_llm
+
+    def counting_make(req, model_override=None):
+        llm = base_make(req, model_override)
+        orig = llm.chat_stream
+
+        def counting_stream(messages, on_token, **kw):
+            gen_calls["n"] += 1
+            return orig(messages, on_token, **kw)
+
+        llm.chat_stream = counting_stream
+        return llm
+
+    monkeypatch.setattr(eng, "_make_llm", counting_make)
+    return gen_calls
+
+
+def _audit_notes(frames, agent="召回审核"):
+    return [f.get("chunk") for f in frames
+            if f["type"] == "thought_token" and f.get("agent") == agent]
+
+
+def test_recall_audit_on_gap(v2_env, monkeypatch):
+    """gap 断言 → 二次检索 → 新证据重建 user prompt 到达生成侧（证据不更新修复的钉死断言）。"""
+    app, eng, client, rt = v2_env
+    rs_calls = _count_retrieve_stage(rt, monkeypatch)
+    gen_calls = _count_gen_llm(eng, monkeypatch)
+    kb_round = {"n": 0}
+
+    def kb_search(q, pid):
+        kb_round["n"] += 1
+        return [{"title": "k-" + q,
+                 "content": "第一轮kb证据" if kb_round["n"] <= 2 else "第二轮kb补充证据"}]
+
+    monkeypatch.setattr(rt, "_kb_search", kb_search)
+    _patch_recall_judge(monkeypatch, [_GAP_FAIL, _PASS_SUPPORTED])
+    frames = _run(app, body_research())
+    assert rs_calls["n"] == 2, (f"rs={rs_calls['n']}, gen={gen_calls['n']}, "
+                                f"review={frames[-1].get('review')}, "
+                                f"notes={_audit_notes(frames)}, "
+                                f"audit={_audit_notes(frames, '审核')}")   # S2 + 召回
+    assert gen_calls["n"] == 2                                 # 初稿 + 召回后重生成
+    # 证据不更新修复：第二次生成的 user 内容含第二轮补充证据
+    assert "第二轮kb补充证据" in ModeProbeLLM.last.messages[1]["content"]
+    notes = _audit_notes(frames)
+    assert any("检索缺口 1 条" in (c or "") for c in notes)
+    # 补搜机制使新增条数不定 → 断言契约级：报了新增且非"无新增"（无新增分支由下一用例覆盖）
+    assert any(("新增" in (c or "")) and ("无新增" not in (c or "")) for c in notes)
+    assert frames[-1]["review"]["passed"] is True
+
+
+def test_recall_not_triggered_on_hallucination(v2_env, monkeypatch):
+    """hallucination-only 失败：直接重生成，不触发召回（不多花检索）。"""
+    app, eng, client, rt = v2_env
+    rs_calls = _count_retrieve_stage(rt, monkeypatch)
+    _patch_recall_judge(monkeypatch, [_HALLU_FAIL, _PASS_SUPPORTED])
+    frames = _run(app, body_research())
+    assert rs_calls["n"] == 1                                  # 仅 S2
+    assert frames[-1]["review"]["passed"] is True
+    assert _audit_notes(frames) == []
+
+
+def test_recall_at_most_once_within_budget(v2_env, monkeypatch):
+    """两轮皆 gap：召回至多 1 次（计数停 2），预算内第 3 次判卷通过。"""
+    app, eng, client, rt = v2_env
+    rs_calls = _count_retrieve_stage(rt, monkeypatch)
+    gen_calls = _count_gen_llm(eng, monkeypatch)
+    _patch_recall_judge(monkeypatch, [_GAP_FAIL, _GAP_FAIL, _PASS_SUPPORTED])
+    frames = _run(app, body_research())
+    assert rs_calls["n"] == 2                                  # S2 + 首次召回（第二次 gap 不再召回）
+    assert gen_calls["n"] == 3                                 # 1 初稿 + 2 重试（REVIEW_MAX_RETRY=2）
+    assert frames[-1]["review"]["passed"] is True
+
+
+def test_recall_no_new_evidence_keeps_going(v2_env, monkeypatch):
+    """召回无新增（kb 源恒重复）：不重建 prompt 也不崩，thought 帧明示"无新增"。"""
+    app, eng, client, rt = v2_env
+    rs_calls = _count_retrieve_stage(rt, monkeypatch)
+    monkeypatch.setattr(rt, "_kb_search",
+                        lambda q, pid: [{"title": "k-" + q, "content": "第一轮kb证据"}])
+    _patch_recall_judge(monkeypatch, [_GAP_FAIL, _PASS_SUPPORTED])
+    frames = _run(app, body_research())
+    assert rs_calls["n"] == 2
+    notes = _audit_notes(frames)
+    assert any("无新增，按原证据修正" in (c or "") for c in notes)
+    assert frames[-1]["review"]["passed"] is True
+
+
 def _steps(frames):
     return [f.get("agent") for f in frames if f["type"] == "step"]

@@ -499,44 +499,51 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         if recent:
             context_blocks += "【近期对话】\n" + "\n".join(
                 f"{m.get('role')}: {str(m.get('content'))[:200]}" for m in recent[-6:]) + "\n"
-        user_content = context_blocks + working_message
-        if search_results:
-            # A1 父子块：兄弟聚合出的章节全文单独成块（引用粒度仍指子块）
-            sections = []
-            seen_sec: set = set()
-            for r in search_results:
-                pc = (r or {}).get("parent_context") or {}
-                p = pc.get("path")
-                if p and p not in seen_sec and pc.get("text"):
-                    seen_sec.add(p)
-                    sections.append((p, pc["text"]))
-                if len(sections) >= 2:
-                    break
-            blocks = "【检索结果】\n" + json.dumps(search_results, ensure_ascii=False) \
-                     + "\n\n（优先基于以上检索结果回答；凡取自检索内容的论断，" \
-                       "须在句末标注来源，格式：[来源: 文档标题]；未覆盖部分用通识作答，" \
-                       "并注明为模型自有知识。）"
-            if sections:
-                sec_text = "\n\n".join(f"◇ {p}\n{t}" for p, t in sections)
-                blocks += "\n\n【相关章节全文】\n" + sec_text \
-                          + "\n（上列为命中片段所在章节的完整上下文，供你通读定位，不必逐条引用。）"
-            user_content = blocks + "\n\n" + user_content
-        elif template != "极速" and plan["complexity"] != "simple_direct":
-            # 诚实边界（主Agent文档定稿）：知识型问题检索零留存 → 第一句强制申明，通识标注自有
-            user_content = ("⚠️ 本轮检索未获得相关内容。你的回答第一句话必须是："
-                            "\"⚠️ 未在知识库中检索到相关内容\"；随后以模型通识作答，"
-                            "并明确注明哪些内容属于模型自有知识、未经知识库验证。\n\n"
-                            + user_content)
-        user_msg = {"role": "user", "content": user_content}
-        if req.image:
-            user_msg = {"role": "user", "content": [
-                {"type": "text", "text": working_message},
-                {"type": "image_url",
-                 "image_url": {"url": "data:image/png;base64," + (req.image or "")}},
-            ]}
+        def _build_user_msg(results):
+            """组装生成侧 user 消息——证据块构建独立成函数：召回审核拿到新证据后
+            重建 user_msg，修复"重试环证据不更新"（旧实现重试仅换 system 反馈文本）。"""
+            user_content = context_blocks + working_message
+            if results:
+                # A1 父子块：兄弟聚合出的章节全文单独成块（引用粒度仍指子块）
+                sections = []
+                seen_sec: set = set()
+                for r in results:
+                    pc = (r or {}).get("parent_context") or {}
+                    p = pc.get("path")
+                    if p and p not in seen_sec and pc.get("text"):
+                        seen_sec.add(p)
+                        sections.append((p, pc["text"]))
+                    if len(sections) >= 2:
+                        break
+                blocks = "【检索结果】\n" + json.dumps(results, ensure_ascii=False) \
+                         + "\n\n（优先基于以上检索结果回答；凡取自检索内容的论断，" \
+                           "须在句末标注来源，格式：[来源: 文档标题]；未覆盖部分用通识作答，" \
+                           "并注明为模型自有知识。）"
+                if sections:
+                    sec_text = "\n\n".join(f"◇ {p}\n{t}" for p, t in sections)
+                    blocks += "\n\n【相关章节全文】\n" + sec_text \
+                              + "\n（上列为命中片段所在章节的完整上下文，供你通读定位，不必逐条引用。）"
+                user_content = blocks + "\n\n" + user_content
+            elif template != "极速" and plan["complexity"] != "simple_direct":
+                # 诚实边界（主Agent文档定稿）：知识型问题检索零留存 → 第一句强制申明，通识标注自有
+                user_content = ("⚠️ 本轮检索未获得相关内容。你的回答第一句话必须是："
+                                "\"⚠️ 未在知识库中检索到相关内容\"；随后以模型通识作答，"
+                                "并明确注明哪些内容属于模型自有知识、未经知识库验证。\n\n"
+                                + user_content)
+            user_msg = {"role": "user", "content": user_content}
+            if req.image:
+                user_msg = {"role": "user", "content": [
+                    {"type": "text", "text": working_message},
+                    {"type": "image_url",
+                     "image_url": {"url": "data:image/png;base64," + (req.image or "")}},
+                ]}
+            return user_msg
+
+        user_msg = _build_user_msg(search_results)
 
         attempt_reasons = ""
         attempt = 0
+        recalled = False   # 召回审核：每轮至多一次（计入同一重试预算，防循环）
         reviewed_info = None
         while True:
             sys_extra = (f"\n【审核反馈·上一稿未通过】{attempt_reasons}。请据此修正后重新完整输出。"
@@ -574,6 +581,43 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                 break
             token_queue.put(("token", "审核",
                              f"未通过({verdict['reasons'][:60]})，重新生成…"))
+            # ---- 召回审核（研究档条件触发）：retrieval_gap 断言 → 发散输入二次检索 ----
+            # 触发：审核未过 + 存在检索缺口 claim + 本轮未召回过 + 仍有重试预算；
+            # 宽网实现 = 缺口文本作发散输入再调 retrieve_stage(rounds=2)（其内部查询规划器
+            # 自行多查询分解），不改 retrieve.py 参数；新证据去重合并后重建 user_msg。
+            gap_claims = [c for c in (verdict.get("claims") or [])
+                          if isinstance(c, dict) and c.get("diag") == "retrieval_gap"] \
+                if template == "研究" else []
+            if gap_claims and not recalled and attempt < REVIEW_MAX_RETRY:
+                recalled = True
+                gap_text = "；".join(str(c.get("claim") or "") for c in gap_claims[:5])
+                token_queue.put(("token", "召回审核",
+                                 f"检索缺口 {len(gap_claims)} 条，按缺口二次检索…"))
+                added = 0
+                try:
+                    from engine.retrieve import retrieve_stage as _rs
+                    wide = _rs(_make_fast_llm(req),
+                               f"补充检索以下缺口信息：{gap_text}", "研究", pid, rounds=2)
+                    seen_keys = {str((c or {}).get("title") or "") + "|"
+                                 + str((c or {}).get("content") or "")[:120]
+                                 for c in search_results}
+                    for c in (wide or {}).get("search_results") or []:
+                        h = str((c or {}).get("title") or "") + "|" \
+                            + str((c or {}).get("content") or "")[:120]
+                        if h and h not in seen_keys:
+                            search_results.append(c)
+                            seen_keys.add(h)
+                            added += 1
+                except Exception:
+                    logger.exception("[v2] 召回审核失败，按原证据重试")
+                _trace("recall_audit", input_digest=gap_text[:200],
+                       output_digest=json.dumps({"gap_count": len(gap_claims), "added": added},
+                                                ensure_ascii=False))
+                token_queue.put(("token", "召回审核",
+                                 f"二次检索新增 {added} 条证据"
+                                 + ("" if added else "（无新增，按原证据修正）")))
+                if added:
+                    user_msg = _build_user_msg(search_results)   # 新证据到达生成 prompt
             attempt += 1
             if attempt > REVIEW_MAX_RETRY:
                 reviewed_info["note"] = "达重试上限，保留当前稿并附审核意见"
