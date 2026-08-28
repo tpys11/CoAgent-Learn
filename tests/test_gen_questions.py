@@ -187,6 +187,53 @@ def test_enhance_over_cap_skips_extra(monkeypatch, quiet_cfg):
     assert len(calls) == 8 and n == 96  # 8 组 × 12 块
 
 
+# ---------- 组间并行（上传提速·单步1） ----------
+
+def test_enhance_parallel_groups_all_written(monkeypatch, quiet_cfg):
+    """≥4 组触发并行：内容键控假件（应答与调用顺序无关）→ 4 组全部入库、组间不串档。"""
+    calls = {"n": 0}
+
+    class _KeyedLLM:
+        def chat(self, messages, temperature=0.2, **kw):
+            calls["n"] += 1
+            user = messages[1]["content"]
+            idx = user.split("段0：")[1].split("内容")[0].replace("块", "")  # 本组首块序号
+            return json.dumps([{"i": i, "questions": [f"第{idx}组问题{i}？"]}
+                               for i in range(12)], ensure_ascii=False)
+
+    repo = _Repo()
+    n = ks.enhance_questions("p1", ["块" + str(i) + "内容。" for i in range(48)],
+                             ["id" + str(i) for i in range(48)],
+                             api_key="k", llm_factory=lambda key: _KeyedLLM(), source="s1",
+                             db=repo)
+    assert calls["n"] == 4                       # 48 块 → 4 组全并行
+    assert n == 48                               # 4 组 × 12 块全入库
+    assert {it[2] for it in repo.items} == {"id" + str(i) for i in range(48)}
+
+
+def test_enhance_parallel_group_failure_isolated(monkeypatch, quiet_cfg):
+    """并行模式下组级失败只影响该组（3 组成功 × 12 = 36）。"""
+    calls = {"n": 0}
+
+    class _FlakyLLM:
+        def chat(self, messages, temperature=0.2, **kw):
+            calls["n"] += 1
+            if "块0内容" in messages[1]["content"]:   # 第一组（id0-id11）炸
+                raise RuntimeError("组炸")
+            return json.dumps([{"i": i, "questions": [f"问{i}？"]} for i in range(12)],
+                              ensure_ascii=False)
+
+    repo = _Repo()
+    n = ks.enhance_questions("p1", ["块" + str(i) + "内容。" for i in range(48)],
+                             ["id" + str(i) for i in range(48)],
+                             api_key="k", llm_factory=lambda key: _FlakyLLM(), source="s1",
+                             db=repo)
+    assert calls["n"] == 4 and n == 36
+    ids = {it[2] for it in repo.items}
+    assert "id0" not in ids and "id11" not in ids
+    assert "id12" in ids and "id47" in ids
+
+
 def test_add_document_wires_enhance(monkeypatch):
     """接线证明：add_document 以 (chunks, bulk doc_ids, source, api_key) 调用增强。"""
     repo = FakeKbRepo()

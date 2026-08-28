@@ -40,6 +40,7 @@ def enhance_questions(project_id: str, chunks: list, doc_ids: list, source: str 
     存旁路表 kb_gen_questions 并拼入 BM25 语料（换说法提问可命中）。
     提示词骨架中文化移植自 llama-index QuestionsAnsweredExtractor（独特性约束保留）。
     预算：每 group_size 块一次 flash 调用，单文档封顶 max_groups 组（超出不增强不阻断）；
+    组数≥4 时组间 4 线程并行（上传提速），LLM 网络调用并行、DB 写回主线程串行；
     任何组失败 = 该组无问题文本，绝不抛。门控：KB_META_ENHANCE=0 关；无 key 静默跳过。
     llm_factory(key)->llm 测试注入缝；生产走 DeepSeekLLM(thinking=False)。
     B1 拆分：db 显式注入（缺省 get_kb_repo 单例）——调用方传门面 _db 保持补丁面一致。
@@ -70,7 +71,9 @@ def enhance_questions(project_id: str, chunks: list, doc_ids: list, source: str 
     )
     written = 0
     n_groups = min(max_groups, (len(chunks) + group_size - 1) // group_size)
-    for g in range(n_groups):
+
+    def _gen_rows(g: int) -> list:
+        """单组：LLM 调用 + 解析（线程内只做网络 IO，不碰 DB）。组级失败返回空。"""
         lo, hi = g * group_size, min((g + 1) * group_size, len(chunks))
         batch = chunks[lo:hi]
         user = "\n".join(f"段{i}：{(c or '')[:400]}" for i, c in enumerate(batch))
@@ -79,21 +82,34 @@ def enhance_questions(project_id: str, chunks: list, doc_ids: list, source: str 
                             {"role": "user", "content": user}], temperature=0.2)
             m = re.search(r'\[[\s\S]*\]', raw or "")
             data = json.loads(m.group()) if m else []
-            rows = []
-            for item in data if isinstance(data, list) else []:
-                try:
-                    i = int(item.get("i"))
-                    qs = [str(q).strip() for q in (item.get("questions") or []) if str(q).strip()][:3]
-                except Exception:
-                    continue
-                if qs and 0 <= i < len(batch):
-                    rows.append((project_id, source, doc_ids[lo + i],
-                                 json.dumps(qs, ensure_ascii=False)))
-            if rows:
-                db.upsert_gen_questions_bulk(rows)
-                written += len(rows)
         except Exception:
             logger.warning("[B1] 第%d组问题生成失败（该组无问题文本，继续）", g, exc_info=True)
+            return []
+        rows = []
+        for item in data if isinstance(data, list) else []:
+            try:
+                i = int(item.get("i"))
+                qs = [str(q).strip() for q in (item.get("questions") or []) if str(q).strip()][:3]
+            except Exception:
+                continue
+            if qs and 0 <= i < len(batch):
+                rows.append((project_id, source, doc_ids[lo + i],
+                             json.dumps(qs, ensure_ascii=False)))
+        return rows
+
+    # 组间并行（上传提速·单步1）：LLM 调用是网络 IO，组数≥4 时 4 线程并行
+    # （openai 客户端线程安全；组数少的串行保持脚本化测试"按序应答"确定性）。
+    # DB 写回不并行：主线程按组序统一 upsert（SQLite 零锁竞争）。
+    if n_groups >= 4:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=4) as ex:
+            per_group = list(ex.map(_gen_rows, range(n_groups)))
+    else:
+        per_group = [_gen_rows(g) for g in range(n_groups)]
+    for rows in per_group:
+        if rows:
+            db.upsert_gen_questions_bulk(rows)
+            written += len(rows)
     return written
 
 
