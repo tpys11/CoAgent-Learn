@@ -268,6 +268,28 @@ def add_document(project_id: str, text: str, source: str = "", session_id: str =
     return len(chunks)
 
 
+def copy_document_across_projects(src_project_id: str, src_source: str,
+                                  dst_project_id: str, dst_source: str = "",
+                                  session_id: str | None = None) -> int:
+    """跨项目复制向量块（P0-2 根因1 修复）：同一文件在其他项目已完整入库时，
+    解析/切块/embedding 结果与本项目完全一致（同模型确定性产出），直接复制行，
+    免去重复解析与上千次 embedding 调用（大 PDF 实测约 4.5 分钟）。
+
+    doc_id 按目标项目重算（_make_doc_id），与源项目互不相干；
+    session_id 改挂目标上传会话；B1 问题/kg_edges/kb_tree 为派生增强，暂不复制（P2 取舍，
+    目标项目召回质量略降属预期）。返回复制块数；源无块返回 0（调用方回退全量入库）。"""
+    dst_source = dst_source or src_source
+    rows = _db.fetch_kb_rows(src_project_id, src_source)
+    if not rows:
+        return 0
+    bulk = [(_make_doc_id(dst_project_id, dst_source, chunk, content),
+             dst_project_id, dst_source, chunk, session_id, int(bool(has_ctx)), content, emb)
+            for (chunk, has_ctx, content, emb) in rows]
+    _db.insert_kb_vectors_raw(bulk, table=_db.peek_active_text_table())
+    _invalidate_bm25(dst_project_id)
+    return len(bulk)
+
+
 def add_image(project_id: str, source: str, image_data_uri: str, description: str,
               file_path: str = "", mime: str = "image/png") -> int:
     """图片入库：用 Qwen3-VL-Embedding 生成图片向量并写入 image_vectors。

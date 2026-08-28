@@ -82,6 +82,55 @@ class KbOpsMixin:
             finally:
                 conn.close()
 
+    def fetch_kb_rows(self, project_id: str, source: str):
+        """跨项目复用读取（P0-2 根因1）：按 (project_id, source) 读全部块。
+        embedding 为存储态 BLOB 原样返回，写入端不得再 serialize。"""
+        table = self.peek_active_text_table()
+        return self.execute(
+            f"SELECT chunk, has_context, content, embedding FROM {table} "
+            "WHERE project_id = ? AND source = ? ORDER BY chunk",
+            (project_id, source),
+        )
+
+    def find_donor_by_hash(self, sha256: str, exclude_project_id: str):
+        """跨项目复用：找其他项目中"同 sha256 且向量仍完整在库"的 donor（排除幽灵 hash）。
+        返回 (project_id, source) 或 None；多 donor 取最近入库的一个。"""
+        table = self.peek_active_text_table()
+        rows = self.execute(
+            "SELECT fh.project_id AS p, fh.source AS s FROM file_hashes fh "
+            f"WHERE fh.sha256 = ? AND fh.project_id <> ? "
+            f"  AND EXISTS (SELECT 1 FROM {table} v "
+            "              WHERE v.project_id = fh.project_id AND v.source = fh.source) "
+            "ORDER BY fh.created_at DESC LIMIT 1",
+            (sha256, exclude_project_id),
+        )
+        return (rows[0]["p"], rows[0]["s"]) if rows else None
+
+    def insert_kb_vectors_raw(self, items: list, table: str = "kb_vectors"):
+        """跨项目复制专用写入：embedding 已是存储态 BLOB，直接 INSERT——
+        不得走 upsert_kb_vectors_bulk（其内部 serialize_float32 会对 BLOB 二次封装）。
+        同 doc_id 先按 (project_id, doc_id) 删除，语义与 upsert 对齐。"""
+        if not items:
+            return
+        with self._lock:
+            conn = self._new_conn()
+            try:
+                for start in range(0, len(items), _BATCH):
+                    batch = items[start:start + _BATCH]
+                    pid = batch[0][1]
+                    ids = [it[0] for it in batch]
+                    ph = ",".join("?" * len(ids))
+                    conn.execute(f"DELETE FROM {table} WHERE project_id = ? AND doc_id IN ({ph})",
+                                 [pid] + ids)
+                    conn.executemany(
+                        f"INSERT INTO {table}(rowid, doc_id, project_id, source, chunk, session_id, has_context, content, embedding) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        [(None, it[0], it[1], it[2], it[3], it[4], int(it[5]), it[6], it[7]) for it in batch],
+                    )
+                    conn.commit()
+            finally:
+                conn.close()
+
     def upsert_image_vectors_bulk(self, items: list):
         """批量 upsert 图片向量：vec0 不支持 UPDATE，先 DELETE 再 INSERT。
         items: [(doc_id, project_id, source, content, file_path, mime, embedding)]"""

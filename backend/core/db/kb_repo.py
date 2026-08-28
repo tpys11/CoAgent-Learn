@@ -34,6 +34,15 @@ class KbRepo:
     def save_file_hash(self, project_id, sha256, source):
         self._db.save_file_hash(project_id, sha256, source)
 
+    def find_donor_by_hash(self, sha256, exclude_project_id):
+        return self._db.find_donor_by_hash(sha256, exclude_project_id)
+
+    def fetch_kb_rows(self, project_id, source):
+        return self._db.fetch_kb_rows(project_id, source)
+
+    def insert_kb_vectors_raw(self, items, table="kb_vectors"):
+        self._db.insert_kb_vectors_raw(items, table=table)
+
     def get_preset_doc(self, url):
         return self._db.get_preset_doc(url)
 

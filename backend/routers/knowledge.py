@@ -2,6 +2,7 @@
 import hashlib
 import json
 import logging
+import os
 
 from core.background import submit
 from services.web_fetch import is_disallowed_host
@@ -11,6 +12,12 @@ from pydantic import BaseModel
 
 logger = logging.getLogger("coagent.knowledge")
 router = APIRouter()
+
+# 跨项目向量复用开关（P0-2 根因1）：同 sha256 已在其他项目完整入库时，
+# 复制向量跳过解析/embedding（大 PDF 省 4.5 分钟+上千次 API 调用）。
+# 根因2（跨项目覆盖）由 doc_id 注入 project_id 修复，见 knowledge_service._make_doc_id。
+# 置 KB_CROSS_PROJECT_REUSE=0 重启即退回"每项目全量重跑"，无需改代码。
+KB_CROSS_PROJECT_REUSE = os.getenv("KB_CROSS_PROJECT_REUSE", "1") == "1"
 
 _IMG_MIME = {
     "png": "image/png",
@@ -38,6 +45,22 @@ def _describe_image_main(image_b64: str, prompt: str, mime: str, api_key: str = 
     return llm.chat(messages, temperature=0.2)
 
 
+def _save_resource_text(project_id: str, source: str, text: str) -> None:
+    """原文存档到 resources 表（各项目各存一份，id=md5(source+project_id)）。
+    全量入库与跨项目复用两条路径共用；失败不阻断入库（原文仅影响文档阅读器）。"""
+    try:
+        from core.postgres_client import pg_client as _pg0
+        _rid = hashlib.md5((source + project_id).encode()).hexdigest()[:16]
+        _has = _pg0.execute("SELECT id FROM resources WHERE id=%s", (_rid,))
+        # 存全量原文（此前 text[:6000] 截断导致大文档阅读器只能拿到残片）
+        if _has:
+            _pg0.execute("UPDATE resources SET content=%s WHERE id=%s", (text, _rid))
+        else:
+            _pg0.execute("INSERT INTO resources (id, name, content, project_id, type) VALUES (%s,%s,%s,%s,'text')", (_rid, source, text, project_id))
+    except Exception:
+        logger.warning("保存原文到资源表失败", exc_info=True)
+
+
 def _process_upload(project_id, text, source, session_id, api_key, skip_context: bool = False, skip_graph: bool = False, content_hash: str = "") -> int:
     """处理上传：存原文到资源表 + 切块向量化入库，返回入库块数。
     后台线程调用时忽略返回值；同步模式（wait=1）用它拿到块数反馈给前端。
@@ -55,17 +78,30 @@ def _process_upload(project_id, text, source, session_id, api_key, skip_context:
             logger.info("检测到幽灵 hash（向量已删），重新入库 source=%s", _hash_src or source)
     except Exception:
         logger.warning("查询内容去重表失败", exc_info=True)
-    try:
-        from core.postgres_client import pg_client as _pg0
-        _rid = hashlib.md5((source + project_id).encode()).hexdigest()[:16]
-        _has = _pg0.execute("SELECT id FROM resources WHERE id=%s", (_rid,))
-        # 存全量原文（此前 text[:6000] 截断导致大文档阅读器只能拿到残片）
-        if _has:
-            _pg0.execute("UPDATE resources SET content=%s WHERE id=%s", (text, _rid))
-        else:
-            _pg0.execute("INSERT INTO resources (id, name, content, project_id, type) VALUES (%s,%s,%s,%s,'text')", (_rid, source, text, project_id))
-    except Exception:
-        logger.warning("保存原文到资源表失败", exc_info=True)
+    # ---- 跨项目复用（P0-2 根因1）：同内容已在其他项目完整入库 → 复制向量，省解析+embedding ----
+    # 顺序约束：必须放在同项目去重之后（同项目命中时上段已 return -1）。
+    # 复制失败/0 块一律回退全量入库（不比修复前差）；总开关 KB_CROSS_PROJECT_REUSE=0 可整体关闭。
+    if content_hash and KB_CROSS_PROJECT_REUSE:
+        try:
+            from core.db import get_kb_repo
+            from core.knowledge_service import copy_document_across_projects
+            _repo = get_kb_repo()
+            _donor = _repo.find_donor_by_hash(content_hash, project_id)
+            if _donor:
+                _d_pid, _d_src = _donor
+                n = copy_document_across_projects(_d_pid, _d_src, project_id, source,
+                                                  session_id=session_id)
+                if n > 0:
+                    _save_resource_text(project_id, source, text)
+                    _repo.save_file_hash(project_id, content_hash, source)
+                    logger.info("跨项目复用向量 source=%s donor_project=%s donor_source=%s n=%d",
+                                source, _d_pid, _d_src, n)
+                    return n
+                logger.warning("跨项目复用得到 0 块，回退全量入库 source=%s", source)
+        except Exception:
+            n = 0
+            logger.exception("跨项目复用失败，回退全量入库 source=%s", source)
+    _save_resource_text(project_id, source, text)
     try:
         from core.knowledge_service import add_document
         n = add_document(project_id, text, source, session_id, api_key, skip_context=skip_context) or 0
