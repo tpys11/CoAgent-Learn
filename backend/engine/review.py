@@ -1,18 +1,19 @@
 # -*- coding: utf-8 -*-
 """S5 ReviewGate（Loop4）：双LLM异构终审——知识正确性 + 指令遵从。
-模式矩阵：研究必开(qwen72B跨厂商防自我包庇)｜思考可配(默认关,开则dsv4f)｜极速关。
+模式矩阵：研究必开(默认同源视觉版判卷；REVIEW_MODEL_RESEARCH 配硅基流动名+key 自动跨厂商防自我包庇)｜思考可配(默认关)｜极速关。
 研究档升级（断言级忠实度审核）：单调用完成"声明拆解+逐条判定"，
 unsupported 断言映射进前端既有 issues[] 样式（problem=【诊断】声明, fix=理由），
 claims 全表交由调用方落 eval_traces 供幻觉率统计（L1）。
 诊断分类抄 FactEval（证据强度×判定结果）：hallucination/retrieval_gap/no_evidence。"""
 import json
+import logging
 
 from core.model_provider import MODEL_MAIN
 from engine.llm_io import think_then_json
 
+logger = logging.getLogger("coagent.review")
 REVIEW_MAX_RETRY = 2
-JUDGE_THINKING_MODEL = MODEL_MAIN
-JUDGE_RESEARCH_MODEL = "qwen2.5-72b-instruct"
+_FALLBACK_JUDGE = MODEL_MAIN  # 跨厂商名缺 key 时的响亮回退值
 
 _CLAIMS_MAX = 15        # 声明条数上限（防碎化，FactEval MAX_CLAIMS 同思路）
 _CHUNK_CHARS = 500      # 每块证据截断
@@ -31,13 +32,30 @@ def review_enabled(template: str, settings: dict | None) -> bool:
 
 
 def pick_judge_llm(template: str, req):
-    """审核模型选择：研究=qwen72B跨厂商；其余=dsv4f；构造失败回退主模型接缝。"""
+    """审核模型选择（研究档防自我包庇是设计目标）：
+    研究档 = config.REVIEW_MODEL_RESEARCH（空=MODEL_MAIN 同源视觉版，走用户 key）；
+      值含"/"（硅基流动命名风格）且配了硅基流动 key（VL_API_KEY/EMBEDDING_API_KEY）
+      → 走硅基流动端点真跨厂商；
+      含"/"但缺 key → WARNING 响亮回退 MODEL_MAIN（旧版静默 400 即本函数事故根因）。
+    思考档 = config.REVIEW_MODEL_THINK（空=MODEL_MAIN），走用户 key。
+    构造失败回退主模型接缝（原语义保留）。"""
     from core.base_llm import DeepSeekLLM
     from core.config import config as _cfg
-    model = JUDGE_RESEARCH_MODEL if template == "研究" else JUDGE_THINKING_MODEL
+    model = ((_cfg.REVIEW_MODEL_RESEARCH if template == "研究" else _cfg.REVIEW_MODEL_THINK) or "").strip() or MODEL_MAIN
+    key = req.api_key or _cfg.DEEPSEEK_API_KEY
+    base_url = req.base_url
+    if template == "研究" and "/" in model:
+        sf_key = _cfg.VL_API_KEY or _cfg.EMBEDDING_API_KEY
+        if sf_key:
+            key, base_url = sf_key, _cfg.VL_BASE_URL
+        else:
+            logger.warning("研究档判卷模型 %s 需要硅基流动 key（设置→AI服务），未配置——响亮回退 %s",
+                           model, _FALLBACK_JUDGE)
+            model = _FALLBACK_JUDGE
     try:
-        return DeepSeekLLM(api_key=req.api_key or _cfg.DEEPSEEK_API_KEY,
-                           model=model, base_url=req.base_url)
+        # thinking=False：v4 系默认开思考，思考文本走 reasoning_content 会被
+        # think_then_json 的 token 收集混入 JSON 提取（旧版"输出不可解析"的根因）
+        return DeepSeekLLM(api_key=key, model=model, base_url=base_url, thinking=False)
     except Exception:
         from engine.pipeline_v2 import _make_llm
         return _make_llm(req)

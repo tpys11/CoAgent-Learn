@@ -25,7 +25,31 @@ def test_pick_judge_llm_by_mode():
     j1 = pick_judge_llm("思考", _Req())
     assert j1.model_name == "deepseek-v4-flash-vision-exp"
     j2 = pick_judge_llm("研究", _Req())
-    assert j2.model_name == "qwen2.5-72b-instruct"
+    assert j2.model_name == "deepseek-v4-flash-vision-exp"
+
+
+def test_pick_judge_llm_research_cross_vendor_lane(monkeypatch):
+    """研究档配硅基流动模型名+key → 走硅基流动端点真跨厂商（防自我包庇的设计意图落地）。"""
+    from core.config import config as _cfg
+    monkeypatch.setattr(_cfg, "REVIEW_MODEL_RESEARCH", "Qwen/Qwen2.5-72B-Instruct")
+    monkeypatch.setattr(_cfg, "VL_API_KEY", "sk-test-sf")
+    j = pick_judge_llm("研究", _Req())
+    assert j.model_name == "Qwen/Qwen2.5-72B-Instruct"
+    assert j._base_url == _cfg.VL_BASE_URL
+
+
+def test_pick_judge_llm_research_missing_key_loud_fallback(monkeypatch, caplog):
+    """跨厂商模型名缺硅基流动 key → 响亮回退同源视觉版（旧版静默 400 即本处事故）。"""
+    import logging as _logging
+    from core.config import config as _cfg
+    monkeypatch.setattr(_cfg, "REVIEW_MODEL_RESEARCH", "Qwen/Qwen2.5-72B-Instruct")
+    monkeypatch.setattr(_cfg, "VL_API_KEY", "")
+    monkeypatch.setattr(_cfg, "EMBEDDING_API_KEY", "")
+    with caplog.at_level(_logging.WARNING, logger="coagent.review"):
+        j = pick_judge_llm("研究", _Req())
+    assert j.model_name == "deepseek-v4-flash-vision-exp"
+    assert j._base_url is None
+    assert any("回退" in r.message for r in caplog.records)
 
 
 def test_review_once_pass():
