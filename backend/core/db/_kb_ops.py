@@ -69,7 +69,10 @@ class KbOpsMixin:
                     batch = items[start:start + _BATCH]
                     ids = [it[0] for it in batch]
                     ph = ",".join("?" * len(ids))
-                    conn.execute(f"DELETE FROM {table} WHERE doc_id IN ({ph})", ids)
+                    # 纵深防御（P0-2 根因2）：doc_id 已在生成侧注入 project_id（_make_doc_id），
+                    # 此处 DELETE 再叠加项目条件，杜绝历史/旁路数据引发的跨项目误删。
+                    conn.execute(f"DELETE FROM {table} WHERE project_id = ? AND doc_id IN ({ph})",
+                                 [batch[0][1]] + ids)
                     conn.executemany(
                         f"INSERT INTO {table}(rowid, doc_id, project_id, source, chunk, session_id, has_context, content, embedding) "
                         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",

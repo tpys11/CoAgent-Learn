@@ -143,6 +143,17 @@ def fetch_section_texts(project_id: str, source: str,
         return {}
 
 
+def _make_doc_id(project_id: str, source: str, idx: int, chunk: str) -> str:
+    """向量块主键（P0-2 根因2 修复）：必须含 project_id。
+
+    不同项目上传同一文件时 chunks 完全相同，若键不含项目，
+    upsert 的"先 DELETE 同 doc_id 再 INSERT"会把另一项目的块整批删掉
+    （实测：ai Agent 项目 1408 块被"新课程1"重传覆盖归零，且经幽灵 hash 自愈形成乒乓互瞎）。
+    长度保持 24 与历史一致；分隔符 "|" 避免 (source, idx) 拼接歧义。"""
+    raw = project_id + "|" + source + "|" + str(idx) + "|" + chunk[:80]
+    return hashlib.md5(raw.encode("utf-8")).hexdigest()[:24]
+
+
 def add_document(project_id: str, text: str, source: str = "", session_id: str = "", api_key: str = "", skip_context: bool = False) -> int:
     """上传文本：切块 → 向量化 → 入库，返回入库块数。
     已移除「每块 LLM 生成上下文前缀」（_gen_context，2026-08-15 删除）。
@@ -225,7 +236,7 @@ def add_document(project_id: str, text: str, source: str = "", session_id: str =
     # 入库（批量单事务：大批量从逐条 commit 降到一次 commit，避免分钟级锁窗口）
     bulk = []
     for i, c in enumerate(chunks):
-        uid = hashlib.md5((source + str(i) + c[:80]).encode("utf-8")).hexdigest()[:24]
+        uid = _make_doc_id(project_id, source, i, c)
         bulk.append((uid, project_id, source, i, session_id, False, chunks[i], embeddings[i]))
     _db.upsert_kb_vectors_bulk(bulk, table=table)
     # 标题树：复用文档自身的形式分类逻辑（markdown 标题层级），供项目记忆知识图谱
