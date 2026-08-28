@@ -59,7 +59,7 @@ class CoreMixin:
                 time.sleep(1)
         raise last_err
 
-    def execute(self, sql: str, params: tuple | list | None = None, fetch: bool = True):
+    def execute(self, sql: str, params: tuple | list | None = None):
         """执行 SQL，返回 list[dict]（SELECT）或空列表。
         自动将 Postgres 风格 %s 占位符转为 SQLite 的 ?，保持旧调用兼容。
         每次操作新建短命连接，单锁串行化多线程并发。"""
