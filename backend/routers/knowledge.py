@@ -25,7 +25,6 @@ _IMG_MIME = {
     "jpeg": "image/jpeg",
     "gif": "image/gif",
     "webp": "image/webp",
-    "bmp": "image/bmp",
 }
 
 
@@ -154,7 +153,9 @@ def _process_file_bg(project_id: str, fname: str, data: bytes, source: str,
     from core.knowledge_service import _set_progress, _set_progress_error
     try:
         _set_progress(project_id, source, done=0, total=1, stage="parsing")
-        if ext in {"png", "jpg", "jpeg", "gif", "webp", "bmp"}:
+        # 修复④（F4′）：图片分支判定改引用 _IMG_EXTS（F3 漏归一的第四份手写字面量，
+        # 且上游 VL 服务拒收 bmp——E-31，owner 拍板剔除不转码）。
+        if ext in _IMG_EXTS:
             n = _process_upload(project_id, desc, source, session_id, api_key, False, False, content_hash)
             if n == -1:
                 # F1: 内容重复（hash 去重命中）——无新增入库。写完成终态避免前端按文件名
@@ -507,13 +508,16 @@ async def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
 
 # F3（N2-2）：图片扩展名唯一事实源 = _IMG_EXTS（图片分支判定集合，原先局部定义在
 # knowledge_upload_file 内）。文档类扩展名单列一份，extensions / accept 均由两集合
-# 派生——禁止手写第二份。N2-2 事故成因即清单漂移：处理链路支持 6 种图片，约束清单
+# 派生——禁止手写第二份。N2-2 事故成因即清单漂移：处理链路支持图片，约束清单
 # 却一张不收，前端 accept 动态取自约束端点 → 「点上传→选图片」被文件选择器拒收。
 # 守卫：tests/test_f3_upload_constraints.py 断言 extensions/accept ⊇ _IMG_EXTS 且同步。
+# 修复④（F4′，owner 拍板）：bmp 剔除不转码——上游 VL 服务只收 webp/png/jpeg/gif，
+# 拒收 bmp（E-31）；F6 已挡聊天路径，此处同步剔除。注意 _process_file_bg 的图片分支
+# 判定也已改为引用本集合（原第四份手写字面量，F3 漏归一）。
 _DOC_EXTS = [".txt", ".md", ".markdown", ".py", ".js", ".ts", ".json", ".csv",
              ".html", ".css", ".log", ".yaml", ".yml",
              ".pdf", ".docx", ".pptx", ".xlsx", ".epub"]
-_IMG_EXTS = {"png", "jpg", "jpeg", "gif", "webp", "bmp"}
+_IMG_EXTS = {"png", "jpg", "jpeg", "gif", "webp"}
 _UPLOAD_ALL_EXTS = _DOC_EXTS + ["." + e for e in sorted(_IMG_EXTS)]
 # 支持格式单一事实源（对齐 DeepTutor SupportedFileTypesInfo）：前端 accept 与后端校验共用
 UPLOAD_CONSTRAINTS = {

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Step F3（N2-2）守卫：上传约束清单必须覆盖后端实际能处理的图片格式。
 
-N2-2 事故（两份清单漂移）：处理链路 _IMG_EXTS 支持 6 种图片，UPLOAD_CONSTRAINTS
+N2-2 事故（两份清单漂移）：处理链路 _IMG_EXTS 支持图片格式，UPLOAD_CONSTRAINTS
 却一张不收——前端 accept 与 allowedExts 动态取自约束端点，于是「点上传 → 选图片」
 被文件选择器拒收，只有拖拽能过（拖拽路径的二次过滤又因 catch 吞错而失效）。
 本文件断言「声称支持的 ⊇ 实际能处理的」，并钉住派生关系，防止清单再次手写分叉。
@@ -18,10 +18,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 KNOWLEDGE_PY = PROJECT_ROOT / "backend" / "routers" / "knowledge.py"
 UPLOAD_PANEL_TSX = PROJECT_ROOT / "frontend" / "src" / "components" / "resource" / "UploadPanel.tsx"
 
-# N2-2 基线：后端图片处理链路当前支持的 6 种格式（评审验收项 2 的钉死清单）。
+# 基线：后端图片处理链路当前支持的 5 种格式（F4′修复④剔除 bmp 后的下限清单；
+# 上游 VL 服务拒收 bmp——E-31，owner 拍板剔除不转码，bmp 不得回流）。
 # 若 owner 未来扩充 _IMG_EXTS，test_extensions_must_cover_module_img_exts 会自动
-# 要求新格式进清单；这 6 种则是「不许缩水」的下限。
-BASELINE_IMG_EXTS = {"png", "jpg", "jpeg", "gif", "webp", "bmp"}
+# 要求新格式进清单；这 5 种则是「不许缩水」的下限。
+BASELINE_IMG_EXTS = {"png", "jpg", "jpeg", "gif", "webp"}
 
 
 def _read(path: Path) -> str:
@@ -73,7 +74,7 @@ def test_extensions_must_cover_module_img_exts():
 
 
 def test_baseline_image_exts_must_not_shrink():
-    """属性守卫：6 种基线图片格式（N2-2 验收项 2）必须始终在 extensions 里。"""
+    """属性守卫：5 种基线图片格式（F4′剔除 bmp 后的下限清单）必须始终在 extensions 里。"""
     uc = getattr(kmod, "UPLOAD_CONSTRAINTS", None)
     if not (isinstance(uc, dict) and isinstance(uc.get("extensions"), list)):
         import pytest
@@ -109,7 +110,7 @@ def test_upload_entry_whitelist_must_derive_from_constraints():
 
 
 def test_frontend_fallback_accept_must_cover_baseline_image_exts():
-    """自守卫：UploadPanel 的静态回退清单（拉取失败兜底）必须覆盖 6 种基线图片格式，
+    """自守卫：UploadPanel 的静态回退清单（拉取失败兜底）必须覆盖 5 种基线图片格式，
     否则端点故障期间点选图片会再次被拒。"""
     src = _read(UPLOAD_PANEL_TSX)
     m = re.search(r"FALLBACK_ACCEPT\s*=\s*\n?\s*'([^']+)'", src)

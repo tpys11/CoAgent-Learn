@@ -6,12 +6,14 @@ import { api } from '../../api'
 
 type UpItem = { id: string; kind: 'file' | 'text'; name: string; file?: File; body?: string }
 
-// F3（N2-2）：约束端点拉取失败时的静态回退清单，与后端 UPLOAD_CONSTRAINTS 对齐（含 6 种图片）。
+// F3（N2-2）：约束端点拉取失败时的静态回退清单，与后端 UPLOAD_CONSTRAINTS 对齐（5 种图片）。
 // 置于模块级：useState 初始值与 catch 兜底共用一份。此前失败被 .catch(() => {}) 静默吞掉、
 // allowedExts 留空导致 upAddFiles 的二次过滤整体失效（任何文件都能进）——校验不得因
 // 一次网络抖动静默关闭。
+// F4′修复④：剔除 .bmp——上游 VL 服务拒收 bmp（E-31，owner 拍板剔除不转码），
+// 约束端点故障回退时不得再放行。
 const FALLBACK_ACCEPT =
-  '.txt,.md,.markdown,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml,.pdf,.docx,.pptx,.xlsx,.epub,.png,.jpg,.jpeg,.gif,.webp,.bmp'
+  '.txt,.md,.markdown,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml,.pdf,.docx,.pptx,.xlsx,.epub,.png,.jpg,.jpeg,.gif,.webp'
 const FALLBACK_EXTS = FALLBACK_ACCEPT.split(',').map(x => x.replace('.', ''))
 
 export function UploadPanel({ projectId, onUploaded }: { projectId: string | null; onUploaded: () => void }) {

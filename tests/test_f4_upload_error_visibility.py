@@ -195,3 +195,47 @@ def test_sync_routes_must_convert_ingest_failure_to_structured_error():
     assert n == 3, (
         f"同步入库失败 → 结构化错误响应的转换点应恰 3 处（文本/URL/文件），实际 {n} 处"
     )
+
+
+# ══════════════ 3. 修复④反向守卫：bmp 不得回流 ══════════════
+# 上游 VL 服务只收 webp/png/jpeg/gif，拒收 bmp（E-31）；owner 拍板剔除不转码。
+# F6 已挡聊天路径，知识库入库路径共 5 处同步剔除；本节守卫防任何一处回流。
+
+def test_bmp_must_not_reenter_backend():
+    """bmp 不得出现在后端图片白名单 / mime 表 / 图片分支字面量中；
+    图片分支判定必须是 `if ext in _IMG_EXTS`（不再允许手写第四份字面量清单）。"""
+    import routers.knowledge as k
+    assert "bmp" not in getattr(k, "_IMG_EXTS", {"bmp"}), "_IMG_EXTS 不得重新收录 bmp（E-31）"
+    assert "bmp" not in getattr(k, "_IMG_MIME", {"bmp": ""}), "_IMG_MIME 不得重新收录 bmp"
+    src = KNOWLEDGE_PY.read_text(encoding="utf-8-sig")
+    assert '"bmp"' not in src, "knowledge.py 出现 \"bmp\" 字面量——bmp 正在回流（E-31）"
+    assert re.search(r"if ext in \{[^}]*bmp", src) is None, (
+        "图片分支判定又出现手写字面量集合（含 bmp）——必须引用 _IMG_EXTS（F4′根治第四份副本）"
+    )
+    assert re.search(r"if ext in _IMG_EXTS", src), (
+        "图片分支判定未引用 _IMG_EXTS——清单单一事实源被绕开（N2-2 同款漂移土壤）"
+    )
+    # constraints 派生面：bmp 一旦回流会重新进入前端 accept
+    exts = {x.lstrip(".") for x in k.UPLOAD_CONSTRAINTS["extensions"]}
+    assert "bmp" not in exts, "UPLOAD_CONSTRAINTS 不含 bmp（回流经 constraints 直接到达前端 accept）"
+
+
+def test_bmp_must_not_reenter_frontend_fallback():
+    """UploadPanel 静态回退清单（约束端点故障兜底）不得再含 .bmp。"""
+    panel = (PROJECT_ROOT / "frontend" / "src" / "components" / "resource"
+             / "UploadPanel.tsx").read_text(encoding="utf-8-sig")
+    m = re.search(r"FALLBACK_ACCEPT\s*=\s*\n?\s*'([^']+)'", panel)
+    assert m, "UploadPanel.tsx 缺少 FALLBACK_ACCEPT（F3 修复②被移除？）"
+    exts = {x.lstrip(".") for x in m.group(1).split(",")}
+    assert "bmp" not in exts, (
+        "FALLBACK_ACCEPT 重新收录 .bmp——约束端点故障回退期间 bmp 又被放行（E-31）"
+    )
+
+
+def test_f3_baseline_must_not_list_bmp():
+    """test_f3 的 BASELINE_IMG_EXTS（不许缩水下限）必须与 bmp 剔除决策同步。"""
+    f3 = (PROJECT_ROOT / "tests" / "test_f3_upload_constraints.py").read_text(encoding="utf-8-sig")
+    m = re.search(r"BASELINE_IMG_EXTS\s*=\s*\{([^}]*)\}", f3)
+    assert m, "test_f3 缺少 BASELINE_IMG_EXTS"
+    exts = {x.strip().strip('"\'') for x in m.group(1).split(",")}
+    assert "bmp" not in exts, "BASELINE_IMG_EXTS 仍含 bmp——守卫基线与剔除决策不同步"
