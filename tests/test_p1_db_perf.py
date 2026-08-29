@@ -70,17 +70,15 @@ def test_p1_new_db_is_wal(tmp_path, monkeypatch):
 
 def test_p1_init_tables_fast(tmp_path, monkeypatch):
     """性能守卫（P1）：init_tables 原 3.60s/次（逐连接建连 + 逐连接重设 WAL）。
-    阈值 2.5s 依据实测分布（docs/progress/step-P1.md）：P1.1 档 5 次中位 1.44s
-    （1.266–1.454），变异 M1（逐连接重设 WAL）落点约 2.25s——阈值须 >2.25s 才能
-    保证「变异恰一条红」（2.0s 会让 M1 连带打红本条）；同时仍能捕捉全量回退
-    （原 3.60s）。
-    注意：init_tables 内 9 条幂等 ALTER 必触发 execute 通用重试的 sleep(0.1)×9≈0.94s，
-    这是原实现同样支付的固定地板，不是本步回归（详见交接文档「新发现问题」）。"""
+    P1 全链完成后实测 5 次分布 0.037–0.043s（中位 0.038s，见 docs/progress/step-P1.md），
+    阈值 1.0s = 约 26 倍余量，防 flaky 的粗粒度绊线。
+    注：连接层的精细回退由结构/语义守卫精确定位（本条在全连接层回退时仅约 0.35s，
+    不再能单独捕捉——精确检测职责已由守卫 2/5/6/7 承担）。"""
     c = _mk_client(tmp_path, monkeypatch, "p1perf.db")
     t0 = time.perf_counter()
     c.init_tables()
     dt = time.perf_counter() - t0
-    assert dt < 2.5, f"init_tables 耗时 {dt:.3f}s ≥ 2.5s（连接复用/WAL 提速回退或环境异常）"
+    assert dt < 1.0, f"init_tables 耗时 {dt:.3f}s ≥ 1.0s（连接复用/WAL/幂等ALTER 提速回退或环境异常）"
 
 
 def test_p1_new_conn_returns_fresh(tmp_path, monkeypatch):

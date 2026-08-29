@@ -7,6 +7,22 @@ import sqlite3
 class BusinessTablesMixin:
     """业务表 DDL。"""
 
+    def _ensure_column(self, table: str, col: str, ddl: str):
+        """幂等加列：先查 pragma_table_info 再决定是否 ALTER。
+        P1 提速：原实现 9 条「注定失败」的幂等 ALTER（新库的列已由 CREATE TABLE 建出）
+        每次都触发 execute 的通用 sqlite3.Error 重试（sleep(0.1) + 换连接二次尝试），
+        每次 init_tables 固定支付 ≈0.94s 纯睡眠——全量回归里约几十个新库 fixture 都在付，
+        生产启动（get_db 单例 → init_tables）同样受累。列存在时不发 ALTER（语义与原
+        「失败即忽略」一致）；ALTER 仍保留 try/except 兜底并发等极端时序（吞错语义不变）。"""
+        rows = self.execute(
+            "SELECT name FROM pragma_table_info(?) WHERE name = ?", (table, col))
+        if rows:
+            return
+        try:
+            self.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
+        except sqlite3.OperationalError:
+            pass  # 幂等迁移兜底：并发 init 等极端时序（与原实现同款）
+
     def init_tables(self):
         """建表：兼容原 Postgres 12 张表（SQLite 语法）"""
         self.execute("""
@@ -20,10 +36,7 @@ class BusinessTablesMixin:
                 archived INTEGER DEFAULT 0
             )
         """)
-        try:
-            self.execute("ALTER TABLE projects ADD COLUMN simple INTEGER DEFAULT 0")
-        except sqlite3.OperationalError:
-            pass  # 幂等迁移：列已存在
+        self._ensure_column("projects", "simple", "INTEGER DEFAULT 0")
         self.execute("""
             CREATE TABLE IF NOT EXISTS dialogue_memories (
                 dialogue_id TEXT PRIMARY KEY,
@@ -93,10 +106,7 @@ class BusinessTablesMixin:
             ("file_path", "TEXT DEFAULT ''"),
             ("difficulty", "REAL"),
         ]:
-            try:
-                self.execute("ALTER TABLE resources ADD COLUMN " + _col + " " + _ddl)
-            except sqlite3.OperationalError:
-                pass  # 幂等迁移：列已存在
+            self._ensure_column("resources", _col, _ddl)
         self.execute("""
             CREATE TABLE IF NOT EXISTS dialogues (
                 id TEXT PRIMARY KEY,
@@ -111,21 +121,12 @@ class BusinessTablesMixin:
         """)
         # 兼容旧库：会话压缩字段
         for _col, _ddl in [("summary", "TEXT DEFAULT ''"), ("compressed_upto", "INTEGER DEFAULT 0")]:
-            try:
-                self.execute("ALTER TABLE dialogues ADD COLUMN " + _col + " " + _ddl)
-            except sqlite3.OperationalError:
-                pass  # 幂等迁移：列已存在
+            self._ensure_column("dialogues", _col, _ddl)
         # 兼容旧库：对话级学情画像缓存（合成后注入，未完成禁发）
         for _col, _ddl in [("profile", "TEXT DEFAULT ''"), ("profile_status", "TEXT DEFAULT 'ready'")]:
-            try:
-                self.execute("ALTER TABLE dialogues ADD COLUMN " + _col + " " + _ddl)
-            except sqlite3.OperationalError:
-                pass  # 幂等迁移：列已存在
+            self._ensure_column("dialogues", _col, _ddl)
         # 闭环六：会话种类标记（''=主对话 / 'resource'=资源编辑会话——不进列表不进学情管线）
-        try:
-            self.execute("ALTER TABLE dialogues ADD COLUMN kind TEXT DEFAULT ''")
-        except sqlite3.OperationalError:
-            pass  # 幂等迁移：列已存在
+        self._ensure_column("dialogues", "kind", "TEXT DEFAULT ''")
         self.execute("CREATE INDEX IF NOT EXISTS idx_dialogues_project ON dialogues (project_id, created_at)")
         self.execute("""
             CREATE TABLE IF NOT EXISTS messages (
@@ -137,11 +138,8 @@ class BusinessTablesMixin:
                 created_at TEXT DEFAULT (datetime('now'))
             )
         """)
-        try:
-            # 兼容旧库：思维链列（{agent, content}[] 的 JSON）
-            self.execute("ALTER TABLE messages ADD COLUMN think TEXT DEFAULT ''")
-        except sqlite3.OperationalError:
-            pass  # 幂等迁移：列已存在
+        # 兼容旧库：思维链列（{agent, content}[] 的 JSON）
+        self._ensure_column("messages", "think", "TEXT DEFAULT ''")
         self.execute("CREATE INDEX IF NOT EXISTS idx_messages_dialogue ON messages (dialogue_id, created_at)")
         # 资源列表按项目查询的主索引：缺它时全表 SCAN 会路过巨型 content 溢出页
         # （实测单行 4MB 测试残留拖慢每次 /api/resources 200-780ms，2026-08-26 性能回归）
