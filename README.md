@@ -155,6 +155,16 @@ git pull
 docker compose -f deploy/docker-compose.yml up -d --build
 ```
 
+**Q: `docker compose ps` 里的 `(healthy)` 是什么意思？服务会自动重启吗？**
+backend 每 30 秒做一次健康探测（访问容器内的 `/healthz`），通过后状态显示
+`Up (healthy)`——这是「部署成功」的明确信号，启动后约 1 分钟内出现属正常；
+想手动验证可以 `curl http://localhost:8000/healthz`（返回 `{"status":"ok"}`）。
+服务异常退出后 Docker 会自动重启（`restart: unless-stopped`），无需人工干预；
+但如果你执行了 `docker compose down`（或 `stop`），服务**不会**被自动拉起——
+这是预期行为，重新执行 `docker compose -f deploy/docker-compose.yml up -d` 即可。
+若发现容器反复重启（重启循环），用 `docker compose logs backend --tail 100`
+查看最后一次报错定位原因。
+
 ---
 
 ## 系统架构
