@@ -17,17 +17,16 @@ class Config:
 
     # ── embedding / rerank 后端（统一 Qwen3-VL-Embedding-8B@1024，MRL 实测支持 256~4096）──
     # 配置源唯一：前端设置界面（settings 表）优先，.env 仅作首次默认。切换维度需清空知识库重新入库。
-    EMBEDDING_BACKEND: str = os.getenv("EMBEDDING_BACKEND", "api")   # api（唯一后端）
+    # F5（2026-08-30）：EMBEDDING_BACKEND / EMBEDDING_LOCAL_MODEL / RERANK_LOCAL_MODEL 已删除——
+    # 向量化统一走 API，路由判定简化为「有没有 EMBEDDING_API_KEY」；RERANK_BACKEND 收敛为 api | none。
     EMBEDDING_BASE_URL: str = os.getenv("EMBEDDING_BASE_URL", "https://api.siliconflow.cn/v1")
     EMBEDDING_API_KEY: str = os.getenv("EMBEDDING_API_KEY", "")
     EMBEDDING_MODEL: str = os.getenv("EMBEDDING_MODEL", "Qwen/Qwen3-VL-Embedding-8B")   # 统一向量化模型
-    EMBEDDING_LOCAL_MODEL: str = os.getenv("EMBEDDING_LOCAL_MODEL", "")  # 已废弃本地通道，字段保留兼容旧调用
     EMBEDDING_DIM: int = int(os.getenv("EMBEDDING_DIM", "1024"))       # Qwen3-VL-Embedding MRL 输出 1024
-    RERANK_BACKEND: str = os.getenv("RERANK_BACKEND", "api")         # local | api | none
+    RERANK_BACKEND: str = os.getenv("RERANK_BACKEND", "api")         # api | none
     RERANK_BASE_URL: str = os.getenv("RERANK_BASE_URL", "")            # 如 https://api.siliconflow.cn/v1
     RERANK_API_KEY: str = os.getenv("RERANK_API_KEY", "")
     RERANK_MODEL: str = os.getenv("RERANK_MODEL", "BAAI/bge-reranker-v2-m3")  # API 重排模型（用户自填）
-    RERANK_LOCAL_MODEL: str = os.getenv("RERANK_LOCAL_MODEL", "BAAI/bge-reranker-base")  # 本地重排模型名/路径
     # 图片描述服务已移除（2026-08-22）：主模型 deepseek-v4-flash-vision-exp 自带识图，图片理解统一走主模型
     # Qwen3-VL-Embedding（视觉/跨模态向量，BGE 卡同级）：文本向量化优先 BGE，此 key 供视觉通道
     VL_API_KEY: str = os.getenv("VL_API_KEY", "")

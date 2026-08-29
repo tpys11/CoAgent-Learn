@@ -40,17 +40,14 @@ def health_check():
 
 class SettingsSave(BaseModel):
     vector_model: str = "bge"   # bge | qwen（知识库向量化服务模型选择）
-    embedding_backend: str = "api"
     embedding_base_url: str = ""
     embedding_api_key: str = ""
     embedding_model: str = "BAAI/bge-m3"
-    embedding_local_model: str = "BAAI/bge-small-zh-v1.5"
     embedding_dim: int = 1024
     rerank_backend: str = "api"
     rerank_base_url: str = ""
     rerank_api_key: str = ""
     rerank_model: str = "BAAI/bge-reranker-v2-m3"
-    rerank_local_model: str = "BAAI/bge-reranker-base"
     vl_api_key: str = ""          # Qwen3-VL-Embedding 卡（视觉/跨模态，文本优先 BGE）
     zhipu_api_key: str = ""
     kb_mode: str = "full"         # 知识库服务：light=文字向量化+重排；full=再加图片向量/跨模态
@@ -80,10 +77,8 @@ def get_settings():
         "vector_model": get_settings_repo().get_setting("VECTOR_MODEL") or "bge",
         "kb_mode": getattr(_cfg, "KB_MODE", "full"),
         "embedding": {
-            "backend": _cfg.EMBEDDING_BACKEND,
             "base_url": _cfg.EMBEDDING_BASE_URL,
             "model": _cfg.EMBEDDING_MODEL,
-            "local_model": getattr(_cfg, "EMBEDDING_LOCAL_MODEL", "BAAI/bge-small-zh-v1.5"),
             "dim": int(getattr(_cfg, "EMBEDDING_DIM", 1024)),
             "api_key_set": bool(_embed_key),
             "api_key_hint": _mask_key(_embed_key),
@@ -92,7 +87,6 @@ def get_settings():
             "backend": _cfg.RERANK_BACKEND,
             "base_url": _cfg.RERANK_BASE_URL,
             "model": _cfg.RERANK_MODEL,
-            "local_model": getattr(_cfg, "RERANK_LOCAL_MODEL", "BAAI/bge-reranker-base"),
             "api_key_set": bool(getattr(_cfg, "RERANK_API_KEY", "") or _embed_key),
             "api_key_hint": _mask_key(getattr(_cfg, "RERANK_API_KEY", "") or _embed_key),
         },
@@ -130,20 +124,17 @@ def save_settings(req: SettingsSave):
     from core.db import get_settings_repo
     _s = get_settings_repo()
     _s.set_setting("VECTOR_MODEL", req.vector_model)
-    _s.set_setting("EMBEDDING_BACKEND", req.embedding_backend)
     _s.set_setting("EMBEDDING_BASE_URL", req.embedding_base_url)
     # 前端不回显已存 Key，空输入 = 保持不变（不清除已保存的 Key）
     if req.embedding_api_key:
         _s.set_setting("EMBEDDING_API_KEY", req.embedding_api_key)
     _s.set_setting("EMBEDDING_MODEL", req.embedding_model)
-    _s.set_setting("EMBEDDING_LOCAL_MODEL", req.embedding_local_model)
     _s.set_setting("EMBEDDING_DIM", str(req.embedding_dim))
     _s.set_setting("RERANK_BACKEND", req.rerank_backend)
     _s.set_setting("RERANK_BASE_URL", req.rerank_base_url)
     if req.rerank_api_key:
         _s.set_setting("RERANK_API_KEY", req.rerank_api_key)
     _s.set_setting("RERANK_MODEL", req.rerank_model)
-    _s.set_setting("RERANK_LOCAL_MODEL", req.rerank_local_model)
     if req.vl_api_key:
         _s.set_setting("VL_API_KEY", req.vl_api_key)
     if req.zhipu_api_key:
