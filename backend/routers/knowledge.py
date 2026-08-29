@@ -475,12 +475,20 @@ async def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
     return {"status": "processing", "msg": f"正在处理（{page_count} 页），稍后刷新查看" if page_count else "正在处理，稍后刷新查看"}
 
 
+# F3（N2-2）：图片扩展名唯一事实源 = _IMG_EXTS（图片分支判定集合，原先局部定义在
+# knowledge_upload_file 内）。文档类扩展名单列一份，extensions / accept 均由两集合
+# 派生——禁止手写第二份。N2-2 事故成因即清单漂移：处理链路支持 6 种图片，约束清单
+# 却一张不收，前端 accept 动态取自约束端点 → 「点上传→选图片」被文件选择器拒收。
+# 守卫：tests/test_f3_upload_constraints.py 断言 extensions/accept ⊇ _IMG_EXTS 且同步。
+_DOC_EXTS = [".txt", ".md", ".markdown", ".py", ".js", ".ts", ".json", ".csv",
+             ".html", ".css", ".log", ".yaml", ".yml",
+             ".pdf", ".docx", ".pptx", ".xlsx", ".epub"]
+_IMG_EXTS = {"png", "jpg", "jpeg", "gif", "webp", "bmp"}
+_UPLOAD_ALL_EXTS = _DOC_EXTS + ["." + e for e in sorted(_IMG_EXTS)]
 # 支持格式单一事实源（对齐 DeepTutor SupportedFileTypesInfo）：前端 accept 与后端校验共用
 UPLOAD_CONSTRAINTS = {
-    "extensions": [".txt", ".md", ".markdown", ".py", ".js", ".ts", ".json", ".csv",
-                    ".html", ".css", ".log", ".yaml", ".yml",
-                    ".pdf", ".docx", ".pptx", ".xlsx", ".epub"],
-    "accept": ".txt,.md,.markdown,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml,.pdf,.docx,.pptx,.xlsx,.epub",
+    "extensions": _UPLOAD_ALL_EXTS,
+    "accept": ",".join(_UPLOAD_ALL_EXTS),
     "max_file_size_bytes": 50 * 1024 * 1024,
 }
 
@@ -508,9 +516,9 @@ async def knowledge_upload_file(
 ):
     from starlette.concurrency import run_in_threadpool
     data = await file.read()
-    _ALLOWED_EXTS = {"txt", "md", "markdown", "py", "js", "ts", "json", "csv", "html", "css",
-                     "log", "yaml", "yml", "pdf", "docx", "pptx", "xlsx", "epub",
-                     "png", "jpg", "jpeg", "gif", "webp", "bmp"}
+    # F3（N2-2）：入口白名单由 UPLOAD_CONSTRAINTS 派生——原先这里手写第三份扩展名清单
+    # （文档 18 种 + 图片 6 种），与约束清单属同类漂移隐患，一并收编进单一事实源。
+    _ALLOWED_EXTS = {x.lstrip(".") for x in UPLOAD_CONSTRAINTS["extensions"]}
     if len(data) > UPLOAD_CONSTRAINTS["max_file_size_bytes"]:
         return {"status": "error", "msg": "文件超过大小上限（50MB）"}
     _fname0 = file.filename or "file"
@@ -519,7 +527,7 @@ async def knowledge_upload_file(
         return {"status": "error",
                 "msg": f"不支持的文件格式 .{_ext0}（支持：txt/md/pdf/docx/pptx/xlsx/epub 及常见文本、代码、图片文件）"}
     fname = file.filename or "file"
-    _IMG_EXTS = {"png", "jpg", "jpeg", "gif", "webp", "bmp"}
+    # _IMG_EXTS 已上移模块级（F3）：此处局部定义是 N2-2 漂移事故的另一份手写清单，删除。
     _ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
     # F1 修复：source 与内容 hash 提到分支外（两个分支共用）。
     # source 必须等于文件名——前端 UploadPanel 以文件名作为进度轮询键（pollProgress(it.name)）。
