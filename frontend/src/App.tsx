@@ -437,7 +437,7 @@ function App() {
       <CenterPanel
         messages={currentMessages} isLoading={isLoading} currentProject={currentProject}
         dialogueId={currentDialogueId}
-        profilePending={profilePendingDialogue === currentDialogueId}
+        profilePending={profilePendingDialogue != null && profilePendingDialogue === currentDialogueId}
         onSendMessage={sendMessage}
         onStop={stop}
         onRequestKey={() => setShowApiKeyPrompt(true)}
