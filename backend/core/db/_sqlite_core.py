@@ -37,22 +37,18 @@ class CoreMixin:
         # 同时使用；历史上「常驻共享连接偶发锁冲突/连接失效」的成因是无锁并发触达，
         # 而现行所有调用点（execute + _kb_ops 9 处显式调用者）均已持锁，故语义不变。
         self._lock = threading.RLock()
-        # P1.1：journal_mode 是数据库文件的持久属性，每实例只需确保一次（见 _ensure_wal）
-        self._wal_ensured = False
         # P1.2：execute() 专用缓存连接；绝不交给 _kb_ops 的显式调用者（它们会 close）
         self._shared_conn = None
 
     def _ensure_wal(self, conn):
-        """P1.1：在实例首个连接上确保 WAL，之后不再重复。
-        journal_mode 是数据库文件的持久属性（一旦设为 WAL 就一直是 WAL），原 _new_conn
-        在每条连接上都重设一次（实测 33ms/条）是纯浪费——init_tables 约 24 次 execute
-        × 全量 82 个 DB 用例，是回归耗时的最大单点开销。对已是 WAL 的库该 PRAGMA
-        是即时 no-op；PRAGMA 失败时随 _new_conn 的重试循环换连接重试，与原行为一致。
+        """P1.1（T26 修订）：确保数据库处于 WAL。不再用实例级 flag 记忆「已设过」——
+        库文件被删后复用同一 client 时 flag 仍为 True，新文件永远得不到 WAL（陈旧状态陷阱，
+        生产可达性≈0 但必坑未来测试）。改为查询后按需设置：对已是 WAL 的库，PRAGMA
+        journal_mode 读查询是即时 no-op（实测 0ms 级），自校验、无可陈旧状态。
         必须在 _lock 串行域内调用（现行所有 _new_conn 调用点均已持锁）。"""
-        if self._wal_ensured:
-            return
-        conn.execute("PRAGMA journal_mode=WAL")
-        self._wal_ensured = True
+        row = conn.execute("PRAGMA journal_mode").fetchone()
+        if row and (row[0] or "").lower() != "wal":
+            conn.execute("PRAGMA journal_mode=WAL")
 
     def _new_conn(self):
         """新建一个独立连接（每次操作独立连接，用完即关）。
