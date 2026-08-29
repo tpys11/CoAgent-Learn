@@ -424,7 +424,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
             />
             {/* 坞内工具行 */}
             <div className="flex items-center gap-0.5">
-              <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept=".txt,.md,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml,.pdf,.docx,.pptx" />
+              <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept=".txt,.md,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml,.pdf,.docx,.pptx,.png,.jpg,.jpeg,.gif,.webp" />
               <button onClick={() => fileInputRef.current && fileInputRef.current.click()} title="上传文件"
                 className="w-8 h-8 flex items-center justify-center rounded-xl icon-btn border border-[var(--border-strong)] bg-[var(--bg-input)]">
                 <Upload size={15} />
