@@ -149,6 +149,11 @@ def _process_file_bg(project_id: str, fname: str, data: bytes, source: str,
             _set_progress_error(project_id, source, "无法解析该文件内容（可能为空或格式不支持）")
             return
         n = _process_upload(project_id, text, source, session_id, api_key, False, False, content_hash)
+        if n == -1:
+            # F2：与图片分支对齐——去重命中（hash 已存在且向量仍在）无新增入库，写完成终态，
+            # 否则前端按文件名轮询会悬挂 10 分钟后误报失败（F1 只修了图片分支，本步补齐非图片）。
+            _set_progress(project_id, source, done=1, total=1, stage="enhancing")
+            return
         logger.info("后台入库完成 fname=%s chunks=%s", fname, n)
     except Exception as e:
         logger.exception("后台文件处理失败 fname=%s", fname)
@@ -520,6 +525,7 @@ async def knowledge_upload_file(
     # source 必须等于文件名——前端 UploadPanel 以文件名作为进度轮询键（pollProgress(it.name)）。
     source = fname
     _ch = hashlib.sha256(data).hexdigest()
+    text = None  # 非图片后台模式保持 None：解析全部移交 _process_file_bg（F2）
     if _ext in _IMG_EXTS:
         import base64 as _b64
         _b64str = _b64.b64encode(data).decode()
@@ -538,7 +544,10 @@ async def knowledge_upload_file(
         # 入库文本统一为【图片内容】+desc（语义前缀利于检索；与 _process_file_bg 收到的
         # desc 实参同源，保证同步/后台两条路径入库文本逐字节一致）
         text = "【图片内容】" + desc
-    else:
+    elif wait:
+        # F2 修复：仅同步路径（wait=1）在请求内解析；后台模式（wait=0，前端默认路径）把解析
+        # 交还给 _process_file_bg——保证 HTTP 立即返回（对齐其 docstring）且全链只解析 1 次。
+        # F1 重构曾把解析提到 wait 判定之外，导致 wait=0 阻塞响应 + 第一遍解析结果被丢弃。
         text = await run_in_threadpool(_parse_for_upload, fname, data, _ext)
         if not text.strip():
             return {"status": "error", "msg": "无法解析该文件内容（可能为空或格式不支持）"}

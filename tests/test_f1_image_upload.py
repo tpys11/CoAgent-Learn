@@ -277,3 +277,81 @@ def test_bg_duplicate_upload_reaches_terminal_progress(f1):
     assert prog["status"] == "ok" and prog["stage"] == "enhancing", \
         f"重复上传后进度必须到达完成终态（否则前端轮询悬挂 10 分钟）: {prog}"
     assert len(f1.rec.image_rows) == len(first_rows), "重复内容不得再次入图片向量"
+
+
+# ══════════════ Step F2：非图片上传解析回归 + 重复上传进度终态（TDD，先红后绿）══════════════
+# F2 打桩约定：在 routers.knowledge 命名空间给 _parse_for_upload 套计数 spy——
+# knowledge_upload_file 的 run_in_threadpool(_parse_for_upload, ...) 与
+# _process_file_bg 内的裸调用都在执行时查模块全局名，故 monkeypatch 能同时计数到
+# 「请求内解析」与「后台解析」。parse_document 已由 f1 fixture 打桩（瞬间返回），
+# spy 包装的 _parse_for_upload 不引入真实耗时。F2-3/F2-4 是回归控制断言
+# （同 F1 第 8 条定位：预期修复前即为绿，不参与先红后绿）。
+
+
+def _spy_parse(monkeypatch):
+    """给 kmod._parse_for_upload 套计数 spy，返回调用记录列表（收 fname）。"""
+    real = kmod._parse_for_upload
+    calls: list = []
+
+    def _spy(fname, data, ext):
+        calls.append(fname)
+        return real(fname, data, ext)
+
+    monkeypatch.setattr(kmod, "_parse_for_upload", _spy)
+    return calls
+
+
+# ── F2-1【核心·先红】非图片 wait=0：HTTP 响应内不得解析（F1 重构引入的阻塞回归）──
+def test_f2_nonimage_bg_no_parse_in_request(f1, monkeypatch):
+    calls = _spy_parse(monkeypatch)
+    r = _upload(f1, "f2_bg.pdf", b"%PDF-1.4 f2-bg", "application/pdf", wait="0")
+    assert r.status_code == 200
+    assert r.json()["status"] == "processing"
+    assert calls == [], (
+        f"wait=0 后台模式下 HTTP 响应内不得调用 _parse_for_upload（解析必须移出请求）: {calls}"
+    )
+
+
+# ── F2-2【核心·先红】非图片 wait=0：后台恰好解析 1 次（F1 重构引入的双解析回归）──
+def test_f2_nonimage_bg_parses_exactly_once(f1, monkeypatch):
+    calls = _spy_parse(monkeypatch)
+    r = _upload(f1, "f2_once.pdf", b"%PDF-1.4 f2-once", "application/pdf", wait="0")
+    assert r.json()["status"] == "processing"
+    _run_bg(f1)
+    assert calls == ["f2_once.pdf"], (
+        f"整个上传链路（请求内+后台）应恰好解析 1 次，实际 {len(calls)} 次: {calls}"
+    )
+
+
+# ── F2-3【回归控制·预期两段皆绿】非图片 wait=1：同步路径在请求内恰好解析 1 次 ──
+def test_f2_nonimage_sync_parses_once(f1, monkeypatch):
+    calls = _spy_parse(monkeypatch)
+    r = _upload(f1, "f2_sync.pdf", b"%PDF-1.4 f2-sync", "application/pdf", wait="1")
+    d = r.json()
+    assert d["status"] == "ok" and isinstance(d["chunks"], int) and d["chunks"] >= 1
+    assert calls == ["f2_sync.pdf"], f"同步模式应恰好解析 1 次: {calls}"
+
+
+# ── F2-4【回归控制·预期两段皆绿】图片任意 wait 模式从不调用文本解析（防误伤）──
+def test_f2_image_never_calls_text_parse(f1, monkeypatch):
+    calls = _spy_parse(monkeypatch)
+    _upload(f1, "f2a.png", _make_png(), "image/png", wait="0")
+    _run_bg(f1)
+    _upload(f1, "f2b.png", _make_png(w=9), "image/png", wait="1")
+    assert calls == [], f"图片路径不得调用文本解析: {calls}"
+
+
+# ── F2-5【核心·先红】非图片重复上传（同内容不同文件名）：后台去重命中后进度落完成终态，
+#      镜像 F1 对图片分支的修复（缺陷②）──
+def test_f2_nonimage_duplicate_reaches_terminal_progress(f1):
+    pdf = b"%PDF-1.4 f2-dup-content"
+    _upload(f1, "f2d1.pdf", pdf, "application/pdf", wait="0")
+    fn, args, kw = f1.subs.pop(0)
+    fn(*args, **kw)                                    # 首次入库
+    _upload(f1, "f2d2.pdf", pdf, "application/pdf", wait="0")   # 同字节 → 同 sha256 → 去重
+    fn, args, kw = f1.subs.pop(0)
+    fn(*args, **kw)
+    prog = ks.get_progress("f1p", "f2d2.pdf")
+    assert prog["status"] == "ok" and prog["stage"] == "enhancing", (
+        f"非图片重复上传后进度必须到达完成终态（否则前端按文件名轮询悬挂 10 分钟）: {prog}"
+    )
