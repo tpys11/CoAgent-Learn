@@ -47,11 +47,21 @@
 > 一笔 commit 一个子步骤，各跑一次全量回归（决策 20 批次规范）。
 | C4 | healthcheck + restart | F1 | 低 | ✅ 实际改动：`backend/main.py`(+`/healthz` 8 行)、`deploy/docker-compose.yml`(+18 行 healthcheck/restart/depends_on)、`tests/test_c4_healthcheck.py`(新，6 条)、`README.md`(FAQ +10 行) | `531ba17`→`f3d21f3`（3 个） | **✅ 已完成** |
 | **N1** | **部署就绪**（新增） | C2 | 低 | ✅ 实际改动：`deploy/docker-compose.yml`、`.env.example`、`README.md`、`pyproject.toml`(-3)、`main.py`(:3)、`tests/test_n1_deploy_readiness.py`(新)、**经批准越界**：`backend/requirements.txt`(+openai、torch 索引切阿里云)、`tests/test_c1_runtime_deps.py` | `899afae`→`9f82ee2`（7 个） | **✅ 已完成** |
-| **N2** | **端到端部署验收**（新增） | P1 | 低 | **不改代码**，仅验证（**N3 后需重跑一次**，见 §1.4）。E-27 已解决（远端已同步至 `051d471`），**N2 直接从 GitHub clone，验评委真实路径** | — | 待执行 |
+| **N2** | **端到端部署验收**（新增） | P1 | 低 | ✅ **零代码改动**（第 1 次，build 路径，从 GitHub clone 验评委真实路径） | —（纯验证） | **✅ 已完成**（6 过 1 败） |
+| **F3** | **上传入口约束 + frontend healthcheck**（新增，N2 撞出） | N2 | **中（跨层：后端常量 + 前端）** | `backend/routers/knowledge.py`（`UPLOAD_CONSTRAINTS` 补图片扩展名）、`frontend/src/components/resource/UploadPanel.tsx`（`.catch(() => {})` 静默吞失败）、`deploy/docker-compose.yml`（frontend healthcheck） | — | 待分发 |
+
+> **N2 第 1 次结果（2026-08-30）**：**7 项中 6 过 1 败**，附加第 ⑧ 项发现伪向量降级。
+> ① 无 Key 启动 ✅｜② 冷构建 **433s** + 启动 8s ≈ 7m21s ✅（README「10 分钟以内」承诺成立）
+> ③ 双服务 healthy ❌ **frontend 根本没有 healthcheck**｜④ 首屏 16 请求全 200、console 0 错误 ✅
+> ⑤ 界面填 Key 免重启 ✅（机制实为 localStorage + 请求体，不落 settings 表）｜⑥ 流式 SSE 逐 token、首包 0.1s ✅
+> ⑦ 图片上传 ✅（**仅拖拽可达**，点击选文件被前端白名单拒收）｜⑧ **伪向量降级实锤**（T20）
+> **③ 判失败正确，但判据错在总领**：C4 的 6 条守卫从未要求 frontend 有 healthcheck，
+> 却是我在 N2 验收项里写了「双服务 healthy」——要了 C4 从未被要求交付的东西。
+> 详见 `docs/progress/step-N2.md` 批注 §B/§C。
 | **N3** | **发布封装**（新增） | 全部 17 步完成 | 中 | `deploy/docker-compose.yml`（`build:` → `image:`）、`README.md`、registry 配置 | — | 待分发 |
 
-> 步骤总数由 15 增至 **21**（新增 N1、N2、N3，C3 实施中发现 **F1**，F1 验收中发现 **F2**，
-> 进度成本根因诊断后新增 **P1**）。**但会话数由 21 降至 8**（决策 20 批次合并）。
+> 步骤总数由 15 增至 **22**（新增 N1、N2、N3，C3 实施中发现 **F1**，F1 验收中发现 **F2**，
+> 进度成本根因诊断后新增 **P1**，N2 端到端验收撞出 **F3**）。**但会话数仍为 8**（决策 20 批次合并）。
 > `LEAD_SESSION_PROMPT.md` 与 `SINGLE_STEP_EXECUTION.md` 中的「15 步」表述已过时，以本表为准。
 >
 > **F1 是新开的 `F` 组**（Functional bug fix）。它不属于原 15 步，也不属于部署链/体验链，
@@ -70,7 +80,7 @@
 | C4 | `docs/dispatch/step-C4.md` | 2026-08-29 | **✅ 已完成**（commit `531ba17`→`f3d21f3`，交接文档 `docs/progress/step-C4.md`） |
 | F2 | `docs/dispatch/step-F2.md` | 2026-08-29 | **✅ 已完成**（commit `19806af`，交接文档 `docs/progress/step-F2.md`） |
 | P1 | `docs/dispatch/step-P1.md` | 2026-08-29 | **✅ 已完成**（commit `8bfa582`→`d52169e`，交接文档 `docs/progress/step-P1.md`） |
-| N2 | `docs/dispatch/step-N2.md` | 2026-08-30 | **待执行**（第 1 次，build 路径） |
+| N2 | `docs/dispatch/step-N2.md` | 2026-08-30 | **✅ 已完成**（第 1 次，build 路径；交接文档 `docs/progress/step-N2.md`） |
 
 > 分发提示词统一存放于 `docs/dispatch/step-<id>.md`，交接文档归档于 `docs/progress/step-<id>.md`。
 
@@ -86,7 +96,9 @@
 | `frontend/src/components/chat/AssistantMessage.tsx` | B1、B3 |
 | `deploy/docker-compose.yml` | C1、C3、C4 |
 | `backend/main.py` | D1、C4（+`/healthz` 一行）、N1（:3 docstring，已完成） |
-| `backend/routers/knowledge.py` | **F1、F2**（其余步骤不涉及） |
+| `backend/routers/knowledge.py` | **F1、F2、F3**（其余步骤不涉及） |
+| `frontend/src/components/resource/UploadPanel.tsx` | **F3**（独占） |
+| `frontend/Dockerfile` | C3、F3（若 healthcheck 走 Dockerfile 而非 compose） |
 | `backend/core/db/_sqlite_core.py` | **P1**（独占，生产 DB 层，高风险） |
 | `tests/conftest.py` | **P1**（必要时；若被改，影响全部测试，需重点复核） |
 
@@ -147,13 +159,15 @@
 ```
 会话 1  F2   ✅ 19806af
 会话 2  P1   ✅ 8bfa582→d52169e（测试提速，122–302s → 30–39s）
-会话 3  N2   ← **下一个**：第 1 次验收（build 路径）
-会话 4  D 组  D1→D2→D3→D4  **+ T26 修复（P1 引入的 WAL flag 回归，折进来省一个会话）**
-会话 5  A 组  A1→A2→A3
-会话 6  B 组  B1→B3→B2→B4
-会话 7  N3  推预构建镜像（含决策 19 的 bind mount 处置）
-会话 8  N2  第 2 次验收（pull 路径复验）
+会话 3  N2   ✅ 第 1 次验收（build 路径，6 过 1 败）
+会话 4  **F3  ← 下一个**：上传入口约束 + frontend healthcheck（N2 撞出，跨层）
+会话 5  D 组  D1→D2→D3→D4  **+ T26 修复（P1 引入的 WAL flag 回归，折进来省一个会话）**
+会话 6  A 组  A1→A2→A3
+会话 7  B 组  B1→B3→B2→B4
+会话 8  N3  推预构建镜像（含决策 19 的 bind mount 处置）→ 紧接 N2 第 2 次验收（pull 路径）
 ```
+
+> **会话数由 8 增至 9**（新增 F3）。理由见决策 25。
 
 **P1 为什么插在 F2 与 N2 之间（决策 22）**：
 1. owner 明确要求「F2 完成后马上执行」。
@@ -406,6 +420,8 @@ N3（推预构建镜像）→ N2（第 2 次，按 pull 路径复验）
 | 22 | **新增提速步骤 P1，插在 F2 与 N2 之间**（owner 2026-08-29 要求「F2 完成后马上执行」） | P1 = 测试基础设施提速（修 T25），目标把全量回归从 **366s 降到 ≤ 60s**。两个子步骤同会话顺序执行：P1.1 把 `PRAGMA journal_mode=WAL` 移出 `_new_conn`（零风险）；P1.2 `execute()` 走缓存连接但**保留 `_new_conn()` 给显式调用者**（收益主体）。 | ① owner 明确要求紧接 F2；② **N2 顺带成为 P1 的运行时验证**——P1 动的是 DB 层生产代码，宿主 pytest 绿 ≠ 容器能跑，而 N2 是 fresh clone + 真实部署 + 7 项验收，**不增加额外会话**就复验了 P1；③ 会话 3–8 全部受益，越早省越多。**净收益**：多 1 个会话，但按剩余 7 会话 × 约 3 次回归 × (6min→45s) 估算，**累计省约 2 小时** |
 | 23 | **P1.2 的安全红线：不得让 `_new_conn()` 返回缓存连接** | `_new_conn()` 必须保持「返回全新独立连接」的语义。缓存只用于 `execute()` 内部。 | 总领 A/B 实测：简单连接复用让全量从 366.70s→44.56s（8.2x），但**挂了 4 条**——`_kb_ops.py:280-295` 的 `upsert_kg_edges_bulk` 自己调 `_new_conn()` 并在 `finally` 关闭，缓存连接被它关死（`Cannot operate on a closed database`）。**代码库存在两种用法**，方案必须同时满足。若 P1.2 在约束下无法安全实现，**只交付 P1.1**，不得为提速牺牲正确性 |
 | 24 | **分发提示词的三条流程修正**（F2 验收导出，2026-08-30） | ① **不得把「TDD 先红」当无差别铁律**——必须区分「新行为断言」（必须能红）与「**回归控制断言**」（结构上不可能红，需在测试注释中注明定位，沿用 F1 第 8 条「PDF 对照组」先例）。<br>② **耗时/基线数字必须标注「实测条件 + 波动范围」**，或要求实施会话**自建基线**，不得沿用他步数字。<br>③ **所有 `docker compose` 命令必须带 `-f deploy/docker-compose.yml`**，并写明仓库根无 compose 文件。 | ① F2-3/F2-4 属回归控制断言（同步路径本来就只解析一次、图片本来就不走文本解析），修复前即为绿、结构上不可能红，故须区分于新行为断言。<br>② 同一套测试在不同机器状态下实测差约 3 倍（103s / 122s / 302s），故提示词不得沿用他步的耗时数字。<br>③ 仓库根目录无 compose 文件，唯一 compose 为 `deploy/docker-compose.yml`，故 `docker compose` 命令必须带 `-f`；已实测通过（`healthz` 200） |
+| 25 | **N2 撞出的 3 项分两步走：F3 立即修（N2-1+N2-2），N2-3 待 owner 决策**（2026-08-30） | **F3（新步骤，会话 4）**：① 把图片扩展名补进 `backend/routers/knowledge.py:479-485` 的 `UPLOAD_CONSTRAINTS`（现与同文件 `:522` 的 `_IMG_EXTS` 不一致，导致前端选择器拒收图片）；② 修 `UploadPanel.tsx:29` 的 `.catch(() => {})`（静默吞掉约束拉取失败 → `allowedExts` 为空 → `:40` 的二次过滤被静默关闭）；③ 给 frontend 补 healthcheck（用 busybox `wget`，**不装 curl**，违背 C1 方向）。<br>**N2-3（伪向量）暂不进 F3**：修法涉及架构级取舍，须 owner 定程度 | ① **N2-2 定性为 P1**：它让 F1 的 P0 修复在**最自然的用户路径**（点上传→选文件）上不可达，评委最可能做这个动作；② ①和②同属上传约束链路，一个会话内做完比拆两次省一个会话（决策 20 精神）；③ N2-1 是低风险打磨，顺带做掉，避免再开一个会话；④ **N2-3 不进 F3 是因为它与 F3 不同层**：F3 是确定性 bug fix，N2-3 是「告警 / 预置模型 / 换 API」的架构取舍，混在一起会让 F3 的验收判据变模糊 |
+| 26 | **验收清单新增默认项：最自然的用户路径是否可达**（N2 的流程教训） | 后续步骤的验收判据里，除「API 是否返回 200」外，默认加一条：**该功能最自然的用户路径能否走通**（含前端入口、白名单、按钮状态等跨层环节）。 | **跨层缺口是分步验证的结构性盲区**：F1 验后端（图片上传链路修好）、C3 验前端（生产化），各自都绿，**但连接处没人验**——`UPLOAD_CONSTRAINTS` 不含图片，导致 F1 的修复只有拖拽一条路能触达。只有 N2 这种真实端到端才撞得出来。同类风险在 A/B 组同样存在（前端改动 + 后端协议变更） |
 
 ### 3.4 被否决的方案（各步交接文档第 3 节回流汇总）
 
@@ -482,7 +498,7 @@ N3（推预构建镜像）→ N2（第 2 次，按 pull 路径复验）
 | T17 | **`requests` 未在 `requirements.txt` 声明**，当前靠 `markitdown` 的硬依赖传递提供，而声明写的是 `markitdown[...]>=0.0.1a2`，下界极松。与 `openai` 完全同型（宿主有 → 测试绿 → 掩盖；容器缺 → 运行到分支才炸）。 | 总领复核 N1（AST 静态扫描 + PyPI 元数据核对） | 建议与 T18 合并为一步轻量清理，在 **N3 之前**做掉（N3 冻结镜像后改动成本变高）。**不阻塞 C3** |
 | T18 | `backend/requirements.txt` 与 `deploy/docker-compose.yml` **仍带 UTF-8 BOM**（pip 与 gopkg.in/yaml 均容忍）。另有 `pyproject.toml:12` 的 `chromadb>=0.5` 仍为失实声明（实际 SQLite + sqlite-vec）。 | N1 遗留 | 与 T17 合并清理。低优先——当前解析器全部容忍，无实际故障 |
 | T19 | ~~`frontend/Dockerfile` 用裸 `npm install` 且无镜像源~~ | N1 实测 | **✅ 已解决**（C3）：改为 `npm ci`（按 lockfile 精确安装）。实测默认 npmjs 源可用，**未加 npmmirror**——真正的慢点是 Docker Hub 拉 `nginx:alpine`（20.5MB 用了 191s），加 npm 镜像源无济于事。N3 推预构建镜像后此风险对评委消失 |
-| T20 | **embedding 静默降级为伪向量**（E-18）：`_embed_local` 在模型加载失败时走确定性伪向量分支，不抛错、不告警。评委若在网络受限环境部署，检索质量会**静默崩塌**且无任何提示——他只会觉得「这个检索怎么这么不准」。 | 总领复核 C3 时发现 | 建议 N2 增加一项验证：**确认 embedding 走的是真模型而非伪向量降级**（方法：入库后查向量的数值分布，伪向量是 `ord(ch)%100/100` 的稀疏低值；或直接在容器内确认模型已下载）。若要产品化修复，需在降级时**显式告警**（属架构级改动，不在本轮） |
+| T20 | **embedding 静默降级为伪向量**（E-18）：`_embed_local` 在模型加载失败时走确定性伪向量分支，不抛错、不告警。评委若在网络受限环境部署，检索质量会**静默崩塌**且无任何提示——他只会觉得「这个检索怎么这么不准」。 | **N2 第 ⑧ 项已实证确认**（2026-08-30 真实冷部署）：1024 维向量**全部是 0.01 的整数倍**、值域 [0, 0.99]、容器内无 HF 缓存——与 `embeddings.py:38` 的 `ord(ch)%100/100` 精确匹配，且**静默无告警**。→ **已由「代码审查推测」升级为「评委环境下会真实发生的事实」** | **待 owner 决策修到什么程度**：① 仅写文档（告知评委需预置 HF 缓存）；② 降级时**显式告警**（推荐，改动可控）；③ 完整产品化修复（预置模型进镜像 / 换 API embedding，属架构级）。**判据**：评委网络受限时必然触发——无 HF 缓存的容器拉不到 `bge-small-zh-v1.5`（默认 `EMBEDDING_LOCAL_MODEL`）即降级 |
 | T21 | **`GZipMiddleware` 会压缩 SSE 响应**（`main.py:62`，`minimum_size=1024`）。C3 实测流式未被破坏（Starlette 逐块 flush），但「SSE 被 gzip」依赖客户端透明解压，属脆弱组合。 | C3 实测 | **默认不改**——没有测到坏，改它有引入新问题的风险而收益为零。F1 提示词已写明：除非实测到可复现问题，否则跳过并说明理由 |
 | T22 | **`.dockerignore` 依赖**：C3 的多阶段构建依赖 `frontend/.dockerignore` 排除 `node_modules`/`dist`/`.vite`，否则宿主 Windows 原生二进制会混入 alpine builder | C3 交接 | 已确认存在且生效。后续若有人整理 `.dockerignore` 需知悉这条依赖 |
 | **T23** | **【F1 引入的回归】非图片后台上传变成「同步解析 + 解析两遍」**。F1 把 `_parse_for_upload` 从 `if wait:` 内提到了 `else` 分支（在 `wait` 判断之前），导致 PDF 等文档在**前端默认路径 `wait=0`** 下：① HTTP 请求阻塞到解析完成（3MB PDF 数十秒，50MB 可达数分钟）；② 后台 `_process_file_bg:149` **再解析一遍**；③ 同步解析的结果被丢弃（`submit` 传的 `desc` 对非图片恒为 `""`）。**函数自己的 docstring（`knowledge.py:134`）写着「解析从 HTTP 请求内移出（wait=false 时 HTTP 立即返回）」，现已被自己违反**；注释中的「上传提速·单步2」是此前专门做过的优化 | 总领验收 F1 时通读代码发现 | **登记 F2 修复**。9 条 F1 测试覆盖不到，因为 `test_pdf_control_unchanged` 用 `parse_document` 打桩（瞬间返回），只断言状态与入库、不断言解析的**时序与次数**——这是打桩的固有盲区，不是测试质量问题 |
@@ -506,6 +522,7 @@ N3（推预构建镜像）→ N2（第 2 次，按 pull 路径复验）
 | C4 | `docs/progress/step-C4.md` | ✅ 通过（commit `531ba17` / `78cd198` / `f3d21f3`，pytest 266 passed）。bind mount 处置升级为 N3 决策点（决策 19） |
 | F2 | `docs/progress/step-F2.md` | ✅ 通过（commit `19806af`，pytest 271 passed）。容器内真实 3MB PDF 的 HTTP 耗时 **111.25s → 0.22s**；非图片重复上传进度 0.3s 直达终态 |
 | P1 | `docs/progress/step-P1.md` | ✅ 通过（commit `8bfa582` / `b44cc17` / `d52169e`，278 passed）。全量回归降至 **30–39s**；新增 T26 待折进 D 组 |
+| N2 | `docs/progress/step-N2.md` | ✅ 通过（第 1 次，零代码改动，**7 项 6 过 1 败**）。含总领独立复核 5 项、**总领认领 2 处自身失误**（③ 判据要了 C4 未交付之物；F1 把「不改 `UPLOAD_CONSTRAINTS`」划入「不做」→ 造成跨层缺口）、**定性上调 1 处**（N2-2 由 UX 瑕疵上调为 P1）。核心成果：冷构建 **433s**（README「10 分钟以内」承诺成立）、**伪向量降级在真实冷部署中实锤**（T20 由推测升级为事实） |
 | — | 其余步骤完成后按 `step-<id>.md` 归档 | — |
 
 ---
