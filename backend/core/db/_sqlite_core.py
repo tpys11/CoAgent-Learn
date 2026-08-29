@@ -34,10 +34,25 @@ class CoreMixin:
         # 每操作短命连接 + 单锁串行（对齐 DeepTutor）：不再持有常驻共享连接，
         # 避免被事件循环线程 + 线程池线程 + 后台线程并发使用时偶发锁冲突/连接失效。
         self._lock = threading.RLock()
+        # P1.1：journal_mode 是数据库文件的持久属性，每实例只需确保一次（见 _ensure_wal）
+        self._wal_ensured = False
+
+    def _ensure_wal(self, conn):
+        """P1.1：在实例首个连接上确保 WAL，之后不再重复。
+        journal_mode 是数据库文件的持久属性（一旦设为 WAL 就一直是 WAL），原 _new_conn
+        在每条连接上都重设一次（实测 33ms/条）是纯浪费——init_tables 约 24 次 execute
+        × 全量 82 个 DB 用例，是回归耗时的最大单点开销。对已是 WAL 的库该 PRAGMA
+        是即时 no-op；PRAGMA 失败时随 _new_conn 的重试循环换连接重试，与原行为一致。
+        必须在 _lock 串行域内调用（现行所有 _new_conn 调用点均已持锁）。"""
+        if self._wal_ensured:
+            return
+        conn.execute("PRAGMA journal_mode=WAL")
+        self._wal_ensured = True
 
     def _new_conn(self):
-        """新建一个短命连接（每次操作独立连接，用完即关）。
-        数据在 named volume（Linux 原生 fs）上，WAL 稳定：写事务不再阻塞读。"""
+        """新建一个独立连接（每次操作独立连接，用完即关）。
+        数据在 named volume（Linux 原生 fs）上，WAL 稳定：写事务不再阻塞读。
+        WAL 由 _ensure_wal 在实例首个连接上设置（持久属性，勿在此逐连接重设）。"""
         last_err = None
         for _attempt in range(5):
             try:
@@ -46,7 +61,7 @@ class CoreMixin:
                 conn.enable_load_extension(True)
                 sqlite_vec.load(conn)
                 conn.execute("PRAGMA busy_timeout=5000")
-                conn.execute("PRAGMA journal_mode=WAL")
+                self._ensure_wal(conn)
                 conn.execute("PRAGMA foreign_keys=ON")
                 return conn
             except sqlite3.Error as e:
