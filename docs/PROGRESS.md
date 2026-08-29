@@ -49,6 +49,10 @@
 | **N1** | **部署就绪**（新增） | C2 | 低 | ✅ 实际改动：`deploy/docker-compose.yml`、`.env.example`、`README.md`、`pyproject.toml`(-3)、`main.py`(:3)、`tests/test_n1_deploy_readiness.py`(新)、**经批准越界**：`backend/requirements.txt`(+openai、torch 索引切阿里云)、`tests/test_c1_runtime_deps.py` | `899afae`→`9f82ee2`（7 个） | **✅ 已完成** |
 | **N2** | **端到端部署验收**（新增） | P1 | 低 | ✅ **零代码改动**（第 1 次，build 路径，从 GitHub clone 验评委真实路径） | —（纯验证） | **✅ 已完成**（6 过 1 败） |
 | **F3** | **上传入口约束 + frontend healthcheck**（新增，N2 撞出） | N2 | **中（跨层：后端常量 + 前端）** | `backend/routers/knowledge.py`（`UPLOAD_CONSTRAINTS` 补图片扩展名）、`frontend/src/components/resource/UploadPanel.tsx`（`.catch(() => {})` 静默吞失败）、`deploy/docker-compose.yml`（frontend healthcheck） | — | 待分发 |
+| **F4** | **embedding / rerank 降级显式告警 + 双 Key 引导**（新增，N2 第 ⑧ 项） | N2 | 低（只加告警与引导，不改降级行为） | `backend/core/embeddings.py`、`backend/core/knowledge_service.py`、`README.md`（+ 可选前端设置界面提示 / 启动日志 warning）、`tests/test_f4_embedding_degradation.py`(新) | — | 待分发 |
+
+> 💡 **F3 与 F4 可合并在一个会话跑**（文件不重叠，各出各自 commit，遵循决策 20）。
+> 若合并：先完成 F3 的提交，再做 F4 的。
 
 > **N2 第 1 次结果（2026-08-30）**：**7 项中 6 过 1 败**，附加第 ⑧ 项发现伪向量降级。
 > ① 无 Key 启动 ✅｜② 冷构建 **433s** + 启动 8s ≈ 7m21s ✅（README「10 分钟以内」承诺成立）
@@ -60,8 +64,9 @@
 > 详见 `docs/progress/step-N2.md` 批注 §B/§C。
 | **N3** | **发布封装**（新增） | 全部 17 步完成 | 中 | `deploy/docker-compose.yml`（`build:` → `image:`）、`README.md`、registry 配置 | — | 待分发 |
 
-> 步骤总数由 15 增至 **22**（新增 N1、N2、N3，C3 实施中发现 **F1**，F1 验收中发现 **F2**，
-> 进度成本根因诊断后新增 **P1**，N2 端到端验收撞出 **F3**）。**但会话数仍为 8**（决策 20 批次合并）。
+> 步骤总数由 15 增至 **23**（新增 N1、N2、N3，C3 实施中发现 **F1**，F1 验收中发现 **F2**，
+> 进度成本根因诊断后新增 **P1**，N2 端到端验收撞出 **F3、F4**）。
+> **会话数**：若 F3+F4 合并则为 **9**；分开则为 10（决策 20 批次合并精神下建议合并）。
 > `LEAD_SESSION_PROMPT.md` 与 `SINGLE_STEP_EXECUTION.md` 中的「15 步」表述已过时，以本表为准。
 >
 > **F1 是新开的 `F` 组**（Functional bug fix）。它不属于原 15 步，也不属于部署链/体验链，
@@ -82,6 +87,7 @@
 | P1 | `docs/dispatch/step-P1.md` | 2026-08-29 | **✅ 已完成**（commit `8bfa582`→`d52169e`，交接文档 `docs/progress/step-P1.md`） |
 | N2 | `docs/dispatch/step-N2.md` | 2026-08-30 | **✅ 已完成**（第 1 次，build 路径；交接文档 `docs/progress/step-N2.md`） |
 | F3 | `docs/dispatch/step-F3.md` | 2026-08-30 | **待执行**（上传入口约束 + frontend healthcheck） |
+| F4 | `docs/dispatch/step-F4.md` | 2026-08-30 | **待执行**（降级显式告警 + 双 Key 引导） |
 
 > 分发提示词统一存放于 `docs/dispatch/step-<id>.md`，交接文档归档于 `docs/progress/step-<id>.md`。
 
@@ -161,7 +167,9 @@
 会话 1  F2   ✅ 19806af
 会话 2  P1   ✅ 8bfa582→d52169e（测试提速，122–302s → 30–39s）
 会话 3  N2   ✅ 第 1 次验收（build 路径，6 过 1 败）
-会话 4  **F3  ← 下一个**：上传入口约束 + frontend healthcheck（N2 撞出，跨层）
+会话 4  **F3 + F4  ← 下一个**（可合并，各出各自 commit）
+         F3：上传入口约束 + frontend healthcheck（N2 撞出，跨层）
+         F4：embedding / rerank 降级显式告警 + 双 Key 引导（N2 第 ⑧ 项）
 会话 5  D 组  D1→D2→D3→D4  **+ T26 修复（P1 引入的 WAL flag 回归，折进来省一个会话）**
 会话 6  A 组  A1→A2→A3
 会话 7  B 组  B1→B3→B2→B4
@@ -336,6 +344,7 @@ N3（推预构建镜像）→ N2（第 2 次，按 pull 路径复验）
 | **E-27** | ~~**【交付阻塞级】本地大幅领先远端 62 笔**~~ | ✅ **已解决（2026-08-30）**：owner 安排推送后，总领核实 `git ls-remote` —— **远端 `master` == 本地 `master` == `051d471`，0 领先 / 0 落后**，62 笔（含 C1/C2/N1/C3/F1/C4/F2/P1 全部成果）已全部上远端。<br>**总领已核实远端树关键路径**：`docs/PROGRESS.md` ✓、`.gitignore` 白名单 ✓、`data/` 7 个种子文档 ✓（E-26 安全）、`deploy/docker-compose.yml` ✓、`tests/test_p1_db_perf.py` ✓；**且 `docs/PROGRESS.internal.md` 与 `docs/dispatch/` 均未上远端**（无内部内容泄漏）。<br>**→ N2 改走方案 B**：直接从 GitHub clone，验评委真实路径（原默认方案 A 已不再必要）。<br>另注：远端除 `master` 外还有 `analysis/merge-master`、`feature/memory`、`iwfawf` 三个分支；本地 `master` **仍无上游跟踪**（`git branch -r` 为空），后续若需常规同步建议补 `-u` |
 | **E-28** | **【探活陷阱 · 实测】healthcheck 的 host 必须写 `127.0.0.1`，写 `localhost` 会静默永久失败**。`frontend/nginx.conf:7` 是 `listen 80;`（纯 IPv4，容器实际监听 `0.0.0.0:80`）。`localhost` 解析到 `::1`（IPv6），nginx 不在 IPv6 上监听 → **curl 有 IPv6→IPv4 回退所以成功，busybox wget 没有所以失败** | 总领在真实前端容器内实测退出码：`wget --spider -q http://127.0.0.1/` → **0**；`curl -sf -o /dev/null http://127.0.0.1/` → **0**；`wget --spider -q http://localhost/` → **1（Connection refused）**。<br>**→ 这是 E-19 的同类坑**：E-19 是「`python:3.12-slim` 里没有 curl/wget」，本条是「有工具但 host 写法导致静默失败」。两者的共同点是**healthcheck 失败没人看日志**。<br>前端镜像（基于 `nginx:alpine`，运行时阶段无 `apk add`）自带 `wget`/`curl`/`nc` 三者，任选其一即可 |
 | **E-29** | **【部署耦合 · 实测】前端容器无法独立启动**：`nginx.conf:33` 的 upstream 写死了 `guashuai-backend`，而 nginx 在**启动时**就解析 upstream 主机名 | 单独 `docker run deploy-frontend:latest` 实测失败：`nginx: [emerg] host not found in upstream "guashuai-backend"`（exit 1）。**这比 compose 的 `depends_on: condition: service_healthy` 更硬**——`depends_on` 只控制启动顺序，而 nginx 是解析不到就直接拒绝启动。<br>**→ 影响**：① 验证 frontend 的 healthcheck **必须把整栈起起来**；② N3 改 `image:` 拉取路径时，容器名仍硬编码（`guashuai-backend`）故可正常工作，**但若改服务名或改用 `COMPOSE_PROJECT_NAME` 隔离会当场炸**；③ 后续任何改服务名的重构必须先处理 `nginx.conf:33` |
+| **E-30** | **【双重静默降级 · 实测】未配置 `EMBEDDING_API_KEY` 时，embedding 与 rerank **同时**静默失效**。<br>**① embedding**：`_embed()` 的路由条件是 `EMBEDDING_BACKEND=="api" and EMBEDDING_API_KEY`（`embeddings.py:67`）。默认 `EMBEDDING_BACKEND="api"`、`EMBEDDING_BASE_URL` 已是硅基流动，**但 key 为空 → 判定 False → 落 `_embed_local`** → `EMBEDDING_LOCAL_MODEL=""`（`config.py:24`，本地通道已废弃）→ `SentenceTransformer("")` 抛 `AttributeError` → 被裸 `except Exception` 吞掉 → **伪向量 `ord(ch)%100/100`**。<br>**② rerank**：`_get_reranker()`（`knowledge_service.py:473-487`）同理——`RERANK_BACKEND="api"` 但 `RERANK_API_KEY` 与 `EMBEDDING_API_KEY` 皆空 → 落本地 `CrossEncoder("BAAI/bge-reranker-base")` → 需从 HF 下载 → 失败 → `_reranker_local=False` → 返回 None，**重排被静默关闭** | **只需配置一个硅基流动 Key（`EMBEDDING_API_KEY`），两条路径同时走 API，问题消失**：rerank 的判定是 `RERANK_API_KEY or EMBEDDING_API_KEY`，会复用同一把 key。<br>⚠️ **对 N3 的连带影响（重要）**：配置 key 后，torch / sentence-transformers 的**全部引用点**（`embeddings.py:19` 与 `knowledge_service.py:483`）均不可达 → 成为**死依赖**。而它们正是 backend 镜像 **3.25GB** 的主因（torch 2.13 + transformers 5.14 + sentence-transformers 5.6）。**→ 若决定「API 为唯一路径、移除本地兜底」，可大幅缩小镜像并显著缩短冷构建（现 433s，README 称大头是 torch 下载 ~190MB）。这是一个独立的新选项，须 owner 决策**。<br>**注**：未配置 key 时本地兜底**仍会尝试加载模型**，故 torch 当前并非完全无用——是否移除取决于是否保留离线能力 |
 
 ---
 
@@ -501,7 +510,7 @@ N3（推预构建镜像）→ N2（第 2 次，按 pull 路径复验）
 | T17 | **`requests` 未在 `requirements.txt` 声明**，当前靠 `markitdown` 的硬依赖传递提供，而声明写的是 `markitdown[...]>=0.0.1a2`，下界极松。与 `openai` 完全同型（宿主有 → 测试绿 → 掩盖；容器缺 → 运行到分支才炸）。 | 总领复核 N1（AST 静态扫描 + PyPI 元数据核对） | 建议与 T18 合并为一步轻量清理，在 **N3 之前**做掉（N3 冻结镜像后改动成本变高）。**不阻塞 C3** |
 | T18 | `backend/requirements.txt` 与 `deploy/docker-compose.yml` **仍带 UTF-8 BOM**（pip 与 gopkg.in/yaml 均容忍）。另有 `pyproject.toml:12` 的 `chromadb>=0.5` 仍为失实声明（实际 SQLite + sqlite-vec）。 | N1 遗留 | 与 T17 合并清理。低优先——当前解析器全部容忍，无实际故障 |
 | T19 | ~~`frontend/Dockerfile` 用裸 `npm install` 且无镜像源~~ | N1 实测 | **✅ 已解决**（C3）：改为 `npm ci`（按 lockfile 精确安装）。实测默认 npmjs 源可用，**未加 npmmirror**——真正的慢点是 Docker Hub 拉 `nginx:alpine`（20.5MB 用了 191s），加 npm 镜像源无济于事。N3 推预构建镜像后此风险对评委消失 |
-| T20 | **embedding 静默降级为伪向量**（E-18）：`_embed_local` 在模型加载失败时走确定性伪向量分支，不抛错、不告警。评委若在网络受限环境部署，检索质量会**静默崩塌**且无任何提示——他只会觉得「这个检索怎么这么不准」。 | **N2 第 ⑧ 项已实证确认**（2026-08-30 真实冷部署）：1024 维向量**全部是 0.01 的整数倍**、值域 [0, 0.99]、容器内无 HF 缓存——与 `embeddings.py:38` 的 `ord(ch)%100/100` 精确匹配，且**静默无告警**。→ **已由「代码审查推测」升级为「评委环境下会真实发生的事实」** | **待 owner 决策修到什么程度**：① 仅写文档（告知评委需预置 HF 缓存）；② 降级时**显式告警**（推荐，改动可控）；③ 完整产品化修复（预置模型进镜像 / 换 API embedding，属架构级）。**判据**：评委网络受限时必然触发——无 HF 缓存的容器拉不到 `bge-small-zh-v1.5`（默认 `EMBEDDING_LOCAL_MODEL`）即降级 |
+| T20 | **embedding 静默降级为伪向量**（E-18）：`_embed_local` 在模型加载失败时走确定性伪向量分支，不抛错、不告警。评委若在网络受限环境部署，检索质量会**静默崩塌**且无任何提示——他只会觉得「这个检索怎么这么不准」。 | **N2 第 ⑧ 项已实证确认**（2026-08-30 真实冷部署）：1024 维向量**全部是 0.01 的整数倍**、值域 [0, 0.99]——与 `embeddings.py:38` 的 `ord(ch)%100/100` 精确匹配，且**静默无告警**。<br>⚠️ **2026-08-30 总领订正根因**：不是「容器无 HF 缓存拉不到 `bge-small-zh-v1.5`」——**`EMBEDDING_LOCAL_MODEL` 默认值是空字符串**（`config.py:24`，注释「已废弃本地通道，字段保留兼容旧调用」），本地通道**根本没有配置任何模型**。实测 `SentenceTransformer("")` 抛 `AttributeError`，被 `embeddings.py:21` 的裸 `except Exception` 吞掉 → 伪向量。<br>**→ 真正的触发条件是「`EMBEDDING_API_KEY` 未配置」，不是网络受限** | 见 **E-30**（含同源的 rerank 静默降级）。**处置**：新增 **Step F4**（embedding + rerank 降级显式告警 + 双 Key 引导）。<br>**不需要**预置模型进镜像（原三选项中的 ③ 已否定——本地通道本就废弃） |
 | T21 | **`GZipMiddleware` 会压缩 SSE 响应**（`main.py:62`，`minimum_size=1024`）。C3 实测流式未被破坏（Starlette 逐块 flush），但「SSE 被 gzip」依赖客户端透明解压，属脆弱组合。 | C3 实测 | **默认不改**——没有测到坏，改它有引入新问题的风险而收益为零。F1 提示词已写明：除非实测到可复现问题，否则跳过并说明理由 |
 | T22 | **`.dockerignore` 依赖**：C3 的多阶段构建依赖 `frontend/.dockerignore` 排除 `node_modules`/`dist`/`.vite`，否则宿主 Windows 原生二进制会混入 alpine builder | C3 交接 | 已确认存在且生效。后续若有人整理 `.dockerignore` 需知悉这条依赖 |
 | **T23** | **【F1 引入的回归】非图片后台上传变成「同步解析 + 解析两遍」**。F1 把 `_parse_for_upload` 从 `if wait:` 内提到了 `else` 分支（在 `wait` 判断之前），导致 PDF 等文档在**前端默认路径 `wait=0`** 下：① HTTP 请求阻塞到解析完成（3MB PDF 数十秒，50MB 可达数分钟）；② 后台 `_process_file_bg:149` **再解析一遍**；③ 同步解析的结果被丢弃（`submit` 传的 `desc` 对非图片恒为 `""`）。**函数自己的 docstring（`knowledge.py:134`）写着「解析从 HTTP 请求内移出（wait=false 时 HTTP 立即返回）」，现已被自己违反**；注释中的「上传提速·单步2」是此前专门做过的优化 | 总领验收 F1 时通读代码发现 | **登记 F2 修复**。9 条 F1 测试覆盖不到，因为 `test_pdf_control_unchanged` 用 `parse_document` 打桩（瞬间返回），只断言状态与入库、不断言解析的**时序与次数**——这是打桩的固有盲区，不是测试质量问题 |
