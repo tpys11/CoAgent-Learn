@@ -194,7 +194,7 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         effective_model = req.model
         try:
             if raw_settings.get("modelAuto") or raw_settings.get("auto"):
-                from main import _auto_settings
+                from services.chat_context import _auto_settings
                 tpl0 = raw_settings.get("template") or "思考"
                 _auto = _auto_settings(req.api_key, req.message, tpl0,
                                        infer_model=bool(raw_settings.get("modelAuto")))
@@ -208,7 +208,7 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         # --- 会话上下文快照：画像缓存 + 历史预算块（复用主模块已验证的预取逻辑） ---
         template = raw_settings.get("template") or "思考"
         try:
-            from main import _build_preloaded
+            from services.chat_context import _build_preloaded
             preloaded = _build_preloaded(pid, did, req.message)
         except Exception:
             logger.exception("[v2] 预取会话上下文失败")
@@ -231,7 +231,7 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
 
         # 特殊输入解析（消息内URL并行抓取并入文；无URL原样返回）
         try:
-            from main import _parse_special_inputs
+            from services.chat_context import _parse_special_inputs
             working_message = _parse_special_inputs(req.message)
         except Exception:
             logger.exception("[v2] 特殊输入解析失败")
