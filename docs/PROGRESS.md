@@ -51,7 +51,16 @@
 | **F3** | **上传入口约束 + frontend healthcheck**（新增，N2 撞出） | N2 | **中（跨层：后端常量 + 前端）** | `backend/routers/knowledge.py`（`UPLOAD_CONSTRAINTS` 补图片扩展名）、`frontend/src/components/resource/UploadPanel.tsx`（`.catch(() => {})` 静默吞失败）、`deploy/docker-compose.yml`（frontend healthcheck） | — | 待分发 |
 | **F4** | **embedding / rerank 降级显式告警 + 双 Key 引导**（新增，N2 第 ⑧ 项） | N2 | 低（只加告警与引导，不改降级行为） | `backend/core/embeddings.py`、`backend/core/knowledge_service.py`、`README.md`（+ 可选前端设置界面提示 / 启动日志 warning）、`tests/test_f4_embedding_degradation.py`(新) | — | 待分发 |
 | **F5** | **移除本地模型，全部走 API**（owner 2026-08-30 拍板） | F3 | **中（改依赖构成 + 行为变更）** | `backend/core/embeddings.py`、`backend/core/knowledge_service.py`、`backend/core/config.py`、`backend/requirements.txt`（删 torch / sentence-transformers / 阿里云 find-links） | `a79f6d9`→`3395670`（4 个） | **✅ 已完成** |
-| **F6** | **聊天输入框图片白名单**（新增，F3 复核发现） | F3 | **低**（CenterPanel 一处 accept） | `frontend/src/components/CenterPanel.tsx:427`（accept）、`tests/test_f6_chat_image_accept.py`(新)；**`DragDropInput.tsx:85` 建议不动**（见下） | — | **待执行** |
+| **F6** | **聊天输入框图片白名单**（新增，F3 复核发现） | F3 | **低**（CenterPanel 一处 accept） | ✅ 实际改动：`frontend/src/components/CenterPanel.tsx:427`（accept +1 行）、`tests/test_f6_chat_image_accept.py`(新，5 条守卫)；**`DragDropInput.tsx` 未动（方案 A 固化进守卫）** | `542caf3` | **✅ 已完成** |
+
+> **F6 实测成果**（2026-08-30）：聊天附件点选图片端到端走通——选择器可选 PNG →
+> 附件挂载 `isImage:true` → 后端 vision 调用 200 → 模型准确描述测试图（白底红圆）。
+> pytest **295 → 300 passed**（+5 守卫）；tsc 0 错 / vitest 26 零回归；变异验证
+> （accept 去 jpeg → 恰 1 条红 → 还原全绿）。**清单来源决策**：accept 用静态串 =
+> `:140` 下游分支 + 双向守卫，**不沿用** upload-constraints（后者含 bmp，VL 拒收 E-31，
+> 两场景允许格式本就不同）。**DragDropInput 方案 A**：下游无图片分支且使用方未传
+> `onFile`，加 accept 只会更差；守卫反向固化。新发现 4 项（KnowledgeView「上传资源」
+> 区块确认失效等）详见 `docs/progress/step-F6.md`（本地归档）。<br>
 
 > **F5 实测成果**：镜像 **3.25GB → 1.67GB**、冷构建 **433s → 207.9s**、
 > pytest **287 → 295 passed**（+8 守卫）。实际释放 1.58GB > 预估 1.13GB
