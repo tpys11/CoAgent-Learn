@@ -81,6 +81,7 @@
 | F2 | `docs/dispatch/step-F2.md` | 2026-08-29 | **✅ 已完成**（commit `19806af`，交接文档 `docs/progress/step-F2.md`） |
 | P1 | `docs/dispatch/step-P1.md` | 2026-08-29 | **✅ 已完成**（commit `8bfa582`→`d52169e`，交接文档 `docs/progress/step-P1.md`） |
 | N2 | `docs/dispatch/step-N2.md` | 2026-08-30 | **✅ 已完成**（第 1 次，build 路径；交接文档 `docs/progress/step-N2.md`） |
+| F3 | `docs/dispatch/step-F3.md` | 2026-08-30 | **待执行**（上传入口约束 + frontend healthcheck） |
 
 > 分发提示词统一存放于 `docs/dispatch/step-<id>.md`，交接文档归档于 `docs/progress/step-<id>.md`。
 
@@ -333,6 +334,8 @@ N3（推预构建镜像）→ N2（第 2 次，按 pull 路径复验）
 | E-25 | **`data/` 的入库边界**：`data/app.db`(143M)、`data/app.db.backup-premigration`(129M)、`data/uploads/` **均被忽略**；`data/documents/` 下 **7 个种子 .md 是有意入库的内容**（大语言模型基础概念 / Prompt工程 / RAG技术原理 / 向量数据库与Embedding / Agent基础 / Agent记忆系统 / 多Agent协同） | N3 推 GitHub **无数据库隐私泄漏**，但会带上这 7 个种子文档与 `SQLITE_DIR` 的默认数据。若评委不需要预置知识库，可考虑清理（待定） |
 | **E-26** | **`data/` 目录在 fresh clone 中的存在性，依赖于 `data/documents/` 下那 7 个种子 .md**。`deploy/docker-compose.yml:54` 有 `../data:/app-data` bind mount；若源目录在 clone 中不存在，Docker 会**自动创建为 root 属主目录** → SQLite 写入失败，评委部署当场翻车。实测 4 个挂载源目录当前均安全（`backend` 72 / `skills` 36 / `tests` 43 个 tracked 文件；`data` 因 documents 被跟踪而存在） | **隐藏耦合**：E-25 讨论的「清理预置知识库」若真的删掉 `data/documents/`，`data/` 目录将从 clone 消失，**连带打断 `../data:/app-data` 挂载**。N3 若动种子文档，必须同步处置（改挂载路径 / 加 `.gitkeep` / 或改由容器 entrypoint 建目录） |
 | **E-27** | ~~**【交付阻塞级】本地大幅领先远端 62 笔**~~ | ✅ **已解决（2026-08-30）**：owner 安排推送后，总领核实 `git ls-remote` —— **远端 `master` == 本地 `master` == `051d471`，0 领先 / 0 落后**，62 笔（含 C1/C2/N1/C3/F1/C4/F2/P1 全部成果）已全部上远端。<br>**总领已核实远端树关键路径**：`docs/PROGRESS.md` ✓、`.gitignore` 白名单 ✓、`data/` 7 个种子文档 ✓（E-26 安全）、`deploy/docker-compose.yml` ✓、`tests/test_p1_db_perf.py` ✓；**且 `docs/PROGRESS.internal.md` 与 `docs/dispatch/` 均未上远端**（无内部内容泄漏）。<br>**→ N2 改走方案 B**：直接从 GitHub clone，验评委真实路径（原默认方案 A 已不再必要）。<br>另注：远端除 `master` 外还有 `analysis/merge-master`、`feature/memory`、`iwfawf` 三个分支；本地 `master` **仍无上游跟踪**（`git branch -r` 为空），后续若需常规同步建议补 `-u` |
+| **E-28** | **【探活陷阱 · 实测】healthcheck 的 host 必须写 `127.0.0.1`，写 `localhost` 会静默永久失败**。`frontend/nginx.conf:7` 是 `listen 80;`（纯 IPv4，容器实际监听 `0.0.0.0:80`）。`localhost` 解析到 `::1`（IPv6），nginx 不在 IPv6 上监听 → **curl 有 IPv6→IPv4 回退所以成功，busybox wget 没有所以失败** | 总领在真实前端容器内实测退出码：`wget --spider -q http://127.0.0.1/` → **0**；`curl -sf -o /dev/null http://127.0.0.1/` → **0**；`wget --spider -q http://localhost/` → **1（Connection refused）**。<br>**→ 这是 E-19 的同类坑**：E-19 是「`python:3.12-slim` 里没有 curl/wget」，本条是「有工具但 host 写法导致静默失败」。两者的共同点是**healthcheck 失败没人看日志**。<br>前端镜像（基于 `nginx:alpine`，运行时阶段无 `apk add`）自带 `wget`/`curl`/`nc` 三者，任选其一即可 |
+| **E-29** | **【部署耦合 · 实测】前端容器无法独立启动**：`nginx.conf:33` 的 upstream 写死了 `guashuai-backend`，而 nginx 在**启动时**就解析 upstream 主机名 | 单独 `docker run deploy-frontend:latest` 实测失败：`nginx: [emerg] host not found in upstream "guashuai-backend"`（exit 1）。**这比 compose 的 `depends_on: condition: service_healthy` 更硬**——`depends_on` 只控制启动顺序，而 nginx 是解析不到就直接拒绝启动。<br>**→ 影响**：① 验证 frontend 的 healthcheck **必须把整栈起起来**；② N3 改 `image:` 拉取路径时，容器名仍硬编码（`guashuai-backend`）故可正常工作，**但若改服务名或改用 `COMPOSE_PROJECT_NAME` 隔离会当场炸**；③ 后续任何改服务名的重构必须先处理 `nginx.conf:33` |
 
 ---
 
