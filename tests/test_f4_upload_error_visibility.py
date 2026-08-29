@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """Step F4′ 守卫：入库异常必须对用户可见（同步 + 后台两条路径）。
 
 背景：knowledge.py `_process_upload` 曾在内部 catch add_document 异常、只写容器日志、
@@ -239,3 +239,52 @@ def test_f3_baseline_must_not_list_bmp():
     assert m, "test_f3 缺少 BASELINE_IMG_EXTS"
     exts = {x.strip().strip('"\'') for x in m.group(1).split(",")}
     assert "bmp" not in exts, "BASELINE_IMG_EXTS 仍含 bmp——守卫基线与剔除决策不同步"
+
+
+# ══════════════ 4. 修复⑤守卫：data URL 的 mime 必须真实 ══════════════
+# 前端只传裸 base64；生成侧 data URL 曾恒拼 image/png——传 JPEG/GIF/WebP 时
+# 声明与字节不符（依赖 DeepSeek vision 忽略 mime 的宽容度，非正确实现）。
+
+PIPELINE_PY = PROJECT_ROOT / "backend" / "engine" / "pipeline_v2.py"
+
+
+def test_sniff_image_mime_recognizes_common_formats():
+    """行为守卫：PNG/JPEG/GIF/WebP 魔数必须推断出真实 mime。"""
+    import base64
+    from engine.pipeline_v2 import _sniff_image_mime
+    cases = {
+        b"\x89PNG\r\n\x1a\n": "image/png",
+        b"\xff\xd8\xff\xe0JFIF": "image/jpeg",
+        b"GIF89a": "image/gif",
+        b"RIFF\x00\x00\x00\x00WEBPVP8 ": "image/webp",
+    }
+    for head, mime in cases.items():
+        b64 = base64.b64encode(head).decode()
+        assert _sniff_image_mime(b64) == mime, f"{head!r} 应推断为 {mime}"
+        # 真实上游收到的是完整 base64（多字节），前缀判定必须对超长串同样成立
+        assert _sniff_image_mime(b64 + base64.b64encode(b"x" * 64).decode()) == mime
+
+
+def test_sniff_image_mime_unknown_falls_back_to_png(caplog):
+    """无法识别的 base64 回退 image/png（保持旧行为）并记 warning。"""
+    import base64
+    import logging
+    from engine.pipeline_v2 import _sniff_image_mime
+    with caplog.at_level(logging.WARNING, logger="engine.pipeline_v2"):
+        assert _sniff_image_mime(base64.b64encode(b"NOTANIMAGE!!").decode()) == "image/png"
+        assert _sniff_image_mime("") == "image/png"  # 空串不崩
+    assert any("魔数无法识别" in r.getMessage() for r in caplog.records)
+
+
+def test_data_url_must_use_sniffed_mime():
+    """存在性守卫：生成侧 data URL 必须经 _sniff_image_mime 推断，
+    恒拼 image/png 的硬编码不得回归。"""
+    src = PIPELINE_PY.read_text(encoding="utf-8-sig")
+    assert '"url": "data:image/png;base64,"' not in src, (
+        "pipeline_v2 恒拼 data:image/png 的硬编码回归——JPEG/GIF/WebP 的声明 mime 将再次失真（F4′修复⑤被撤销）"
+    )
+    assert re.search(r'"data:" \+ _sniff_image_mime\(req\.image\)', src), (
+        "data URL 未走 _sniff_image_mime 推断——mime 真实性守卫被绕开"
+    )
+    assert hasattr(__import__("engine.pipeline_v2", fromlist=["_sniff_image_mime"]),
+                   "_sniff_image_mime"), "_sniff_image_mime 帮助函数被删除"

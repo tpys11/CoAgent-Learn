@@ -37,6 +37,31 @@ def engine_mode() -> str:
     return os.environ.get("CHAT_ENGINE", "v2")
 
 
+# 修复⑤（F4′，owner 拍板改对）：前端 CenterPanel 存的是裸 base64（不带 mime），
+# 生成侧 data URL 此前恒拼 image/png——传 JPEG/GIF/WebP 时声明是 png、字节却是
+# 别的格式（今天能工作只因 DeepSeek vision 忽略声明 mime，依赖上游宽容度不是
+# 正确实现；F6 已让 jpg/jpeg/gif/webp 成为官方可选路径，硬编码会被真实触发）。
+# 从 base64 前缀魔数推断真实格式（各自首字节不同，前缀互斥）：
+# PNG iVBORw0KGgo(\x89PNG) / JPEG /9j/(\xff\xd8\xff) / GIF R0lGOD(GIF8) / WebP UklGRg(RIFF)
+_IMG_B64_MAGIC = (
+    ("/9j/", "image/jpeg"),
+    ("R0lGOD", "image/gif"),
+    ("UklGRg", "image/webp"),
+    ("iVBORw0KGgo", "image/png"),
+)
+
+
+def _sniff_image_mime(b64: str) -> str:
+    """从 base64 前缀魔数推断图片真实 mime；无法识别时回退 image/png（保持旧行为）并记日志。"""
+    b64 = (b64 or "").lstrip()
+    for prefix, mime in _IMG_B64_MAGIC:
+        if b64.startswith(prefix):
+            return mime
+    logger.warning("图片附件 base64 魔数无法识别（前 8 字符：%r），mime 回退 image/png",
+                   b64[:8])
+    return "image/png"
+
+
 # --- 模型接缝（测试在此打补丁注入 FakeLLM） ---
 
 def _make_llm(req, model_override=None):
@@ -383,10 +408,11 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                                 + user_content)
             user_msg = {"role": "user", "content": user_content}
             if req.image:
+                # 修复⑤（F4′）：mime 从 base64 魔数推断，不再恒拼 image/png
                 user_msg = {"role": "user", "content": [
                     {"type": "text", "text": working_message},
                     {"type": "image_url",
-                     "image_url": {"url": "data:image/png;base64," + (req.image or "")}},
+                     "image_url": {"url": "data:" + _sniff_image_mime(req.image) + ";base64," + (req.image or "")}},
                 ]}
             return user_msg
 
