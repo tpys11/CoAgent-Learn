@@ -150,7 +150,12 @@ export default function ServiceSettings() {
                 className={`px-4 py-1.5 text-[11px] rounded-lg font-semibold flex-shrink-0 ${svcSaved ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#1a1a1a] text-white'}`}>保存</button>
             )}
           </div>
-          <p className="text-[10px] text-dim">该 key 可实现多种模型调用</p>
+          <p className="text-[10px] text-dim">知识库检索专用（向量化 + 重排）。它与「基础」页的 DeepSeek 对话 Key 相互独立、缺一不可：对话 Key 管聊天，本 Key 管知识库</p>
+          {/* F4′修复②：未配置时给出可见告警——评委常误以为配了对话 Key 就万事大吉，
+              实际知识库检索（上传向量化/重排）完全依赖这把独立的硅基流动 Key。 */}
+          {!svc.embedding_key_set && !keyEditing && (
+            <p className="text-[10px] text-amber-600 font-medium">⚠️ 未配置：上传文档/图片将无法向量化入库，知识库检索完全不可用。请前往 https://api.siliconflow.cn 注册获取 Key</p>
+          )}
         </div>
 
         {/* 知识库服务：统一向量化模型只读展示（不可选） */}
