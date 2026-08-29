@@ -97,6 +97,14 @@ app.include_router(skills_router)
 from engine.cancel import ACTIVE_CANCELS as _active_cancels  # noqa: E402
 # ---------- API 接口 ----------
 
+
+@app.get("/healthz")
+def healthz():
+    """纯 liveness 探针（Step C4）：不查库/不查向量/不调 LLM/不读文件，进程活着即 200。
+    仅供 Docker healthcheck（容器内 127.0.0.1:8000 直连）与人肉 curl 使用；
+    不要在这里加鉴权、依赖检查或日志——每 30s 探测一次，会刷屏/制造假故障。"""
+    return {"status": "ok"}
+
 class ChatRequest(BaseModel):
     message: str
     session_id: str | None = None
