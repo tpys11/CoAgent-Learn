@@ -50,6 +50,16 @@
 | **N2** | **端到端部署验收**（新增） | P1 | 低 | ✅ **零代码改动**（第 1 次，build 路径，从 GitHub clone 验评委真实路径） | —（纯验证） | **✅ 已完成**（6 过 1 败） |
 | **F3** | **上传入口约束 + frontend healthcheck**（新增，N2 撞出） | N2 | **中（跨层：后端常量 + 前端）** | `backend/routers/knowledge.py`（`UPLOAD_CONSTRAINTS` 补图片扩展名）、`frontend/src/components/resource/UploadPanel.tsx`（`.catch(() => {})` 静默吞失败）、`deploy/docker-compose.yml`（frontend healthcheck） | — | 待分发 |
 | **F4** | **embedding / rerank 降级显式告警 + 双 Key 引导**（新增，N2 第 ⑧ 项） | N2 | 低（只加告警与引导，不改降级行为） | `backend/core/embeddings.py`、`backend/core/knowledge_service.py`、`README.md`（+ 可选前端设置界面提示 / 启动日志 warning）、`tests/test_f4_embedding_degradation.py`(新) | — | 待分发 |
+| **F5** | **移除本地模型，全部走 API**（owner 2026-08-30 拍板） | F3 | **中（改依赖构成 + 行为变更）** | `backend/core/embeddings.py`、`backend/core/knowledge_service.py`、`backend/core/config.py`、`backend/requirements.txt`（删 torch / sentence-transformers / 阿里云 find-links） | — | **计划阶段** |
+
+> **F5 计划已产出**：`docs/dispatch/step-F5-plan.md`（待 owner 反馈后转正式提示词）。
+> **实测收益**：backend 镜像 **3.25GB → ≈1.4GB**；可移除 torch 750M + transformers 113M +
+> scikit-learn 49M + scipy 139M + sympy 74M ≈ **1.13GB**（全链路 `Required-by` 仅
+> `sentence-transformers`）。**须保留** `onnxruntime`（`magika`/`pymupdf-layout`，markitdown 链）
+> 与 `pymupdf`（PDF）。<br>
+> ⚠️ **F5 与 F4 有重叠需裁定**：F4 的「降级告警」以保留本地兜底为前提；
+> F5 移除本地通道后降级不复存在 → **建议 F5 执行后 F4 缩减为「仅双 Key 引导」**（待 owner 确认）。<br>
+> ⚠️ **F5 与 F3 文件零重叠**，但两者都要重建镜像/起容器，**建议串行**（F3 完成后再做 F5）。
 
 > 💡 **F3 与 F4 可合并在一个会话跑**（文件不重叠，各出各自 commit，遵循决策 20）。
 > 若合并：先完成 F3 的提交，再做 F4 的。
