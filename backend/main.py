@@ -1,6 +1,6 @@
 """
 CoAgent-Learn 纯 API 后端
-FastAPI + LangGraph 多智能体协同 + RAG 向量检索
+FastAPI + 自研多阶段管线（规划/检索/学情评估/生成/审核）+ RAG 向量检索
 """
 import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
