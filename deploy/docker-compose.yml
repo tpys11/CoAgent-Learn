@@ -15,6 +15,16 @@
         condition: service_healthy
     # C4: 崩溃自愈；显式 stop/down 后不会被 Docker 拉起（区别于 always 的"神秘复活"）。
     restart: unless-stopped
+    # F3（N2-1）：frontend 探活。nginx:alpine 自带 busybox wget，无需装任何包。
+    # host 必须 127.0.0.1：nginx listen 80 纯 IPv4，localhost 解析 ::1 且 busybox wget
+    # 无 IPv6→IPv4 回退——写 localhost 探针永远 Connection refused（容器内实测退出码 1）。
+    # 验证须整栈 up：nginx 启动期解析 upstream guashuai-backend，frontend 无法单独启动。
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
       - guashuai-network
 

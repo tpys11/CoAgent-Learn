@@ -115,3 +115,35 @@ def test_both_services_restart_unless_stopped():
             f"{name} 服务缺少 restart: unless-stopped——崩溃不自愈（缺失）"
             "或 down 后被拉起（always），都会破坏评委预期"
         )
+
+
+# ---------------------------------------------------------------------------
+# F3（N2-1）追加：frontend 自己的 healthcheck 守卫（以上 6 条 C4 守卫不动）。
+# 背景：N2 实测 frontend 只显示 Up；nginx:alpine 自带 busybox wget，可用；
+# 但 host 必须写 127.0.0.1——nginx listen 80 纯 IPv4，localhost 解析 ::1 且
+# busybox wget 无 IPv6→IPv4 回退（容器内实测：127.0.0.1 退出码 0，localhost 退出码 1），
+# 写 localhost 探针会永远失败且 healthy 永不出现——又一类静默失效（E-19 同族）。
+
+def test_frontend_healthcheck_must_exist():
+    """frontend 必须有自己的 healthcheck——否则 ps 永远只显示 Up，
+    「双服务 healthy」的部署成功信号在 frontend 侧缺失（N2-1）。"""
+    block = _compose_service_block(_read(COMPOSE), "frontend")
+    cmd = _healthcheck_test_command(block)
+    assert cmd is not None, (
+        "frontend 服务缺少 healthcheck——docker compose ps 永远只显示 Up，"
+        "评委失去 frontend 侧部署成功的机器可读信号（N2-1）"
+    )
+
+
+def test_frontend_healthcheck_must_use_loopback_ipv4():
+    """frontend 探活 host 必须是 127.0.0.1，禁止 localhost——
+    localhost 解析 ::1 而 nginx 仅监听 IPv4，busybox wget 无回退（N2 容器内实测）。"""
+    block = _compose_service_block(_read(COMPOSE), "frontend")
+    cmd = _healthcheck_test_command(block)
+    if cmd is None:
+        import pytest
+        pytest.skip("frontend healthcheck 不存在（由 test_frontend_healthcheck_must_exist 兜底）")
+    assert "127.0.0.1" in cmd and "localhost" not in cmd, (
+        "frontend healthcheck 探活地址必须用 127.0.0.1——localhost 解析 ::1"
+        "（nginx 仅 IPv4、busybox wget 无回退），探针永远失败且无人看日志"
+    )
