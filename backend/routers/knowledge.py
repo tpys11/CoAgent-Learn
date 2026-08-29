@@ -135,7 +135,13 @@ def _process_file_bg(project_id: str, fname: str, data: bytes, source: str,
     try:
         _set_progress(project_id, source, done=0, total=1, stage="parsing")
         if ext in {"png", "jpg", "jpeg", "gif", "webp", "bmp"}:
-            _process_upload(project_id, desc, source, session_id, api_key, False, False, content_hash)
+            n = _process_upload(project_id, desc, source, session_id, api_key, False, False, content_hash)
+            if n == -1:
+                # F1: 内容重复（hash 去重命中）——无新增入库。写完成终态避免前端按文件名
+                # 轮询悬挂 10 分钟误报失败；并跳过图片向量（与同步路径 duplicate 语义对齐，
+                # 免一次多余 VL 调用）。T16/E2E 实测发现（进度卡 parsing）。
+                _set_progress(project_id, source, done=1, total=1, stage="enhancing")
+                return
             _store_image_vector(project_id, source, data, desc, ext)
             return
         text = _parse_for_upload(fname, data, ext)
@@ -510,6 +516,10 @@ async def knowledge_upload_file(
     fname = file.filename or "file"
     _IMG_EXTS = {"png", "jpg", "jpeg", "gif", "webp", "bmp"}
     _ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
+    # F1 修复：source 与内容 hash 提到分支外（两个分支共用）。
+    # source 必须等于文件名——前端 UploadPanel 以文件名作为进度轮询键（pollProgress(it.name)）。
+    source = fname
+    _ch = hashlib.sha256(data).hexdigest()
     if _ext in _IMG_EXTS:
         import base64 as _b64
         _b64str = _b64.b64encode(data).decode()
@@ -525,27 +535,29 @@ async def knowledge_upload_file(
         except Exception as e:
             logger.warning("图片描述失败 fname=%s", fname, exc_info=True)
             return {"status": "error", "msg": "图片描述失败：" + str(e)[:150]}
+        # 入库文本统一为【图片内容】+desc（语义前缀利于检索；与 _process_file_bg 收到的
+        # desc 实参同源，保证同步/后台两条路径入库文本逐字节一致）
         text = "【图片内容】" + desc
     else:
-        source = fname
-        _ch = hashlib.sha256(data).hexdigest()
-        if wait:
-            if _ext not in _IMG_EXTS:
-                text = await run_in_threadpool(_parse_for_upload, fname, data, _ext)
-                if not text.strip():
-                    return {"status": "error", "msg": "无法解析该文件内容（可能为空或格式不支持）"}
-            chunks = await run_in_threadpool(_process_upload, project_id, text, source, session_id, api_key, False, False, _ch)
-            if _ext in _IMG_EXTS:
-                await run_in_threadpool(_store_image_vector, project_id, source, data, desc, _ext)
-            if chunks == -1:
-                return {"status": "ok", "chunks": 0, "duplicate": True, "source": source, "msg": "内容已存在，已跳过重复入库"}
-            return {"status": "ok", "chunks": chunks, "source": source}
-        # 后台模式（上传提速·单步2）：解析+入库全链进后台——HTTP 立即返回，进度走 /upload-progress
-        submit(_process_file_bg, project_id, fname, data, source, session_id, api_key, _ch, _ext,
-               desc if _ext in _IMG_EXTS else "")
+        text = await run_in_threadpool(_parse_for_upload, fname, data, _ext)
+        if not text.strip():
+            return {"status": "error", "msg": "无法解析该文件内容（可能为空或格式不支持）"}
+    # F1 修复：统一尾部。此前图片分支走到这里即函数结束→隐式 return None（HTTP body 'null'），
+    # 且 _process_file_bg/_store_image_vector 的图片逻辑全部不可达。
+    if wait:
+        chunks = await run_in_threadpool(_process_upload, project_id, text, source, session_id, api_key, False, False, _ch)
+        if chunks == -1:
+            return {"status": "ok", "chunks": 0, "duplicate": True, "source": source, "msg": "内容已存在，已跳过重复入库"}
         if _ext in _IMG_EXTS:
-            submit(_store_image_vector, project_id, source, data, desc, _ext)
-        return {"status": "processing", "msg": "正在处理，稍后刷新查看"}
+            # 同步路径图片向量只在这里入一次；重复上传（duplicate）已在上方提前返回，不重复入向量
+            await run_in_threadpool(_store_image_vector, project_id, source, data, text, _ext)
+        return {"status": "ok", "chunks": chunks, "source": source}
+    # 后台模式（上传提速·单步2）：解析+入库全链进后台——HTTP 立即返回，进度走 /upload-progress。
+    # 图片把【图片内容】+desc 作为 desc 实参传入，_process_file_bg 图片分支内部会调
+    # _store_image_vector 恰好一次（此处不再单独 submit，避免重复入库/重复 VL 调用）。
+    submit(_process_file_bg, project_id, fname, data, source, session_id, api_key, _ch, _ext,
+           text if _ext in _IMG_EXTS else "")
+    return {"status": "processing", "msg": "正在处理，稍后刷新查看"}
 
 
 @router.get("/api/knowledge/list")
