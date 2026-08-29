@@ -65,26 +65,59 @@ def _sniff_image_mime(b64: str) -> str:
 
 # --- 模型接缝（测试在此打补丁注入 FakeLLM） ---
 
+# D2：LLM client 进程级缓存——浪费点在 OpenAI() 每次新建 HTTP 连接池（TCP/TLS 握手+内存），
+# 同 (api_key, base_url, model, thinking, effort) 组合全程复用同一 DeepSeekLLM 实例
+# （实测基线：思考档单轮 OpenAI 构造 4 次 → 缓存后 2 次，见 docs/progress/step-D.md）。
+# 安全红线：缓存 key 用 sha256(api_key) 前 16 位摘要——Key 明文不进 key/日志/落盘（有守卫测试）。
+# 双检锁：S3 Assess 在独立线程与 S2 Retrieve 并发取快模型，防竞态双建。
+# 测试语义：76 处用例经 monkeypatch 整体替换本函数打桩（缓存不参与）；重试环复用同一
+# llm_gen 实例的语义不变（llm_gen 单轮内仍只取一次）。
+import hashlib as _hashlib
+import threading as _threading
+
+_LLM_CACHE: dict = {}
+_LLM_CACHE_LOCK = _threading.Lock()
+
+
+def _llm_cache_key(api_key, base_url, model, thinking, effort):
+    """缓存 key：sha256(api_key) 前 16 位摘要 + 其余组合参数——Key 明文绝不入 key（安全红线）。"""
+    digest = _hashlib.sha256((api_key or "").encode("utf-8")).hexdigest()[:16]
+    return (digest, base_url or "", model or "", thinking, effort)
+
+
+def _cached_llm(api_key, base_url, model, thinking, effort, build):
+    key = _llm_cache_key(api_key, base_url, model, thinking, effort)
+    llm = _LLM_CACHE.get(key)
+    if llm is not None:
+        return llm
+    with _LLM_CACHE_LOCK:
+        llm = _LLM_CACHE.get(key)  # 双检：并发线程只建一次
+        if llm is None:
+            llm = build()
+            _LLM_CACHE[key] = llm
+    return llm
+
+
 def _make_llm(req, model_override=None):
     from core.base_llm import DeepSeekLLM
     from core.config import config as _cfg
-    return DeepSeekLLM(
-        api_key=req.api_key or _cfg.DEEPSEEK_API_KEY,
-        model=model_override or req.model or DEFAULT_MODEL,
-        base_url=req.base_url,
-    )
+    api_key = req.api_key or _cfg.DEEPSEEK_API_KEY
+    model = model_override or req.model or DEFAULT_MODEL
+    return _cached_llm(
+        api_key, req.base_url, model, None, None,
+        lambda: DeepSeekLLM(api_key=api_key, model=model, base_url=req.base_url))
 
 
 def _make_fast_llm(req):
     """快模型：同通道关思考（现版规则：未配置独立快模型时=主模型关thinking）。"""
     from core.base_llm import DeepSeekLLM
     from core.config import config as _cfg
-    return DeepSeekLLM(
-        api_key=req.api_key or _cfg.DEEPSEEK_API_KEY,
-        model=req.model or DEFAULT_MODEL,
-        base_url=req.base_url,
-        thinking=False,
-    )
+    api_key = req.api_key or _cfg.DEEPSEEK_API_KEY
+    model = req.model or DEFAULT_MODEL
+    return _cached_llm(
+        api_key, req.base_url, model, False, None,
+        lambda: DeepSeekLLM(api_key=api_key, model=model, base_url=req.base_url,
+                            thinking=False))
 
 
 def _persist_user_message(req, pid: str, did: str) -> None:
