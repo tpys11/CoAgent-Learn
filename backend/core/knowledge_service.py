@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """知识库服务门面：上传编排 → 向量化 → SQLite(sqlite-vec) 存储/检索（按项目隔离）。
-embedding 用 bge-small-zh-v1.5（中文，512维）→ 现统一 Qwen3-VL-Embedding-8B@1024。
+embedding 统一 Qwen3-VL-Embedding-8B@1024（硅基流动 API；F5 起无本地模型通道）。
 
 B1 拆分（2026-08-27）：按职责迁出三个模块并在本门面回收命名空间——
 - core.chunkers      切块器族（句子级/markdown/语义断点 A3/标题树）
-- core.embeddings    向量化族（本地/API/伪向量降级 + VL 跨模态）
+- core.embeddings    向量化族（统一 API + VL 跨模态）
 - core.ingest_enhancers  入库增强器（B1 问题生成 / B4-lite 关系抽取，db 显式注入）
 回收后 ks._embed / ks._chunk_semantic / ks.enhance_questions 等
 测试补丁面照旧可 patch（运行时名解析走本模块命名空间）。
@@ -27,9 +27,7 @@ from core.chunkers import _percentile  # noqa: F401
 from core.chunkers import _split_markdown_sections  # noqa: F401
 from core.chunkers import _split_sentences  # noqa: F401
 from core.embeddings import _embed_api  # noqa: F401
-from core.embeddings import _embed_local  # noqa: F401
 from core.embeddings import _embed_vl  # noqa: F401
-from core.embeddings import _get_embedder  # noqa: F401
 from core.ingest_enhancers import KG_MAX_EDGES  # noqa: F401
 from core.ingest_enhancers import KG_MAX_NAMES  # noqa: F401
 from core.ingest_enhancers import KG_REL_WHITELIST  # noqa: F401
@@ -415,7 +413,7 @@ def search(project_id: str, query: str, top_k: int = 3, include_images: bool = T
             item = dict(all_hits[h])
             item["rrf"] = round(rrf.get(h, 0), 4)
             cands.append(item)
-    # 6. P3：CrossEncoder 重排序（极速档可跳过，省一次 API 调用）
+    # 6. P3：API 重排序（极速档可跳过，省一次 API 调用；F5 起无本地 CrossEncoder 回退）
     reranker = _get_reranker() if rerank else None
     if reranker and len(cands) > 1:
         try:
@@ -424,20 +422,39 @@ def search(project_id: str, query: str, top_k: int = 3, include_images: bool = T
             for i, s in enumerate(scores):
                 cands[i]["rerank"] = float(s)
             cands.sort(key=lambda x: -x.get("rerank", 0))
+            _rerank_mark_ok()
             return cands[:top_k] + image_hits
         except Exception:
-            logger.warning("重排失败，按 RRF 结果返回", exc_info=True)
+            _rerank_log_once(
+                "api_error",
+                "重排 API 调用失败，已跳过重排：结果未经重排排序，按 RRF 融合序返回（恢复后自动重新启用）",
+                exc_info=True)
     return cands[:top_k] + image_hits
 
 
-# P3 重排序后端（懒加载；本地 CrossEncoder 与 API 实例分别缓存）
-_reranker_local = None
+# P3 重排序后端（懒加载缓存 API 实例；F5 起无本地 CrossEncoder 回退）
 _reranker_api = None
+# 重排降级状态机：日志只在状态首次变化时记录，不随每次检索刷屏（None=正常）
+_rerank_state: str | None = None
+
+
+def _rerank_log_once(state: str, msg: str, exc_info: bool = False) -> None:
+    """进入降级态时记录一次告警；同态重复不再刷屏；恢复（mark_ok）后再次降级才会再记。"""
+    global _rerank_state
+    if _rerank_state != state:
+        logger.warning(msg, exc_info=exc_info)
+        _rerank_state = state
+
+
+def _rerank_mark_ok() -> None:
+    """重排恢复正常（静默复位状态，下次降级才会再记日志）。"""
+    global _rerank_state
+    _rerank_state = None
 
 
 class _ApiReranker:
     """OpenAI 兼容 rerank API（如硅基流动 bge-reranker-v2-m3），
-    接口对齐 CrossEncoder.predict(pairs) —— pairs 为 [(query, doc), ...]，返回分数列表。
+    predict(pairs) 接口：pairs 为 [(query, doc), ...]，返回分数列表。
     """
 
     def __init__(self):
@@ -467,24 +484,22 @@ class _ApiReranker:
 
 
 def _get_reranker():
-    """重排序后端路由：RERANK_BACKEND=none 禁用；=api 走外接服务（未配 key 回退本地）；默认本地"""
-    global _reranker_api, _reranker_local
+    """重排序后端路由：RERANK_BACKEND=none 用户主动禁用（静默）；其余走 API
+    （rerank key 未单独配置时复用向量化 key）。无任何 Key → 跳过重排（记一次日志），检索继续。"""
+    global _reranker_api
     from core.config import config as _cfg
     if _cfg.RERANK_BACKEND == "none":
         return None
     # api 后端：rerank key 未单独配置时复用向量化 key（同一硅基流动 Key 全搞定）
-    if _cfg.RERANK_BACKEND == "api" and (_cfg.RERANK_API_KEY or _cfg.EMBEDDING_API_KEY):
+    if _cfg.RERANK_API_KEY or _cfg.EMBEDDING_API_KEY:
         if _reranker_api is None:
             _reranker_api = _ApiReranker()
         return _reranker_api
-    if _reranker_local is None:
-        try:
-            from core.config import config as _cfg
-            from sentence_transformers import CrossEncoder
-            _reranker_local = CrossEncoder(getattr(_cfg, "RERANK_LOCAL_MODEL", "BAAI/bge-reranker-base"), max_length=512)
-        except Exception:
-            _reranker_local = False
-    return _reranker_local or None
+    _rerank_log_once(
+        "no_key",
+        "重排已跳过（未配置 RERANK_API_KEY / EMBEDDING_API_KEY）：结果未经重排排序；"
+        "配置硅基流动 Key 后自动恢复")
+    return None
 
 
 def list_docs(project_id: str) -> list:

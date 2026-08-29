@@ -1,43 +1,13 @@
 # -*- coding: utf-8 -*-
-"""向量化族：本地模型 / OpenAI 兼容 API / 伪向量降级 + 跨模态 VL 通道。
+"""向量化族：统一 OpenAI 兼容 API（硅基流动）+ 跨模态 VL 通道。
+
+F5（2026-08-30）移除本地模型通道：未配置 EMBEDDING_API_KEY 时 _embed 直接抛错
+（硬失败），API 调用失败同样直接抛出——不再有本地模型/伪向量静默降级。
 B1 拆分（2026-08-27）：函数自 knowledge_service.py 逐字迁入；
 测试补丁经门面命名空间回收保持可用（ks._embed 等照旧可 patch）。"""
 import logging
 
 logger = logging.getLogger("coagent.knowledge")
-
-# embedding 模型（懒加载）
-_embedder = None
-
-
-def _get_embedder():
-    """加载本地部署 embedding 模型（模型名/路径由配置 EMBEDDING_LOCAL_MODEL 指定，默认 bge-small-zh-v1.5）"""
-    global _embedder
-    if _embedder is None:
-        try:
-            from core.config import config as _cfg
-            from sentence_transformers import SentenceTransformer
-            _embedder = SentenceTransformer(getattr(_cfg, "EMBEDDING_LOCAL_MODEL", "BAAI/bge-small-zh-v1.5"))
-        except Exception:
-            _embedder = False
-    return _embedder or None
-
-
-def _embed_local(texts: list[str]) -> list[list[float]]:
-    """本地模型批量向量化；模型不可用时降级为确定性伪向量（仍可检索但效果差）。
-    伪向量维度跟随 EMBEDDING_DIM 配置（2026-08-23 修复：原硬编码 512，插入 1024 维表必炸）。"""
-    emb = _get_embedder()
-    if emb:
-        return emb.encode(texts, normalize_embeddings=True).tolist()
-    from core.config import config as _cfg
-    dim = int(getattr(_cfg, "EMBEDDING_DIM", 1024) or 1024)
-    vecs = []
-    for t in texts:
-        v = [0.0] * dim
-        for i, ch in enumerate((t or "")[:dim]):
-            v[i] = (ord(ch) % 100) / 100.0
-        vecs.append(v)
-    return vecs
 
 
 def _embed_api(texts: list[str]) -> list[list[float]]:
@@ -62,14 +32,17 @@ def _embed_api(texts: list[str]) -> list[list[float]]:
 
 
 def _embed(texts: list[str]) -> list[list[float]]:
-    """批量向量化，按配置路由：api 后端 > 本地模型 > 伪向量降级"""
+    """批量向量化：统一走 API（F5 起无本地通道/伪向量降级）。
+
+    未配置 EMBEDDING_API_KEY → 硬失败（明确报错）；API 调用失败同样直接抛出。"""
     from core.config import config as _cfg
-    if _cfg.EMBEDDING_BACKEND == "api" and _cfg.EMBEDDING_API_KEY:
-        try:
-            return _embed_api(texts)
-        except Exception:
-            logger.warning("embedding API 失败，降级本地", exc_info=True)
-    return _embed_local(texts)
+    if not _cfg.EMBEDDING_API_KEY:
+        raise RuntimeError(
+            "未配置 EMBEDDING_API_KEY，无法向量化，知识库检索不可用。"
+            "请在设置界面填入硅基流动 Key（https://api.siliconflow.cn/v1），"
+            "或在 .env 中设置 EMBEDDING_API_KEY=sk-... 后重试。"
+        )
+    return _embed_api(texts)
 
 
 def _vl_key() -> str:
