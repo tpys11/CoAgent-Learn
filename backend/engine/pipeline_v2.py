@@ -12,6 +12,7 @@
 import json
 import logging
 import queue
+import sqlite3
 import threading
 
 from fastapi.responses import StreamingResponse
@@ -93,9 +94,24 @@ def _persist_user_message(req, pid: str, did: str) -> None:
         pg_client.execute(
             "INSERT INTO dialogues(id,project_id,session_id,name) VALUES(%s,%s,%s,%s)",
             (did, pid, req.session_id or "default", "新对话"))
-    pg_client.execute(
-        "INSERT INTO messages(dialogue_id,role,content) VALUES(%s,%s,%s)",
-        (did, "user", req.message))
+    # D4 重试幂等：带 client_msg_id 时先查后插——查到即视为上次重试已入库，跳过；
+    # 先查后插的并发窗口由部分唯一索引 uq_messages_client_msg_id 兜底
+    # （唯一冲突=已存在 → 跳过插入，不是报错）。空串（旧客户端/手工请求）存 NULL，
+    # 不参与去重，行为与改动前完全一致。
+    cmid = (getattr(req, "client_msg_id", "") or "").strip()
+    if cmid:
+        dup = pg_client.execute(
+            "SELECT 1 FROM messages WHERE role=%s AND client_msg_id=%s LIMIT 1",
+            ("user", cmid))
+        if dup:
+            return
+    try:
+        pg_client.execute(
+            "INSERT INTO messages(dialogue_id,role,content,client_msg_id) "
+            "VALUES(%s,%s,%s,%s)",
+            (did, "user", req.message, cmid or None))
+    except sqlite3.IntegrityError:
+        logger.info("[v2] 用户消息幂等命中（client_msg_id=%s…），跳过重复入库", cmid[:12])
 
 
 def _persist_assistant_message(did: str, reply: str) -> None:

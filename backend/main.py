@@ -122,6 +122,7 @@ class ChatRequest(BaseModel):
     gen_resource: str | None = None  # 闭环七：在场（能力 key）→ 资源生成管线分支（研究档级，kind='resource' 隔离）
     extra_followup_did: str | None = None  # 额外生成追问的目标对话（主对话完成后同步给第二对话）
     extra_followup_focus: str | None = None  # 额外追问风格（默认 expand）
+    client_msg_id: str = ""  # D4 重试幂等：前端每次「按发送」生成、重试复用；空=旧客户端，不入去重
 class StopRequest(BaseModel):
     request_id: str  # /api/chat 的 start 事件返回的生成请求 id（用户手动停止时置位取消）
 

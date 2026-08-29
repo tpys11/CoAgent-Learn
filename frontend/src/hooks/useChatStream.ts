@@ -199,6 +199,11 @@ export function useChatStream(args: UseChatStreamArgs) {
       const timeoutMs = (Math.min(120, Math.max(1, parseInt(lsGet(LS.timeout, '30'), 10) || 30))) * 1000
       let res: Response | null = null
       let firstByte = true
+      // D4 重试幂等：每次「按发送」只生成一次，重试循环内复用同一 client_msg_id——
+      // 后端按它去重，重试若换新 ID 幂等即失效（这是幂等成立的关键）
+      const clientMsgId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : 'cmi-' + generateId() + Date.now().toString(36)
       const resetTimer = () => {
         clearTimeout(timeoutTimer)
         timeoutTimer = setTimeout(() => abortCtrlRef.current?.abort(), firstByte ? Math.max(15000, timeoutMs) : 60000)
@@ -211,7 +216,7 @@ export function useChatStream(args: UseChatStreamArgs) {
         try {
           const r = await fetch('/api/chat', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text.trim(), session_id: sessionId.current, dialogue_id: did, project_id: currentProjectId, api_key: apiKey, model: model, base_url: providerBaseUrls[provider], settings: mergedSettings, image: (mergedSettings && mergedSettings.image) || undefined, agents: agents, extra_followup_did: secondDialogueId.current, extra_followup_focus: 'expand' }),
+            body: JSON.stringify({ message: text.trim(), session_id: sessionId.current, client_msg_id: clientMsgId, dialogue_id: did, project_id: currentProjectId, api_key: apiKey, model: model, base_url: providerBaseUrls[provider], settings: mergedSettings, image: (mergedSettings && mergedSettings.image) || undefined, agents: agents, extra_followup_did: secondDialogueId.current, extra_followup_focus: 'expand' }),
             signal: ctrl.signal,
           })
           if (r.ok && r.body) { res = r; break }

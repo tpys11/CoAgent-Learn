@@ -135,11 +135,18 @@ class BusinessTablesMixin:
                 role TEXT NOT NULL,
                 content TEXT NOT NULL,
                 think TEXT DEFAULT '',
+                client_msg_id TEXT,
                 created_at TEXT DEFAULT (datetime('now'))
             )
         """)
         # 兼容旧库：思维链列（{agent, content}[] 的 JSON）
         self._ensure_column("messages", "think", "TEXT DEFAULT ''")
+        # D4 重试幂等：客户端生成、重试复用的去重 ID。可空列——历史数据与未升级客户端
+        # 恒为 NULL，部分唯一索引让旧数据零迁移（NULL 不参与唯一性约束）。
+        self._ensure_column("messages", "client_msg_id", "TEXT")
+        self.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_messages_client_msg_id "
+            "ON messages(client_msg_id) WHERE client_msg_id IS NOT NULL")
         self.execute("CREATE INDEX IF NOT EXISTS idx_messages_dialogue ON messages (dialogue_id, created_at)")
         # 资源列表按项目查询的主索引：缺它时全表 SCAN 会路过巨型 content 溢出页
         # （实测单行 4MB 测试残留拖慢每次 /api/resources 200-780ms，2026-08-26 性能回归）
