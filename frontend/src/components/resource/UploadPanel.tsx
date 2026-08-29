@@ -6,6 +6,14 @@ import { api } from '../../api'
 
 type UpItem = { id: string; kind: 'file' | 'text'; name: string; file?: File; body?: string }
 
+// F3（N2-2）：约束端点拉取失败时的静态回退清单，与后端 UPLOAD_CONSTRAINTS 对齐（含 6 种图片）。
+// 置于模块级：useState 初始值与 catch 兜底共用一份。此前失败被 .catch(() => {}) 静默吞掉、
+// allowedExts 留空导致 upAddFiles 的二次过滤整体失效（任何文件都能进）——校验不得因
+// 一次网络抖动静默关闭。
+const FALLBACK_ACCEPT =
+  '.txt,.md,.markdown,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml,.pdf,.docx,.pptx,.xlsx,.epub,.png,.jpg,.jpeg,.gif,.webp,.bmp'
+const FALLBACK_EXTS = FALLBACK_ACCEPT.split(',').map(x => x.replace('.', ''))
+
 export function UploadPanel({ projectId, onUploaded }: { projectId: string | null; onUploaded: () => void }) {
   const [upMode, setUpMode] = useState<'text' | 'file'>('text')
   // 单步3：后台处理进度条（轮询 /api/knowledge/upload-progress：解析→切分→向量化→增强）
@@ -17,16 +25,20 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
   const [upDone, setUpDone] = useState('')
   const [upDropActive, setUpDropActive] = useState(false)
   const upFileRef = useRef<HTMLInputElement>(null)
-  // 支持格式单一事实源：以后端 upload-constraints 为准（对齐 DeepTutor SupportedFileTypesInfo）
-  const [accept, setAccept] = useState('.txt,.md,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml,.pdf,.docx,.pptx')
-  const [allowedExts, setAllowedExts] = useState<string[]>([])
+  // 支持格式单一事实源：以后端 upload-constraints 为准（对齐 DeepTutor SupportedFileTypesInfo）。
+  // 初始态即回退清单（而非留空）：拉取成功后被端点值覆盖；拉取失败时校验保持开启。
+  const [accept, setAccept] = useState(FALLBACK_ACCEPT)
+  const [allowedExts, setAllowedExts] = useState<string[]>(FALLBACK_EXTS)
   useEffect(() => {
     api.getUploadConstraints().then(d => {
       if (d && Array.isArray(d.extensions)) {
-        setAccept(d.accept || accept)
+        setAccept(d.accept || FALLBACK_ACCEPT)
         setAllowedExts(d.extensions.map((x: string) => x.replace('.', '')))
       }
-    }).catch(() => {})
+    }).catch(() => {
+      // F3 修复②：拉取失败不得静默——回退默认清单（校验保持开启）+ 可见告警。
+      console.warn('[UploadPanel] upload-constraints 拉取失败，已回退内置默认格式清单（校验保持开启）')
+    })
   }, [])
 
   const upAddText = () => {
