@@ -1,6 +1,8 @@
 # CoAgent-Learn
 
-> 领域知识个性化生成与多智能体协同决策系统。8 个 AI Agent 协同，输入问题 → 多Agent思考 → 审核 → 输出个性化学习内容。
+> 领域知识个性化生成与多智能体协同决策系统。输入学习问题 → 后端多阶段管线
+> （规划 → 检索 → 学情评估 → 生成 → 审核）→ 流式输出个性化学习内容
+> （思维链 + 正文 + 追问）。
 
 ---
 
@@ -68,38 +70,58 @@ cd CoAgent-Learn
 
 ## 启动
 
+### 1. （可选）配置环境变量
+
 ```bash
-docker compose -f deploy/docker-compose.yml up -d
+cp .env.example .env
+```
+Windows PowerShell 用 `copy .env.example .env`。
+
+**这一步可以跳过**：全部配置项在代码里都有默认值，不建 `.env` 也能正常启动。
+只有想覆盖默认配置（例如给容器配联网代理 `PROXY_URL`）时才需要。
+API Key 推荐启动后在界面里填（见下文「配置 API Key」），不写在 `.env` 里也可以。
+
+### 2. 构建并启动（本地构建镜像）
+
+```bash
+docker compose -f deploy/docker-compose.yml up -d --build
 ```
 
-首次启动会拉取镜像并构建（5-10 分钟，取决于网络）。之后每次启动只需几秒。
+首次启动需要**在本地构建两个镜像，10 分钟以内**（大头是 PyTorch CPU 依赖的
+下载，约 190 MB，取决于网速）。之后再次启动会复用构建缓存，几十秒即可。
 
-启动完成后，浏览器打开 **http://localhost:5173**。
+### 3. 确认服务就绪
+
+```bash
+docker compose -f deploy/docker-compose.yml ps
+# 两个容器（guashuai-frontend / guashuai-backend）状态应为 Up
+curl http://localhost:8000/api/settings
+# 返回一段 JSON 配置信息，说明后端就绪
+```
+
+然后浏览器打开 **http://localhost:5173** 即可使用。
 
 ---
 
 ## 配置 API Key
 
-页面首次打开会自动弹出配置弹窗：
-
 1. 前往 https://platform.deepseek.com/ 注册并获取 API Key
-2. 在弹窗中输入 Key，点击确认
-3. 看到 "✓ 已保存" 即可
+2. 在页面顶部点击 **「设置」→ 左侧「基础」→「模型与 API Key」**
+3. 在 **DeepSeek API Key** 输入框填入你的 Key，点击 **「保存」**
 
-> 也可随时点击左下角齿轮图标修改 API Key。
-> 如果你习惯用配置文件，编辑 `.env` 填入 Key 重启 Docker 也支持。
+> 该 Key 用于对话与全部模型调用。也可以在启动前编辑 `.env` 的
+> `DEEPSEEK_API_KEY`（见「启动」第 1 步），两种方式效果等同。
 
 ---
 
 ## 使用
 
-1. 左侧点击 "+ 新建项目"，可选知识诊断（完成后生成用户画像）
-2. 在底部输入框输入问题，点击发送
-3. 观察：
-   - **画布区域**：Agent 节点逐个出现，活跃节点放大
-   - **思考气泡**：Agent 思考内容实时流式展示，完成后折叠
-   - **最终回复**：多Agent协同生成的学习内容
-4. 左侧 Agent 列表可点击查看/修改每个 Agent 的提示词和 Skill
+1. 首页点击 **「新建课程」** 创建一个学习课程（如「线性代数」）
+2. 点击课程卡片进入学习工作台，在底部输入框输入问题并发送
+3. 回答以流式输出：先展示**思维链**（各阶段推理过程实时呈现），随后给出
+   **正文**与**追问**，可继续在右侧「第二对话」里追问
+4. 左侧栏可查看「记忆与进程」「资源」与历史对话；顶部「资源」页可上传
+   教材/文档构建个人知识库
 
 ---
 
@@ -114,10 +136,10 @@ docker compose -f deploy/docker-compose.yml down
 ## 常见问题
 
 **Q: Docker 启动失败？**
-确保 Docker Desktop 右下角图标为绿色。如果报端口占用，关闭占用 5173/8000/6379/8001 端口的程序。
+确保 Docker Desktop 右下角图标为绿色。如果报端口占用，关闭占用 5173/8000 端口的程序。
 
 **Q: 发送消息后回复"处理完成"但没有内容？**
-检查 API Key 是否有效。可在设置面板重新输入。
+检查 API Key 是否有效。可在「设置 → 基础 → 模型与 API Key」重新输入。
 
 **Q: 如何更新到最新版？**
 ```bash
@@ -130,37 +152,37 @@ docker compose -f deploy/docker-compose.yml up -d --build
 ## 系统架构
 
 ```
-用户浏览器(5173) → React 前端 → FastAPI(8000) → LangGraph → DeepSeek LLM
-                            ↓
-         8 Agent 协同：调度 → 诊断/知识库/搜索/记忆 → 生成 → 审核 → 输出
+用户浏览器(5173) → React 前端 → FastAPI(8000) → 多阶段管线 → DeepSeek LLM
+                                     │
+                规划 → 检索 → 学情评估 → 生成 → 审核
+                                     │
+                     SQLite + sqlite-vec（课程/记忆/知识库向量，单机文件存储）
 ```
 
 | 服务 | 端口 | 作用 |
 |------|:----:|------|
 | frontend | 5173 | React 19 前端 |
-| backend | 8000 | FastAPI + LangGraph |
-| redis | 6379 | 缓存队列 |
-| chroma | 8001 | 向量数据库 |
+| backend | 8000 | FastAPI + 自研多阶段管线 + RAG 检索 |
 
 ## 技术栈
 
 | 层次 | 技术 |
 |------|------|
 | 前端 | React 19 + TypeScript + Vite 6 + Tailwind CSS |
-| 多智能体 | LangGraph（8 Agent A2A 协同） |
+| 后端 | FastAPI + 自研多阶段管线（规划/检索/学情评估/生成/审核） |
 | LLM | DeepSeek（OpenAI 兼容协议） |
-| 部署 | Docker Compose（4 服务一键启动） |
+| 数据 | SQLite + sqlite-vec（单文件存储，无外部数据库服务） |
+| 部署 | Docker Compose（frontend + backend，共 2 个服务） |
 
 ## 项目结构
 
 ```
 CoAgent-Learn/
-├── frontend/src/components/  # 三栏布局、AgentFlow画布、消息区
-├── backend/core/             # BaseLLM封装、config配置
-├── agents/                   # LangGraph工作流 + Agent提示词
-├── deploy/                   # Docker Compose
-├── docs/                     # 开发文档
-└── .env.example              # 环境变量模板
+├── frontend/                 # React 前端（三栏学习工作台、思维链流式展示）
+├── backend/                  # FastAPI 后端（core 管线引擎 / routers API）
+├── deploy/                   # Docker Compose 部署配置
+├── tests/                    # 后端 pytest 测试
+└── .env.example              # 环境变量模板（可选配置）
 ```
 
 ## 文档
