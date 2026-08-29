@@ -102,11 +102,16 @@ def _process_upload(project_id, text, source, session_id, api_key, skip_context:
             n = 0
             logger.exception("跨项目复用失败，回退全量入库 source=%s", source)
     _save_resource_text(project_id, source, text)
-    try:
-        from core.knowledge_service import add_document
-        n = add_document(project_id, text, source, session_id, api_key, skip_context=skip_context) or 0
-    except Exception:
-        logger.exception("知识库入库失败 source=%s", source)
+    # 修复①（F4′）：add_document 失败必须让调用方知道——异常向外传播，不再内吞。
+    # 此前这里 catch 后只记日志、照常返回 0，导致：
+    #   - 后台文件链路：_process_file_bg 的 except（写 _set_progress_error）永远不触发；
+    #   - 同步路径：评委只见 chunks:0，F5 写的「未配置 EMBEDDING_API_KEY」文案一个字看不到。
+    # 传播后各调用方的接法：
+    #   - 后台文件（:138/:151）→ _process_file_bg 捕获 → _set_progress_error（轮询可见）；
+    #   - 后台文本/URL（submit 直投）→ _process_upload_bg 包装捕获 → 同样写错误终态；
+    #   - 同步 wait=1（3 处路由）→ 各自 try/except 转结构化错误响应（status:error + 原因）。
+    from core.knowledge_service import add_document
+    n = add_document(project_id, text, source, session_id, api_key, skip_context=skip_context) or 0
     if n > 0 and content_hash:
         try:
             from core.db import get_kb_repo
@@ -114,6 +119,21 @@ def _process_upload(project_id, text, source, session_id, api_key, skip_context:
         except Exception:
             logger.warning("记录内容去重 hash 失败", exc_info=True)
     return n
+
+
+def _process_upload_bg(project_id, text, source, session_id, api_key, skip_context: bool = False, skip_graph: bool = False, content_hash: str = "") -> None:
+    """后台直投入库包装（submit 路径用）：入库失败写进度错误终态，前端轮询可见。
+    文件链路走 _process_file_bg（其 except 已写错误终态），不经这里；
+    文本/URL 摄取 wait=0 时 submit 直投 _process_upload，而 background.submit 只把
+    异常记进容器日志——修复①（F4′）在此补上用户可见的错误终态（原因含「怎么办」）。"""
+    from core.knowledge_service import _set_progress_error
+    try:
+        _process_upload(project_id, text, source, session_id, api_key,
+                        skip_context=skip_context, skip_graph=skip_graph,
+                        content_hash=content_hash)
+    except Exception as e:
+        logger.exception("后台入库失败 source=%s", source)
+        _set_progress_error(project_id, source, "入库失败：" + str(e)[:150])
 
 
 def _parse_for_upload(fname: str, data: bytes, ext: str) -> str:
@@ -343,11 +363,17 @@ async def knowledge_upload(req: KnowledgeUpload, wait: bool = False):
     _ch = hashlib.sha256((req.text or "").encode("utf-8")).hexdigest()
     if wait:
         from starlette.concurrency import run_in_threadpool
-        chunks = await run_in_threadpool(_process_upload, req.project_id, req.text, req.source, req.session_id, req.api_key, False, False, _ch)
+        # 修复①（F4′）：同步路径入库失败转结构化错误响应（含原因与「怎么办」），
+        # 不再 chunks:0，也不靠全局 500 兜底（那里的 detail 是通用文案，原因丢失）。
+        try:
+            chunks = await run_in_threadpool(_process_upload, req.project_id, req.text, req.source, req.session_id, req.api_key, False, False, _ch)
+        except Exception as e:
+            logger.exception("同步入库失败 source=%s", req.source)
+            return {"status": "error", "msg": "知识库入库失败：" + str(e)[:180], "source": req.source}
         if chunks == -1:
             return {"status": "ok", "chunks": 0, "duplicate": True, "source": req.source, "msg": "内容已存在，已跳过重复入库"}
         return {"status": "ok", "chunks": chunks, "source": req.source}
-    submit(_process_upload, req.project_id, req.text, req.source, req.session_id, req.api_key, False, False, _ch)
+    submit(_process_upload_bg, req.project_id, req.text, req.source, req.session_id, req.api_key, False, False, _ch)
     return {"status": "processing", "msg": "正在处理，稍后刷新查看"}
 
 
@@ -465,13 +491,17 @@ async def knowledge_upload_url(req: KnowledgeUrlUpload, wait: bool = False):
     if wait:
         from starlette.concurrency import run_in_threadpool
         _ch = hashlib.sha256(text.encode("utf-8")).hexdigest()
-        chunks = await run_in_threadpool(
-            _process_upload, req.project_id, text, source, req.session_id, req.api_key, True, True, _ch)
+        try:
+            chunks = await run_in_threadpool(
+                _process_upload, req.project_id, text, source, req.session_id, req.api_key, True, True, _ch)
+        except Exception as e:
+            logger.exception("同步入库失败 source=%s", source)
+            return {"status": "error", "msg": "知识库入库失败：" + str(e)[:180], "source": source}
         if chunks == -1:
             return {"status": "ok", "chunks": 0, "duplicate": True, "source": source, "msg": "内容已存在，已跳过重复入库"}
         return {"status": "ok", "chunks": chunks, "source": source}
     _ch2 = hashlib.sha256(text.encode("utf-8")).hexdigest()
-    submit(_process_upload, req.project_id, text, source, req.session_id, req.api_key, True, True, _ch2)
+    submit(_process_upload_bg, req.project_id, text, source, req.session_id, req.api_key, True, True, _ch2)
     return {"status": "processing", "msg": f"正在处理（{page_count} 页），稍后刷新查看" if page_count else "正在处理，稍后刷新查看"}
 
 
@@ -562,7 +592,12 @@ async def knowledge_upload_file(
     # F1 修复：统一尾部。此前图片分支走到这里即函数结束→隐式 return None（HTTP body 'null'），
     # 且 _process_file_bg/_store_image_vector 的图片逻辑全部不可达。
     if wait:
-        chunks = await run_in_threadpool(_process_upload, project_id, text, source, session_id, api_key, False, False, _ch)
+        # 修复①（F4′）：同步路径入库失败转结构化错误响应（含原因），不再 chunks:0 / 裸 500
+        try:
+            chunks = await run_in_threadpool(_process_upload, project_id, text, source, session_id, api_key, False, False, _ch)
+        except Exception as e:
+            logger.exception("同步入库失败 source=%s", source)
+            return {"status": "error", "msg": "知识库入库失败：" + str(e)[:180], "source": source}
         if chunks == -1:
             return {"status": "ok", "chunks": 0, "duplicate": True, "source": source, "msg": "内容已存在，已跳过重复入库"}
         if _ext in _IMG_EXTS:

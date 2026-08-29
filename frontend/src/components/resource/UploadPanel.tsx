@@ -66,8 +66,10 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
     parsing: '解析文档', chunking: '切分内容块', embedding: '向量化入库', enhancing: '问题增强',
   }
 
-  /** 后台处理进度轮询：完成/错误/10 分钟超时退出；返回最终入库块数（用于汇总文案）。 */
-  const pollProgress = (source: string) => new Promise<{ ok: boolean; chunks: number }>(resolve => {
+  /** 后台处理进度轮询：完成/错误/10 分钟超时退出；返回最终入库块数与失败原因（用于汇总文案）。
+   *  F4′修复①：后端 _set_progress_error 写入的失败原因（msg）随 resolve 透传给 alert，
+   *  此前被丢弃——评委只能看到「处理失败或超时」，看不到「未配置 EMBEDDING_API_KEY」。 */
+  const pollProgress = (source: string) => new Promise<{ ok: boolean; chunks: number; msg?: string }>(resolve => {
     const started = Date.now()
     let lastChunks = 0
     let stable = 0
@@ -75,7 +77,7 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
       try {
         const p: any = await api.uploadProgress(projectId || 'default', source)
         if (p && p.status === 'error') {
-          clearInterval(timer); setUpProgress(null); resolve({ ok: false, chunks: 0 }); return
+          clearInterval(timer); setUpProgress(null); resolve({ ok: false, chunks: 0, msg: p.msg }); return
         }
         if (p && p.status === 'ok') {
           lastChunks = Math.max(lastChunks, p.total || 0)
@@ -115,7 +117,7 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
             setUpProgress({ stage: '解析文档', pct: 6 })
             const r = await pollProgress(it.name)               // source = 文件名（后端 source=fname）
             if (r.ok) { ok++; total += r.chunks }
-            else alert(`「${it.name}」处理失败或超时，请稍后在知识库查看`)
+            else alert(`「${it.name}」处理失败${r.msg ? '：' + r.msg : '或超时'}，请稍后在知识库查看`)
           } else if (d && d.status === 'ok') { total += (d.chunks || 0); ok++ }
           else if (d && d.duplicate) { /* 重复内容视为成功跳过 */ }
           else alert(`「${it.name}」接入失败：${(d && d.msg) || '处理失败'}`)
