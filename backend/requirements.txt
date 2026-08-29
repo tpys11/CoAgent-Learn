@@ -13,12 +13,6 @@ pymupdf4llm>=0.0.17
 # 数据库连接
 rank_bm25>=0.2.2
 jieba>=0.42.1
-# embedding/rerank 模型（torch 走 CPU 版，避免拉取 ~2.5GB 的 CUDA 包）
-# N1: download-r2.pytorch.org 持续停摆（实测 95KB/s 且 buildkit 整体卡死），
-# 切换阿里云镜像（同一 wheel 实测 2MB/s）；flat 目录须用 --find-links 而非 --extra-index-url
---find-links https://mirrors.aliyun.com/pytorch-wheels/cpu/
-torch>=2.2.0
-sentence-transformers>=3.0.0
 pypdf>=6.0.0
 python-docx>=1.1.0
 python-pptx>=1.0.0
