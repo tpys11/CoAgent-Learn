@@ -51,7 +51,7 @@
 | **F3** | **上传入口约束 + frontend healthcheck**（新增，N2 撞出） | N2 | **中（跨层：后端常量 + 前端）** | `backend/routers/knowledge.py`（`UPLOAD_CONSTRAINTS` 补图片扩展名）、`frontend/src/components/resource/UploadPanel.tsx`（`.catch(() => {})` 静默吞失败）、`deploy/docker-compose.yml`（frontend healthcheck） | — | 待分发 |
 | **F4** | **embedding / rerank 降级显式告警 + 双 Key 引导**（新增，N2 第 ⑧ 项） | N2 | 低（只加告警与引导，不改降级行为） | `backend/core/embeddings.py`、`backend/core/knowledge_service.py`、`README.md`（+ 可选前端设置界面提示 / 启动日志 warning）、`tests/test_f4_embedding_degradation.py`(新) | — | 待分发 |
 | **F5** | **移除本地模型，全部走 API**（owner 2026-08-30 拍板） | F3 | **中（改依赖构成 + 行为变更）** | `backend/core/embeddings.py`、`backend/core/knowledge_service.py`、`backend/core/config.py`、`backend/requirements.txt`（删 torch / sentence-transformers / 阿里云 find-links） | `a79f6d9`→`3395670`（4 个） | **✅ 已完成** |
-| **F6** | **聊天输入框图片白名单**（新增，F3 复核发现） | F3 | 低（两处 accept 字符串） | `frontend/src/components/CenterPanel.tsx:427`、`frontend/src/components/DragDropInput.tsx:85` | — | 待定边界 |
+| **F6** | **聊天输入框图片白名单**（新增，F3 复核发现） | F3 | **低**（CenterPanel 一处 accept） | `frontend/src/components/CenterPanel.tsx:427`（accept）、`tests/test_f6_chat_image_accept.py`(新)；**`DragDropInput.tsx:85` 建议不动**（见下） | — | **待执行** |
 
 > **F5 实测成果**：镜像 **3.25GB → 1.67GB**、冷构建 **433s → 207.9s**、
 > pytest **287 → 295 passed**（+8 守卫）。实际释放 1.58GB > 预估 1.13GB
@@ -74,6 +74,17 @@
 > 已登记 **F6**。
 > 注：这**不是** F3 的疏漏——F3 的文件边界就是 `UploadPanel.tsx`，实施会话据实上报，
 > 处置正确。
+>
+> ⚠️ **F6 的两处入口下游能力不同，已核实，不可一刀切**（2026-08-30 总领逐行核实）：
+>
+> | 入口 | 下游 | 结论 |
+> |---|---|:--:|
+> | `CenterPanel.tsx:427` | `:128-150` 的 `processFile` **已支持** `png/jpg/jpeg/gif/webp`（读 data URL、base64、`isImage: true`） | ✅ **可安全加 accept**——缺的只有 accept |
+> | `DragDropInput.tsx:85` | `:20-36` 只处理文本，其余委托 `onFile`；**唯一使用方 `KnowledgeView.tsx:105/110` 均未传 `onFile`** | ❌ **不建议加**——选中图片会弹「该格式暂不支持」，比现在更差 |
+>
+> **另发现**：`KnowledgeView.tsx:105`「上传资源」区块的 `onChange={() => {}}` 是**空函数**
+> 且未传 `onFile` → **连文本文件读出来也会被丢弃，该区块疑似完全失效**（已写入 F6 交接要求）。
+> 另注意 `CenterPanel.tsx:130` 有 **2MB 大小限制**、`:140` 图片列表**不含 bmp**（与 E-31 一致）。
 
 > ✅ **F5 四项决策 owner 已拍板（2026-08-30）**：① **A1 无 Key 硬失败**；
 > ② **`EMBEDDING_BACKEND` 删除**；③ **接受「必须有硅基流动 Key 才能用知识库」**；
@@ -132,7 +143,8 @@
 | F3 | `docs/dispatch/step-F3.md` | 2026-08-30 | **✅ 已完成**（commit `87cf570`/`a8e95a4`/`2b951f7`，287 passed；交接文档 `docs/progress/step-F3.md`） |
 | F4 | `docs/dispatch/step-F4.md` | 2026-08-30 | **待执行**（降级显式告警 + 双 Key 引导）⚠️ 若 F5 先执行，需缩减为「仅双 Key 引导」 |
 | F5 | `docs/dispatch/step-F5.md` | 2026-08-30 | **✅ 已完成**（commit `a79f6d9`→`3395670`，295 passed；交接文档 `docs/progress/step-F5.md` 由总领补建） |
-| F6 | — | 2026-08-30 | **待生成提示词**（聊天输入框 accept 补图片） |
+| F6 | `docs/dispatch/step-F6.md` | 2026-08-30 | **待执行**（聊天输入框 accept 补图片） |
+| F4′ | `docs/dispatch/step-F4.md` | 2026-08-30 | **已修订待执行**（F5 后缩减为「双 Key 引导 + 入库异常可见化」） |
 
 > 分发提示词统一存放于 `docs/dispatch/step-<id>.md`，交接文档归档于 `docs/progress/step-<id>.md`。
 
