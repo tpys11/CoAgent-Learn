@@ -3,6 +3,8 @@ uvicorn[standard]>=0.34.0
 python-dotenv>=1.0.1
 pydantic>=2.10.4
 httpx>=0.28.1
+# LLM 客户端（core/base_llm.py 走 OpenAI 兼容 SDK；N1 实测容器缺失时对话必挂）
+openai>=1.0
 
 # 文件解析（markitdown 统一转 markdown，照 DeepTutor 解析引擎；pymupdf4llm=ParsePort 本地快道）
 markitdown[pdf,docx,pptx,xlsx]>=0.0.1a2

@@ -30,6 +30,10 @@ RUNTIME_REQUIRED = [
     "trafilatura",
     "markitdown",
     "llama-index-core",
+    # openai：core/base_llm.py 走 OpenAI 兼容 SDK。N1 模拟评委实测：容器缺失时
+    # /api/chat 懒加载炸 ModuleNotFoundError，服务能起但对话必挂（宿主 venv 有包
+    # 所以 pytest 测不出来）。
+    "openai",
 ]
 
 
