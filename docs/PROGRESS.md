@@ -51,6 +51,16 @@
 | **F3** | **上传入口约束 + frontend healthcheck**（新增，N2 撞出） | N2 | **中（跨层：后端常量 + 前端）** | `backend/routers/knowledge.py`（`UPLOAD_CONSTRAINTS` 补图片扩展名）、`frontend/src/components/resource/UploadPanel.tsx`（`.catch(() => {})` 静默吞失败）、`deploy/docker-compose.yml`（frontend healthcheck） | — | 待分发 |
 | **F4** | **embedding / rerank 降级显式告警 + 双 Key 引导**（新增，N2 第 ⑧ 项） | N2 | 低（只加告警与引导，不改降级行为） | `backend/core/embeddings.py`、`backend/core/knowledge_service.py`、`README.md`（+ 可选前端设置界面提示 / 启动日志 warning）、`tests/test_f4_embedding_degradation.py`(新) | — | 待分发 |
 | **F5** | **移除本地模型，全部走 API**（owner 2026-08-30 拍板） | F3 | **中（改依赖构成 + 行为变更）** | `backend/core/embeddings.py`、`backend/core/knowledge_service.py`、`backend/core/config.py`、`backend/requirements.txt`（删 torch / sentence-transformers / 阿里云 find-links） | — | **计划阶段** |
+| **F6** | **聊天输入框图片白名单**（新增，F3 复核发现） | F3 | 低（两处 accept 字符串） | `frontend/src/components/CenterPanel.tsx:427`、`frontend/src/components/DragDropInput.tsx:85` | — | 待定边界 |
+
+> ⚠️ **F3 只修了 3 个文件入口中的 1 个**（总领全前端扫描实证）：
+> `UploadPanel.tsx:191` 已改为动态 accept ✅；但 **`CenterPanel.tsx:427` 与
+> `DragDropInput.tsx:85` 仍是静态 accept 字符串，不含任何图片扩展名**。
+> → 评委若在**聊天界面**点附件按钮传图，**仍然选不了**。
+> 但聊天协议层本身支持：`useChatStream.ts:214` 有 `image:` 字段——缺的只是那个 accept。
+> 已登记 **F6**。
+> 注：这**不是** F3 的疏漏——F3 的文件边界就是 `UploadPanel.tsx`，实施会话据实上报，
+> 处置正确。
 
 > **F5 计划已产出**：`docs/dispatch/step-F5-plan.md`（待 owner 反馈后转正式提示词）。
 > **实测收益**：backend 镜像 **3.25GB → ≈1.4GB**；可移除 torch 750M + transformers 113M +
@@ -74,9 +84,10 @@
 > 详见 `docs/progress/step-N2.md` 批注 §B/§C。
 | **N3** | **发布封装**（新增） | 全部 17 步完成 | 中 | `deploy/docker-compose.yml`（`build:` → `image:`）、`README.md`、registry 配置 | — | 待分发 |
 
-> 步骤总数由 15 增至 **23**（新增 N1、N2、N3，C3 实施中发现 **F1**，F1 验收中发现 **F2**，
-> 进度成本根因诊断后新增 **P1**，N2 端到端验收撞出 **F3、F4**）。
-> **会话数**：若 F3+F4 合并则为 **9**；分开则为 10（决策 20 批次合并精神下建议合并）。
+> 步骤总数由 15 增至 **24**（新增 N1、N2、N3，C3 实施中发现 **F1**，F1 验收中发现 **F2**，
+> 进度成本根因诊断后新增 **P1**，N2 端到端验收撞出 **F3、F4**，owner 拍板 **F5**，
+> F3 复核发现 **F6**）。
+> **会话数**取决于合并方式，见 §1.3 执行路径。
 > `LEAD_SESSION_PROMPT.md` 与 `SINGLE_STEP_EXECUTION.md` 中的「15 步」表述已过时，以本表为准。
 >
 > **F1 是新开的 `F` 组**（Functional bug fix）。它不属于原 15 步，也不属于部署链/体验链，
@@ -96,8 +107,10 @@
 | F2 | `docs/dispatch/step-F2.md` | 2026-08-29 | **✅ 已完成**（commit `19806af`，交接文档 `docs/progress/step-F2.md`） |
 | P1 | `docs/dispatch/step-P1.md` | 2026-08-29 | **✅ 已完成**（commit `8bfa582`→`d52169e`，交接文档 `docs/progress/step-P1.md`） |
 | N2 | `docs/dispatch/step-N2.md` | 2026-08-30 | **✅ 已完成**（第 1 次，build 路径；交接文档 `docs/progress/step-N2.md`） |
-| F3 | `docs/dispatch/step-F3.md` | 2026-08-30 | **待执行**（上传入口约束 + frontend healthcheck） |
-| F4 | `docs/dispatch/step-F4.md` | 2026-08-30 | **待执行**（降级显式告警 + 双 Key 引导） |
+| F3 | `docs/dispatch/step-F3.md` | 2026-08-30 | **✅ 已完成**（commit `87cf570`/`a8e95a4`/`2b951f7`，287 passed；交接文档 `docs/progress/step-F3.md`） |
+| F4 | `docs/dispatch/step-F4.md` | 2026-08-30 | **待执行**（降级显式告警 + 双 Key 引导）⚠️ 若 F5 先执行，需缩减为「仅双 Key 引导」 |
+| F5 | `docs/dispatch/step-F5-plan.md` | 2026-08-30 | **计划已就绪**，待 owner 反馈后转正式提示词 |
+| F6 | — | 2026-08-30 | **待生成提示词**（聊天输入框 accept 补图片） |
 
 > 分发提示词统一存放于 `docs/dispatch/step-<id>.md`，交接文档归档于 `docs/progress/step-<id>.md`。
 
@@ -171,20 +184,28 @@
 > **v3（2026-08-29 修订）**：owner 确认为竞赛项目、验收主体是「从零 clone 的评委」，
 > 故部署链全部前置；并加入批次合并（决策 20）与提速步骤 P1（决策 22）。
 
-## ⭐ 当前执行路径（v3，8 个会话）
+## ⭐ 当前执行路径（v4，10 个会话）
 
 ```
 会话 1  F2   ✅ 19806af
 会话 2  P1   ✅ 8bfa582→d52169e（测试提速，122–302s → 30–39s）
 会话 3  N2   ✅ 第 1 次验收（build 路径，6 过 1 败）
-会话 4  **F3 + F4  ← 下一个**（可合并，各出各自 commit）
-         F3：上传入口约束 + frontend healthcheck（N2 撞出，跨层）
-         F4：embedding / rerank 降级显式告警 + 双 Key 引导（N2 第 ⑧ 项）
-会话 5  D 组  D1→D2→D3→D4  **+ T26 修复（P1 引入的 WAL flag 回归，折进来省一个会话）**
-会话 6  A 组  A1→A2→A3
-会话 7  B 组  B1→B3→B2→B4
-会话 8  N3  推预构建镜像（含决策 19 的 bind mount 处置）→ 紧接 N2 第 2 次验收（pull 路径）
+会话 4  F3   ✅ 87cf570/a8e95a4/2b951f7（上传约束单一事实源 + frontend healthcheck）
+会话 5  **F5  ← 下一个**：移除本地模型，全部走 API（owner 拍板，计划已就绪）
+会话 6  F4′  双 Key 引导（F5 后缩减：降级告警已无意义）+ **F6** 聊天输入框图片白名单
+会话 7  D 组  D1→D2→D3→D4  **+ T26 修复（P1 引入的 WAL flag 回归，折进来省一个会话）**
+会话 8  A 组  A1→A2→A3
+会话 9  B 组  B1→B3→B2→B4
+会话 10 N3  推预构建镜像（含决策 19 的 bind mount 处置）→ 紧接 N2 第 2 次验收（pull 路径）
 ```
+
+**排序依据**：
+- **F5 在 F4 之前**——F4 的「降级告警」以保留本地兜底为前提；F5 移除本地通道后
+  降级不复存在，F4 需相应缩减。**先定 F5 再定 F4，可避免 F4 做无用功。**
+- **F6 与 F4′ 合并**——两者都是小改动（F6 仅两处 accept 字符串），
+  合并省一个会话，符合决策 20 精神。
+- **F5 单独一个会话**——它改动依赖构成 + 有行为变更（无 Key 硬失败），
+  与 F6 的小改动混在一起会让验收判据变模糊。
 
 > **会话数由 8 增至 9**（新增 F3）。理由见决策 25。
 
@@ -354,6 +375,7 @@ N3（推预构建镜像）→ N2（第 2 次，按 pull 路径复验）
 | **E-27** | ~~**【交付阻塞级】本地大幅领先远端 62 笔**~~ | ✅ **已解决（2026-08-30）**：owner 安排推送后，总领核实 `git ls-remote` —— **远端 `master` == 本地 `master` == `051d471`，0 领先 / 0 落后**，62 笔（含 C1/C2/N1/C3/F1/C4/F2/P1 全部成果）已全部上远端。<br>**总领已核实远端树关键路径**：`docs/PROGRESS.md` ✓、`.gitignore` 白名单 ✓、`data/` 7 个种子文档 ✓（E-26 安全）、`deploy/docker-compose.yml` ✓、`tests/test_p1_db_perf.py` ✓；**且 `docs/PROGRESS.internal.md` 与 `docs/dispatch/` 均未上远端**（无内部内容泄漏）。<br>**→ N2 改走方案 B**：直接从 GitHub clone，验评委真实路径（原默认方案 A 已不再必要）。<br>另注：远端除 `master` 外还有 `analysis/merge-master`、`feature/memory`、`iwfawf` 三个分支；本地 `master` **仍无上游跟踪**（`git branch -r` 为空），后续若需常规同步建议补 `-u` |
 | **E-28** | **【探活陷阱 · 实测】healthcheck 的 host 必须写 `127.0.0.1`，写 `localhost` 会静默永久失败**。`frontend/nginx.conf:7` 是 `listen 80;`（纯 IPv4，容器实际监听 `0.0.0.0:80`）。`localhost` 解析到 `::1`（IPv6），nginx 不在 IPv6 上监听 → **curl 有 IPv6→IPv4 回退所以成功，busybox wget 没有所以失败** | 总领在真实前端容器内实测退出码：`wget --spider -q http://127.0.0.1/` → **0**；`curl -sf -o /dev/null http://127.0.0.1/` → **0**；`wget --spider -q http://localhost/` → **1（Connection refused）**。<br>**→ 这是 E-19 的同类坑**：E-19 是「`python:3.12-slim` 里没有 curl/wget」，本条是「有工具但 host 写法导致静默失败」。两者的共同点是**healthcheck 失败没人看日志**。<br>前端镜像（基于 `nginx:alpine`，运行时阶段无 `apk add`）自带 `wget`/`curl`/`nc` 三者，任选其一即可 |
 | **E-29** | **【部署耦合 · 实测】前端容器无法独立启动**：`nginx.conf:33` 的 upstream 写死了 `guashuai-backend`，而 nginx 在**启动时**就解析 upstream 主机名 | 单独 `docker run deploy-frontend:latest` 实测失败：`nginx: [emerg] host not found in upstream "guashuai-backend"`（exit 1）。**这比 compose 的 `depends_on: condition: service_healthy` 更硬**——`depends_on` 只控制启动顺序，而 nginx 是解析不到就直接拒绝启动。<br>**→ 影响**：① 验证 frontend 的 healthcheck **必须把整栈起起来**；② N3 改 `image:` 拉取路径时，容器名仍硬编码（`guashuai-backend`）故可正常工作，**但若改服务名或改用 `COMPOSE_PROJECT_NAME` 隔离会当场炸**；③ 后续任何改服务名的重构必须先处理 `nginx.conf:33` |
+| **E-31** | **【上游约束 · F3 实证】上游 VL（视觉 LLM）服务只收 `webp/png/jpeg/gif`，**拒收 `bmp`**；而我们的 `_IMG_EXTS` 含 `bmp`** | F3 实测（总领**无可用 VL Key，无法独立复验，属采信**）。性质判定：**与 N2-2 完全同型**——「**我们声称支持** vs **上游实际支持**」的不一致。bmp 经点选与后端准入均正常，失败发生在视觉描述阶段。<br>**两选一，待 owner 决策**：① **剔除** `bmp`（最简单，用户传 bmp 会被明确拒绝）；② **转码** bmp→png（保留能力，但需引入图像库依赖，**与 C1「不新增构建期依赖」方向相悖**）。<br>**总领倾向①剔除**——bmp 在今天已属边缘格式，为它引入依赖不划算 |
 | **E-30** | **【双重静默降级 · 实测】未配置 `EMBEDDING_API_KEY` 时，embedding 与 rerank **同时**静默失效**。<br>**① embedding**：`_embed()` 的路由条件是 `EMBEDDING_BACKEND=="api" and EMBEDDING_API_KEY`（`embeddings.py:67`）。默认 `EMBEDDING_BACKEND="api"`、`EMBEDDING_BASE_URL` 已是硅基流动，**但 key 为空 → 判定 False → 落 `_embed_local`** → `EMBEDDING_LOCAL_MODEL=""`（`config.py:24`，本地通道已废弃）→ `SentenceTransformer("")` 抛 `AttributeError` → 被裸 `except Exception` 吞掉 → **伪向量 `ord(ch)%100/100`**。<br>**② rerank**：`_get_reranker()`（`knowledge_service.py:473-487`）同理——`RERANK_BACKEND="api"` 但 `RERANK_API_KEY` 与 `EMBEDDING_API_KEY` 皆空 → 落本地 `CrossEncoder("BAAI/bge-reranker-base")` → 需从 HF 下载 → 失败 → `_reranker_local=False` → 返回 None，**重排被静默关闭** | **只需配置一个硅基流动 Key（`EMBEDDING_API_KEY`），两条路径同时走 API，问题消失**：rerank 的判定是 `RERANK_API_KEY or EMBEDDING_API_KEY`，会复用同一把 key。<br>⚠️ **对 N3 的连带影响（重要）**：配置 key 后，torch / sentence-transformers 的**全部引用点**（`embeddings.py:19` 与 `knowledge_service.py:483`）均不可达 → 成为**死依赖**。而它们正是 backend 镜像 **3.25GB** 的主因（torch 2.13 + transformers 5.14 + sentence-transformers 5.6）。**→ 若决定「API 为唯一路径、移除本地兜底」，可大幅缩小镜像并显著缩短冷构建（现 433s，README 称大头是 torch 下载 ~190MB）。这是一个独立的新选项，须 owner 决策**。<br>**注**：未配置 key 时本地兜底**仍会尝试加载模型**，故 torch 当前并非完全无用——是否移除取决于是否保留离线能力 |
 
 ---
@@ -545,6 +567,7 @@ N3（推预构建镜像）→ N2（第 2 次，按 pull 路径复验）
 | F2 | `docs/progress/step-F2.md` | ✅ 通过（commit `19806af`，pytest 271 passed）。容器内真实 3MB PDF 的 HTTP 耗时 **111.25s → 0.22s**；非图片重复上传进度 0.3s 直达终态 |
 | P1 | `docs/progress/step-P1.md` | ✅ 通过（commit `8bfa582` / `b44cc17` / `d52169e`，278 passed）。全量回归降至 **30–39s**；新增 T26 待折进 D 组 |
 | N2 | `docs/progress/step-N2.md` | ✅ 通过（第 1 次，零代码改动，**7 项 6 过 1 败**）。含总领独立复核 5 项、**总领认领 2 处自身失误**（③ 判据要了 C4 未交付之物；F1 把「不改 `UPLOAD_CONSTRAINTS`」划入「不做」→ 造成跨层缺口）、**定性上调 1 处**（N2-2 由 UX 瑕疵上调为 P1）。核心成果：冷构建 **433s**（README「10 分钟以内」承诺成立）、**伪向量降级在真实冷部署中实锤**（T20 由推测升级为事实） |
+| F3 | `docs/progress/step-F3.md` | ✅ 通过（commit `87cf570` / `a8e95a4` / `2b951f7`，**287 passed**）。含总领独立复核 6 项、全前端扫描发现**范围事实**「**3 个文件入口只修了 1 个**」（→ 衍生 **F6**）、认领 bmp 属**与 N2-2 同型**的「声称支持 vs 上游实际支持」不一致（→ E-31，待 owner 决策剔除/转码）。核心成果：三份手写清单归一为单一事实源（全链派生，无手写副本）、双服务 `Up (healthy)`、拉取失败不再留空失效。**E-28 陷阱复现吻合**：实施会话独立实测的 `127.0.0.1 exit=0` / `localhost exit=1` 与总领记录一致——说明该登记有效 |
 | — | 其余步骤完成后按 `step-<id>.md` 归档 | — |
 
 ---
