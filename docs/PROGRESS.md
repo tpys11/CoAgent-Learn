@@ -50,7 +50,7 @@
 | **N2** | **端到端部署验收**（新增） | P1 | 低 | ✅ **零代码改动**（第 1 次，build 路径，从 GitHub clone 验评委真实路径） | —（纯验证） | **✅ 已完成**（6 过 1 败） |
 | **F3** | **上传入口约束 + frontend healthcheck**（新增，N2 撞出） | N2 | **中（跨层：后端常量 + 前端）** | `backend/routers/knowledge.py`（`UPLOAD_CONSTRAINTS` 补图片扩展名）、`frontend/src/components/resource/UploadPanel.tsx`（`.catch(() => {})` 静默吞失败）、`deploy/docker-compose.yml`（frontend healthcheck） | — | 待分发 |
 | **F4** | **embedding / rerank 降级显式告警 + 双 Key 引导**（新增，N2 第 ⑧ 项） | N2 | 低（只加告警与引导，不改降级行为） | `backend/core/embeddings.py`、`backend/core/knowledge_service.py`、`README.md`（+ 可选前端设置界面提示 / 启动日志 warning）、`tests/test_f4_embedding_degradation.py`(新) | — | 待分发 |
-| **F5** | **移除本地模型，全部走 API**（owner 2026-08-30 拍板） | F3 | **中（改依赖构成 + 行为变更）** | `backend/core/embeddings.py`、`backend/core/knowledge_service.py`、`backend/core/config.py`、`backend/requirements.txt`（删 torch / sentence-transformers / 阿里云 find-links） | — | **计划阶段** |
+| **F5** | **移除本地模型，全部走 API**（owner 2026-08-30 拍板） | F3 | **中（改依赖构成 + 行为变更）** | `backend/core/embeddings.py`、`backend/core/knowledge_service.py`、`backend/core/config.py`、`backend/requirements.txt`（删 torch / sentence-transformers / 阿里云 find-links） | — | **待执行** |
 | **F6** | **聊天输入框图片白名单**（新增，F3 复核发现） | F3 | 低（两处 accept 字符串） | `frontend/src/components/CenterPanel.tsx:427`、`frontend/src/components/DragDropInput.tsx:85` | — | 待定边界 |
 
 > ⚠️ **F3 只修了 3 个文件入口中的 1 个**（总领全前端扫描实证）：
@@ -62,7 +62,16 @@
 > 注：这**不是** F3 的疏漏——F3 的文件边界就是 `UploadPanel.tsx`，实施会话据实上报，
 > 处置正确。
 
-> **F5 计划已产出**：`docs/dispatch/step-F5-plan.md`（待 owner 反馈后转正式提示词）。
+> ✅ **F5 四项决策 owner 已拍板（2026-08-30）**：① **A1 无 Key 硬失败**；
+> ② **`EMBEDDING_BACKEND` 删除**；③ **接受「必须有硅基流动 Key 才能用知识库」**；
+> ④ **F4 后续缩减为「仅双 Key 引导」**（归后续，不在 F5 范围）。
+> **`RERANK_BACKEND` 按总领判断处理**：删除 `local` 分支，保留字段（收敛为 `api | none`，
+> `none` 是合法用户选项）。
+> **正式提示词已生成**：`docs/dispatch/step-F5.md`（计划稿见 `step-F5-plan.md`）。
+> **行为规格关键区分**：embedding **硬失败**（无它检索不存在）vs rerank **优雅降级 +
+> 可见日志**（无它检索仍可用，只是未排序）——两者不可混为一谈。
+> **爆炸半径已核实**：`EMBEDDING_BACKEND` 全仓仅 2 处引用（定义 + 一处判定），
+> 不在 `.env.example` / README / `deploy/` / 前端，删除安全。
 > **实测收益**：backend 镜像 **3.25GB → ≈1.4GB**；可移除 torch 750M + transformers 113M +
 > scikit-learn 49M + scipy 139M + sympy 74M ≈ **1.13GB**（全链路 `Required-by` 仅
 > `sentence-transformers`）。**须保留** `onnxruntime`（`magika`/`pymupdf-layout`，markitdown 链）
@@ -109,7 +118,7 @@
 | N2 | `docs/dispatch/step-N2.md` | 2026-08-30 | **✅ 已完成**（第 1 次，build 路径；交接文档 `docs/progress/step-N2.md`） |
 | F3 | `docs/dispatch/step-F3.md` | 2026-08-30 | **✅ 已完成**（commit `87cf570`/`a8e95a4`/`2b951f7`，287 passed；交接文档 `docs/progress/step-F3.md`） |
 | F4 | `docs/dispatch/step-F4.md` | 2026-08-30 | **待执行**（降级显式告警 + 双 Key 引导）⚠️ 若 F5 先执行，需缩减为「仅双 Key 引导」 |
-| F5 | `docs/dispatch/step-F5-plan.md` | 2026-08-30 | **计划已就绪**，待 owner 反馈后转正式提示词 |
+| F5 | `docs/dispatch/step-F5.md` | 2026-08-30 | **待执行**（计划稿 `step-F5-plan.md`；owner 4 项决策已并入正式版） |
 | F6 | — | 2026-08-30 | **待生成提示词**（聊天输入框 accept 补图片） |
 
 > 分发提示词统一存放于 `docs/dispatch/step-<id>.md`，交接文档归档于 `docs/progress/step-<id>.md`。
@@ -464,6 +473,7 @@ N3（推预构建镜像）→ N2（第 2 次，按 pull 路径复验）
 | 22 | **新增提速步骤 P1，插在 F2 与 N2 之间**（owner 2026-08-29 要求「F2 完成后马上执行」） | P1 = 测试基础设施提速（修 T25），目标把全量回归从 **366s 降到 ≤ 60s**。两个子步骤同会话顺序执行：P1.1 把 `PRAGMA journal_mode=WAL` 移出 `_new_conn`（零风险）；P1.2 `execute()` 走缓存连接但**保留 `_new_conn()` 给显式调用者**（收益主体）。 | ① owner 明确要求紧接 F2；② **N2 顺带成为 P1 的运行时验证**——P1 动的是 DB 层生产代码，宿主 pytest 绿 ≠ 容器能跑，而 N2 是 fresh clone + 真实部署 + 7 项验收，**不增加额外会话**就复验了 P1；③ 会话 3–8 全部受益，越早省越多。**净收益**：多 1 个会话，但按剩余 7 会话 × 约 3 次回归 × (6min→45s) 估算，**累计省约 2 小时** |
 | 23 | **P1.2 的安全红线：不得让 `_new_conn()` 返回缓存连接** | `_new_conn()` 必须保持「返回全新独立连接」的语义。缓存只用于 `execute()` 内部。 | 总领 A/B 实测：简单连接复用让全量从 366.70s→44.56s（8.2x），但**挂了 4 条**——`_kb_ops.py:280-295` 的 `upsert_kg_edges_bulk` 自己调 `_new_conn()` 并在 `finally` 关闭，缓存连接被它关死（`Cannot operate on a closed database`）。**代码库存在两种用法**，方案必须同时满足。若 P1.2 在约束下无法安全实现，**只交付 P1.1**，不得为提速牺牲正确性 |
 | 24 | **分发提示词的三条流程修正**（F2 验收导出，2026-08-30） | ① **不得把「TDD 先红」当无差别铁律**——必须区分「新行为断言」（必须能红）与「**回归控制断言**」（结构上不可能红，需在测试注释中注明定位，沿用 F1 第 8 条「PDF 对照组」先例）。<br>② **耗时/基线数字必须标注「实测条件 + 波动范围」**，或要求实施会话**自建基线**，不得沿用他步数字。<br>③ **所有 `docker compose` 命令必须带 `-f deploy/docker-compose.yml`**，并写明仓库根无 compose 文件。 | ① F2-3/F2-4 属回归控制断言（同步路径本来就只解析一次、图片本来就不走文本解析），修复前即为绿、结构上不可能红，故须区分于新行为断言。<br>② 同一套测试在不同机器状态下实测差约 3 倍（103s / 122s / 302s），故提示词不得沿用他步的耗时数字。<br>③ 仓库根目录无 compose 文件，唯一 compose 为 `deploy/docker-compose.yml`，故 `docker compose` 命令必须带 `-f`；已实测通过（`healthz` 200） |
+| 25' | **F5 的四项决策（owner 2026-08-30 拍板）+ 一项总领判断** | ① **A1：无 `EMBEDDING_API_KEY` 时硬失败**（明确报错含「原因/后果/怎么办」三点；API 失败同样直接抛出，不再有任何静默降级）。<br>② **删除 `EMBEDDING_BACKEND` 字段**（爆炸半径已核实：全仓仅 2 处引用，不在 `.env.example`/README/`deploy/`/前端）。<br>③ **接受「必须有硅基流动 Key 才能用知识库」**——A1 的必然结果，已知代价。<br>④ **F4 后续缩减为「仅双 Key 引导」**（降级已不存在，降级告警无意义）。<br>⑤（总领判断）**`RERANK_BACKEND` 删除 `local` 分支但保留字段**，收敛为 `api | none`——`none` 是合法用户选项（用户可能想关重排省调用） | ①② owner 明确拍板。<br>③ 权衡：A2（保留伪向量 + 大声告警）会让「能用但结果是错的」，比「用不了」更糟。<br>④ 因 F4 的降级告警以保留本地兜底为前提，F5 移除本地后前提消失。<br>⑤ **关键区分**：embedding 硬失败（无它检索**不存在**）vs rerank 优雅降级 + 可见日志（无它检索仍返回，只是未排序）——**两者性质不同，不可混为一谈** |
 | 25 | **N2 撞出的 3 项分两步走：F3 立即修（N2-1+N2-2），N2-3 待 owner 决策**（2026-08-30） | **F3（新步骤，会话 4）**：① 把图片扩展名补进 `backend/routers/knowledge.py:479-485` 的 `UPLOAD_CONSTRAINTS`（现与同文件 `:522` 的 `_IMG_EXTS` 不一致，导致前端选择器拒收图片）；② 修 `UploadPanel.tsx:29` 的 `.catch(() => {})`（静默吞掉约束拉取失败 → `allowedExts` 为空 → `:40` 的二次过滤被静默关闭）；③ 给 frontend 补 healthcheck（用 busybox `wget`，**不装 curl**，违背 C1 方向）。<br>**N2-3（伪向量）暂不进 F3**：修法涉及架构级取舍，须 owner 定程度 | ① **N2-2 定性为 P1**：它让 F1 的 P0 修复在**最自然的用户路径**（点上传→选文件）上不可达，评委最可能做这个动作；② ①和②同属上传约束链路，一个会话内做完比拆两次省一个会话（决策 20 精神）；③ N2-1 是低风险打磨，顺带做掉，避免再开一个会话；④ **N2-3 不进 F3 是因为它与 F3 不同层**：F3 是确定性 bug fix，N2-3 是「告警 / 预置模型 / 换 API」的架构取舍，混在一起会让 F3 的验收判据变模糊 |
 | 26 | **验收清单新增默认项：最自然的用户路径是否可达**（N2 的流程教训） | 后续步骤的验收判据里，除「API 是否返回 200」外，默认加一条：**该功能最自然的用户路径能否走通**（含前端入口、白名单、按钮状态等跨层环节）。 | **跨层缺口是分步验证的结构性盲区**：F1 验后端（图片上传链路修好）、C3 验前端（生产化），各自都绿，**但连接处没人验**——`UPLOAD_CONSTRAINTS` 不含图片，导致 F1 的修复只有拖拽一条路能触达。只有 N2 这种真实端到端才撞得出来。同类风险在 A/B 组同样存在（前端改动 + 后端协议变更） |
 
