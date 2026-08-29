@@ -32,7 +32,9 @@
     environment:
       # 主数据统一落地宿主机仓库根 data/（与本地 start-backend.bat 同库，终结双库分叉）
       - SQLITE_DIR=/app-data
-    command: sh -c "pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --quiet sqlite-vec python-multipart pypdf python-docx python-pptx rank_bm25 jieba pytest pymupdf4llm trafilatura markitdown llama-index-core && uvicorn main:app --host 0.0.0.0 --port 8000"
+    # C1: 依赖全部由镜像构建期提供（backend/requirements.txt），启动零联网安装。
+    # 勿在运行时联网装包——断网即挂（Step C1 实测）；新增运行时依赖进 requirements.txt 后 --build 重建。
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
     volumes:
       - ../backend:/app
       - ../skills:/app/skills
