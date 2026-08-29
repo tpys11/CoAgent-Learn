@@ -24,10 +24,6 @@ class BaseLLM:
     def _create_client(self) -> OpenAI:
         raise NotImplementedError
 
-    def _strip_thinking(self, content: str) -> str:
-        """去除 DeepSeek 的思考标签 <｜end▁of▁thinking｜> ... """
-        return re.sub(r"█████.*?█████", "", content, flags=re.DOTALL).strip()
-
     def chat(self, messages: list[dict], temperature: float = 0.7, max_tokens: int | None = None) -> str:
         """普通对话，返回文本"""
         kwargs = {}
@@ -49,7 +45,10 @@ class BaseLLM:
                 )
                 content = resp.choices[0].message.content or ""
                 self._log_tokens(resp, "chat", attempt)
-                return self._strip_thinking(content)
+                # D3：旧的 █████ 思考剥离助手已删——实证（2026-08-30，真实 API 双样本）
+                # DeepSeek thinking=True 时思考走独立 message.reasoning_content 字段，
+                # content 纯净、原正则永不匹配（死代码）；保留 .strip() 与原行为逐字节等价。
+                return content.strip()
             except Exception as e:
                 logger.warning(f"chat 第{attempt}次失败: {e}")
                 if attempt == self.max_retries:
@@ -78,8 +77,8 @@ class BaseLLM:
                     response_format={"type": "json_object"},
                     timeout=config.LLM_REQUEST_TIMEOUT,
                 )
+                # D3：旧的 █████ 思考剥离助手已删（同 chat 内注释）；_parse_json 内部自带 strip，行为等价。
                 content = resp.choices[0].message.content or "{}"
-                content = self._strip_thinking(content)
                 self._log_tokens(resp, "json", attempt)
                 return self._parse_json(content)
             except Exception as e:
