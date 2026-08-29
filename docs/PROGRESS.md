@@ -47,7 +47,7 @@
 > 一笔 commit 一个子步骤，各跑一次全量回归（决策 20 批次规范）。
 | C4 | healthcheck + restart | F1 | 低 | ✅ 实际改动：`backend/main.py`(+`/healthz` 8 行)、`deploy/docker-compose.yml`(+18 行 healthcheck/restart/depends_on)、`tests/test_c4_healthcheck.py`(新，6 条)、`README.md`(FAQ +10 行) | `531ba17`→`f3d21f3`（3 个） | **✅ 已完成** |
 | **N1** | **部署就绪**（新增） | C2 | 低 | ✅ 实际改动：`deploy/docker-compose.yml`、`.env.example`、`README.md`、`pyproject.toml`(-3)、`main.py`(:3)、`tests/test_n1_deploy_readiness.py`(新)、**经批准越界**：`backend/requirements.txt`(+openai、torch 索引切阿里云)、`tests/test_c1_runtime_deps.py` | `899afae`→`9f82ee2`（7 个） | **✅ 已完成** |
-| **N2** | **端到端部署验收**（新增） | C4 | 低 | **不改代码**，仅验证（**N3 后需重跑一次**，见 §1.4） | — | 待分发 |
+| **N2** | **端到端部署验收**（新增） | P1 | 低 | **不改代码**，仅验证（**N3 后需重跑一次**，见 §1.4）。⚠️ 见 E-27：本地领先远端 62 笔，默认从本地仓库 clone | — | 待分发 |
 | **N3** | **发布封装**（新增） | 全部 17 步完成 | 中 | `deploy/docker-compose.yml`（`build:` → `image:`）、`README.md`、registry 配置 | — | 待分发 |
 
 > 步骤总数由 15 增至 **21**（新增 N1、N2、N3，C3 实施中发现 **F1**，F1 验收中发现 **F2**，
@@ -70,6 +70,7 @@
 | C4 | `docs/dispatch/step-C4.md` | 2026-08-29 | **✅ 已完成**（commit `531ba17`→`f3d21f3`，交接文档 `docs/progress/step-C4.md`） |
 | F2 | `docs/dispatch/step-F2.md` | 2026-08-29 | **✅ 已完成**（commit `19806af`，交接文档 `docs/progress/step-F2.md`） |
 | P1 | `docs/dispatch/step-P1.md` | 2026-08-29 | **✅ 已完成**（commit `8bfa582`→`d52169e`，交接文档 `docs/progress/step-P1.md`） |
+| N2 | `docs/dispatch/step-N2.md` | 2026-08-30 | **待执行**（第 1 次，build 路径） |
 
 > 分发提示词统一存放于 `docs/dispatch/step-<id>.md`，交接文档归档于 `docs/progress/step-<id>.md`。
 
@@ -317,6 +318,7 @@ N3（推预构建镜像）→ N2（第 2 次，按 pull 路径复验）
 | E-24 | **`docs/` 整个目录被 gitignore**（`.gitignore:32`），包含 `docs/PROGRESS.md`（唯一状态载体）、`docs/dispatch/*`（全部派发提示词）、`docs/progress/*`（全部交接文档）、`docs/LEAD_SESSION_PROMPT.md` | **已实施（2026-08-30 提交）**：`.gitignore:32` 由 `docs/` 改为 `docs/*` + `!docs/PROGRESS.md`，仅放行唯一状态载体；`dispatch/*` 与 `progress/*` 维持忽略（`git check-ignore` 已验证）。**本文件入库的是客观状态版**（步骤、风险、决策结论）；含过程分析与判断依据的完整版保留在本地 `docs/PROGRESS.internal.md`，不入库 |
 | E-25 | **`data/` 的入库边界**：`data/app.db`(143M)、`data/app.db.backup-premigration`(129M)、`data/uploads/` **均被忽略**；`data/documents/` 下 **7 个种子 .md 是有意入库的内容**（大语言模型基础概念 / Prompt工程 / RAG技术原理 / 向量数据库与Embedding / Agent基础 / Agent记忆系统 / 多Agent协同） | N3 推 GitHub **无数据库隐私泄漏**，但会带上这 7 个种子文档与 `SQLITE_DIR` 的默认数据。若评委不需要预置知识库，可考虑清理（待定） |
 | **E-26** | **`data/` 目录在 fresh clone 中的存在性，依赖于 `data/documents/` 下那 7 个种子 .md**。`deploy/docker-compose.yml:54` 有 `../data:/app-data` bind mount；若源目录在 clone 中不存在，Docker 会**自动创建为 root 属主目录** → SQLite 写入失败，评委部署当场翻车。实测 4 个挂载源目录当前均安全（`backend` 72 / `skills` 36 / `tests` 43 个 tracked 文件；`data` 因 documents 被跟踪而存在） | **隐藏耦合**：E-25 讨论的「清理预置知识库」若真的删掉 `data/documents/`，`data/` 目录将从 clone 消失，**连带打断 `../data:/app-data` 挂载**。N3 若动种子文档，必须同步处置（改挂载路径 / 加 `.gitkeep` / 或改由容器 entrypoint 建目录） |
+| **E-27** | **【交付阻塞级】本地大幅领先远端**：远端 `origin/master` = `606f64b`，本地 `master` = `f0743c1`，**本地领先 62 笔、远端落后 0 笔**（`git ls-remote` + `git rev-list --count` 实测）。这 62 笔包含 **C1/C2/N1/C3/F1/C4/F2/P1 全部成果**——即**评委从 GitHub clone 拿到的是不含本轮任何优化的代码** | **N2 默认从本地仓库 clone（方案 A）**，不推 GitHub 即可验收。若需验证评委真实路径（方案 B），**必须先 push 这 62 笔**——属改变共享状态的操作，**须 owner 明确授权**，总领与实施会话均不自行 push。<br>⚠️ **竞赛提交前必须处理**：否则评委拿到的作品与本地验证的完全不是一回事。<br>另注：远端除 `master` 外还有 `analysis/merge-master`、`feature/memory`、`iwfawf` 三个分支；本地仅有 `master` 且**无上游跟踪** |
 
 ---
 
