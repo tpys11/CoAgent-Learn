@@ -50,8 +50,21 @@
 | **N2** | **端到端部署验收**（新增） | P1 | 低 | ✅ **零代码改动**（第 1 次，build 路径，从 GitHub clone 验评委真实路径） | —（纯验证） | **✅ 已完成**（6 过 1 败） |
 | **F3** | **上传入口约束 + frontend healthcheck**（新增，N2 撞出） | N2 | **中（跨层：后端常量 + 前端）** | `backend/routers/knowledge.py`（`UPLOAD_CONSTRAINTS` 补图片扩展名）、`frontend/src/components/resource/UploadPanel.tsx`（`.catch(() => {})` 静默吞失败）、`deploy/docker-compose.yml`（frontend healthcheck） | — | 待分发 |
 | **F4** | **embedding / rerank 降级显式告警 + 双 Key 引导**（新增，N2 第 ⑧ 项） | N2 | 低（只加告警与引导，不改降级行为） | `backend/core/embeddings.py`、`backend/core/knowledge_service.py`、`README.md`（+ 可选前端设置界面提示 / 启动日志 warning）、`tests/test_f4_embedding_degradation.py`(新) | — | 待分发 |
-| **F5** | **移除本地模型，全部走 API**（owner 2026-08-30 拍板） | F3 | **中（改依赖构成 + 行为变更）** | `backend/core/embeddings.py`、`backend/core/knowledge_service.py`、`backend/core/config.py`、`backend/requirements.txt`（删 torch / sentence-transformers / 阿里云 find-links） | — | **待执行** |
+| **F5** | **移除本地模型，全部走 API**（owner 2026-08-30 拍板） | F3 | **中（改依赖构成 + 行为变更）** | `backend/core/embeddings.py`、`backend/core/knowledge_service.py`、`backend/core/config.py`、`backend/requirements.txt`（删 torch / sentence-transformers / 阿里云 find-links） | `a79f6d9`→`3395670`（4 个） | **✅ 已完成** |
 | **F6** | **聊天输入框图片白名单**（新增，F3 复核发现） | F3 | 低（两处 accept 字符串） | `frontend/src/components/CenterPanel.tsx:427`、`frontend/src/components/DragDropInput.tsx:85` | — | 待定边界 |
+
+> **F5 实测成果**：镜像 **3.25GB → 1.67GB**、冷构建 **433s → 207.9s**、
+> pytest **287 → 295 passed**（+8 守卫）。实际释放 1.58GB > 预估 1.13GB
+> （torch 链的 `tokenizers`/`huggingface-hub`/`joblib`/`threadpoolctl` 等传递依赖一并消失）。
+> **经批准越界**：`backend/routers/settings.py` 最小编辑——不改则评委全新 clone 的
+> `GET /api/settings` 直接 `AttributeError` 500。<br>
+> ⚠️ **总领失误已认领**：F5 提示词里我写「`EMBEDDING_BACKEND` 仅 2 处引用，删除安全」——
+> **实际 4 处**（`git grep` 复核：config.py:20 / embeddings.py:67 / **settings.py:83** /
+> **settings.py:133**）。我用 `grep | head -4` 查爆炸半径，被 RERANK 的命中占满而截断。
+> → 导致实施会话中途必须报批扩边界。已固化为**决策 27**。
+> ⚠️ **新发现 1 定性上调**：`knowledge.py:105-109` 的 `_process_upload` 吞异常
+> （异常只进日志，`n` 保持 0 → 返回 `chunks:0`）。这**削弱了 owner 拍板的 A1**——
+> 评委看不到「要配 Key」，只看到 `chunks:0`。→ **从「上报不修」上调为 F4′ 必办**。
 
 > ⚠️ **F3 只修了 3 个文件入口中的 1 个**（总领全前端扫描实证）：
 > `UploadPanel.tsx:191` 已改为动态 accept ✅；但 **`CenterPanel.tsx:427` 与
@@ -118,7 +131,7 @@
 | N2 | `docs/dispatch/step-N2.md` | 2026-08-30 | **✅ 已完成**（第 1 次，build 路径；交接文档 `docs/progress/step-N2.md`） |
 | F3 | `docs/dispatch/step-F3.md` | 2026-08-30 | **✅ 已完成**（commit `87cf570`/`a8e95a4`/`2b951f7`，287 passed；交接文档 `docs/progress/step-F3.md`） |
 | F4 | `docs/dispatch/step-F4.md` | 2026-08-30 | **待执行**（降级显式告警 + 双 Key 引导）⚠️ 若 F5 先执行，需缩减为「仅双 Key 引导」 |
-| F5 | `docs/dispatch/step-F5.md` | 2026-08-30 | **待执行**（计划稿 `step-F5-plan.md`；owner 4 项决策已并入正式版） |
+| F5 | `docs/dispatch/step-F5.md` | 2026-08-30 | **✅ 已完成**（commit `a79f6d9`→`3395670`，295 passed；交接文档 `docs/progress/step-F5.md` 由总领补建） |
 | F6 | — | 2026-08-30 | **待生成提示词**（聊天输入框 accept 补图片） |
 
 > 分发提示词统一存放于 `docs/dispatch/step-<id>.md`，交接文档归档于 `docs/progress/step-<id>.md`。
@@ -200,8 +213,9 @@
 会话 2  P1   ✅ 8bfa582→d52169e（测试提速，122–302s → 30–39s）
 会话 3  N2   ✅ 第 1 次验收（build 路径，6 过 1 败）
 会话 4  F3   ✅ 87cf570/a8e95a4/2b951f7（上传约束单一事实源 + frontend healthcheck）
-会话 5  **F5  ← 下一个**：移除本地模型，全部走 API（owner 拍板，计划已就绪）
-会话 6  F4′  双 Key 引导（F5 后缩减：降级告警已无意义）+ **F6** 聊天输入框图片白名单
+会话 5  F5   ✅ a79f6d9→3395670（镜像 3.25→1.67GB，冷构建 433→207.9s）
+会话 6  **F4′ ← 下一个**：① 双 Key 引导 ② **修 `_process_upload` 吞异常**（否则 A1 形同虚设）
+         + **F6** 聊天输入框图片白名单
 会话 7  D 组  D1→D2→D3→D4  **+ T26 修复（P1 引入的 WAL flag 回归，折进来省一个会话）**
 会话 8  A 组  A1→A2→A3
 会话 9  B 组  B1→B3→B2→B4
@@ -475,6 +489,7 @@ N3（推预构建镜像）→ N2（第 2 次，按 pull 路径复验）
 | 24 | **分发提示词的三条流程修正**（F2 验收导出，2026-08-30） | ① **不得把「TDD 先红」当无差别铁律**——必须区分「新行为断言」（必须能红）与「**回归控制断言**」（结构上不可能红，需在测试注释中注明定位，沿用 F1 第 8 条「PDF 对照组」先例）。<br>② **耗时/基线数字必须标注「实测条件 + 波动范围」**，或要求实施会话**自建基线**，不得沿用他步数字。<br>③ **所有 `docker compose` 命令必须带 `-f deploy/docker-compose.yml`**，并写明仓库根无 compose 文件。 | ① F2-3/F2-4 属回归控制断言（同步路径本来就只解析一次、图片本来就不走文本解析），修复前即为绿、结构上不可能红，故须区分于新行为断言。<br>② 同一套测试在不同机器状态下实测差约 3 倍（103s / 122s / 302s），故提示词不得沿用他步的耗时数字。<br>③ 仓库根目录无 compose 文件，唯一 compose 为 `deploy/docker-compose.yml`，故 `docker compose` 命令必须带 `-f`；已实测通过（`healthz` 200） |
 | 25' | **F5 的四项决策（owner 2026-08-30 拍板）+ 一项总领判断** | ① **A1：无 `EMBEDDING_API_KEY` 时硬失败**（明确报错含「原因/后果/怎么办」三点；API 失败同样直接抛出，不再有任何静默降级）。<br>② **删除 `EMBEDDING_BACKEND` 字段**（爆炸半径已核实：全仓仅 2 处引用，不在 `.env.example`/README/`deploy/`/前端）。<br>③ **接受「必须有硅基流动 Key 才能用知识库」**——A1 的必然结果，已知代价。<br>④ **F4 后续缩减为「仅双 Key 引导」**（降级已不存在，降级告警无意义）。<br>⑤（总领判断）**`RERANK_BACKEND` 删除 `local` 分支但保留字段**，收敛为 `api | none`——`none` 是合法用户选项（用户可能想关重排省调用） | ①② owner 明确拍板。<br>③ 权衡：A2（保留伪向量 + 大声告警）会让「能用但结果是错的」，比「用不了」更糟。<br>④ 因 F4 的降级告警以保留本地兜底为前提，F5 移除本地后前提消失。<br>⑤ **关键区分**：embedding 硬失败（无它检索**不存在**）vs rerank 优雅降级 + 可见日志（无它检索仍返回，只是未排序）——**两者性质不同，不可混为一谈** |
 | 25 | **N2 撞出的 3 项分两步走：F3 立即修（N2-1+N2-2），N2-3 待 owner 决策**（2026-08-30） | **F3（新步骤，会话 4）**：① 把图片扩展名补进 `backend/routers/knowledge.py:479-485` 的 `UPLOAD_CONSTRAINTS`（现与同文件 `:522` 的 `_IMG_EXTS` 不一致，导致前端选择器拒收图片）；② 修 `UploadPanel.tsx:29` 的 `.catch(() => {})`（静默吞掉约束拉取失败 → `allowedExts` 为空 → `:40` 的二次过滤被静默关闭）；③ 给 frontend 补 healthcheck（用 busybox `wget`，**不装 curl**，违背 C1 方向）。<br>**N2-3（伪向量）暂不进 F3**：修法涉及架构级取舍，须 owner 定程度 | ① **N2-2 定性为 P1**：它让 F1 的 P0 修复在**最自然的用户路径**（点上传→选文件）上不可达，评委最可能做这个动作；② ①和②同属上传约束链路，一个会话内做完比拆两次省一个会话（决策 20 精神）；③ N2-1 是低风险打磨，顺带做掉，避免再开一个会话；④ **N2-3 不进 F3 是因为它与 F3 不同层**：F3 是确定性 bug fix，N2-3 是「告警 / 预置模型 / 换 API」的架构取舍，混在一起会让 F3 的验收判据变模糊 |
+| 27 | **查「某符号有多少处引用 / 爆炸半径」时，禁止用 `head` 截断 grep**（F5 教训，2026-08-30） | 评估完整性时：① 先 `grep ... | wc -l` 计数，② 再完整列出，③ 或直接用 `git grep` 一次性输出。**`head -N` 只能用于「看个大概」，不能用于下完整性结论。** 多 pattern 合并搜索时尤其危险——某个 pattern 的命中会挤占名额，把另一个 pattern 的结果整体挤掉 | **F5 实际教训**：我查 `EMBEDDING_BACKEND` 爆炸半径时执行 `grep -rn "EMBEDDING_BACKEND\|RERANK_BACKEND" backend \| head -4`，前 4 条被 RERANK 的命中占满，`settings.py:83/133` 被截断未显示 → 我据此写下「仅 2 处引用，删除安全」（**实际 4 处**）→ 实施会话执行到 settings.py 才发现必须扩边界 → **中途报批、会话被打断**。代价由实施会话承担了 |
 | 26 | **验收清单新增默认项：最自然的用户路径是否可达**（N2 的流程教训） | 后续步骤的验收判据里，除「API 是否返回 200」外，默认加一条：**该功能最自然的用户路径能否走通**（含前端入口、白名单、按钮状态等跨层环节）。 | **跨层缺口是分步验证的结构性盲区**：F1 验后端（图片上传链路修好）、C3 验前端（生产化），各自都绿，**但连接处没人验**——`UPLOAD_CONSTRAINTS` 不含图片，导致 F1 的修复只有拖拽一条路能触达。只有 N2 这种真实端到端才撞得出来。同类风险在 A/B 组同样存在（前端改动 + 后端协议变更） |
 
 ### 3.4 被否决的方案（各步交接文档第 3 节回流汇总）
@@ -578,6 +593,7 @@ N3（推预构建镜像）→ N2（第 2 次，按 pull 路径复验）
 | P1 | `docs/progress/step-P1.md` | ✅ 通过（commit `8bfa582` / `b44cc17` / `d52169e`，278 passed）。全量回归降至 **30–39s**；新增 T26 待折进 D 组 |
 | N2 | `docs/progress/step-N2.md` | ✅ 通过（第 1 次，零代码改动，**7 项 6 过 1 败**）。含总领独立复核 5 项、**总领认领 2 处自身失误**（③ 判据要了 C4 未交付之物；F1 把「不改 `UPLOAD_CONSTRAINTS`」划入「不做」→ 造成跨层缺口）、**定性上调 1 处**（N2-2 由 UX 瑕疵上调为 P1）。核心成果：冷构建 **433s**（README「10 分钟以内」承诺成立）、**伪向量降级在真实冷部署中实锤**（T20 由推测升级为事实） |
 | F3 | `docs/progress/step-F3.md` | ✅ 通过（commit `87cf570` / `a8e95a4` / `2b951f7`，**287 passed**）。含总领独立复核 6 项、全前端扫描发现**范围事实**「**3 个文件入口只修了 1 个**」（→ 衍生 **F6**）、认领 bmp 属**与 N2-2 同型**的「声称支持 vs 上游实际支持」不一致（→ E-31，待 owner 决策剔除/转码）。核心成果：三份手写清单归一为单一事实源（全链派生，无手写副本）、双服务 `Up (healthy)`、拉取失败不再留空失效。**E-28 陷阱复现吻合**：实施会话独立实测的 `127.0.0.1 exit=0` / `localhost exit=1` 与总领记录一致——说明该登记有效 |
+| F5 | `docs/progress/step-F5.md` | ✅ 通过（commit `a79f6d9` / `172960a` / `0251a56` / `3395670`，**295 passed**）。含总领独立复核 5 项、**总领认领 1 处自身失误**（`grep \| head -4` 截断导致爆炸半径误判「2 处」实为「4 处」→ 造成实施会话中途报批，已固化为**决策 27**）、**定性上调 1 处**（`_process_upload` 吞异常削弱 owner 拍板的 A1 → 从「上报不修」上调为 F4′ 必办）。核心成果：镜像 **3.25→1.67GB**、冷构建 **433→207.9s**、本地模型通道全移除、无 Key 硬失败 + rerank 优雅降级不刷屏 |
 | — | 其余步骤完成后按 `step-<id>.md` 归档 | — |
 
 ---
