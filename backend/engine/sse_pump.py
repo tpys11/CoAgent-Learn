@@ -34,6 +34,7 @@ class SSEBatcher:
         self._window_deadline: float | None = None
         self._last_emit: float | None = None
         self._seen_any = False   # 流内首个 answer token 直发标记
+        self._attempt = 0        # A2：当前稿号，随帧透传（重试稿区分用）
 
     # ---------- 泵调用面 ----------
 
@@ -42,11 +43,13 @@ class SSEBatcher:
         空闲心跳从最近一次真实发射起算。"""
         self._last_emit = time.monotonic() if now is None else now
 
-    def add(self, chunk: str, now: float | None = None) -> str | None:
-        """answer piece 入批。返回应立即发出的 answer_token 帧（无则 None）。"""
+    def add(self, chunk: str, attempt: int = 0, now: float | None = None) -> str | None:
+        """answer piece 入批（attempt 随帧透传，A2 重试稿区分用）。
+        返回应立即发出的 answer_token 帧（无则 None）。"""
         if not chunk:
             return None
         now = time.monotonic() if now is None else now
+        self._attempt = attempt
         if not self._seen_any:
             # 首个 token 直发：不进合批窗口，首字延迟 +0ms（A1 验收项）
             self._seen_any = True
@@ -105,4 +108,4 @@ class SSEBatcher:
     # ---------- 内部 ----------
 
     def _answer_frame(self, text: str) -> str:
-        return f"data: {json.dumps({'type': 'answer_token', 'chunk': text})}\n\n"
+        return f"data: {json.dumps({'type': 'answer_token', 'chunk': text, 'attempt': self._attempt})}\n\n"

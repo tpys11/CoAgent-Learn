@@ -1,12 +1,13 @@
 import type { ChatStep, MindchainItem, ReviewResult, SubAgentSse } from './types'
 
-/** 后端 /api/chat SSE 事件的完整类型（8 类 + start/heartbeat）。 */
+/** 后端 /api/chat SSE 事件的完整类型（8 类 + start/heartbeat + A2 answer_reset）。 */
 export type ChatEvent =
   | { type: 'start'; request_id: string }
   | { type: 'heartbeat' }
   | { type: 'step'; agent: string }
   | { type: 'thought_token'; agent: string; chunk: string }
-  | { type: 'answer_token'; chunk: string }
+  | { type: 'answer_token'; chunk: string; /** A2：所属稿号（重试递增），旧 2 元组帧为 0 */ attempt?: number }
+  | { type: 'answer_reset'; /** A2：被作废的稿号 */ attempt: number; reason: string }
   | SubAgentSse
   | {
       type: 'done'

@@ -22,7 +22,8 @@
  },
  {
   "type": "answer_token",
-  "chunk": "黄金回答内容"
+  "chunk": "黄金回答内容",
+  "attempt": 0
  },
  {
   "type": "done",

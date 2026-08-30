@@ -387,7 +387,9 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
 
         def _on_content(piece):
             collected.append(piece)
-            token_queue.put(("answer", piece))
+            # A2：attempt 随帧透传——前端可区分旧稿/新稿 token（attempt 在
+            # 下方重试环中递增，闭包按调用时绑定取当前值）
+            token_queue.put(("answer", piece, attempt))
 
         # 强模型思考流内实时可见（v1 对齐），同时累积供思维链持久化
         gen_reasoning: list[str] = []
@@ -549,6 +551,12 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
             if attempt > REVIEW_MAX_RETRY:
                 reviewed_info["note"] = "达重试上限，保留当前稿并附审核意见"
                 break
+            # A2：作废旧稿信号——只在确定还有下一稿时推（达上限保留当前稿则不推，
+            # 否则气泡先被清空再靠 done 恢复会闪一下）。必须先于下一稿任何 answer
+            # token 入队（FIFO 天然保证 reset 先达前端）；泵侧收到后先 drop_pending
+            # 丢弃合批窗内未发旧稿块，前端再清空气泡——缺这帧则旧稿 token 永不消失、
+            # 新稿继续追加 = 两稿拼接（本步要修的用户可见 bug）
+            token_queue.put(("answer_reset", attempt - 1, "审核未通过"))
             attempt_reasons = verdict["reasons"]
 
         if cancel_evt.is_set():
@@ -673,9 +681,18 @@ async def stream_response(req):
                 continue
             if msg[0] == "answer":
                 # answer token 进合批器：首 token 直发，其余按 40ms/256chars 窗发
-                frame = batcher.add(msg[1])
+                frame = batcher.add(msg[1], msg[2] if len(msg) > 2 else 0)
                 if frame:
                     yield frame
+                continue
+            if msg[0] == "answer_reset":
+                # A2：必须先丢弃合批窗内未发的旧稿块、再发 reset——顺序反了，
+                # 旧稿合批块会在 reset 之后到达前端，两稿拼接以更隐蔽形式复发
+                batcher.drop_pending()
+                text, stop = _frame(msg)
+                if text:
+                    yield text
+                batcher.mark_emitted()
                 continue
             # 非 answer 帧前必须先排空合批缓冲——保持 answer 与其他帧的
             # 队列 FIFO 相对顺序（done/error 前的 answer 不能被缓冲吞掉）
@@ -701,7 +718,11 @@ def _frame(msg) -> tuple[str, bool]:
         _, agent, chunk = msg
         return f"data: {json.dumps({'type': 'thought_token', 'agent': agent, 'chunk': chunk})}\n\n", False
     if kind == "answer":
-        return f"data: {json.dumps({'type': 'answer_token', 'chunk': msg[1]})}\n\n", False
+        attempt = msg[2] if len(msg) > 2 else 0   # A2：旧 2 元组 → attempt=0（A1 帧格式兼容）
+        return f"data: {json.dumps({'type': 'answer_token', 'chunk': msg[1], 'attempt': attempt})}\n\n", False
+    if kind == "answer_reset":
+        _, attempt, reason = msg                  # A2：作废旧稿帧（先 drop_pending 再发，见泵）
+        return f"data: {json.dumps({'type': 'answer_reset', 'attempt': attempt, 'reason': reason})}\n\n", False
     if kind == "subagent":
         _sp = dict(msg[1] or {})
         _sp["event"] = _sp.pop("type", "")

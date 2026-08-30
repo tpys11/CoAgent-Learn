@@ -21,6 +21,19 @@ function upsertLastAssistant(prev: Message[], msg: Message): Message[] {
   return arr
 }
 
+/** A2：answer_reset 的消息状态转移（纯函数，便于 vitest 钉住清空时序）。
+ * 置空最后一条 assistant 占位的 content（旧稿作废），保留 think/steps 等其余字段；
+ * 末条不是 assistant（异常时序）则原样返回，绝不误伤别的消息。 */
+export function applyAnswerResetMessage(prev: Record<string, Message[]>, did: string | null): Record<string, Message[]> {
+  const key = did || ''
+  const arr = prev[key] || []
+  const last = arr[arr.length - 1]
+  if (last && last.role === 'assistant') {
+    return { ...prev, [key]: [...arr.slice(0, -1), { ...last, content: '' }] }
+  }
+  return prev
+}
+
 interface UseChatStreamArgs {
   agents: AgentConfig[]
   currentProjectId: string | null
@@ -294,6 +307,14 @@ export function useChatStream(args: UseChatStreamArgs) {
             pendingAnswerRef.current += ch
             ensureRevealLoop()
           }
+          return
+        }
+        if (data.type === 'answer_reset') {
+          // A2：审核未通过重新生成——必须先清流式缓冲、再置空气泡 content
+          //（顺序错了会漏字符：reset 前已排队的 token 会残留在新稿里）；
+          // think/steps 保留。attempt 递增仅作区分记录，清空是无条件的。
+          pendingAnswerRef.current = ''
+          setAllMessages(prev => applyAnswerResetMessage(prev, activeDidRef.current))
           return
         }
         if (data.type === 'subagent') {
