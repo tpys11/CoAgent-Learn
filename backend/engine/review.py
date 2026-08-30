@@ -55,7 +55,16 @@ def pick_judge_llm(template: str, req):
     try:
         # thinking=False：v4 系默认开思考，思考文本走 reasoning_content 会被
         # think_then_json 的 token 收集混入 JSON 提取（旧版"输出不可解析"的根因）
-        return DeepSeekLLM(api_key=key, model=model, base_url=base_url, thinking=False)
+        # T32：走 D2 的通用进程级缓存（_cached_llm），传 judge 自己的组合参数
+        # (key, base_url, model, thinking=False)——绝不复用 _make_llm（语义是
+        # 「req 主模型」，会静默改变审核语义）；组合含 model/base_url/thinking，
+        # judge 与主模型/其他端点互不串味。函数内延迟导入：依赖方向是
+        # pipeline_v2 → engine.review，顶层反向 import 会成环（先例：下方 fallback）。
+        from engine.pipeline_v2 import _cached_llm
+        return _cached_llm(
+            key, base_url, model, False, None,
+            lambda: DeepSeekLLM(api_key=key, model=model, base_url=base_url,
+                                thinking=False))
     except Exception:
         from engine.pipeline_v2 import _make_llm
         return _make_llm(req)
