@@ -364,40 +364,13 @@ export function useChatStream(args: UseChatStreamArgs) {
         const thinkArr = mindchainRef.current
         if (debugLine) thinkArr.push({ agent: "运行统计", content: debugLine })
         const finalContent = finalReply || (flowError ? '⚠️ ' + flowError : '处理完成')
-        const typingOn = true
-        if (typingOn && streamedRef.current) {
-          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: finalContent, steps, think: thinkArr, special, retrievedImages, review }) }))
-        } else if (typingOn) {
-          // 打字机必须钉住目标下标：isLoading 在动画结束前已复位，用户可再发消息——
-          // 旧写法盲写"数组末条"，会把旧回复的打字内容踩进新消息的占位气泡（真bug）
-          let typeIdx = -1
-          setAllMessages(prev => {
-            const next = upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: '', steps, think: thinkArr, special, retrievedImages, review })
-            typeIdx = next.length - 1
-            return { ...prev, [did || '']: next }
-          })
-          let i = 0
-          const iv = setInterval(() => {
-            i += 3
-            const chunk = finalContent.slice(0, i)
-            setAllMessages(prev => {
-              const arr = [...(prev[did || ''] || [])]
-              const tgt = arr[typeIdx]
-              if (!tgt || tgt.role !== 'assistant') { clearInterval(iv); return prev }
-              if (arr.length !== typeIdx + 1) {
-                // 打字期间插入了新消息：本条立即终稿化并停表，绝不越过下标乱写
-                clearInterval(iv)
-                arr[typeIdx] = { role: 'assistant', content: finalContent, steps, think: thinkArr, special, retrievedImages, review }
-                return { ...prev, [did || '']: arr }
-              }
-              arr[typeIdx] = { role: 'assistant', content: chunk, steps, think: thinkArr, special, retrievedImages, review }
-              return { ...prev, [did || '']: arr }
-            })
-            if (i >= finalContent.length) clearInterval(iv)
-          }, 16)
-        } else {
-          setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: finalContent, steps, think: thinkArr, special, retrievedImages, review }) }))
-        }
+        // A3：打字机降级分支已删除。原 :347-348（streamedRef=true 终稿）与
+        // :377-378（直出终稿）两分支内容完全相同，合并为一次无条件同步写入——
+        // upsertLastAssistant 是一次同步盲写末条，不存在打字机那种 8 秒异步
+        // 写入窗口（旧 :350-351 注释记录的真 bug 成因随分支一起消亡）。
+        // streamedRef=false（记忆短路/SSE 被缓冲/中断后走到 done）时终稿直出，
+        // 不再用定时器逐字推进（1,500 字 → 500 次全量重渲染）。
+        setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: finalContent, steps, think: thinkArr, special, retrievedImages, review }) }))
       } catch (_ex) {}
     } catch (e: any) {
       console.error('[chat] 网络中断：', e)
