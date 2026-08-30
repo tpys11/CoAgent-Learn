@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, memo } from 'react'
 import { CheckCircle2, Image as ImageIcon, PenLine, Lightbulb } from 'lucide-react'
 import type { Message, Project } from '../../types'
 import MarkdownIt from 'markdown-it'
@@ -57,8 +57,11 @@ const FLOW_NODE_MAP: Record<string, string> = {
 /** 导出仅供测试（streaming.test 同模式）；运行时组件内使用 */
 export const isFlowNode = (name: string): string | null => FLOW_NODE_MAP[name] ?? null
 
-interface AssistantMessageProps {
+export interface AssistantMessageProps {
   msg: Message
+  /** B1：该消息在全量 messages 数组中的下标——回调经 idx 定位目标消息，
+   *  回调引用才能做成全局稳定（memo 生效前提）；同时保证 idx 始终是全量下标。 */
+  msgIndex: number
   isLoading: boolean
   isLast: boolean
   flowActiveAgent?: string | null
@@ -66,9 +69,9 @@ interface AssistantMessageProps {
   /** 本次流式已参与的 agent 序列（step/thought_token 事件收集），标题行展示链条 */
   flowAgents?: string[]
   specialSelectedKeys: string[]
-  onToggleSpecial: (key: string) => void
+  onToggleSpecial: (msgIndex: number, key: string) => void
   specialDismissed: boolean
-  onDismissSpecial: () => void
+  onDismissSpecial: (msgIndex: number) => void
   followups: string[]
   onSendFollowup: (q: string) => void
   onManualSetup?: () => void
@@ -76,9 +79,11 @@ interface AssistantMessageProps {
   onGenerateSpecial?: (keys: string[], content: string) => void
 }
 
-/** AI 回复消息气泡：思考过程 + 回答正文 + 运行统计 + 资源生成建议 + 图片命中 + 审核报告 + 追问。 */
-export default function AssistantMessage({
-  msg, isLoading, isLast, flowActiveAgent, flowStatus, flowAgents,
+/** AI 回复消息气泡：思考过程 + 回答正文 + 运行统计 + 资源生成建议 + 图片命中 + 审核报告 + 追问。
+ *  B1：memo 包裹——CenterPanel 侧 16 个 props 全部引用稳定（buildMessageProps 统一推导），
+ *  流式期重渲染被浅比较精确限制在最后一条（msg 引用随帧变化的只有它）。 */
+function AssistantMessageImpl({
+  msg, msgIndex, isLoading, isLast, flowActiveAgent, flowStatus, flowAgents,
   specialSelectedKeys, onToggleSpecial, specialDismissed, onDismissSpecial,
   followups, onSendFollowup, onManualSetup, currentProject, onGenerateSpecial,
 }: AssistantMessageProps) {
@@ -129,7 +134,7 @@ export default function AssistantMessage({
                   const sel = specialSelectedKeys.includes(s.key)
                   return (
                     <button key={s.key}
-                      onClick={() => onToggleSpecial(s.key)}
+                      onClick={() => onToggleSpecial(msgIndex, s.key)}
                       className={"chip text-left text-[11px] px-2.5 py-1 transition-all" + (sel ? '' : ' opacity-40')}>
                       {s.label}
                     </button>
@@ -139,10 +144,10 @@ export default function AssistantMessage({
               <div className="flex items-center justify-end gap-3">
                 <button onClick={() => {
                   if (specialSelectedKeys.length) onGenerateSpecial?.(specialSelectedKeys, msg.content)
-                  onDismissSpecial()
+                  onDismissSpecial(msgIndex)
                 }}
                   className="text-[10px] font-semibold text-[var(--accent)] hover:underline">生成所选</button>
-                <button onClick={onDismissSpecial}
+                <button onClick={() => onDismissSpecial(msgIndex)}
                   className="text-[10px] text-dim hover:text-[var(--text)]">忽略</button>
               </div>
             </div>
@@ -233,8 +238,12 @@ export default function AssistantMessage({
   )
 }
 
-/** 流式 markdown 渐进渲染（reasonix 同款方案）。 */
-function StreamingMd({ text, streaming }: { text: string; streaming?: boolean }) {
+const AssistantMessage = memo(AssistantMessageImpl)
+export default AssistantMessage
+
+/** 流式 markdown 渐进渲染（reasonix 同款方案）。B1：memo 包裹（内部 props 中
+ *  仅 text/streaming 参与浅比较；流式期只有 text 变化的那一条会重渲染）。 */
+const StreamingMd = memo(function StreamingMd({ text, streaming }: { text: string; streaming?: boolean }) {
   const stableEnd = useMemo(() => {
     if (!streaming) return -1
     let e = text.lastIndexOf('\n\n')
@@ -259,11 +268,13 @@ function StreamingMd({ text, streaming }: { text: string; streaming?: boolean })
       {tail ? <div className="whitespace-pre-wrap break-words">{tail}</div> : null}
     </div>
   )
-}
+})
 
 /** 思考过程区块（DeepSeek 式独立区块）。条目4：run_ids 并集保留——前端合并与后端 _merge_mindchain 同款陷阱，重建时不得剥字段。
- *  闭环六规范·生命周期：首个正文 token 到达 → 整块收为「思考 Xs」（计时自首个思考条目出现起）；完成态保持折叠可重展。 */
-function ReasoningBlock({ items, streaming, activeAgent, activeStatus, flowAgents, hasAnswer }: { items: Array<{ agent: string; content: string; run_ids?: string[] }> | string[]; streaming?: boolean; activeAgent?: string | null; activeStatus?: string; flowAgents?: string[]; hasAnswer?: boolean }) {
+ *  闭环六规范·生命周期：首个正文 token 到达 → 整块收为「思考 Xs」（计时自首个思考条目出现起）；完成态保持折叠可重展。
+ *  B1：memo 包裹——流式纯 answer 排水期 think/flow 引用不变 → 本块跳过重渲染；
+ *  折叠/展开是内部 state，不受 memo 影响（外部 props 不变时按原样保留）。 */
+const ReasoningBlock = memo(function ReasoningBlock({ items, streaming, activeAgent, activeStatus, flowAgents, hasAnswer }: { items: Array<{ agent: string; content: string; run_ids?: string[] }> | string[]; streaming?: boolean; activeAgent?: string | null; activeStatus?: string; flowAgents?: string[]; hasAnswer?: boolean }) {
   const merged = useMemo(() => {
     const list = (items || []).map(it => typeof it === 'string' ? { agent: '', content: it, run_ids: [] as string[] } : { ...it, run_ids: Array.from(new Set(it.run_ids || [])) })
       .filter(it => it.agent !== '运行统计')
@@ -408,4 +419,4 @@ function ReasoningBlock({ items, streaming, activeAgent, activeStatus, flowAgent
       )}
     </div>
   )
-}
+})

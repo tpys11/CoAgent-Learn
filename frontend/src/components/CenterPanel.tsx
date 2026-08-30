@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Send, Bot, MessagesSquare, Coins, CheckCircle2, Check, ChevronDown, Upload, SlidersHorizontal, AlertTriangle, Search, FileText, LayoutTemplate, Image as ImageIcon, Square, ArrowDownToLine, Timer } from 'lucide-react'
 import type { Message, Project } from '../types'
 import { LS, lsGet, lsSet, lsGetJSON } from '../storage'
 import { api } from '../api'
-import AssistantMessage from './chat/AssistantMessage'
+import AssistantMessage, { type AssistantMessageProps } from './chat/AssistantMessage'
 
 /** 档位模式：极速/思考/研究（用户时间-质量期望的表达），与「对话流程」区块一致 */
 const TEMPLATE_OPTIONS = [
@@ -29,6 +29,73 @@ const renderContent = function(content: string) {
       '<span style="display:inline-flex;align-items:center;gap:4px;background:var(--bg-hover);border-radius:8px;padding:2px 8px;font-size:12px;color:var(--text-muted);margin:2px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> $1</span>')
     .replace(/\n/g, '<br/>')
   return html
+}
+
+// ---------- B1：props 引用稳定化（memo 生效前提） ----------
+
+// msg.special 默认选中 keys 的引用缓存：以 msg 对象为 key 的 WeakMap——
+// 历史消息 msg 引用稳定（useChatStream 排水只替换末条）→ 派生数组引用稳定，
+// 不再每次渲染新建数组打穿 memo（原 :356 行为等价：优先取用户勾选，缺省全选）。
+const _defaultSpecialKeys = new WeakMap<object, string[]>()
+// 非末条消息的 followups 常量（isLast 分支才消费；模块级常量保证引用恒定）
+const _EMPTY_FOLLOWUPS: string[] = []
+/** 导出仅供测试（isFlowNode 同模式） */
+export const specialKeysOf = (msg: Message): string[] => {
+  let keys = _defaultSpecialKeys.get(msg)
+  if (!keys) {
+    keys = (msg.special || []).map(x => x.key)
+    _defaultSpecialKeys.set(msg, keys)
+  }
+  return keys
+}
+
+/** 导出仅供测试（isFlowNode 同模式）：逐消息 props 推导——渲染路径 map 内同样
+ *  走本函数（spread 到 AssistantMessage），保证稳定性测试钉住的就是真实接线。
+ *  同输入两次调用，返回的每个 prop 引用逐个 Object.is 相等 → memo 浅比较可
+ *  跳过历史消息；流式期仅末条 msg 引用随帧变化 → 重渲染精确限制在 1 条。 */
+export function buildMessageProps(
+  msg: Message,
+  idx: number,
+  total: number,
+  ctx: {
+    isLoading: boolean
+    flowActiveAgent: string | null | undefined
+    flowStatus: string | undefined
+    flowAgents: string[] | undefined
+    specialSel: Record<number, string[]>
+    dismissedSpecial: Set<number>
+    followups: string[]
+    onToggleSpecial: (msgIndex: number, key: string) => void
+    onDismissSpecial: (msgIndex: number) => void
+    onSendFollowup: (q: string) => void
+    onManualSetup: (() => void) | undefined
+    currentProject: Project | null
+    onGenerateSpecial: ((keys: string[], content: string) => void) | undefined
+  },
+): AssistantMessageProps {
+  // isLoading / flowActiveAgent / flowStatus / flowAgents / followups 仅在
+  // streaming 或 isLast 分支被消费——非末条一律传常量：isLoading 翻转、step
+  // 切换、追问加载完成都不再打穿历史消息的 memo（末条身份变更时 isLast 翻转
+  // 本身已触发那一次重渲染，语义无损）。
+  const isLast = idx === total - 1
+  return {
+    msg,
+    msgIndex: idx,
+    isLoading: isLast ? ctx.isLoading : false,
+    isLast,
+    flowActiveAgent: isLast ? ctx.flowActiveAgent : undefined,
+    flowStatus: isLast ? ctx.flowStatus : undefined,
+    flowAgents: isLast ? ctx.flowAgents : undefined,
+    specialSelectedKeys: ctx.specialSel[idx] ?? specialKeysOf(msg),
+    onToggleSpecial: ctx.onToggleSpecial,
+    specialDismissed: ctx.dismissedSpecial.has(idx),
+    onDismissSpecial: ctx.onDismissSpecial,
+    followups: isLast ? ctx.followups : _EMPTY_FOLLOWUPS,
+    onSendFollowup: ctx.onSendFollowup,
+    onManualSetup: ctx.onManualSetup,
+    currentProject: ctx.currentProject,
+    onGenerateSpecial: ctx.onGenerateSpecial,
+  }
 }
 
 
@@ -88,6 +155,26 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   // 资源生成建议卡片：各消息选中的形式 key（默认全选）+ 已忽略的消息 idx
   const [specialSel, setSpecialSel] = useState<Record<number, string[]>>({})
   const [dismissedSpecial, setDismissedSpecial] = useState<Set<number>>(new Set())
+  // B1：全量 messages 的最新引用——稳定回调内按 idx 取当届消息，闭包不捕获数组
+  const messagesRef = useRef(messages)
+  messagesRef.current = messages
+  // B1：特殊建议回调做成全局稳定引用（目标消息 idx 作参数传入）——memo 生效前提；
+  // 默认全选 keys 从 messagesRef 现取当届消息，语义与原内联闭包一致
+  const handleToggleSpecial = useCallback((msgIndex: number, key: string) => {
+    setSpecialSel(prev => {
+      const cur = prev[msgIndex] ?? specialKeysOf(messagesRef.current[msgIndex])
+      const next = cur.includes(key) ? cur.filter(k => k !== key) : [...cur, key]
+      return { ...prev, [msgIndex]: next }
+    })
+  }, [])
+  const handleDismissSpecial = useCallback((msgIndex: number) => {
+    setDismissedSpecial(prev => new Set(prev).add(msgIndex))
+  }, [])
+  // B1：App 传入的 onManualSetup 是内联箭头（App 每帧重建）→ latest-ref 包一层，
+  // 引用恒定且总是调用最新版本，语义不变
+  const onManualSetupRef = useRef(onManualSetup)
+  onManualSetupRef.current = onManualSetup
+  const stableManualSetup = useCallback(() => { onManualSetupRef.current?.() }, [])
   useEffect(() => {
     const el = msgScrollRef.current
     if (!el) return
@@ -238,19 +325,27 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
     setAttachments([])
   }
 
-  const sendFollowup = (q: string) => {
-    if (!getApiKey()) { onRequestKey?.(); return }
-    onSendMessage(q, {
-      template: templateMode,
-      auto: autoMode,
+  // B1：sendFollowup / handleGenerateSpecial 的最新上下文引用——deps 里只要出现
+  // App 传入的内联回调或低频状态，useCallback 就会逐帧换引用打穿 memo；改走
+  // 空依赖 + latest-ref，引用恒定且行为（读当届值）不变
+  const followCtxRef = useRef({ onSendMessage, onRequestKey, templateMode, autoMode, currentProject })
+  followCtxRef.current = { onSendMessage, onRequestKey, templateMode, autoMode, currentProject }
+
+  const sendFollowup = useCallback((q: string) => {
+    const c = followCtxRef.current
+    if (!getApiKey()) { c.onRequestKey?.(); return }
+    c.onSendMessage(q, {
+      template: c.templateMode,
+      auto: c.autoMode,
     })
-  }
+  }, [])
 
   /** 资源生成：按能力注册表逐项生成，并保存到「我的上传」 */
-  const handleGenerateSpecial = async (keys: string[], content: string) => {
-    if (!keys.length || !currentProject) return
+  const handleGenerateSpecial = useCallback(async (keys: string[], content: string) => {
+    const c = followCtxRef.current
+    if (!keys.length || !c.currentProject) return
     const apiKey = getApiKey()
-    if (!apiKey) { onRequestKey?.(); return }
+    if (!apiKey) { c.onRequestKey?.(); return }
     const prov = lsGet(LS.provider, 'deepseek')
     const baseUrl = prov === 'zhipu' ? 'https://open.bigmodel.cn/api/paas/v4' : 'https://api.deepseek.com/v1'
     const model = prov === 'zhipu' ? 'glm-4-flash' : 'deepseek-v4-flash-vision-exp'
@@ -259,14 +354,14 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
       try {
         const r = await api.generateResource({ key, content, api_key: apiKey, base_url: baseUrl, model })
         if (r?.status === 'ok' && r.content) {
-          await api.saveResource({ name: `生成·${r.label}`, content: r.content, project_id: currentProject.id, type: 'gen:' + key, append: true })
+          await api.saveResource({ name: `生成·${r.label}`, content: r.content, project_id: c.currentProject.id, type: 'gen:' + key, append: true })
           done.push(r.label)
         }
       } catch {}
     }
     if (done.length) alert(`已生成：${done.join('、')}，已保存到「我的上传」`)
     else alert('资源生成失败，请检查 API Key')
-  }
+  }, [])
 
   return (
     <main className="flex-1 h-full min-w-0 flex flex-col panel rounded-3xl overflow-hidden">
@@ -338,7 +433,8 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
             </div>
           )}
 
-          {/* 消息列表：用户色块靠右，AI 正文流 */}
+          {/* 消息列表：用户色块靠右，AI 正文流。
+              B1：props 统一经 buildMessageProps 推导（引用稳定）→ memo 跳过历史消息 */}
           {messages.map((msg, idx) => (
             msg.role === 'user' ? (
               <div key={idx} className="self-end max-w-[75%] card-surface px-4 py-3 text-sm leading-relaxed" style={{ borderBottomRightRadius: 6 }}>
@@ -346,27 +442,21 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
               </div>
             ) : (
               <div key={idx} className="w-full text-sm leading-7 animate-[fadeIn_0.25s_ease]">
-                <AssistantMessage
-                  msg={msg}
-                  isLoading={isLoading}
-                  isLast={idx === messages.length - 1}
-                  flowActiveAgent={flowActiveAgent}
-                  flowStatus={flowStatus}
-                  flowAgents={flowAgents}
-                  specialSelectedKeys={specialSel[idx] ?? (msg.special || []).map(x => x.key)}
-                  onToggleSpecial={(key) => setSpecialSel(prev => {
-                    const cur = prev[idx] ?? (msg.special || []).map(x => x.key)
-                    const next = cur.includes(key) ? cur.filter(k => k !== key) : [...cur, key]
-                    return { ...prev, [idx]: next }
-                  })}
-                  specialDismissed={dismissedSpecial.has(idx)}
-                  onDismissSpecial={() => setDismissedSpecial(prev => new Set(prev).add(idx))}
-                  followups={followups}
-                  onSendFollowup={sendFollowup}
-                  onManualSetup={onManualSetup}
-                  currentProject={currentProject}
-                  onGenerateSpecial={handleGenerateSpecial}
-                />
+                <AssistantMessage {...buildMessageProps(msg, idx, messages.length, {
+                  isLoading,
+                  flowActiveAgent,
+                  flowStatus,
+                  flowAgents,
+                  specialSel,
+                  dismissedSpecial,
+                  followups,
+                  onToggleSpecial: handleToggleSpecial,
+                  onDismissSpecial: handleDismissSpecial,
+                  onSendFollowup: sendFollowup,
+                  onManualSetup: stableManualSetup,
+                  currentProject,
+                  onGenerateSpecial: handleGenerateSpecial,
+                })} />
               </div>
             )
           ))}
