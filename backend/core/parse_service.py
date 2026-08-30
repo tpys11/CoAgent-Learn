@@ -127,10 +127,32 @@ def configured_engine() -> str:
     return eng if eng in _ENGINES else "pymupdf4llm"
 
 
+def check_engine_health(stage: str) -> None:
+    """F8-S1 引擎健康检查：所选云引擎缺凭据时打 WARNING（不是失败——解析会自动降级）。
+    stage: "startup"（应用启动后一次）| "parse"（每次解析调用前）。缺凭据属
+    「优雅降级 + 可见日志」（CONVENTIONS §6），文案需含原因/后果/怎么办。"""
+    eng = configured_engine()
+    if eng == "pymupdf4llm":
+        return  # 本地引擎无需凭据
+    from core.config import config as _cfg
+    if eng == "mineru" and not getattr(_cfg, "MINERU_API_TOKEN", ""):
+        logger.warning("[引擎健康][%s] 已选 MinerU 但未配置 MINERU_API_TOKEN——"
+                       "公式/扫描件高保真解析不可用，PDF 将降级 pymupdf4llm（无 OCR）。"
+                       "怎么办：mineru.net 免费申请 Token 后填入 设置 → AI 服务 → 文档解析",
+                       stage)
+    elif eng == "mathpix" and not (getattr(_cfg, "MATHPIX_APP_ID", "")
+                                   and getattr(_cfg, "MATHPIX_APP_KEY", "")):
+        logger.warning("[引擎健康][%s] 已选 Mathpix 但未配置 MATHPIX_APP_ID/MATHPIX_APP_KEY——"
+                       "公式专家解析不可用，PDF 将降级 pymupdf4llm。"
+                       "怎么办：mathpix.com 申请后填入 设置 → AI 服务 → 文档解析",
+                       stage)
+
+
 def parse_document(filename: str, data: bytes) -> tuple[str, str]:
     """按设置解析 PDF，失败逐级降级，永不抛出。返回 (text, engine_used)。
     降级链：配置引擎 → pymupdf4llm → 旧版 file_parser（markitdown/pypdf）。"""
     from core.file_parser import parse_file
+    check_engine_health("parse")
     engine = configured_engine()
     order = [engine] + [e for e in ("pymupdf4llm",) if e != engine]
     last_err = None

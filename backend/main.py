@@ -45,6 +45,13 @@ async def lifespan(app: FastAPI):
         _apply_dynamic_settings()
     except Exception:
         logger.exception("启动时应用动态设置失败")
+    # F8-S1 引擎健康检查：启动即对「选了云引擎但没配 token/key」给出可见 WARNING
+    # （优雅降级语义不变，解析时仍会自动降级 pymupdf4llm）。
+    try:
+        from core import parse_service
+        parse_service.check_engine_health("startup")
+    except Exception:
+        logger.exception("启动时引擎健康检查失败")
     try:
         _ensure_default_project()
     except Exception:
