@@ -546,7 +546,7 @@ N3（推预构建镜像）→ N2（第 2 次，按 pull 路径复验）
 
 | # | 待决内容 | 备选 | 建议 |
 |:-:|---------|------|---------|
-| 1 | **registry 选哪个**：GHCR（`ghcr.io/<owner>/<repo>`）还是 Docker Hub（`<user>/<repo>`） | A. GHCR　B. Docker Hub | **GHCR** |
+| 1 | ~~**registry 选哪个**：GHCR 还是 Docker Hub~~ | A. GHCR　B. Docker Hub | ✅ **owner 2026-08-30 已选定 GHCR**（`ghcr.io/tpys11/coagent-learn`。注：GHCR 包名必须全小写）。剩余 2、3 两项待定，已向 owner 解释清楚含义后由其拍板 |
 | 2 | 是否需要 GitHub Actions 自动构建推送，还是本地手动 `docker push` | A. Actions 自动　B. 手动推送 | 手动推送（一次交付，无需维护 CI） |
 | 3 | 镜像标签策略：固定 `latest` 还是带 commit sha / 版本号 | A. `latest`　B. `latest` + sha 双标签 | B（可回溯到具体提交） |
 | 4 | ~~**【C4 新增，优先级最高】bind mount 如何处置**~~ | ① 全部保留 / ② 移除代码挂载 / ③ 不做 N3 | ✅ **owner 2026-08-29 已选定 ②**（详见决策 19 与下方展开） |
