@@ -10,8 +10,8 @@
 | 基线 commit | `4a1a7cf`（2026-08-29，分支 `master`，工作区干净） |
 | 看板初始化 | 2026-08-29 |
 | 回归基线 | 后端 pytest **241 / 241**（基线 commit `4a1a7cf`）；前端 vitest **26 / 26** + `tsc` 0 错误 |
-| **当前实测规模** | 后端 pytest **356 passed**（A 组收口，commit `ba0f01a`）；前端 vitest **32**（原 26）。演进：`241` →C1/C2/N1/C3 各步守卫→ `251` →F1 +9 条→ `260` →C4 +6 条→ `266` →F2 +5 条→ `271` →P1 +7 条守卫→ `278` →F3 +9→ `287` →F5 +8→ `295` →F6 +5→ `300` →F4′ +14→ `314` →D 组 +22→ `336` →**A 组 +20 条守卫→ `356`**（D1 守卫 4 / T32 5 / A1 7 / A2 4）。前端 vitest `26` → **A2 +4 → `30` → A3 +2 → `32`** |
-| **全量回归耗时** | **47.58s**（A 组验收复测，总领实测）。演进：`302.01s`（F2 后实测）/ `122.28s`（P1 会话同机实测，快状态）→ P1 后 `30.61s`（P1 会话）/ `38.40–39.17s`（总领复测）→ F4′ 验收 `41.80s` → D 组验收 `44.30s` → A 组验收 `47.58s`（总领实测，容器运行态）。绝对值随机状态波动较大（跨机观测差约 3 倍），以同时段中位数与 A/B 比值为准。 |
+| **当前实测规模** | 后端 pytest **357 passed**（B 组收口，commit `4947558`）；前端 vitest **90**（原 32）。演进：`241` →C1/C2/N1/C3 各步守卫→ `251` →F1 +9 条→ `260` →C4 +6 条→ `266` →F2 +5 条→ `271` →P1 +7 条守卫→ `278` →F3 +9→ `287` →F5 +8→ `295` →F6 +5→ `300` →F4′ +14→ `314` →D 组 +22→ `336` →A 组 +20→ `356` →**B 组 +1 → `357`**（T38 1 条，后端；其余 B1/B3/B2/B4 均为前端）。前端 vitest `26` →A2 +4→ `30` →A3 +2→ `32` →**B 组 +58 → `90`**（B1 8 / B3 38 / B2 8 / B4 4） |
+| **全量回归耗时** | **49.73s**（B 组验收复测，总领实测）。演进：`302.01s`（F2 后实测）/ `122.28s`（P1 会话同机实测，快状态）→ P1 后 `30.61s`（P1 会话）/ `38.40–39.17s`（总领复测）→ F4′ 验收 `41.80s` → D 组验收 `44.30s` → A 组验收 `47.58s` → B 组验收 `49.73s`（总领实测，容器运行态）。绝对值随机状态波动较大（跨机观测差约 3 倍），以同时段中位数与 A/B 比值为准。 |
 | **代码规模** | 后端 68 个 Python 文件 / 9678 行，最大文件 `pipeline_v2.py` 628 行；前端 57 个 TS/TSX 文件 / 10878 行 |
 
 ---
@@ -27,10 +27,10 @@
 | **A1** | SSE 合批与心跳收敛 | C1 | 中 | ✅ 实际改动：`backend/engine/sse_pump.py`(新，108 行)、`backend/engine/pipeline_v2.py`(仅 `stream()` 体)、`tests/test_a1_sse_pump.py`(新，7 条) | `dc9d101` | **✅ 已完成**（answer 帧 394→64；心跳 83→0；帧间隔 median 47ms；`drop_pending()` 已为 A2 预留） |
 | **A2** | answer_reset 帧 | A1 | **高** | ✅ 实际改动：`backend/engine/pipeline_v2.py`、`backend/engine/sse_pump.py`、`frontend/src/hooks/useChatStream.ts`、**经批准越界** `frontend/src/sse.ts`(+2)、`frontend/src/answerReset.test.ts`(新，4 条)、`tests/test_a2_answer_reset.py`(新，4 条)、`tests/golden/sse_frames_v2.json`(随协议再生) | `6e18b3c` | **✅ 已完成**（前后端同一笔 commit；E2E mock judge 三段断言 + Playwright 真实 UI 验证） |
 | **A3** | 删除打字机降级路径 | A2 | 中 | ✅ 实际改动：`frontend/src/hooks/useChatStream.ts`(-34/+32)、`frontend/src/noTypewriter.test.ts`(新，2 条) | `ba0f01a` | **✅ 已完成**（两分支内容相同 → 合并为一次无条件同步写入；`setInterval`/`typingOn` 均清零） |
-| B1 | memo 化 + props 稳定化 | — | 中 | `AssistantMessage.tsx`、`CenterPanel.tsx` + 测试 | — | 待分发 |
-| B3 | Markdown 分片缓存 | B1 | **高** | `AssistantMessage.tsx` + 测试 | — | 待分发 |
-| B2 | 列表窗口化 | B1 | 中 | `CenterPanel.tsx` + 测试 | — | 待分发 |
-| B4 | 断线轮询收敛 | **A1**（心跳频率影响其改动对象，序列中排在 A3 之后） | 低 | `useChatStream.ts` + 测试 | — | 待分发 |
+| **B1** | memo 化 + props 稳定化 | — | 中 | ✅ 实际改动：`frontend/src/components/CenterPanel.tsx`(+160/-51)、`frontend/src/components/chat/AssistantMessage.tsx`(+43/-…)、`frontend/src/components/chat/assistantMessageProps.test.ts`(新，8 条) | `b31d198` | **✅ 已完成**（三组件 memo + 16 props 稳定化；流式期重渲染 **delta 恒 =1**；30 条滚动 164 fps） |
+| **B3** | Markdown 分片缓存 | B1 | **高** | ✅ 实际改动：`frontend/src/components/chat/AssistantMessage.tsx`(+170/-15)、`frontend/src/components/chat/mdChunkEquality.test.ts`(新，38 条) | `7f4cc58` | **✅ 已完成**（**只缓存已闭合块 + 尾段整文**；38 条一致性语料逐字节相等；1500 字与 100 字耗时持平 9–15µs vs 旧路径 69–111µs） |
+| **B2** | 列表窗口化 | B1 | 中 | ✅ 实际改动：`frontend/src/components/CenterPanel.tsx`(+68/-3)、`frontend/src/components/centerPanelWindow.test.ts`(新，8 条) | `441a5e9` | **✅ 已完成**（窗口 12 + 等高占位 + **追加冻结**；粘底流式期底部距离最大 1px 零抖动；长任务 0） |
+| **B4** | 断线轮询收敛 | **A1** | 低 | ✅ 实际改动：`frontend/src/hooks/useChatStream.ts`(+98/-12)、`frontend/src/hooks/chatPolling.test.ts`(新，4 条) | `4947558` | **✅ 已完成**（抽 `startPollRecovery`，20 次上限 ≈61s；stop/卸载/新一轮三处清理） |
 | **D1** | 消除反向依赖 | — | 低 | ✅ 实际改动：`backend/services/chat_context.py`(新，+156)、`backend/main.py`(-143)、`backend/engine/pipeline_v2.py`(3 行 import) | `8990587` | **✅ 已完成**（三个函数搬迁**源码逐字节 + AST 双重相同**，总领脚本复核） |
 | **D2** | LLM client 复用 | — | 低 | ✅ 实际改动：`backend/engine/pipeline_v2.py`(+55/-11)、`tests/test_d2_llm_client_cache.py`(新，8 条) | `8d44499` | **✅ 已完成**（思考档单轮 OpenAI 构造 4→2；sha256 摘要 key + 双检锁） |
 | **D3** | 清理 `_strip_thinking` | — | 低 | ✅ 实际改动：`backend/core/base_llm.py`(+11/-6)、`tests/test_d3_strip_thinking_removed.py`(新，4 条) | `d531717` | **✅ 已完成**（实证双样本：思考走独立 `reasoning_content` → 按决策 3 删除；`chat()` 保留 `.strip()` 行为等价） |
@@ -154,7 +154,7 @@
 | **F4′** | `docs/dispatch/step-F4.md`（F5 后修订版） | 2026-08-30 | **✅ 已完成**（commit `e48e67d`→`2855fc9`，314 passed；交接文档 `docs/progress/step-F4prime.md`） |
 | **D 组** | `docs/dispatch/step-D.md` | 2026-08-30 | **✅ 已完成**（commit `3ee3a36`/`d531717`/`8d44499`/`8990587`/`56ebfc6`，336 passed，已推送；交接文档 `docs/progress/step-D.md`，本地归档不入库——见 E-24） |
 | **A 组** | `docs/dispatch/step-A.md` | 2026-08-30 | **✅ 已完成**（commit `eb0e4ab`/`ab43d3a`/`dc9d101`/`6e18b3c`/`ba0f01a`，356 passed / vitest 32，已推送；交接文档 `docs/progress/step-A.md`，本地归档不入库——见 E-24） |
-| **B 组** | `docs/dispatch/step-B.md` | 2026-08-30 | **已分发待执行**（子步骤 1 T38 补守卫 → 2 B1 → 3 B3 → 4 B2 → 5 B4；全部行号已由总领实测校准，含两条结构性陷阱的预先核实） |
+| **B 组** | `docs/dispatch/step-B.md` | 2026-08-30 | **✅ 已完成**（commit `98946e2`/`b31d198`/`7f4cc58`/`441a5e9`/`4947558`，357 passed / vitest 90，已推送；交接文档 `docs/progress/step-B.md`，本地归档不入库——见 E-24） |
 | F5 | `docs/dispatch/step-F5.md` | 2026-08-30 | **✅ 已完成**（commit `a79f6d9`→`3395670`，295 passed；交接文档 `docs/progress/step-F5.md` 由总领补建） |
 | F6 | `docs/dispatch/step-F6.md` | 2026-08-30 | **待执行**（聊天输入框 accept 补图片） |
 | F4′ | `docs/dispatch/step-F4.md` | 2026-08-30 | **已修订待执行**（F5 后缩减为「双 Key 引导 + 入库异常可见化」） |
@@ -248,8 +248,8 @@
         **+ T26 修复（P1 引入的 WAL flag 回归）**
 会话 8  A 组  ✅ `eb0e4ab`→`ba0f01a`（356 passed / vitest 32，已推送）
         子步骤 1 D1 守卫 → 2 judge 收编（决策 33 两项收尾）→ 3 A1 → 4 A2 → 5 A3
-会话 9  B 组  **已分发**（`docs/dispatch/step-B.md`）
-        子步骤 1 **T38 补 A2 emit 守卫**（决策 34）→ 2 B1 → 3 B3 → 4 B2 → 5 B4
+会话 9  B 组  ✅ `98946e2`→`4947558`（357 passed / vitest 90，已推送）
+        子步骤 1 **T38 补 A2 emit 守卫**（决策 34，已关闭）→ 2 B1 → 3 B3 → 4 B2 → 5 B4
 会话 10 N3  推预构建镜像（含决策 19 的 bind mount 处置）→ 紧接 N2 第 2 次验收（pull 路径）
 ```
 
@@ -527,6 +527,7 @@ N3（推预构建镜像）→ N2（第 2 次，按 pull 路径复验）
 | 28 | **F4′ 修复①的方案取舍：选「异常向外传播 + 各调用方就地兜底」，否决「内层自报」与「收窄 catch 类型」**（2026-08-30） | ① **选方案 A（外传）**：让异常成为唯一错误通道——后台文件链路 `_process_file_bg` 的既有 catch（F1 已修好）**零改动自动恢复生效**；同步 3 处各补「异常 → `{"status":"error","msg":…}`」转换。<br>② **否决方案 B（内层自报 + 存错误供同步方取）**：需给 `_process_upload` 增错误传出通道，7 个调用点里 5 个只关心返回值，是纯粹的签名复杂化。<br>③ **否决方案 C（收窄 catch 异常类型）**：无法枚举「预期可容忍」集合——网络错误 / 维度不符 / Key 缺失都该可见，漏一个即复现原缺陷。<br>④ **同步响应形态必须是 HTTP 200 + `status:error`**，不是 HTTPException——后者被前端 `apiFetch` 转成 throw，`msg` 不进 `alert`，等于白改。<br>**连带发现（结构事实）**：`background.submit`（`core/background.py:9`）是**异常黑洞**，只把异常记进 daemon 线程日志。故 `:350`/`:474` 两处后台直投即使去掉内层 catch 也仍不可见，必须在 `knowledge.py` 内新增 `_process_upload_bg` 包装补 `_set_progress_error`（`background.py` 不在允许改动清单，未越界改） | ① 方案 A 复用已存在的正确外层，改动面最小且语义统一；<br>②③ 由实施会话论证、总领复核认可；<br>④ 本路由既有错误约定（`:378`/`:461`/`:523`/`:551` 同款），走 HTTPException 会破坏前端 `alert(d.msg)` 的既有链路；<br>**连带发现的意义**：「去掉内层 catch」本身**不足以**让错误可见——必须逐个确认每个调用点的**异常最终去向**，否则会出现「从日志变成另一个日志」的假修复 |
 | 30 | **每个会话执行完自己 push**（owner 2026-08-30 拍板，**总领每次生成派发提示词时必须写进去**） | 会话全部子步骤完成 + 全量回归全绿 + `git status --short` 仅 `?? repomix.config.json` 后执行 `git push origin master`（本地 master 无上游跟踪，须显式写 `origin master`），并核对 `git ls-remote origin master` == `git rev-parse HEAD`，两行输出贴进交接文档。<br>**红线**：禁 `--force`、禁推 master 以外分支（远端另有 `analysis/merge-master`、`feature/memory`、`iwfawf`）、禁把 `repomix.config.json` 加进 commit。<br>**若会话中途被迫中断**：先把已完成的子步骤 commit push 掉再停。 | 在此之前由 owner 手动安排推送，出现过「本地领先远端 62 笔」（E-27）。owner 明确要求改为会话自推送，避免成果因会话中断而滞留本地 |
 | 31 | **D 组按风险降序执行：D4 → D3 → D2 → D1**（2026-08-30，总领决定） | §1.3 列出的 `D1→D2→D3→D4` 是**依赖清单**，四步彼此独立（D4=schema+协议 / D3=`base_llm.py` / D2=`_make_llm` / D1=新建模块搬迁）。按「先做最容易失败的部分」重排为风险降序：**D4（唯一动数据库 schema 的步骤，改错影响 owner 真实数据）→ D3（须实证，实证不通即卡住）→ D2 → D1 → T26** | 若按文档顺序，最险的 D4 排在最后——届时会话上下文已消耗大半，一旦卡住返工成本最高；且 D3/D4 的阻塞点暴露得越早，总领越早能重新分发 |
+| 35 | **凭据与破坏性操作的两条铁律**（2026-08-30，B 组事故导出） | ① **凭据永不臆造/手拼**——要么完整读取，要么不读，用掩码片段拼出来的 key 必然是假的（本次据此误判「`.env` 的 key 已失效」，实为拼出来的假 key 401；**总领实测 `.env` 真 key `HTTP 200` 有效**）。<br>② **清缓存/删除类操作前先确认归属**——本次排障时 `localStorage.removeItem('coagent-provider-keys')` 把 Playwright 测试 profile 里 owner 此前留下的**有效**凭据清掉了。<br>③ 拿不到凭据时的正确做法：**改用 route 拦截的 SSE 桩**（不落库、不依赖 LLM、渲染路径真实），而不是去找 key | 后果可控（2 次 401 无数据损坏；仅测试用浏览器 profile 的登录态丢失，owner 自己的浏览器不受影响），但两条都是「一次手滑会让后续整轮排查走偏」的高杠杆错误。<br>**另：B 组的自查上报是合格的**——未报批先行动这一点应当批评，但事后如实记录、无掩盖，未造成数据损坏 |
 | 34 | **A2 的 emit 守卫折进 B 组；A2 的 `sse.ts` 越界予以追认**（2026-08-30，总领验收时决定） | ① **T38**：A2 的「后端是否真的推了 reset 帧」无守卫（总领变异实证：删掉该行 → 4 条协议守卫全绿）。**折进 B 组补 1 条行为守卫**，不单开会话（沿用 T26 / T34 先例）。<br>② **追认 `frontend/src/sse.ts` 的越界**：`ChatEvent` 判别联合无 `answer_reset` 成员时 TS 必然报错，扩展联合是**结构性必需**（+2 行）。<br>⚠️ **程序提醒**：交接文档写的是「经批准越界」，但本次**并未经过报批**——实施会话未停下询问。内容正当，措辞不准。后续越界应为「先报批」或注明「未报批的必要越界」。 | ① 与 T34 完全同型：行为已被一次性 E2E 证明正确，缺的是永久回归保护；几行代码不值得单开会话，但不能没有。<br>② 对比 D4 的 `main.py:108`——那处是总领**事先预批**的；本次是事后追认。**两者内容都正当，差别在流程** |
 | 33 | **两个「几行代码」的收尾折进 A 组会话，不单开会话**（2026-08-30，总领决定） | ① **D1 补 1 条存在性守卫**（T34）：断言 `backend/engine/` 下 `from main import` 恒为 0，防反向依赖回归。<br>② **收编 `review.py:58` 的 `pick_judge_llm`**（T32）：改走 D2 同款 client 缓存，使研究档单轮也落到 ≤2。<br>两笔独立 commit，各带自己的守卫与变异验证。 | 沿用 **T26 的先例**——T26 当初的判断原文：「3 行代码付一次完整会话开销与决策 20 相悖」。这两项同理：合计改动约 10 行，单独开会话不经济；但**不能不做**——D1 无守卫意味着反向依赖可静默回归，judge 未收编意味着 D2 的收益未全覆盖 |
 | 32 | **体验链 D / A / B 组 11 步全部执行，不砍**（owner 2026-08-30 拍板） | 总领此前评估「D/A/B 可砍——不影响评委能否部署起来，只影响观感」，owner 明确否决：**全部要做**。执行路径 v4 的会话 7（D 组）/ 会话 8（A 组）/ 会话 9（B 组）保持，其后才是 N3 + N2 第 2 次 | owner 原话：「要做体验链，提到的都要全部做」。<br>**总领保留意见并已陈述**：从「评委能否部署」的 0/1 目标看，N3（推预构建镜像）价值高于观感优化；但 owner 决策优先，序列按此执行 |
@@ -627,11 +628,15 @@ N3（推预构建镜像）→ N2（第 2 次，按 pull 路径复验）
 | **T35** | `_LLM_CACHE`（`pipeline_v2.py`）是**无上限、无淘汰**的进程级字典，value 是常驻的 OpenAI client（含连接池）。条目数随「用户 key × model × base_url」组合增长 | 总领 D 组验收时复核代码发现 | 当前规模（单用户/少数组合）无害；若未来多用户长期运行，需加 `maxsize` 或 LRU。登记观察，暂不处理 |
 | **T36** | `backend/main.py` 的 `extract_json_obj` 导入在 D1 搬迁后**已无直接使用者**（为保持最小 diff 而保留） | D1 上报（交接文档 §8-4） | 可并入 D3 遗留清理或下一轮。零危害 |
 | **T37** | D4 缺**浏览器级**「mock 500 → 前端重试 → 库里只 1 条」的 E2E 自动化；现有证明是 API/单元级（含强制竞态的 `test_concurrent_race_backstop_skips_on_unique_conflict`） | D4 上报（交接文档 §8-2） | 接受现状。核心幂等语义已被单元级钉死，浏览器级属「最自然用户路径」的加分项；若 N2 第 2 次验收有时间可补手工验证 |
-| **T38** | 🔴 **A2 的「后端推 reset 帧」这件事没有守卫**。`tests/test_a2_answer_reset.py` 的 4 条全部只测 `_frame()` 对**手工构造元组**的序列化 + `SSEBatcher.add/flush` 的 attempt 透传，**没有任何一条断言「重试环真的入队了 `("answer_reset", …)`」**。总领变异实测：把 `token_queue.put(("answer_reset", attempt - 1, "审核未通过"))` 换成 `pass` → **4 条全绿**。A2 的正确性目前只由一次性 E2E（mock judge + `a2_events3.json`，产物在系统临时目录）证明 | 总领 A 组验收时发现（变异抽查） | **折进 B 组补 1 条行为守卫**（决策 34）：mock `review_*` 返回 `passed=False` 一次，断言队列里出现 `answer_reset` 且**先于**下一稿的 answer token。与 T34 同型——行为已被 E2E 证明正确，缺的是永久回归保护 |
+| **T38** | 🔴 **A2 的「后端推 reset 帧」这件事没有守卫**。`tests/test_a2_answer_reset.py` 的 4 条全部只测 `_frame()` 对**手工构造元组**的序列化 + `SSEBatcher.add/flush` 的 attempt 透传，**没有任何一条断言「重试环真的入队了 `("answer_reset", …)`」**。总领变异实测：把 `token_queue.put(("answer_reset", attempt - 1, "审核未通过"))` 换成 `pass` → **4 条全绿**。A2 的正确性目前只由一次性 E2E（mock judge + `a2_events3.json`，产物在系统临时目录）证明 | 总领 A 组验收时发现（变异抽查） | **折进 B 组补 1 条行为守卫**（决策 34）→ ✅ **已于 `98946e2` 关闭**：新增 `tests/test_a2_reset_emitted.py`（1 条），经真实 HTTP+SSE 通道收帧，断言「恰一帧 reset 且先于下一稿 token」。<br>**总领变异复核（层差实证）**：删掉 `token_queue.put(("answer_reset",…))` → **新守卫红**，而**既有 4 条序列化守卫仍全绿**——与 A 组诊断完全吻合，证明新守卫确实钉在行为层 |
 | **T39** | **`resource_branches.py` 的两个旧泵（约 `:147` / `:421`）仍是 50ms 轮询 + 旧心跳**，未合批。资源生成/编辑分支的心跳行为与 A1 前一致 | A1 上报（在允许文件边界外） | 后续批次收编到 `SSEBatcher`（它是纯模块可直接复用）。注意 resource 分支的帧协议有自己的 `token/answer` 形状，收编前需先对齐 `_frame` |
 | **T40** | `useChatStream.ts` 的 `streamedRef` 在 A3 删除打字机后**成了纯写入、无读者** | A3 上报 | 按最小改动纪律未顺手删。下个前端批次清理 |
 | **T41** | **T33 的运行期变体**：`load_dotenv()` 会把**仓库根 `.env`** 注入宿主 pytest 进程。A 组实测踩中一次——T32 后跑测试时因临时 `.env` 出现 `test_pick_judge_llm_by_mode` 假失败，还原后消失 | A 组上报（交接文档遗留 6） | **跑后端全量回归前，`.env` 必须处于真实状态**（临时注入过 mock 值的尤其要还原后重跑）。已写进派发提示词的环境事实 |
-| **T42** | UI 实测在**真实课程对话里**留下了测试消息（色彩量化 / RAG对比 / 熵 / A3验证×2 等，均真实调用 LLM 并正常落库） | A 组上报（交接文档遗留 5） | 后续 UI/E2E 测试**先新建一次性课程**，测完删课。SSE 桩测试（被 route 拦截）不落库，无此问题 |
+| **T42** | UI 实测在**真实课程对话里**留下了测试消息（色彩量化 / RAG对比 / 熵 / A3验证×2 等，均真实调用 LLM 并正常落库） | A 组上报（交接文档遗留 5） | 后续 UI/E2E 测试**先新建一次性课程**，测完删课。SSE 桩测试（被 route 拦截）不落库，无此问题。**B 组已遵守**（三个一次性课程均已删） |
+| **T43** | **B2 的窗口「批量重灌」**：进入对话后历史消息异步到达的瞬间，会把此前约 2 秒内的手动展开覆盖回「末尾 12 条」；另占位高度是常数估算，物化瞬间有被锚定吸收的残差 | B 组上报（遗留 1） | 历史消息单次全量加载的设计使然，影响窗口极小。若要根治需改为分批加载（属新步骤，不在本轮） |
+| **T44** | **B3 的「纯列表流」退化**：整段都是 `- ` 块且仍在增长时，最后一个列表组作为尾段每帧整文重解析，成本随该组长度线性 | B 组上报（遗留 2） | **正确性优先的主动取舍**——列表终止性静态不可判定，宁可慢也不能切错。一旦出现非列表块即冻结缓存，恢复正常。低端设备长列表回答时可能可见 |
+| **T45** | `buildMessageProps` 的 `ctx` 对象每次渲染新建（仅作入参，不进 props，故不破坏 memo） | B 组上报（遗留 3） | 无害。若未来引入 React Compiler 可整体简化 |
+| **T46** | **B4 的触发机制已随 A1 改变**（事实记录，非缺陷）：A1 收敛心跳后，断线判定 =「首字节前空闲超时（`resetTimer` 15s/60s）」或「连心跳在内的字节流彻底停止 60s」或「fetch 层异常」。**HTTP ≥500 与用户主动停止不走轮询**（各有独立文案） | B 组实测取证（交接文档 §5） | 后续改轮询相关逻辑前必读。判定口径与派发文档「心跳没了就是断线」的旧假设不同 |
 
 ---
 
@@ -654,6 +659,7 @@ N3（推预构建镜像）→ N2（第 2 次，按 pull 路径复验）
 | **F4′** | `docs/progress/step-F4prime.md` | ✅ 通过（commit `e48e67d` / `023553b` / `1da93e7` / `20a73a4` / `2855fc9`，**314 passed**，总领独立复测 `41.80s`；tsc exit 0 / vitest 26 总领复测）。含总领独立复核 **8 项**、**独立变异抽查 2 组**（bmp 回流 / mime 硬编码回归，均「恰 1 条红 → 还原全绿」）、**总领认领 1 处自身疏漏**（派发文档基线 295 未随 F6 同步为 300 → 决策 29）、**认定 1 处程序性瑕疵**（修复①改动 `UploadPanel.tsx` 的 `pollProgress` 超出「仅 `:14`」的行范围，虽内容正确且为达成验收项 2 所必需，但交接文档未标注，与决策 17 的报批范式不符）。核心成果：A1 意图真正落地——无 Key 时同步/后台两条路径均返回**含「怎么办」的完整 F5 文案**（三份响应原文见交接文档 §3，三个前缀分别对应三个代码落点）；`_process_upload` 7 个调用点逐个核对，其中 `:350`/`:474` 经 `background.submit` 直投的**异常黑洞**是本次核实出的补充事实；bmp 5 处全剔除 + 3 条反向守卫；mime 魔数推断经**真实 JPEG 上游实测**通过。**E-31 / E-32 / E-33 三项全部关闭** |
 | **D 组** | `docs/progress/step-D.md`（本地归档，**不入库**——`.gitignore:31-33` 的 E-24 决策 A：过程记录类文档不提交，唯一状态源是 `PROGRESS.md`） | ✅ 通过（commit `3ee3a36`/`d531717`/`8d44499`/`8990587`/`56ebfc6`，**336 passed**，总领独立复测 `44.30s`；tsc exit 0 / vitest 26 总领复测）。含总领独立复核 **7 项**、**独立变异抽查 4 组**（D4 去重失效 / T26 退回陈旧 flag / D2 缓存禁用 / D3 死代码回流，均「恰该条红 → 还原全绿」）、**总领认领 1 处自身疏漏**（派发提示词写「交接文档随 commit 入库」，与 E-24 决策 A 冲突，由实施会话据 `.gitignore:31-33` 纠正）、**总领采纳 1 处预判修正**（我预判的 2 处「包装型用例」实为 fixture 已整体替换 `_make_llm`，不经过缓存——对方实测 21 passed 为证）、**新登记 6 项技术债**（T32–T37）。核心成果：D4 幂等（部分唯一索引 + 历史零迁移 + 冲突跳过 + 反向脚本齐全）、D3 实证删除死代码、D2 思考档 4→2、D1 字节级纯搬迁（`from main import` 3→0）、T26 WAL 自校验 |
 | **A 组** | `docs/progress/step-A.md`（本地归档，**不入库**——E-24 决策 A） | ✅ 通过（commit `eb0e4ab`/`ab43d3a`/`dc9d101`/`6e18b3c`/`ba0f01a`，**356 passed**，总领独立复测 `47.58s`；tsc 0 / vitest **32** 总领复测）。含总领独立复核 **7 项**、**独立变异抽查 4 组**（A2 删 reset 推帧 / T32 judge 改回裸构造 / D1 反向 import / A3 塞回 `setInterval`）、**总领采纳 1 处对自身提示词的纠正**（我说「审核默认关闭」不准确——实际 `review_enabled` 是**极速恒关 / 研究恒开 / 思考档由 settings 控制**，实施会话用研究档直接进审核环，是对的）、**新登记 5 项技术债**（T38–T42）。核心成果：A1 answer 帧 **394→64**、心跳 **83→0**、帧间隔 median 47ms，`drop_pending()` 按预留被 A2 用上；A2 修掉两稿拼接（E2E 协议级三段断言 + Playwright 真实 UI），并**自行抓出且修掉一个真 bug**（达重试上限时也推 reset → 气泡闪断）；A3 两分支合并为一次无条件写入。**唯一实质缺口：T38——A2 的 emit 无守卫，已折进 B 组** |
+| **B 组** | `docs/progress/step-B.md`（本地归档，**不入库**——E-24 决策 A） | ✅ 通过（commit `98946e2`/`b31d198`/`7f4cc58`/`441a5e9`/`4947558`，**357 passed**，总领独立复测 `49.73s`；tsc 0 / vitest **90** 总领复测）。含总领独立复核 **6 项**、**独立变异抽查 5 组全部咬合**（T38 删 reset 推帧 / B1 摘 memo / B3 松列表边界放宽 / B2 去窗口冻结 / B4 去次数上限）、**总领订正 1 处会话的错误结论**（会话称「`.env` 的 key 已失效」，实为其**手拼的假 key** 401；总领实测 `.env` 真 key `HTTP 200` 有效）、**新登记 4 项技术债**（T43–T46）。核心成果：T38 关闭且**经层差实证**；B1 流式期重渲染 **delta 恒 =1**；B3 采用「**只缓存已闭合块**」的安全设计，38 条一致性语料逐字节相等，1500 字耗时与 100 字持平；B2 **追加冻结**方案使粘底零抖动（底部距离最大 1px）、`idx` 全量下标语义验证通过；B4 轮询收敛到 ≈61s 且三处清理。**⚠️ 一起凭据事故已记录（决策 35）**：会话臆造 API key 并清掉了 Playwright profile 里的有效凭据，无数据损坏，但需 owner 在该测试浏览器重新填 key |
 | — | 其余步骤完成后按 `step-<id>.md` 归档 | — |
 
 ---
