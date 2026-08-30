@@ -39,6 +39,27 @@ const renderContent = function(content: string) {
 const _defaultSpecialKeys = new WeakMap<object, string[]>()
 // 非末条消息的 followups 常量（isLast 分支才消费；模块级常量保证引用恒定）
 const _EMPTY_FOLLOWUPS: string[] = []
+
+// ---------- B2：列表窗口化（视口附近全渲染，其余等高占位） ----------
+// 陷阱防线：
+//  - idx 语义：map 仍遍历全量 messages，占位行只是空 div，idx 恒为全量下标
+//    （specialSel / dismissedSpecial / 追问三处状态数组按 idx 寻址不受影响）；
+//  - 粘底：占位区只在「上滚展开」时变化，流式期窗口冻结、占位静态，
+//    scrollHeight 只随尾部真实内容增长 → 8px 粘底判定与窗口化前等价；
+//  - 窗口冻结：流式追加（len 单调 +1~2）绝不把已物化消息打回占位（否则
+//    scrollHeight 中途变化 = 滚动条跳动 + 视口漂移）。
+const WINDOW_N = 12          // 完整渲染的窗口条数（末尾恒在窗口内）
+const WINDOW_STEP = 8        // 上滚展开批次
+const EST_MSG_HEIGHT = 120   // 占位估算高度（px，实测中位水平）
+
+/** 导出仅供测试（isFlowNode 同模式）：窗口起点随消息数变化的转移函数。
+ *  len≤n 不开窗；批量载入（跳变 > step）或收缩（切对话/删消息）→ 重置为末尾 n 条；
+ *  流式追加 → 冻结现值。 */
+export function nextWindowStart(prevStart: number, prevLen: number, len: number, n: number, step: number): number {
+  if (len <= n) return 0
+  if (len > prevLen + step || len < prevLen) return Math.max(0, len - n)
+  return prevStart
+}
 /** 导出仅供测试（isFlowNode 同模式） */
 export const specialKeysOf = (msg: Message): string[] => {
   let keys = _defaultSpecialKeys.get(msg)
@@ -152,6 +173,38 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   const stickToBottomRef = useRef(true)
   // 上滑超过阈值时显示"回到底部"悬浮按钮
   const [showJumpBottom, setShowJumpBottom] = useState(false)
+  // B2：窗口起点——其上为等高占位，其下全渲染。onScroll 闭包一次性注册，经 ref 读最新值
+  const [winStart, setWinStart] = useState(0)
+  const winStartRef = useRef(0)
+  winStartRef.current = winStart
+  const expandingRef = useRef(false)
+  const prevLenRef = useRef(0)
+  const firstRenderedRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    setWinStart(s => nextWindowStart(s, prevLenRef.current, messages.length, WINDOW_N, WINDOW_STEP))
+    prevLenRef.current = messages.length
+  }, [messages])
+  // B2：上滚展开一批（接近已物化区顶部时），以 scrollHeight 差值锚定视口防跳动。
+  // 展开后若视口顶部仍贴近首条已渲染行（用户已顶到 scrollTop≈0，不再产生滚动
+  // 事件）→ 链式继续展开，直到边界离开 600px 或占位清零。
+  const expandWindow = () => {
+    if (winStartRef.current <= 0 || expandingRef.current) return
+    expandingRef.current = true
+    const el = msgScrollRef.current
+    const before = el?.scrollHeight ?? 0
+    setWinStart(s => Math.max(0, s - WINDOW_STEP))
+    requestAnimationFrame(() => {
+      const el2 = msgScrollRef.current
+      if (el2) el2.scrollTop += el2.scrollHeight - before
+      const top = firstRenderedRef.current?.offsetTop
+      if (el2 && winStartRef.current > 0 && top !== undefined && el2.scrollTop < top - 600) {
+        expandingRef.current = false
+        expandWindow()
+        return
+      }
+      expandingRef.current = false
+    })
+  }
   // 资源生成建议卡片：各消息选中的形式 key（默认全选）+ 已忽略的消息 idx
   const [specialSel, setSpecialSel] = useState<Record<number, string[]>>({})
   const [dismissedSpecial, setDismissedSpecial] = useState<Set<number>>(new Set())
@@ -182,6 +235,11 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
       const dist = el.scrollHeight - el.scrollTop - el.clientHeight
       stickToBottomRef.current = dist < 8
       setShowJumpBottom(dist > 160)
+      // B2：视口顶部接近首条已渲染消息（<600px）→ 展开一批更早的消息。
+      // 必须用「相对首条已渲染行」的判定：占位区可高达数千 px，绝对 scrollTop
+      // 阈值在长历史下永远够不到。
+      const top = firstRenderedRef.current?.offsetTop
+      if (top !== undefined && el.scrollTop < top - 600) expandWindow()
     }
     el.addEventListener('scroll', onScroll, { passive: true })
     return () => el.removeEventListener('scroll', onScroll)
@@ -434,14 +492,18 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
           )}
 
           {/* 消息列表：用户色块靠右，AI 正文流。
-              B1：props 统一经 buildMessageProps 推导（引用稳定）→ memo 跳过历史消息 */}
+              B1：props 统一经 buildMessageProps 推导（引用稳定）→ memo 跳过历史消息。
+              B2：winStart 之上为等高占位（map 仍遍历全量数组，idx 恒为全量下标）。 */}
           {messages.map((msg, idx) => (
+            idx < winStart ? (
+              <div key={idx} data-placeholder="1" aria-hidden style={{ height: EST_MSG_HEIGHT, flexShrink: 0 }} />
+            ) :
             msg.role === 'user' ? (
-              <div key={idx} className="self-end max-w-[75%] card-surface px-4 py-3 text-sm leading-relaxed" style={{ borderBottomRightRadius: 6 }}>
+              <div key={idx} ref={idx === winStart ? (n => { firstRenderedRef.current = n }) : undefined} className="self-end max-w-[75%] card-surface px-4 py-3 text-sm leading-relaxed" style={{ borderBottomRightRadius: 6 }}>
                 <div dangerouslySetInnerHTML={{ __html: renderContent(msg.content) }} />
               </div>
             ) : (
-              <div key={idx} className="w-full text-sm leading-7 animate-[fadeIn_0.25s_ease]">
+              <div key={idx} ref={idx === winStart ? (n => { firstRenderedRef.current = n }) : undefined} className="w-full text-sm leading-7 animate-[fadeIn_0.25s_ease]">
                 <AssistantMessage {...buildMessageProps(msg, idx, messages.length, {
                   isLoading,
                   flowActiveAgent,
