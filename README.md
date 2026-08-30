@@ -81,14 +81,20 @@ Windows PowerShell 用 `copy .env.example .env`。
 只有想覆盖默认配置（例如给容器配联网代理 `PROXY_URL`）时才需要。
 API Key 推荐启动后在界面里填（见下文「配置 API Key」），不写在 `.env` 里也可以。
 
-### 2. 构建并启动（本地构建镜像）
+### 2. 拉取镜像并启动
 
 ```bash
-docker compose -f deploy/docker-compose.yml up -d --build
+docker compose -f deploy/docker-compose.yml up -d
 ```
 
-首次启动需要**在本地构建两个镜像，10 分钟以内**（大头是 PyTorch CPU 依赖的
-下载，约 190 MB，取决于网速）。之后再次启动会复用构建缓存，几十秒即可。
+首次启动会自动从 GitHub Container Registry（GHCR）拉取两个**预构建镜像**，
+取决于网速通常几分钟内完成，**无需在本地构建**。之后再次启动镜像已缓存，秒级即可。
+
+> **开发者路径（确需本地构建时）**：在 `deploy/` 下新建 `docker-compose.override.yml`
+> （已被 git 忽略、不会进仓库），为需要的服务补上 `build:` 段（backend 的构建上下文是
+> **仓库根**、Dockerfile 是 `backend/Dockerfile`；frontend 上下文是 `frontend/`），然后：
+> `docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.override.yml up -d --build`
+> ⚠️ 只加 `--build` 而没有 `build:` 配置**不会触发构建**——compose 会直接拉取 GHCR 镜像。
 
 ### 3. 确认服务就绪
 
@@ -162,23 +168,25 @@ docker compose -f deploy/docker-compose.yml down
 **Q: 发送消息后回复"处理完成"但没有内容？**
 检查 API Key 是否有效。可在「设置 → 基础 → 模型与 API Key」重新输入。
 
-**Q: 构建时下载依赖失败（npm ECONNRESET / pip 超时）？**
-网络抖动所致，重新执行 `docker compose -f deploy/docker-compose.yml up -d --build` 即可，已完成的层会走缓存。
+**Q: 拉取镜像失败或超时？**
+网络抖动所致，重新执行 `docker compose -f deploy/docker-compose.yml pull` 再
+`docker compose -f deploy/docker-compose.yml up -d` 即可。
 
 **Q: 如何更新到最新版？**
 ```bash
 git pull
-docker compose -f deploy/docker-compose.yml up -d --build
+docker compose -f deploy/docker-compose.yml pull
+docker compose -f deploy/docker-compose.yml up -d
 ```
 
-**Q: `docker compose ps` 里的 `(healthy)` 是什么意思？服务会自动重启吗？**
+**Q: `docker compose -f deploy/docker-compose.yml ps` 里的 `(healthy)` 是什么意思？服务会自动重启吗？**
 backend 每 30 秒做一次健康探测（访问容器内的 `/healthz`），通过后状态显示
 `Up (healthy)`——这是「部署成功」的明确信号，启动后约 1 分钟内出现属正常；
 想手动验证可以 `curl http://localhost:8000/healthz`（返回 `{"status":"ok"}`）。
 服务异常退出后 Docker 会自动重启（`restart: unless-stopped`），无需人工干预；
-但如果你执行了 `docker compose down`（或 `stop`），服务**不会**被自动拉起——
+但如果你执行了 `docker compose -f deploy/docker-compose.yml down`（或 `stop`），服务**不会**被自动拉起——
 这是预期行为，重新执行 `docker compose -f deploy/docker-compose.yml up -d` 即可。
-若发现容器反复重启（重启循环），用 `docker compose logs backend --tail 100`
+若发现容器反复重启（重启循环），用 `docker compose -f deploy/docker-compose.yml logs backend --tail 100`
 查看最后一次报错定位原因。
 
 ---
