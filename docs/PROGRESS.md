@@ -154,6 +154,7 @@
 | **F4′** | `docs/dispatch/step-F4.md`（F5 后修订版） | 2026-08-30 | **✅ 已完成**（commit `e48e67d`→`2855fc9`，314 passed；交接文档 `docs/progress/step-F4prime.md`） |
 | **D 组** | `docs/dispatch/step-D.md` | 2026-08-30 | **✅ 已完成**（commit `3ee3a36`/`d531717`/`8d44499`/`8990587`/`56ebfc6`，336 passed，已推送；交接文档 `docs/progress/step-D.md`，本地归档不入库——见 E-24） |
 | **A 组** | `docs/dispatch/step-A.md` | 2026-08-30 | **✅ 已完成**（commit `eb0e4ab`/`ab43d3a`/`dc9d101`/`6e18b3c`/`ba0f01a`，356 passed / vitest 32，已推送；交接文档 `docs/progress/step-A.md`，本地归档不入库——见 E-24） |
+| **B 组** | `docs/dispatch/step-B.md` | 2026-08-30 | **已分发待执行**（子步骤 1 T38 补守卫 → 2 B1 → 3 B3 → 4 B2 → 5 B4；全部行号已由总领实测校准，含两条结构性陷阱的预先核实） |
 | F5 | `docs/dispatch/step-F5.md` | 2026-08-30 | **✅ 已完成**（commit `a79f6d9`→`3395670`，295 passed；交接文档 `docs/progress/step-F5.md` 由总领补建） |
 | F6 | `docs/dispatch/step-F6.md` | 2026-08-30 | **待执行**（聊天输入框 accept 补图片） |
 | F4′ | `docs/dispatch/step-F4.md` | 2026-08-30 | **已修订待执行**（F5 后缩减为「双 Key 引导 + 入库异常可见化」） |
@@ -247,7 +248,8 @@
         **+ T26 修复（P1 引入的 WAL flag 回归）**
 会话 8  A 组  ✅ `eb0e4ab`→`ba0f01a`（356 passed / vitest 32，已推送）
         子步骤 1 D1 守卫 → 2 judge 收编（决策 33 两项收尾）→ 3 A1 → 4 A2 → 5 A3
-会话 9  B 组  B1→B3→B2→B4
+会话 9  B 组  **已分发**（`docs/dispatch/step-B.md`）
+        子步骤 1 **T38 补 A2 emit 守卫**（决策 34）→ 2 B1 → 3 B3 → 4 B2 → 5 B4
 会话 10 N3  推预构建镜像（含决策 19 的 bind mount 处置）→ 紧接 N2 第 2 次验收（pull 路径）
 ```
 
