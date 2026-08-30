@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from 'react'
+import { useRef, useState, useCallback, useEffect } from 'react'
 import type { Dispatch, SetStateAction, MutableRefObject } from 'react'
 import type { AgentConfig, Message, Dialogue, ReviewResult } from '../types'
 import { streamChatResponse, type ChatEvent } from '../sse'
@@ -8,6 +8,10 @@ import { api } from '../api'
 import { subagentStore } from '../stores/subagentStore'
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+
+// B4：断线占位提示与失败终态文案（giveUp 仅替换仍是占位提示的末条）
+const NET_INTERRUPT_TEXT = '⚠️ 网络中断，正在后台继续生成并自动取回结果…'
+const NET_GIVEUP_TEXT = '⚠️ 网络中断，自动取回未成功（已重试 1 分钟）。请检查网络后重新发送。'
 
 /** 替换最后一条 assistant 消息：发送时插入的空占位（content=''）被结果替换，避免重复气泡。 */
 function upsertLastAssistant(prev: Message[], msg: Message): Message[] {
@@ -32,6 +36,49 @@ export function applyAnswerResetMessage(prev: Record<string, Message[]>, did: st
     return { ...prev, [key]: [...arr.slice(0, -1), { ...last, content: '' }] }
   }
   return prev
+}
+
+// ---------- B4：断线取回轮询（独立函数，vitest 假计时器钉住收敛性） ----------
+
+export interface PollRecoveryOpts {
+  maxTimes: number                        // 最大轮询次数（达上限 → giveUp 失败终态）
+  firstDelayMs: number                    // 首次轮询延迟
+  intervalMs: number                      // 轮询间隔
+  fetchOnce: () => Promise<boolean>       // true = 已取回成功（内部完成状态写入）
+  giveUp: (times: number) => void         // 达上限回调（替换失败终态文案）
+  schedule: (fn: () => void, ms: number) => number
+  cancel: (id: number) => void
+}
+
+/** B4：断线后轮询取回结果。旧实现（setTimeout 递归 + 无上限 + 句柄不跟踪）
+ *  在后端未落库时永久每 3 秒轮询，且 stop()/组件卸载均无法终止。
+ *  - 达 maxTimes → giveUp 终态（只回调一次）；
+ *  - cancel() 随时可停（stop()/卸载/新一轮发送）；在途 fetchOnce 结果被丢弃；
+ *  - 成功即停；
+ *  - fetchOnce 抛异常视为未取回，计入次数。 */
+export function startPollRecovery(opts: PollRecoveryOpts): { cancel: () => void } {
+  let count = 0
+  let stopped = false
+  let timer: number | null = null
+  const finish = () => {
+    stopped = true
+    if (timer !== null) { opts.cancel(timer); timer = null }
+  }
+  const tick = async () => {
+    timer = null
+    if (stopped) return
+    count++
+    let ok = false
+    try { ok = await opts.fetchOnce() } catch { ok = false }
+    if (stopped) return
+    if (ok) { finish(); return }
+    if (count >= opts.maxTimes) { opts.giveUp(count); finish(); return }
+    timer = opts.schedule(tick, opts.intervalMs)
+  }
+  timer = opts.schedule(tick, opts.firstDelayMs)
+  return {
+    cancel: () => { finish() },
+  }
 }
 
 interface UseChatStreamArgs {
@@ -70,6 +117,12 @@ export function useChatStream(args: UseChatStreamArgs) {
   const userStoppedRef = useRef(false)
   const requestIdRef = useRef<string | null>(null)
   const fenceRef = useRef(newFenceState())
+  // B4：断线取回轮询句柄——stop()/卸载/新一轮发送时 cancel（旧实现泄漏且无法终止）
+  const pollCtlRef = useRef<{ cancel: () => void } | null>(null)
+  useEffect(() => () => {
+    pollCtlRef.current?.cancel()
+    pollCtlRef.current = null
+  }, [])
 
   const revealTick = () => {
     const pa = pendingAnswerRef.current
@@ -175,6 +228,9 @@ export function useChatStream(args: UseChatStreamArgs) {
     pendingAnswerRef.current = ''
     pendingMindRef.current = null
     activeDidRef.current = did || null
+    // B4：新一轮发送终止上一轮遗留的取回轮询（cancel 后句柄已失效，无需置空——
+    // 置 null 会触发 TS 对 ref.current 的 null 收窄，后续可选链报 never）
+    pollCtlRef.current?.cancel()
     const curDlg = dialogues.find(d => d.id === did)
     if (curDlg && /^对话 \d+$/.test(curDlg.name)) {
       const nm = text.trim().slice(0, 14) || curDlg.name
@@ -386,29 +442,47 @@ export function useChatStream(args: UseChatStreamArgs) {
           return { ...prev, [did || '']: arr }
         })
       } else {
-        setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: '⚠️ 网络中断，正在后台继续生成并自动取回结果…' }) }))
-        let polled = false
-        const poll = async () => {
-          if (polled) return
-          try {
+        setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: NET_INTERRUPT_TEXT }) }))
+        // B4：轮询收敛——上限 20 次（4s 首延迟 + 19×3s ≈ 61s 内），达上限给明确
+        // 失败终态；句柄入 ref，stop()/卸载/新一轮发送即终止（旧实现无限轮询）。
+        pollCtlRef.current?.cancel()
+        pollCtlRef.current = startPollRecovery({
+          maxTimes: 20,
+          firstDelayMs: 4000,
+          intervalMs: 3000,
+          fetchOnce: async () => {
             const d = await api.getDialogueMessages(did || '')
             const msgs = (d.messages || []).map((m: any) => ({ role: m.role, content: m.content || '', steps: m.steps, think: m.think }))
             const last = msgs[msgs.length - 1]
             if (last && last.role === 'assistant' && last.content && last.content !== '（系统未生成内容）') {
-              polled = true
               setAllMessages(prev => ({ ...prev, [did || '']: msgs }))
-              return
+              return true
             }
-          } catch (e) {}
-          if (!polled) setTimeout(poll, 3000)
-        }
-        setTimeout(poll, 4000)
+            return false
+          },
+          giveUp: () => {
+            // 失败终态：仅当占位提示仍是最后一条（期间用户新发言则不动它）
+            setAllMessages(prev => {
+              const arr = [...(prev[did || ''] || [])]
+              const last = arr[arr.length - 1]
+              if (last && last.role === 'assistant' && last.content === NET_INTERRUPT_TEXT) {
+                arr[arr.length - 1] = { ...last, content: NET_GIVEUP_TEXT }
+              }
+              return { ...prev, [did || '']: arr }
+            })
+          },
+          schedule: (fn, ms) => window.setTimeout(fn, ms),
+          cancel: (id) => clearTimeout(id),
+        })
       }
     } finally { clearTimeout(timeoutTimer); setIsLoading(false); abortCtrlRef.current = null }
   }, [currentDialogueId, agents, dialogues, currentProjectId])
 
   const stop = useCallback(() => {
     userStoppedRef.current = true
+    // B4：终止后台取回轮询
+    pollCtlRef.current?.cancel()
+    pollCtlRef.current = null
     pendingAnswerRef.current = ''
     pendingMindRef.current = null
     try { if (abortCtrlRef.current) abortCtrlRef.current.abort() } catch (e) {}
