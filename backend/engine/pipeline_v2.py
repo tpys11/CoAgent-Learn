@@ -30,6 +30,7 @@ THINK_WORD_MIN, THINK_WORD_MAX, THINK_WORD_HARD = 800, 1200, 1500
 RESEARCH_WORD_MIN, RESEARCH_WORD_MAX, RESEARCH_WORD_HARD = 1500, 2000, 3000
 
 from engine.mindchain import merge_consecutive  # noqa: E402
+from engine.sse_pump import SSEBatcher  # noqa: E402  # A1：answer 合批 + 空闲心跳收敛（纯逻辑，无循环依赖）
 
 
 def engine_mode() -> str:
@@ -639,6 +640,7 @@ async def stream_response(req):
 
     async def stream():
         import asyncio as _asyncio
+        import time as _time
         request_id = __import__("uuid").uuid4().hex[:16]
         cancel_evt = threading.Event()
         from engine.cancel import ACTIVE_CANCELS
@@ -649,16 +651,41 @@ async def stream_response(req):
                          args=(req, token_queue, cancel_evt, request_id),
                          daemon=True).start()
         yield f"data: {json.dumps({'type': 'start', 'request_id': request_id})}\n\n"
+        # A1：泵改事件驱动 + answer 合批 + 心跳收敛（SSEBatcher，帧格式不变只改节奏）。
+        # 旧泵 50ms 固定轮询（get(timeout=0.05)+sleep(0.05)）：空闲 ~10 帧/秒心跳、
+        # 事件循环 ~20 次/秒空转唤醒；新泵阻塞等队列，只在「合批窗到期/心跳到期」
+        # 被唤醒（空闲 2s 一次），等待时长恒有界（≤2s）保证断开时能及时取消。
+        batcher = SSEBatcher()
+        batcher.mark_emitted()   # start 帧即最近一次发射，空闲心跳从现在起算
         while True:
+            timeout = batcher.wait_timeout()
             try:
-                msg = token_queue.get(timeout=0.05)
+                msg = await _asyncio.to_thread(token_queue.get, True, timeout)
             except queue.Empty:
-                await _asyncio.sleep(0.05)
-                yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
+                now = _time.monotonic()
+                if batcher.due(now):
+                    frame = batcher.flush(now)
+                    if frame:
+                        yield frame
+                elif batcher.heartbeat_due(now):
+                    batcher.mark_emitted(now)
+                    yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
                 continue
+            if msg[0] == "answer":
+                # answer token 进合批器：首 token 直发，其余按 40ms/256chars 窗发
+                frame = batcher.add(msg[1])
+                if frame:
+                    yield frame
+                continue
+            # 非 answer 帧前必须先排空合批缓冲——保持 answer 与其他帧的
+            # 队列 FIFO 相对顺序（done/error 前的 answer 不能被缓冲吞掉）
+            pre = batcher.flush()
+            if pre:
+                yield pre
             text, stop = _frame(msg)
             if text:
                 yield text
+            batcher.mark_emitted()
             if stop:
                 break
     return StreamingResponse(stream(), media_type="text/event-stream")
