@@ -153,6 +153,7 @@
 | F4 | `docs/dispatch/step-F4.md` | 2026-08-30 | ⚠️ **已被 F4′ 取代**（F5 移除本地通道后「降级告警」前提消失） |
 | **F4′** | `docs/dispatch/step-F4.md`（F5 后修订版） | 2026-08-30 | **✅ 已完成**（commit `e48e67d`→`2855fc9`，314 passed；交接文档 `docs/progress/step-F4prime.md`） |
 | **D 组** | `docs/dispatch/step-D.md` | 2026-08-30 | **✅ 已完成**（commit `3ee3a36`/`d531717`/`8d44499`/`8990587`/`56ebfc6`，336 passed，已推送；交接文档 `docs/progress/step-D.md`，本地归档不入库——见 E-24） |
+| **A 组** | `docs/dispatch/step-A.md` | 2026-08-30 | **已分发待执行**（子步骤 1 D1 守卫 → 2 judge 收编 → 3 A1 → 4 A2 → 5 A3；全部行号已由总领实测校准，含两条前提陷阱的预先核实） |
 | F5 | `docs/dispatch/step-F5.md` | 2026-08-30 | **✅ 已完成**（commit `a79f6d9`→`3395670`，295 passed；交接文档 `docs/progress/step-F5.md` 由总领补建） |
 | F6 | `docs/dispatch/step-F6.md` | 2026-08-30 | **待执行**（聊天输入框 accept 补图片） |
 | F4′ | `docs/dispatch/step-F4.md` | 2026-08-30 | **已修订待执行**（F5 后缩减为「双 Key 引导 + 入库异常可见化」） |
@@ -244,7 +245,8 @@
 会话 7  D 组  ✅ `3ee3a36`→`56ebfc6`（336 passed，已推送）
         执行顺序 **D4 → D3 → D2 → D1**（风险降序，非文档列出的 D1→D2→D3→D4）
         **+ T26 修复（P1 引入的 WAL flag 回归）**
-会话 8  A 组  A1→A2→A3
+会话 8  A 组  **已分发**（`docs/dispatch/step-A.md`）
+        子步骤 1 D1 守卫 → 2 judge 收编（决策 33 两项收尾）→ 3 A1 → 4 A2 → 5 A3
 会话 9  B 组  B1→B3→B2→B4
 会话 10 N3  推预构建镜像（含决策 19 的 bind mount 处置）→ 紧接 N2 第 2 次验收（pull 路径）
 ```
@@ -412,7 +414,7 @@ N3（推预构建镜像）→ N2（第 2 次，按 pull 路径复验）
 | E-14 | 前端**未使用 react-router**（`package.json` 无 router 依赖，`src/` 下零 `Routes`/`useNavigate`） | C3 的 nginx 可不配 SPA fallback；配了也无害（保险起见建议保留 `try_files $uri /index.html`） |
 | E-15 | **`frontend/package.json` 的 `build` 脚本是 `tsc -b && vite build`** —— 生产构建会跑完整 TypeScript 编译 | C3 改生产构建后，**任何 `tsc` 类型错误都会导致 Docker 构建失败**。C3 必须先实测 `npm run build` 是否干净 |
 | E-16 | ~~后端无上传体积限制~~ → **表述错误，已修正**：业务层有显式校验 `knowledge.py:473` `UPLOAD_CONSTRAINTS["max_file_size_bytes"] = 50*1024*1024`，`:503-504` 拦截返回「超过 50MB」。（总领当初只查了 `UploadFile = File(...)` 而漏了业务层校验。） | 正确表述：**nginx 默认 1m 远小于后端 50MB 上限，会成为事实上的瓶颈**。C3 已配 `client_max_body_size 100m`（>50m），nginx 不再是瓶颈 ✅ |
-| E-17 | **C3 改 nginx 后 SSE 帧粒度变了约 22 倍**：dev 时代 15.10s/1366 chunk（≈11ms/帧）→ nginx 后 26.76s/107 chunk（≈249ms/帧）。不是降级（直方图每 2s 桶均有 chunk），但**基线口径变了** | **A1（SSE 合批与心跳收敛）必须以 nginx 之后的口径（约 4 帧/s）为基线**，不能用 dev 时代测到的 20 帧/s，否则收益评估错误 |
+| E-17 | **C3 改 nginx 后 SSE 帧粒度变了约 22 倍**：dev 时代 15.10s/1366 chunk（≈11ms/帧）→ nginx 后 26.76s/107 chunk（≈249ms/帧）。不是降级（直方图每 2s 桶均有 chunk），但**基线口径变了** | **A1（SSE 合批与心跳收敛）必须以 nginx 之后的口径（约 4 帧/s）为基线**，不能用 dev 时代测到的 20 帧/s，否则收益评估错误。<br>**2026-08-30 总领追加核实（A 组派发前）**：**nginx 已排除**是缓冲来源——`frontend/nginx.conf:42 proxy_buffering off`、`:44 gzip off`、`:45 proxy_read_timeout 3600s` 全部到位。链路上**唯一的缓冲环节是后端自己的 `GZipMiddleware`**（`main.py:62-64`，`minimum_size=1024`，T21 已登记为脆弱组合、默认不改）。→ **A1 必须实测 `Accept-Encoding: identity` 与默认 gzip 两轮的帧数差异**，判断当前低帧数是 gzip 的**偶然效果**还是真实合批；若为前者，A1 的价值是把「偶然」换成「显式可控」。<br>**另注**：心跳由后端泵每 50ms 自发（与 gzip/nginx 无关）→ **20 帧/秒、60 秒约 1200 帧至今未变，这才是 A1 真正的靶子** |
 | E-18 | **embedding 模型是懒加载**（`core/embeddings.py:12-22` `_get_embedder()`，首次调用才 `SentenceTransformer("BAAI/bge-small-zh-v1.5")`）。**加载失败时静默降级为确定性伪向量**（`_embed_local` 的 fallback 分支），不抛错、不告警 | ① 启动不下载模型 ✅（C1 的「启动零联网」成立）；② **但首次知识库入库会触发 HuggingFace 下载**；③ 若 HF 不可达 → 检索质量静默崩塌且无人知晓。**N2 必须验证 embedding 走了真模型** |
 | E-19 | **`python:3.12-slim` 里没有 curl、没有 wget**；`nginx:alpine` 有 busybox `wget` 也没有 curl | **C4 的 healthcheck 不能用 curl**，必须用容器内的 python（见 C4 提示词 4.3）。这是 healthcheck 最典型的想当然错误 |
 | E-20 | **后端无任何健康检查端点**：`backend/main.py` grep `health`/`ping`/`status` **零命中**。现有 GET 端点都带业务依赖/路径参数，不适合当探针 | **C4 必须新增 `/healthz`**。该路径不在 nginx 的 `/api/`、`/uploads/` 匹配范围内，会落入 SPA fallback 返回 index.html——**不影响 Docker healthcheck（容器内直连 127.0.0.1:8000）**，且 8000 已映射到宿主机可供手验 |
