@@ -3,6 +3,7 @@ uvicorn[standard]>=0.34.0
 python-dotenv>=1.0.1
 pydantic>=2.10.4
 httpx>=0.28.1
+requests>=2.32.0  # T17: 5 处惰性 import 此前靠 markitdown 传递提供，显式声明防解析漂移
 # LLM 客户端（core/base_llm.py 走 OpenAI 兼容 SDK；N1 实测容器缺失时对话必挂）
 openai>=1.0
 
