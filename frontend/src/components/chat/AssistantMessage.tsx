@@ -7,11 +7,12 @@ import { SubAgentLiveStrip } from './subagent'
 
 // ---------- 思维链渲染：markdown-it 轻量渲染（html:false 防 XSS，换行生效）----------
 const mdThink = new MarkdownIt({ html: false, linkify: true, breaks: true })
-const renderMd = (text: string) => mdThink.render(text || '')
-
+/** 导出仅供测试（isFlowNode 同模式）：B3 分片/整文一致性、XSS 守卫 */
+export const renderMd = (text: string) => mdThink.render(text || '')
 // 审核引用标注（5.2）：`[来源:xxx#chunk-N]` 渲染为可点击元素（data-src/data-chunk 供事件委托跳知识库）
 const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-const annotateCitations = (html: string) => html.replace(
+/** 导出仅供测试（isFlowNode 同模式） */
+export const annotateCitations = (html: string) => html.replace(
   /\[来源:([^\]\n]+?)#chunk-(\d+)\]/g,
   (_m, src: string, ch: string) => {
     const safe = escapeHtml(src.trim())
@@ -19,20 +20,159 @@ const annotateCitations = (html: string) => html.replace(
   },
 )
 
-// markdown 渲染结果缓存：历史消息 content 不变，命中即跳过 markdown-it 全量解析
-const _mdCache = new Map<string, string>()
-const renderMdCached = (text: string) => {
+// markdown 渲染结果缓存：B3 改造——
+// 旧实现 key=完整文本 + 300 条条目数 FIFO：流式期 stable 前缀每帧变长必 miss，
+// 每帧对越来越长的文本全量解析（O(n²)），且中间态挤掉历史消息缓存。
+// 新实现：
+//  - 缓存粒度 = 「已闭合块」（块文本永不变化 → 命中后该块永不再解析）；
+//  - 淘汰按累计字符数（≤2MB，FIFO），与条目数解耦；
+//  - 整文渲染（历史消息/思维链条目）继续走本缓存（key=完整文本，语义不变）。
+const _MD_CACHE_MAX_CHARS = 2 * 1024 * 1024
+/** 导出仅供测试：缓存本体（淘汰/命中率守卫用） */
+export const _mdCache = new Map<string, string>()
+let _mdCacheChars = 0
+/** 导出仅供测试：解析/命中/字符量计数（B3 验收：命中率与淘汰策略） */
+export const _mdStats = { parses: 0, hits: 0, chars: 0 }
+
+const renderMdCached = (text: string): string => {
   const key = text || ''
-  let h = _mdCache.get(key)
-  if (h === undefined) {
-    h = annotateCitations(renderMd(key))
-    if (_mdCache.size > 300) {
-      const first = _mdCache.keys().next().value
-      if (first !== undefined) _mdCache.delete(first)
-    }
-    _mdCache.set(key, h)
+  const hit = _mdCache.get(key)
+  if (hit !== undefined) {
+    _mdStats.hits++
+    return hit
   }
-  return h
+  const html = annotateCitations(renderMd(key))
+  _mdStats.parses++
+  _mdCacheChars += key.length
+  _mdStats.chars = _mdCacheChars
+  _mdCache.set(key, html)
+  while (_mdCacheChars > _MD_CACHE_MAX_CHARS && _mdCache.size > 1) {
+    const oldest = _mdCache.keys().next().value
+    if (oldest === undefined) break
+    _mdCacheChars -= oldest.length
+    _mdCache.delete(oldest)
+  }
+  return html
+}
+/** 导出仅供测试（isFlowNode 同模式） */
+export { renderMdCached }
+
+// ---------- B3：Markdown 分片渐进渲染（流式路径专用） ----------
+// 分片渲染 ≠ 整文渲染的结构性陷阱（逐字节相等必须成立，测试钉住）：
+//  - 围栏跨块：``` 在块 A 打开块 B 关闭 → 各自渲染必错 → 围栏打开期间不分块；
+//  - 松列表延续：`- a\n\n- b` 整文是一个 <ul>，分片成两个 → 列表后的边界不切；
+//    列表项后缩进 1-3 空格的续行同理（缩进 ≥4 由下一条规则覆盖）；
+//  - 链接引用定义与使用可跨块 → 一旦出现引用定义，整篇回退整文渲染；
+//  - 缩进 ≥1 的围栏 opener 处于列表项内容语境，静态不可判定 → 整篇回退。
+// 因此：块扫描（围栏感知）→ 安全边界处才允许分片；尾段（最后一组，仍在增长）
+// 整文渲染且不缓存（中间态进缓存只会污染）。安全边界两侧各自整文渲染再拼接
+// 与整文渲染逐字节相等——这是「已闭合块永不重解析」收益的结构前提。
+
+const _FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})/
+const _LIST_LINE = /^ {0,3}(?:[-*+]|\d{1,9}[.)])(?:\s|$)/
+const _REF_DEF = /^ {0,3}\[[^\]\n]+\]:\s*\S/
+
+interface _MdBlock {
+  start: number      // 块首偏移
+  first: string      // 首行原文（边界安全判定用）
+  indent: number     // 首行前导空格数（tab 记 4）
+  inList: boolean    // 该块处于列表游程内：列表标记块 / 游程内的缩进续行块 / 含围栏块（保守）
+}
+
+function _scanMdBlocks(text: string): _MdBlock[] | null {
+  const lines = text.split('\n')
+  type Raw = { start: number; first: string; indent: number; hasMarker: boolean; hasFence: boolean }
+  const raws: Raw[] = []
+  let inFence = false
+  let fenceCh = ''
+  let fenceLen = 0
+  let off = 0
+  let prevBlank = true
+  for (const line of lines) {
+    if (_REF_DEF.test(line)) return null            // 引用定义跨块风险 → 整文回退
+    if (inFence) {
+      const m = /^ {0,3}(`{3,}|~{3,})\s*$/.exec(line)
+      if (m && m[1][0] === fenceCh && m[1].length >= fenceLen) inFence = false
+      off += line.length + 1
+      continue
+    }
+    if (_FENCE_OPEN.test(line)) {
+      if (line[0] === ' ' || line[0] === '\t') return null  // 缩进围栏（列表项内容语境）→ 整文回退
+      const m = _FENCE_OPEN.exec(line)!
+      inFence = true
+      fenceCh = m[1][0]
+      fenceLen = m[1].length
+      if (prevBlank) raws.push({ start: off, first: line, indent: 0, hasMarker: false, hasFence: true })
+      else if (raws.length) raws[raws.length - 1].hasFence = true   // 块中段开围栏 → 该块保守标记
+      prevBlank = false
+      off += line.length + 1
+      continue
+    }
+    if (/^[ \t]*$/.test(line)) {
+      prevBlank = true
+      off += line.length + 1
+      continue
+    }
+    if (prevBlank) {
+      const sp = (/^ */.exec(line) || [''])[0].length
+      raws.push({ start: off, first: line, indent: line[0] === '\t' ? 4 : sp, hasMarker: false, hasFence: false })
+      prevBlank = false
+    }
+    const curRaw = raws[raws.length - 1]
+    if (curRaw && _LIST_LINE.test(line)) curRaw.hasMarker = true
+    off += line.length + 1
+  }
+  // 列表游程：标记块开启；游程内的缩进续行块延续；缩进 0 非标记块结束；
+  // 含围栏的块保守视为游程内（围栏与列表的相对缩进关系静态不可判定）。
+  let runActive = false
+  return raws.map(r => {
+    const inList = r.hasMarker || r.hasFence || (r.indent > 0 && runActive)
+    runActive = inList
+    return { start: r.start, first: r.first, indent: r.indent, inList }
+  })
+}
+
+/** 边界安全判定：prev/next 两块之间能否作为渲染可分解点。 */
+function _boundarySafe(prev: _MdBlock, next: _MdBlock): boolean {
+  if (next.indent >= 4) return false                  // 缩进码块或列表续行，不可静态判定
+  if (_LIST_LINE.test(next.first)) return !prev.inList // 列表后接标记=松列表延续；非列表后=新列表开始
+  if (next.indent > 0) return !prev.inList             // 缩进续行只可能延续列表游程
+  return true                                          // 缩进 0 非标记行必然结束列表 → 安全
+}
+
+/** 导出仅供测试：把 stable 前缀切成 [缓存分片..., 尾段]；null = 整文回退。 */
+export function _splitMdChunks(text: string): { chunks: string[]; tail: string } | null {
+  const blocks = _scanMdBlocks(text)
+  if (blocks === null) return null                      // 引用定义/缩进围栏 → 整文回退
+  if (blocks.length === 0) return { chunks: [], tail: text }
+  // 尾段组 = 以「连续不安全边界」与最后一块相连的组：从末块向前，边界不安全
+  // 则并入尾段组，遇到首个安全边界即停（该安全边界处可以冻结分片）。
+  let tailGroupFirst = blocks.length - 1
+  for (let i = blocks.length - 2; i >= 0; i--) {
+    if (!_boundarySafe(blocks[i], blocks[i + 1])) tailGroupFirst = i
+    else break
+  }
+  // 分片 = 尾段组之前的块，按「安全边界」切组（不安全边界两侧同组合并）
+  const chunks: string[] = []
+  let gs = 0
+  for (let i = 0; i < tailGroupFirst; i++) {
+    if (!_boundarySafe(blocks[i], blocks[i + 1])) continue
+    chunks.push(text.slice(blocks[gs].start, blocks[i + 1].start))
+    gs = i + 1
+  }
+  return { chunks, tail: text.slice(blocks[tailGroupFirst].start) }
+}
+
+/** B3：流式 stable 前缀渐进渲染——已闭合块走分片缓存（永不重解析），
+ *  尾段整文渲染（不缓存）。与 annotateCitations(renderMd(stable)) 逐字节相等。 */
+export const renderMdProgressive = (stable: string): string => {
+  if (!stable) return ''
+  const split = _splitMdChunks(stable)
+  if (!split) return renderMdCached(stable)
+  let html = ''
+  for (const c of split.chunks) html += renderMdCached(c)
+  if (split.tail) html += annotateCitations(renderMd(split.tail))
+  return html
 }
 
 /** 思维链标题净化：只显示 agent 名称，去掉内部阶段后缀与伪标题。 */
@@ -255,7 +395,7 @@ const StreamingMd = memo(function StreamingMd({ text, streaming }: { text: strin
   const stable = stableEnd > 0 ? text.slice(0, stableEnd) : ''
   const tail = stableEnd > 0 ? text.slice(stableEnd) : text
   const html = useMemo(() => {
-    if (streaming) return stable ? renderMdCached(stable) : ''
+    if (streaming) return stable ? renderMdProgressive(stable) : ''
     return text ? renderMdCached(text) : ''
   }, [streaming, stable, text])
   if (!streaming) {
