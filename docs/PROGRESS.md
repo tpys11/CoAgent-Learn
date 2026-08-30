@@ -162,6 +162,7 @@
 | **N3** | `docs/dispatch/step-N3.md`（2026-08-31 修补版） | 2026-08-31 | **✅ 已完成**（commit `c417022`→`db55a28` 共 8 笔，364 passed；交接 `docs/progress/step-N3.md`；总领独立复测全绿） |
 | **N2②** | `docs/dispatch/step-N2-pull.md`（2026-08-31 校准版） | 2026-08-31 | **✅ 已完成**（7/7+⑧，零改动 0 push；交接 `docs/progress/step-N2-pull.md`；新发现 T47/T48 上报） |
 | **F7** | `docs/dispatch/step-F7.md`（2026-08-31） | 2026-08-31 | **🔶 实证完成，未动代码**（缺陷当前不可复现=环境依赖；总领三处取证被其推翻；但其窗口 bracket 出 **T50 数据丢失事件**——待交代操作序列后改判调查） |
+| **F8** | `docs/dispatch/step-F8.md`（2026-08-31） | 待分发 | **⏳ 已立项待分发**（KB 上传质量增强：owner 体验反馈驱动——侦察结论：MinerU/Mathpix/markitdown/pymupdf4llm 四组件已在库，缺的是显示层 KaTeX、可观测性、文本规范化、扫描件 OCR 出路四处接线；禁碰 T50 领地） |
 
 > 分发提示词统一存放于 `docs/dispatch/step-<id>.md`，交接文档归档于 `docs/progress/step-<id>.md`。
 
@@ -646,7 +647,7 @@ N3（推预构建镜像）→ N2（第 2 次，按 pull 路径复验）
 | **T47** | **【P1 功能缺陷 · N2② 发现】`GET /api/knowledge/query` 在「容器新建 DB + 项目已有向量数据」时稳定 500**：traceback `knowledge.py:668 → knowledge_service.py:365 search → kb_repo.py:142 → _kb_ops.py:233 search_kb_vectors → _new_conn → _sqlite_core.py:49 _ensure_wal → sqlite3.OperationalError: unable to open database file`。空 KB 项目 200（无 docs 提前返回）。**总领复核（2026-08-31）**：①开发栈（长存 DB + 同镜像 99cfe7c）**复现阴性**——ai Agent 项目查询 200 且返回真实语义结果，缺陷指向「容器新建库」场景；②**chat 主链路不受影响**（engine 无 `.search(` 调用，retrieve.py 只用 `fetch_section_texts`/`list_docs`；写入走缓存连接正常）；③**真实影响面 = 前端知识库查询（`api.ts:179`）+ `knowledge_retrieval` 技能（`:11`）——恰落在评委 fresh 部署场景**。根因假设：容器在 bind mount 上新建的 WAL 库，第二连接 `_ensure_wal` 触碰 -wal/-shm 失败（gRPC-FUSE/virtiofs 共享内存限制类；宿主 NTFS 与长存库均阴性） | N2② 上报 + 总领复核 | **F7 实证完成（2026-08-31）：当前环境不可复现（Docker 版本前后一致），三处关键取证被推翻（sidecar 宿主视错觉等），修复形态关闭并入 T50 调查** |
 | **T48** | **README 知识库上传入口指引含糊**：「顶部『资源』页可上传」实为系统预置资源库（无上传按钮）；真实入口 = 课程工作台左侧「资源」→「查看更多」→ 上传面板。随记两个吹毛求疵：项目资源面板双「确认上传」按钮（外层易误点）；⑧-A 报错文案「。，」连排 + 「请稍后在知识库查看」易误导（实际该条保持未向量化需删传） | N2② 上报 | README 微改 + 前端文案，折进下一会话/下一轮体验包 |
 | **T49** | **【测试基建 · F7 会话登记】宿主 pytest 与开发栈共用 `data/app.db`（conftest 无 DB 隔离，`:42` 触达 `db_path`）**——测试写操作直达真实库，364 测试 × 16 轮未出事故属侥幸面 | F7 会话上报，总领核验 conftest 触达点属实 | 待专项核实与隔离方案（勿与 T50 混同） |
-| **T50** | **🔴【数据丢失事件 · 总领取证】「ai Agent」课程知识库向量在 F7 会话窗口内消失**：总领 02:13 查询该库返回 3 条真实向量结果（AI-Agents-in-Depth-zh-CN.pdf chunk 108/192/287）→ F7 会话后同查询 `results:[]`，只读直查 `kb_vectors` 该项目 **0 行**（现库仅存 F7 会话写入的 smoke-web1 10136 行 + smoke-web3 371 行，且**两项目无 projects 表行 = 孤儿向量**）；`kb_tree` 残留 8 行（文档树在、向量无）。时间括号铁证：数据在 F7 窗口内消失。**疑似触发**：F7 会话向开发栈上传 smoke-web1（10136 块）的写入/重建路径存在跨项目清除，或其 pytest 基线——待会话交代完整操作序列。**恢复**：owner 重传源 PDF 即可重建向量，课程/聊天记录不受影响 | 总领只读直查取证（mode=ro） | **F7 改判 T50 调查（P0）** |
+| **T50** | **🔴【数据丢失事件 · 总领取证】「ai Agent」课程知识库向量在 F7 会话窗口内消失**：总领 02:13 查询该库返回 3 条真实向量结果（AI-Agents-in-Depth-zh-CN.pdf chunk 108/192/287）→ F7 会话后同查询 `results:[]`，只读直查 `kb_vectors` 该项目 **0 行**（现库仅存 F7 会话写入的 smoke-web1 10136 行 + smoke-web3 371 行，且**两项目无 projects 表行 = 孤儿向量**）；`kb_tree` 残留 8 行（文档树在、向量无）。时间括号铁证：数据在 F7 窗口内消失。**疑似触发**：F7 会话向开发栈上传 smoke-web1（10136 块）的写入/重建路径存在跨项目清除，或其 pytest 基线——待会话交代完整操作序列。**恢复**：owner 重传源 PDF 即可重建向量，课程/聊天记录不受影响 | 总领只读直查取证（mode=ro）；**补充证据（08-31 体验期复查）**：projects 表现存 2 行（新课程/默认项目），kb_tree 残留孤儿——ai_agent 8 行 + smoke 3 行（projects 已无对应行）→ 删除路径级联疑点，归 T50 调查 | **F7 改判 T50 调查（P0）** |
 
 ---
 
