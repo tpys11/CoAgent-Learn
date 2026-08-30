@@ -10,7 +10,7 @@
 | 基线 commit | `4a1a7cf`（2026-08-29，分支 `master`，工作区干净） |
 | 看板初始化 | 2026-08-29 |
 | 回归基线 | 后端 pytest **241 / 241**（基线 commit `4a1a7cf`）；前端 vitest **26 / 26** + `tsc` 0 错误 |
-| **当前实测规模** | 后端 pytest **357 passed**（B 组收口，commit `4947558`）；前端 vitest **90**（原 32）。演进：`241` →C1/C2/N1/C3 各步守卫→ `251` →F1 +9 条→ `260` →C4 +6 条→ `266` →F2 +5 条→ `271` →P1 +7 条守卫→ `278` →F3 +9→ `287` →F5 +8→ `295` →F6 +5→ `300` →F4′ +14→ `314` →D 组 +22→ `336` →A 组 +20→ `356` →**B 组 +1 → `357`**（T38 1 条，后端；其余 B1/B3/B2/B4 均为前端）。前端 vitest `26` →A2 +4→ `30` →A3 +2→ `32` →**B 组 +58 → `90`**（B1 8 / B3 38 / B2 8 / B4 4） |
+| **当前实测规模** | 后端 pytest **364 passed**（N3 收口，commit `db55a28`）；前端 vitest **90**（原 32）。演进：`241` →C1/C2/N1/C3 各步守卫→ `251` →F1 +9 条→ `260` →C4 +6 条→ `266` →F2 +5 条→ `271` →P1 +7 条守卫→ `278` →F3 +9→ `287` →F5 +8→ `295` →F6 +5→ `300` →F4′ +14→ `314` →D 组 +22→ `336` →A 组 +20→ `356` →**B 组 +1 → `357`**（T38 1 条，后端；其余 B1/B3/B2/B4 均为前端）。前端 vitest `26` →A2 +4→ `30` →A3 +2→ `32` →**B 组 +58 → `90`**（B1 8 / B3 38 / B2 8 / B4 4）；**N3 +7 → `364`**（T17 声明守卫 1 / N3 发布守卫 6） |
 | **全量回归耗时** | **49.73s**（B 组验收复测，总领实测）。演进：`302.01s`（F2 后实测）/ `122.28s`（P1 会话同机实测，快状态）→ P1 后 `30.61s`（P1 会话）/ `38.40–39.17s`（总领复测）→ F4′ 验收 `41.80s` → D 组验收 `44.30s` → A 组验收 `47.58s` → B 组验收 `49.73s`（总领实测，容器运行态）。绝对值随机状态波动较大（跨机观测差约 3 倍），以同时段中位数与 A/B 比值为准。 |
 | **代码规模** | 后端 68 个 Python 文件 / 9678 行，最大文件 `pipeline_v2.py` 628 行；前端 57 个 TS/TSX 文件 / 10878 行 |
 
@@ -124,7 +124,8 @@
 > **③ 判失败正确，但判据错在总领**：C4 的 6 条守卫从未要求 frontend 有 healthcheck，
 > 却是我在 N2 验收项里写了「双服务 healthy」——要了 C4 从未被要求交付的东西。
 > 详见 `docs/progress/step-N2.md` 批注 §B/§C。
-| **N3** | **发布封装**（新增） | 全部 17 步完成 | 中 | `deploy/docker-compose.yml`（`build:` → `image:`）、`README.md`、registry 配置 | — | 待分发 |
+| **N3** | **发布封装** | 全部 17 步完成 | 中 | ✅ 实际改动：`backend/Dockerfile`（方案 A 显式 COPY）、`.dockerignore`(新)、`deploy/docker-compose.yml`（image: 钉 sha + 移除 3 代码挂载）、`.github/workflows/build-push.yml`(新)、`README.md`（拉取口径）、`backend/requirements.txt`(+requests，T17)、`tests/test_n3_release_packaging.py`(新，7 守卫)、`deploy/docker-compose.override.yml`(新，不入库) | `c417022`→`db55a28`（8 笔） | **✅ 已完成**（2026-08-31；364 passed / tsc 0 / vitest 90；GHCR 双包 Public 匿名可拉；新 clone 照 README 走查通过；总领独立变异抽查咬合） |
+| **N2②** | **端到端验收 · pull 路径**（第 2 次） | N3 | 低 | ✅ **零代码改动**（冷缓存+登出态匿名拉取 67.2s——save→rmi→重拉严谨取证；7/7+⑧ 全过：无 Key 明确报错 / 有 Key 真模型向量 0.01 整数倍=0；FCP 1.38s / console 0 错；新发现 T47/T48 见 §4） | —（纯验证） | **✅ 已完成**（2026-08-31；M7 收官，M1–M7 全 ✅） |
 
 > 步骤总数由 15 增至 **24**（新增 N1、N2、N3，C3 实施中发现 **F1**，F1 验收中发现 **F2**，
 > 进度成本根因诊断后新增 **P1**，N2 端到端验收撞出 **F3、F4**，owner 拍板 **F5**，
@@ -158,6 +159,8 @@
 | F5 | `docs/dispatch/step-F5.md` | 2026-08-30 | **✅ 已完成**（commit `a79f6d9`→`3395670`，295 passed；交接文档 `docs/progress/step-F5.md` 由总领补建） |
 | F6 | `docs/dispatch/step-F6.md` | 2026-08-30 | **待执行**（聊天输入框 accept 补图片） |
 | F4′ | `docs/dispatch/step-F4.md` | 2026-08-30 | **已修订待执行**（F5 后缩减为「双 Key 引导 + 入库异常可见化」） |
+| **N3** | `docs/dispatch/step-N3.md`（2026-08-31 修补版） | 2026-08-31 | **✅ 已完成**（commit `c417022`→`db55a28` 共 8 笔，364 passed；交接 `docs/progress/step-N3.md`；总领独立复测全绿） |
+| **N2②** | `docs/dispatch/step-N2-pull.md`（2026-08-31 校准版） | 2026-08-31 | **✅ 已完成**（7/7+⑧，零改动 0 push；交接 `docs/progress/step-N2-pull.md`；新发现 T47/T48 上报） |
 
 > 分发提示词统一存放于 `docs/dispatch/step-<id>.md`，交接文档归档于 `docs/progress/step-<id>.md`。
 
@@ -433,6 +436,7 @@ N3（推预构建镜像）→ N2（第 2 次，按 pull 路径复验）
 | **E-33** | **【契约缺陷 · F6 复核发现】`pipeline_v2.py:389` 把 image 的 mime 硬编码为 `image/png`**：`"url": "data:image/png;base64," + req.image`，**不随实际格式变化** | 前端 `CenterPanel` 存的是**裸 base64**（`:144`），后端无条件拼 `data:image/png;`。→ 传 JPEG/GIF/WebP 时**声明是 png、字节是别的格式**。<br>**今天能工作只因 DeepSeek vision 忽略了声明的 mime**（F6 实测用的是 PNG，未暴露）。<br>⚠️ **F6 让这条变为可达**：F6 之前聊天 accept 不含图片，之后 `jpg/jpeg/gif/webp` 均为官方可选路径。<br>✅ **owner 2026-08-30 拍板：改对，并入 F4′**。两种改法：A 后端从 base64 魔数推断（自包含、不改契约，倾向）；B 前端用附件 `name` 的扩展名传真实 mime（需动契约、依赖文件名可信度）。<br>**验收**：修完须用**非 PNG 图真实跑一次**上游。**✅ 已闭（F4′，`2855fc9`）：选方案 A（后端 base64 魔数推断，`_sniff_image_mime`）；真实 JPEG 上游实测通过（vision 回复「这张图片是蓝色的，中间有一个白色的圆形。」）；总领变异复现：改回恒拼 `data:image/png` → 恰 1 条红 → 还原全绿** |
 | **E-31** | **【上游约束 · F3 实证】上游 VL（视觉 LLM）服务只收 `webp/png/jpeg/gif`，**拒收 `bmp`**；而我们的 `_IMG_EXTS` 含 `bmp`** | F3 实测（总领**无可用 VL Key，无法独立复验，属采信**）。性质判定：**与 N2-2 完全同型**——「**我们声称支持** vs **上游实际支持**」的不一致。bmp 经点选与后端准入均正常，失败发生在视觉描述阶段。<br>**两选一，待 owner 决策**：① **剔除** `bmp`（最简单，用户传 bmp 会被明确拒绝）；② **转码** bmp→png（保留能力，但需引入图像库依赖，**与 C1「不新增构建期依赖」方向相悖**）。<br>**总领倾向①剔除**——bmp 在今天已属边缘格式，为它引入依赖不划算。<br>✅ **owner 2026-08-30 拍板：剔除，并入 F4′**。⚠️ **改动面共 5 处**（总领全仓核实，缺一即不一致）：`knowledge.py:486`（`_IMG_EXTS`）、**`knowledge.py:137`（字面量，且须改为引用 `_IMG_EXTS`）**、`knowledge.py:28`（`_IMG_MIME`，可选）、`UploadPanel.tsx:14`（`FALLBACK_ACCEPT`）、`tests/test_f3_upload_constraints.py:24`（`BASELINE_IMG_EXTS`）。**✅ 已闭（F4′，`20a73a4`）：5 处全改 + 3 条反向守卫（`test_bmp_must_not_reenter_backend` / `_frontend_fallback` / `_f3_baseline`）；总领变异复现：把 bmp 加回 `_IMG_EXTS` → 恰 1 条红 → 还原全绿** |
 | **E-30** | **【双重静默降级 · 实测】未配置 `EMBEDDING_API_KEY` 时，embedding 与 rerank **同时**静默失效**。<br>**① embedding**：`_embed()` 的路由条件是 `EMBEDDING_BACKEND=="api" and EMBEDDING_API_KEY`（`embeddings.py:67`）。默认 `EMBEDDING_BACKEND="api"`、`EMBEDDING_BASE_URL` 已是硅基流动，**但 key 为空 → 判定 False → 落 `_embed_local`** → `EMBEDDING_LOCAL_MODEL=""`（`config.py:24`，本地通道已废弃）→ `SentenceTransformer("")` 抛 `AttributeError` → 被裸 `except Exception` 吞掉 → **伪向量 `ord(ch)%100/100`**。<br>**② rerank**：`_get_reranker()`（`knowledge_service.py:473-487`）同理——`RERANK_BACKEND="api"` 但 `RERANK_API_KEY` 与 `EMBEDDING_API_KEY` 皆空 → 落本地 `CrossEncoder("BAAI/bge-reranker-base")` → 需从 HF 下载 → 失败 → `_reranker_local=False` → 返回 None，**重排被静默关闭** | **只需配置一个硅基流动 Key（`EMBEDDING_API_KEY`），两条路径同时走 API，问题消失**：rerank 的判定是 `RERANK_API_KEY or EMBEDDING_API_KEY`，会复用同一把 key。<br>⚠️ **对 N3 的连带影响（重要）**：配置 key 后，torch / sentence-transformers 的**全部引用点**（`embeddings.py:19` 与 `knowledge_service.py:483`）均不可达 → 成为**死依赖**。而它们正是 backend 镜像 **3.25GB** 的主因（torch 2.13 + transformers 5.14 + sentence-transformers 5.6）。**→ 若决定「API 为唯一路径、移除本地兜底」，可大幅缩小镜像并显著缩短冷构建（现 433s，README 称大头是 torch 下载 ~190MB）。这是一个独立的新选项，须 owner 决策**。<br>**注**：未配置 key 时本地兜底**仍会尝试加载模型**，故 torch 当前并非完全无用——是否移除取决于是否保留离线能力 |
+| **E-34** | **【compose 行为 · N3 实测】显式 `-f` 下 compose v2 不自动加载 `docker-compose.override.yml`**（单 -f 带/不带该文件，config 输出相同；`--project-directory` 亦不加载）。本地开发 canonical 命令：`docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.override.yml up -d --build`（双 -f 合并验证 exit 0）；README 开发者路径已按此口径书写，且有守卫钉住 README 全部项目 compose 命令带 `-f` | 本地开发验证 / README 维护 |
 
 ---
 
@@ -637,6 +641,8 @@ N3（推预构建镜像）→ N2（第 2 次，按 pull 路径复验）
 | **T44** | **B3 的「纯列表流」退化**：整段都是 `- ` 块且仍在增长时，最后一个列表组作为尾段每帧整文重解析，成本随该组长度线性 | B 组上报（遗留 2） | **正确性优先的主动取舍**——列表终止性静态不可判定，宁可慢也不能切错。一旦出现非列表块即冻结缓存，恢复正常。低端设备长列表回答时可能可见 |
 | **T45** | `buildMessageProps` 的 `ctx` 对象每次渲染新建（仅作入参，不进 props，故不破坏 memo） | B 组上报（遗留 3） | 无害。若未来引入 React Compiler 可整体简化 |
 | **T46** | **B4 的触发机制已随 A1 改变**（事实记录，非缺陷）：A1 收敛心跳后，断线判定 =「首字节前空闲超时（`resetTimer` 15s/60s）」或「连心跳在内的字节流彻底停止 60s」或「fetch 层异常」。**HTTP ≥500 与用户主动停止不走轮询**（各有独立文案） | B 组实测取证（交接文档 §5） | 后续改轮询相关逻辑前必读。判定口径与派发文档「心跳没了就是断线」的旧假设不同 |
+| **T47** | **【P1 功能缺陷 · N2② 发现】`GET /api/knowledge/query` 在「容器新建 DB + 项目已有向量数据」时稳定 500**：traceback `knowledge.py:668 → knowledge_service.py:365 search → kb_repo.py:142 → _kb_ops.py:233 search_kb_vectors → _new_conn → _sqlite_core.py:49 _ensure_wal → sqlite3.OperationalError: unable to open database file`。空 KB 项目 200（无 docs 提前返回）。**总领复核（2026-08-31）**：①开发栈（长存 DB + 同镜像 99cfe7c）**复现阴性**——ai Agent 项目查询 200 且返回真实语义结果，缺陷指向「容器新建库」场景；②**chat 主链路不受影响**（engine 无 `.search(` 调用，retrieve.py 只用 `fetch_section_texts`/`list_docs`；写入走缓存连接正常）；③**真实影响面 = 前端知识库查询（`api.ts:179`）+ `knowledge_retrieval` 技能（`:11`）——恰落在评委 fresh 部署场景**。根因假设：容器在 bind mount 上新建的 WAL 库，第二连接 `_ensure_wal` 触碰 -wal/-shm 失败（gRPC-FUSE/virtiofs 共享内存限制类；宿主 NTFS 与长存库均阴性） | N2② 上报 + 总领复核 | **F7 立项待分发**（根因实证 → 修复 → 容器级复现转通过 + 守卫） |
+| **T48** | **README 知识库上传入口指引含糊**：「顶部『资源』页可上传」实为系统预置资源库（无上传按钮）；真实入口 = 课程工作台左侧「资源」→「查看更多」→ 上传面板。随记两个吹毛求疵：项目资源面板双「确认上传」按钮（外层易误点）；⑧-A 报错文案「。，」连排 + 「请稍后在知识库查看」易误导（实际该条保持未向量化需删传） | N2② 上报 | README 微改 + 前端文案，折进下一会话/下一轮体验包 |
 
 ---
 
