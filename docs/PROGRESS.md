@@ -10,8 +10,8 @@
 | 基线 commit | `4a1a7cf`（2026-08-29，分支 `master`，工作区干净） |
 | 看板初始化 | 2026-08-29 |
 | 回归基线 | 后端 pytest **241 / 241**（基线 commit `4a1a7cf`）；前端 vitest **26 / 26** + `tsc` 0 错误 |
-| **当前实测规模** | 后端 pytest **314 passed**（F4′ 收口，commit `2855fc9`）；前端 vitest **26** 不变。演进：`241` →C1/C2/N1/C3 各步守卫→ `251` →F1 +9 条→ `260` →C4 +6 条→ `266` →F2 +5 条→ `271` →P1 +7 条守卫→ `278` →F3 +9→ `287` →F5 +8→ `295` →F6 +5→ `300` →**F4′ +14 条守卫→ `314`** |
-| **全量回归耗时** | **41.80s**（F4′ 验收复测，总领实测）。演进：`302.01s`（F2 后实测）/ `122.28s`（P1 会话同机实测，快状态）→ P1 后 `30.61s`（P1 会话）/ `38.40–39.17s`（总领复测）→ F4′ 验收 `41.80s`（总领实测，容器运行态）。绝对值随机状态波动较大（跨机观测差约 3 倍），以同时段中位数与 A/B 比值为准。 |
+| **当前实测规模** | 后端 pytest **336 passed**（D 组收口，commit `56ebfc6`）；前端 vitest **26** 不变。演进：`241` →C1/C2/N1/C3 各步守卫→ `251` →F1 +9 条→ `260` →C4 +6 条→ `266` →F2 +5 条→ `271` →P1 +7 条守卫→ `278` →F3 +9→ `287` →F5 +8→ `295` →F6 +5→ `300` →F4′ +14→ `314` →**D 组 +22 条守卫→ `336`**（D4 7 / D2 8 / D3 4 / T26 3） |
+| **全量回归耗时** | **44.30s**（D 组验收复测，总领实测）。演进：`302.01s`（F2 后实测）/ `122.28s`（P1 会话同机实测，快状态）→ P1 后 `30.61s`（P1 会话）/ `38.40–39.17s`（总领复测）→ F4′ 验收 `41.80s` → D 组验收 `44.30s`（总领实测，容器运行态）。绝对值随机状态波动较大（跨机观测差约 3 倍），以同时段中位数与 A/B 比值为准。 |
 | **代码规模** | 后端 68 个 Python 文件 / 9678 行，最大文件 `pipeline_v2.py` 628 行；前端 57 个 TS/TSX 文件 / 10878 行 |
 
 ---
@@ -31,10 +31,10 @@
 | B3 | Markdown 分片缓存 | B1 | **高** | `AssistantMessage.tsx` + 测试 | — | 待分发 |
 | B2 | 列表窗口化 | B1 | 中 | `CenterPanel.tsx` + 测试 | — | 待分发 |
 | B4 | 断线轮询收敛 | **A1**（心跳频率影响其改动对象，序列中排在 A3 之后） | 低 | `useChatStream.ts` + 测试 | — | 待分发 |
-| D1 | 消除反向依赖 | — | 低 | `services/chat_context.py`(新)、`main.py`、`pipeline_v2.py`(仅 import 行) | — | 待分发 |
-| D2 | LLM client 复用 | — | 低 | `pipeline_v2.py` 的 `_make_llm`/`_make_fast_llm` + 测试 | — | 待分发 |
-| D3 | 清理 `_strip_thinking` | — | 低 | `base_llm.py`（**两轮交互**：先调研后执行） | — | 待分发 |
-| D4 | 重试幂等 | — | 中 | `pipeline_v2.py` 的 `_persist_user_message` 和/或 `useChatStream.ts`（**两轮交互**：先分析后执行） | — | 待分发 |
+| **D1** | 消除反向依赖 | — | 低 | ✅ 实际改动：`backend/services/chat_context.py`(新，+156)、`backend/main.py`(-143)、`backend/engine/pipeline_v2.py`(3 行 import) | `8990587` | **✅ 已完成**（三个函数搬迁**源码逐字节 + AST 双重相同**，总领脚本复核） |
+| **D2** | LLM client 复用 | — | 低 | ✅ 实际改动：`backend/engine/pipeline_v2.py`(+55/-11)、`tests/test_d2_llm_client_cache.py`(新，8 条) | `8d44499` | **✅ 已完成**（思考档单轮 OpenAI 构造 4→2；sha256 摘要 key + 双检锁） |
+| **D3** | 清理 `_strip_thinking` | — | 低 | ✅ 实际改动：`backend/core/base_llm.py`(+11/-6)、`tests/test_d3_strip_thinking_removed.py`(新，4 条) | `d531717` | **✅ 已完成**（实证双样本：思考走独立 `reasoning_content` → 按决策 3 删除；`chat()` 保留 `.strip()` 行为等价） |
+| **D4** | 重试幂等 | — | 中 | ✅ 实际改动：`backend/engine/pipeline_v2.py`、`backend/core/db/_business_tables.py`、`backend/main.py`(:108 ChatRequest +1)、`frontend/src/hooks/useChatStream.ts`、`backend/core/db/rollback_d4_client_msg_id.sql`(新，反向脚本)、`tests/test_d4_retry_idempotency.py`(新，7 条) | `3ee3a36` | **✅ 已完成**（部分唯一索引 + 历史数据零迁移 + 冲突跳过） |
 | C3 | 前端生产化 | C4 之前（部署链内） | 中 | ✅ 实际改动：`frontend/Dockerfile`(多阶段)、`frontend/nginx.conf`(新)、`deploy/docker-compose.yml`(frontend 块)、`tests/test_c3_nginx_config.py`(新)、`frontend/public/favicon.ico`(新)；**经批准越界**：`frontend/src/App.tsx`(1 行 profilePending 修复) | `fad1feb`→`0534e3c`（4 个） | **✅ 已完成** |
 | **F1** | **修复知识库图片上传链路**（新增，C3 发现） | C3 | **高（P0 功能完全失效）** | ✅ 实际改动：`backend/routers/knowledge.py`（`knowledge_upload_file` 重构 + `_process_file_bg` 图片分支补终态）、`tests/test_f1_image_upload.py`(新，9 条) | `3dd5424` | **✅ 已完成** |
 | **F2** | **非图片上传解析回归 + 重复上传进度终态**（新增，F1 引入 / F1 发现） | F1 | 中 | ✅ 实际改动：`backend/routers/knowledge.py`(+11/-1)、`tests/test_f1_image_upload.py`(+78) | `19806af` | **✅ 已完成** |
@@ -152,7 +152,7 @@
 | F3 | `docs/dispatch/step-F3.md` | 2026-08-30 | **✅ 已完成**（commit `87cf570`/`a8e95a4`/`2b951f7`，287 passed；交接文档 `docs/progress/step-F3.md`） |
 | F4 | `docs/dispatch/step-F4.md` | 2026-08-30 | ⚠️ **已被 F4′ 取代**（F5 移除本地通道后「降级告警」前提消失） |
 | **F4′** | `docs/dispatch/step-F4.md`（F5 后修订版） | 2026-08-30 | **✅ 已完成**（commit `e48e67d`→`2855fc9`，314 passed；交接文档 `docs/progress/step-F4prime.md`） |
-| **D 组** | `docs/dispatch/step-D.md` | 2026-08-30 | **已分发待执行**（D4→D3→D2→D1 **+ T26**，按风险降序；已含决策 30 的 push 规范） |
+| **D 组** | `docs/dispatch/step-D.md` | 2026-08-30 | **✅ 已完成**（commit `3ee3a36`/`d531717`/`8d44499`/`8990587`/`56ebfc6`，336 passed，已推送；交接文档 `docs/progress/step-D.md`，本地归档不入库——见 E-24） |
 | F5 | `docs/dispatch/step-F5.md` | 2026-08-30 | **✅ 已完成**（commit `a79f6d9`→`3395670`，295 passed；交接文档 `docs/progress/step-F5.md` 由总领补建） |
 | F6 | `docs/dispatch/step-F6.md` | 2026-08-30 | **待执行**（聊天输入框 accept 补图片） |
 | F4′ | `docs/dispatch/step-F4.md` | 2026-08-30 | **已修订待执行**（F5 后缩减为「双 Key 引导 + 入库异常可见化」） |
@@ -241,9 +241,9 @@
          ① 双 Key 引导 ② **修 `_process_upload` 吞异常**（否则 A1 形同虚设）
          ③ 守卫 ④ **剔除 bmp（5 处）** ⑤ **`pipeline_v2.py:389` mime 改对**
          ~~F6 聊天输入框图片白名单~~ ✅ 已完成（`542caf3`/`0036da0`）
-会话 7  D 组  **已分发**（`docs/dispatch/step-D.md`）
+会话 7  D 组  ✅ `3ee3a36`→`56ebfc6`（336 passed，已推送）
         执行顺序 **D4 → D3 → D2 → D1**（风险降序，非文档列出的 D1→D2→D3→D4）
-        **+ T26 修复（P1 引入的 WAL flag 回归，折进来省一个会话）**
+        **+ T26 修复（P1 引入的 WAL flag 回归）**
 会话 8  A 组  A1→A2→A3
 会话 9  B 组  B1→B3→B2→B4
 会话 10 N3  推预构建镜像（含决策 19 的 bind mount 处置）→ 紧接 N2 第 2 次验收（pull 路径）
@@ -523,6 +523,7 @@ N3（推预构建镜像）→ N2（第 2 次，按 pull 路径复验）
 | 28 | **F4′ 修复①的方案取舍：选「异常向外传播 + 各调用方就地兜底」，否决「内层自报」与「收窄 catch 类型」**（2026-08-30） | ① **选方案 A（外传）**：让异常成为唯一错误通道——后台文件链路 `_process_file_bg` 的既有 catch（F1 已修好）**零改动自动恢复生效**；同步 3 处各补「异常 → `{"status":"error","msg":…}`」转换。<br>② **否决方案 B（内层自报 + 存错误供同步方取）**：需给 `_process_upload` 增错误传出通道，7 个调用点里 5 个只关心返回值，是纯粹的签名复杂化。<br>③ **否决方案 C（收窄 catch 异常类型）**：无法枚举「预期可容忍」集合——网络错误 / 维度不符 / Key 缺失都该可见，漏一个即复现原缺陷。<br>④ **同步响应形态必须是 HTTP 200 + `status:error`**，不是 HTTPException——后者被前端 `apiFetch` 转成 throw，`msg` 不进 `alert`，等于白改。<br>**连带发现（结构事实）**：`background.submit`（`core/background.py:9`）是**异常黑洞**，只把异常记进 daemon 线程日志。故 `:350`/`:474` 两处后台直投即使去掉内层 catch 也仍不可见，必须在 `knowledge.py` 内新增 `_process_upload_bg` 包装补 `_set_progress_error`（`background.py` 不在允许改动清单，未越界改） | ① 方案 A 复用已存在的正确外层，改动面最小且语义统一；<br>②③ 由实施会话论证、总领复核认可；<br>④ 本路由既有错误约定（`:378`/`:461`/`:523`/`:551` 同款），走 HTTPException 会破坏前端 `alert(d.msg)` 的既有链路；<br>**连带发现的意义**：「去掉内层 catch」本身**不足以**让错误可见——必须逐个确认每个调用点的**异常最终去向**，否则会出现「从日志变成另一个日志」的假修复 |
 | 30 | **每个会话执行完自己 push**（owner 2026-08-30 拍板，**总领每次生成派发提示词时必须写进去**） | 会话全部子步骤完成 + 全量回归全绿 + `git status --short` 仅 `?? repomix.config.json` 后执行 `git push origin master`（本地 master 无上游跟踪，须显式写 `origin master`），并核对 `git ls-remote origin master` == `git rev-parse HEAD`，两行输出贴进交接文档。<br>**红线**：禁 `--force`、禁推 master 以外分支（远端另有 `analysis/merge-master`、`feature/memory`、`iwfawf`）、禁把 `repomix.config.json` 加进 commit。<br>**若会话中途被迫中断**：先把已完成的子步骤 commit push 掉再停。 | 在此之前由 owner 手动安排推送，出现过「本地领先远端 62 笔」（E-27）。owner 明确要求改为会话自推送，避免成果因会话中断而滞留本地 |
 | 31 | **D 组按风险降序执行：D4 → D3 → D2 → D1**（2026-08-30，总领决定） | §1.3 列出的 `D1→D2→D3→D4` 是**依赖清单**，四步彼此独立（D4=schema+协议 / D3=`base_llm.py` / D2=`_make_llm` / D1=新建模块搬迁）。按「先做最容易失败的部分」重排为风险降序：**D4（唯一动数据库 schema 的步骤，改错影响 owner 真实数据）→ D3（须实证，实证不通即卡住）→ D2 → D1 → T26** | 若按文档顺序，最险的 D4 排在最后——届时会话上下文已消耗大半，一旦卡住返工成本最高；且 D3/D4 的阻塞点暴露得越早，总领越早能重新分发 |
+| 33 | **两个「几行代码」的收尾折进 A 组会话，不单开会话**（2026-08-30，总领决定） | ① **D1 补 1 条存在性守卫**（T34）：断言 `backend/engine/` 下 `from main import` 恒为 0，防反向依赖回归。<br>② **收编 `review.py:58` 的 `pick_judge_llm`**（T32）：改走 D2 同款 client 缓存，使研究档单轮也落到 ≤2。<br>两笔独立 commit，各带自己的守卫与变异验证。 | 沿用 **T26 的先例**——T26 当初的判断原文：「3 行代码付一次完整会话开销与决策 20 相悖」。这两项同理：合计改动约 10 行，单独开会话不经济；但**不能不做**——D1 无守卫意味着反向依赖可静默回归，judge 未收编意味着 D2 的收益未全覆盖 |
 | 32 | **体验链 D / A / B 组 11 步全部执行，不砍**（owner 2026-08-30 拍板） | 总领此前评估「D/A/B 可砍——不影响评委能否部署起来，只影响观感」，owner 明确否决：**全部要做**。执行路径 v4 的会话 7（D 组）/ 会话 8（A 组）/ 会话 9（B 组）保持，其后才是 N3 + N2 第 2 次 | owner 原话：「要做体验链，提到的都要全部做」。<br>**总领保留意见并已陈述**：从「评委能否部署」的 0/1 目标看，N3（推预构建镜像）价值高于观感优化；但 owner 决策优先，序列按此执行 |
 | 29 | **派发提示词的基线数字：生成后若被后续步骤改变，总领须在派发前重跑一次**（2026-08-30，总领认领） | `docs/dispatch/step-F4.md` 生成于 `dabb8b0`，写「全量基线 **295 passed**」；其后 F6 落 5 条守卫 → 真实基线 **300**。F4′ 实施会话开工时自行实测并纠正（「提示词 295 + F6 守卫 5」），未造成实际损失。<br>**→ 流程要求**：① 分发文档生成后若中间插入了其他步骤，**总领必须在派发前重跑基线**；② 实施会话开工先实测基线并与提示词核对，不一致以实测为准并上报 | 决策 24 只约束了「不得沿用他步数字」，未覆盖「本步提示词生成后被后续步骤改变」这一方向。本次代价为零（实施会话主动纠正），但属同一类数字失真，须补齐 |
 
@@ -615,6 +616,12 @@ N3（推预构建镜像）→ N2（第 2 次，按 pull 路径复验）
 | **T29** | **后台错误文案的 150 字符截断余量偏小**：`_process_file_bg` / `_process_upload_bg` 用 `str(e)[:150]`。F5 硬失败文案实测 **126 字符**（总领实测值，交接文档记为「约 112」，以 126 为准），**余量仅 24 字符**；`_set_progress_error` 再截到 200（余量 69）。文案一旦加长，「怎么办」那句会被切掉 | F4′ 上报 + 总领实测复核 | 提示性风险，当前不触发。若未来改写 F5 文案，须同步核算 |
 | **T30** | `ServiceSettings.saveService` 成功后 flash 文案是「解析设置已保存」——保存硅基流动 Key 时语义不符 | F4′ 上报（交接文档 §8） | 既有文案瑕疵。1 行改动，可并入下一轮体验问题包 |
 | **T31** | **同步 URL 入库路径（`knowledge.py:469`）无容器级实测、无行为守卫**，只有存在性守卫（`test_sync_routes_must_convert_ingest_failure_to_structured_error` 断言转换点恰 3 处）与 URL 链路的单测覆盖。原因是容器级 URL 实测需真实外网抓取 | F4′ 如实说明（交接文档 §2 表格 :469/:474 行） | 接受现状。风险已被存在性守卫压到「重构时才会暴露」，且 `:469`/`:474` 与已实测的 `:346`/`:350` 逐字同构 |
+| **T32** | **`backend/engine/review.py:58` `pick_judge_llm` 直接 `DeepSeekLLM(...)`，绕过 D2 的 `_make_llm` 缓存**（其 fallback 分支 `:60-61` 反而走 `_make_llm`）。调用点 `pipeline_v2.py:493` 与 `resource_branches.py:358` → **研究档单轮 = seam 2 + judge 1 = 3 个 client**，未达 D2 的「≤2」（思考档 4→2 ✅、极速 2→2 ✅） | D2 上报（交接文档 §8-1）+ **总领已独立核实**（`git grep` 确认构造点与调用点） | **折进 A 组会话**，预批 1 行改动（走同款缓存 helper）。**不算 D2 不达标**——judge 用的是**不同 model/base_url**，本就需要独立 client；且 `review.py` 不在 D2 允许文件内，实施会话按决策 17 未越界，处置正确 |
+| **T33** | **【测试基建陷阱 · 影响所有后续新增测试】新测试文件若在 collection 期模块级 `import engine.pipeline_v2` / `main`，会触发 `core.config.load_dotenv()` 把 `.env` 的 `SQLITE_DIR` 注入进程环境**，污染 `tests/test_db_path.py` 的「导入期快照」→ 该守卫假失败（按字母序排在其前者才会触发） | D2/D4 首轮实测踩中并修复（交接文档 §8-3） | **所有后续新增测试文件必须遵守：`pipeline_v2` / `main` 延迟到 fixture 执行期导入**，并在文件头写明原因。`test_d4_retry_idempotency.py` 与 `test_d2_llm_client_cache.py` 已示范。**A 组/B 组派发提示词必须把这条写进去** |
+| **T34** | **D1 的搬迁结果没有任何守卫钉住**：`grep -rn "from main import" backend/engine/` 归零这件事全仓零测试覆盖（D1 的 commit 不含测试文件，其校验是一次性脚本）。后续若有人从 engine 反向 import main，不会有任何一条测试变红 | 总领 D 组验收时发现（`git grep -l "chat_context\|from main import" tests/` 零命中） | **折进 A 组补 1 条存在性守卫**（决策 33）。与 T26 同理：几行代码不值得单开会话，但**不能没有** |
+| **T35** | `_LLM_CACHE`（`pipeline_v2.py`）是**无上限、无淘汰**的进程级字典，value 是常驻的 OpenAI client（含连接池）。条目数随「用户 key × model × base_url」组合增长 | 总领 D 组验收时复核代码发现 | 当前规模（单用户/少数组合）无害；若未来多用户长期运行，需加 `maxsize` 或 LRU。登记观察，暂不处理 |
+| **T36** | `backend/main.py` 的 `extract_json_obj` 导入在 D1 搬迁后**已无直接使用者**（为保持最小 diff 而保留） | D1 上报（交接文档 §8-4） | 可并入 D3 遗留清理或下一轮。零危害 |
+| **T37** | D4 缺**浏览器级**「mock 500 → 前端重试 → 库里只 1 条」的 E2E 自动化；现有证明是 API/单元级（含强制竞态的 `test_concurrent_race_backstop_skips_on_unique_conflict`） | D4 上报（交接文档 §8-2） | 接受现状。核心幂等语义已被单元级钉死，浏览器级属「最自然用户路径」的加分项；若 N2 第 2 次验收有时间可补手工验证 |
 
 ---
 
@@ -635,6 +642,7 @@ N3（推预构建镜像）→ N2（第 2 次，按 pull 路径复验）
 | F5 | `docs/progress/step-F5.md` | ✅ 通过（commit `a79f6d9` / `172960a` / `0251a56` / `3395670`，**295 passed**）。含总领独立复核 5 项、**总领认领 1 处自身失误**（`grep \| head -4` 截断导致爆炸半径误判「2 处」实为「4 处」→ 造成实施会话中途报批，已固化为**决策 27**）、**定性上调 1 处**（`_process_upload` 吞异常削弱 owner 拍板的 A1 → 从「上报不修」上调为 F4′ 必办）。核心成果：镜像 **3.25→1.67GB**、冷构建 **433→207.9s**、本地模型通道全移除、无 Key 硬失败 + rerank 优雅降级不刷屏 |
 | F6 | `docs/progress/step-F6.md` | ✅ 通过（commit `542caf3` / `0036da0`，**300 passed**）。含总领独立复核 6 项（含 **BOM 字节级检查通过**）、**总领认领 1 处判断不如实施会话**——提示词倾向「沿用后端 `upload-constraints`」，实施会话选择静态串 + 双向守卫，理由是后端清单含 `bmp` 而 VL 拒收（E-31）、两场景允许集本就不同，**该判断比总领默认倾向正确**。**教训**：F3 的「以后端为准」有适用边界——只在「前端 accept 与后端能力同源」时成立，**聊天走 VL、知识库走 embedding，不是同一条链路，不能无差别复用**。核心成果：聊天点选图片打通，**真实 vision 端到端验证通过**（非 mock）；最终 diff 仅 accept 1 行 |
 | **F4′** | `docs/progress/step-F4prime.md` | ✅ 通过（commit `e48e67d` / `023553b` / `1da93e7` / `20a73a4` / `2855fc9`，**314 passed**，总领独立复测 `41.80s`；tsc exit 0 / vitest 26 总领复测）。含总领独立复核 **8 项**、**独立变异抽查 2 组**（bmp 回流 / mime 硬编码回归，均「恰 1 条红 → 还原全绿」）、**总领认领 1 处自身疏漏**（派发文档基线 295 未随 F6 同步为 300 → 决策 29）、**认定 1 处程序性瑕疵**（修复①改动 `UploadPanel.tsx` 的 `pollProgress` 超出「仅 `:14`」的行范围，虽内容正确且为达成验收项 2 所必需，但交接文档未标注，与决策 17 的报批范式不符）。核心成果：A1 意图真正落地——无 Key 时同步/后台两条路径均返回**含「怎么办」的完整 F5 文案**（三份响应原文见交接文档 §3，三个前缀分别对应三个代码落点）；`_process_upload` 7 个调用点逐个核对，其中 `:350`/`:474` 经 `background.submit` 直投的**异常黑洞**是本次核实出的补充事实；bmp 5 处全剔除 + 3 条反向守卫；mime 魔数推断经**真实 JPEG 上游实测**通过。**E-31 / E-32 / E-33 三项全部关闭** |
+| **D 组** | `docs/progress/step-D.md`（本地归档，**不入库**——`.gitignore:31-33` 的 E-24 决策 A：过程记录类文档不提交，唯一状态源是 `PROGRESS.md`） | ✅ 通过（commit `3ee3a36`/`d531717`/`8d44499`/`8990587`/`56ebfc6`，**336 passed**，总领独立复测 `44.30s`；tsc exit 0 / vitest 26 总领复测）。含总领独立复核 **7 项**、**独立变异抽查 4 组**（D4 去重失效 / T26 退回陈旧 flag / D2 缓存禁用 / D3 死代码回流，均「恰该条红 → 还原全绿」）、**总领认领 1 处自身疏漏**（派发提示词写「交接文档随 commit 入库」，与 E-24 决策 A 冲突，由实施会话据 `.gitignore:31-33` 纠正）、**总领采纳 1 处预判修正**（我预判的 2 处「包装型用例」实为 fixture 已整体替换 `_make_llm`，不经过缓存——对方实测 21 passed 为证）、**新登记 6 项技术债**（T32–T37）。核心成果：D4 幂等（部分唯一索引 + 历史零迁移 + 冲突跳过 + 反向脚本齐全）、D3 实证删除死代码、D2 思考档 4→2、D1 字节级纯搬迁（`from main import` 3→0）、T26 WAL 自校验 |
 | — | 其余步骤完成后按 `step-<id>.md` 归档 | — |
 
 ---
