@@ -272,3 +272,31 @@ def test_settings(req: SettingsSave):
     else:
         results["review"] = {"ok": False, "msg": "未配置审核模型"}
     return {"status": "ok", "results": results}
+
+
+_ZEN_MODELS_CACHE: dict = {"ts": 0.0, "models": None}
+_ZEN_MODELS_TTL = 600.0   # 10 分钟：免费名单轮换以小时计，够用且省调用
+
+
+@router.get("/api/settings/zen/models")
+def list_zen_models():
+    """拉取 Zen /models（服务端代理：key 不出后端）；TTL 缓存；失败返回 error 由前端名单兜底。"""
+    import time as _time
+    import requests as _req
+    from core.config import config as _cfg
+    now = _time.time()
+    if _ZEN_MODELS_CACHE["models"] is not None and now - _ZEN_MODELS_CACHE["ts"] < _ZEN_MODELS_TTL:
+        return {"status": "ok", "cached": True, "models": _ZEN_MODELS_CACHE["models"]}
+    _key = getattr(_cfg, "ZEN_API_KEY", "")
+    if not _key:
+        return {"status": "error", "msg": "未配置 ZEN_API_KEY（设置→AI服务→OpenCode Zen）"}
+    try:
+        _r = _req.get(getattr(_cfg, "ZEN_BASE_URL", "").rstrip("/") + "/models",
+                      headers={"Authorization": "Bearer " + _key}, timeout=20)
+        ids = sorted(m.get("id", "") for m in (_r.json().get("data") or []) if isinstance(m, dict) and m.get("id"))
+        if _r.status_code == 200 and ids:
+            _ZEN_MODELS_CACHE["ts"], _ZEN_MODELS_CACHE["models"] = now, ids
+            return {"status": "ok", "cached": False, "models": ids}
+        return {"status": "error", "msg": f"HTTP {_r.status_code}"}
+    except Exception as e:
+        return {"status": "error", "msg": str(e)[:150]}   # T29：余量下限 150
