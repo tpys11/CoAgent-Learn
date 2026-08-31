@@ -299,12 +299,16 @@ const d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, 
                 <CheckCircle2 size={12} /> {doneMsg}
               </span>
             )}
-            <button onClick={confirmUpload}
-              disabled={!!uploading}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors disabled:opacity-50">
-              {uploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-              {uploading ? '上传中…' : pendingCount ? `确认上传（${pendingCount}）` : '确认上传'}
-            </button>
+            {/* D4 双确认修复：外层确认按钮仅在有待上传项/上传中时渲染——
+                此前 UploadPanel 展开时内外两颗「确认上传」并存，外层无队列时点了只弹提示，易误点 */}
+            {(uploading || pendingCount > 0) && (
+              <button onClick={confirmUpload}
+                disabled={!!uploading}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors disabled:opacity-50">
+                {uploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                {uploading ? '上传中…' : pendingCount ? `确认上传（${pendingCount}）` : '确认上传'}
+              </button>
+            )}
           </div>
         </div>
         <div className={`border rounded-2xl p-3 grid grid-cols-2 md:grid-cols-3 gap-2 max-h-[26vh] overflow-y-auto transition-colors ${dragOver ? 'border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_6%,var(--bg-panel))]' : 'border-dashed hairline'}`}>

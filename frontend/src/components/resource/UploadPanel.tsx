@@ -123,7 +123,8 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
             setUpProgress({ stage: '解析文档', pct: 6 })
             const r = await pollProgress(it.name)               // source = 文件名（后端 source=fname）
             if (r.ok) { ok++; total += r.chunks; if (r.engine) engines.add(r.engine) }
-            else alert(`「${it.name}」处理失败${r.msg ? '：' + r.msg : '或超时'}，请稍后在知识库查看`)
+            // D3 报错文案：失败项不会出现在知识库（非「稍后可见」），须删资源重传；句式避免 msg 尾「。」+「，」连排
+            else alert(`「${it.name}」处理失败${r.msg ? `：${r.msg.replace(/。+$/, '')}` : '：处理超时'}。该条未完成向量化，不会出现在知识库；请删除该资源后重新上传`)
           } else if (d && d.status === 'ok') { total += (d.chunks || 0); ok++; if (d.parse_engine) engines.add(d.parse_engine) }
           else if (d && d.duplicate) { /* 重复内容视为成功跳过 */ }
           else alert(`「${it.name}」接入失败：${(d && d.msg) || '处理失败'}`)

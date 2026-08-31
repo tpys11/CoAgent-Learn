@@ -482,6 +482,9 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         else:
             base_system += (f"\n【输出要求】回答控制在 {THINK_WORD_MIN}-{THINK_WORD_MAX} 字"
                             f"（硬上限 {THINK_WORD_HARD} 字）。")
+        # T56：前端 KaTeX 渲染管线只认 $ / $$ 定界，模型惯用的 \( \) 定界会渲染为纯文本——生成侧声明统一
+        base_system += ("\n【公式格式】数学公式一律用 $...$（行内）或 $$...$$（独立成块）定界，"
+                        "禁止使用 \\( \\) 或 \\[ \\] 定界。")
         # 画像/历史上下文注入（v1 对齐）：用户背景、偏好、早期摘要、近期原文
         context_blocks = ""
         if profile_cache.get("用户背景"):
