@@ -135,22 +135,25 @@ def _process_upload_bg(project_id, text, source, session_id, api_key, skip_conte
         _set_progress_error(project_id, source, "入库失败：" + str(e)[:150])
 
 
-def _parse_for_upload(fname: str, data: bytes, ext: str) -> str:
-    """上传解析统一入口：PDF 走可配置引擎（pymupdf4llm/mineru/mathpix，失败自动降级），其余走 file_parser。"""
+def _parse_for_upload(fname: str, data: bytes, ext: str) -> tuple[str, str]:
+    """上传解析统一入口：PDF 走可配置引擎（pymupdf4llm/mineru/mathpix，失败自动降级），其余走 file_parser。
+    F8-S2：返回 (text, engine_used)——engine 透传进度/上传响应，用户可见用了哪个解析引擎。"""
     if ext == "pdf":
         from core import parse_service
         text, engine = parse_service.parse_document(fname, data)
         logger.info("PDF 解析 fname=%s engine=%s chars=%s", fname, engine, len(text))
-        return text or ""
-    from core.file_parser import parse_file
-    return parse_file(fname, data) or ""
+        return text or "", engine
+    from core.file_parser import parse_file_with_engine
+    text, engine = parse_file_with_engine(fname, data)
+    logger.info("文件解析 fname=%s engine=%s chars=%s", fname, engine, len(text))
+    return text or "", engine
 
 
 def _process_file_bg(project_id: str, fname: str, data: bytes, source: str,
                      session_id: str, api_key: str, content_hash: str, ext: str, desc: str = ""):
     """后台文件处理全链（上传提速·单步2）：解析 → _process_upload（去重/原文存档/入库/记录hash）→ 图片向量。
     解析从 HTTP 请求内移出（wait=false 时 HTTP 立即返回）；失败写进度错误终态（前端轮询可见）。"""
-    from core.knowledge_service import _set_progress, _set_progress_error
+    from core.knowledge_service import _set_progress, _set_progress_error, set_progress_engine
     try:
         _set_progress(project_id, source, done=0, total=1, stage="parsing")
         # 修复④（F4′）：图片分支判定改引用 _IMG_EXTS（F3 漏归一的第四份手写字面量，
@@ -165,7 +168,9 @@ def _process_file_bg(project_id: str, fname: str, data: bytes, source: str,
                 return
             _store_image_vector(project_id, source, data, desc, ext)
             return
-        text = _parse_for_upload(fname, data, ext)
+        text, engine = _parse_for_upload(fname, data, ext)
+        # F8-S2：引擎旁路记录——轮询全程（含完成终态）可见 parse_engine
+        set_progress_engine(project_id, source, engine)
         if not text.strip():
             _set_progress_error(project_id, source, "无法解析该文件内容（可能为空或格式不支持）")
             return
@@ -568,6 +573,7 @@ async def knowledge_upload_file(
     source = fname
     _ch = hashlib.sha256(data).hexdigest()
     text = None  # 非图片后台模式保持 None：解析全部移交 _process_file_bg（F2）
+    engine = ""  # F8-S2：解析引擎标注（仅同步路径在请求内解析时产生）
     if _ext in _IMG_EXTS:
         import base64 as _b64
         _b64str = _b64.b64encode(data).decode()
@@ -590,7 +596,7 @@ async def knowledge_upload_file(
         # F2 修复：仅同步路径（wait=1）在请求内解析；后台模式（wait=0，前端默认路径）把解析
         # 交还给 _process_file_bg——保证 HTTP 立即返回（对齐其 docstring）且全链只解析 1 次。
         # F1 重构曾把解析提到 wait 判定之外，导致 wait=0 阻塞响应 + 第一遍解析结果被丢弃。
-        text = await run_in_threadpool(_parse_for_upload, fname, data, _ext)
+        text, engine = await run_in_threadpool(_parse_for_upload, fname, data, _ext)
         if not text.strip():
             return {"status": "error", "msg": "无法解析该文件内容（可能为空或格式不支持）"}
     # F1 修复：统一尾部。此前图片分支走到这里即函数结束→隐式 return None（HTTP body 'null'），
@@ -607,7 +613,11 @@ async def knowledge_upload_file(
         if _ext in _IMG_EXTS:
             # 同步路径图片向量只在这里入一次；重复上传（duplicate）已在上方提前返回，不重复入向量
             await run_in_threadpool(_store_image_vector, project_id, source, data, text, _ext)
-        return {"status": "ok", "chunks": chunks, "source": source}
+        # F8-S2：上传响应带解析引擎（前端完成提示展示；非 PDF 为 markitdown/legacy）
+        resp = {"status": "ok", "chunks": chunks, "source": source}
+        if engine:
+            resp["parse_engine"] = engine
+        return resp
     # 后台模式（上传提速·单步2）：解析+入库全链进后台——HTTP 立即返回，进度走 /upload-progress。
     # 图片把【图片内容】+desc 作为 desc 实参传入，_process_file_bg 图片分支内部会调
     # _store_image_vector 恰好一次（此处不再单独 submit，避免重复入库/重复 VL 调用）。

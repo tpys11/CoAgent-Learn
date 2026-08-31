@@ -83,6 +83,15 @@ def _invalidate_bm25(project_id: str):
 # ── 上传进度（内存态：进程重启即清；仅 URL 摄取链路轮询用） ──────────────
 _progress: dict = {}
 
+# F8-S2 解析引擎旁路记录：_set_progress 各阶段整条覆盖进度 dict，引擎若并进去
+# 会在下个阶段被抹掉——单独存一份，get_progress 统一附加（轮询全程可见）。
+_progress_engine: dict = {}
+
+
+def set_progress_engine(project_id: str, source: str, engine: str) -> None:
+    if engine:
+        _progress_engine[(project_id, source)] = engine
+
 
 def _set_progress(project_id: str, source: str, done: int, total: int,
                   stage: str = "embedding") -> None:
@@ -96,7 +105,14 @@ def _set_progress_error(project_id: str, source: str, msg: str) -> None:
 
 
 def get_progress(project_id: str, source: str) -> dict:
-    return _progress.get((project_id, source)) or {"status": "none"}
+    d = _progress.get((project_id, source))
+    if not d:
+        return {"status": "none"}
+    out = dict(d)  # 不得污染内存态原件（调用方可能就地改）
+    eng = _progress_engine.get((project_id, source))
+    if eng:
+        out["parse_engine"] = eng
+    return out
 
 
 def parse_section_path(content: str) -> str | None:

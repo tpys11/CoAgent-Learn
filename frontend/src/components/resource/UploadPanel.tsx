@@ -70,11 +70,13 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
 
   /** 后台处理进度轮询：完成/错误/10 分钟超时退出；返回最终入库块数与失败原因（用于汇总文案）。
    *  F4′修复①：后端 _set_progress_error 写入的失败原因（msg）随 resolve 透传给 alert，
-   *  此前被丢弃——评委只能看到「处理失败或超时」，看不到「未配置 EMBEDDING_API_KEY」。 */
-  const pollProgress = (source: string) => new Promise<{ ok: boolean; chunks: number; msg?: string }>(resolve => {
+   *  此前被丢弃——评委只能看到「处理失败或超时」，看不到「未配置 EMBEDDING_API_KEY」。
+   *  F8-S2：进度载荷的 parse_engine（本次解析用的引擎）随 resolve 透传给完成汇总。 */
+  const pollProgress = (source: string) => new Promise<{ ok: boolean; chunks: number; msg?: string; engine?: string }>(resolve => {
     const started = Date.now()
     let lastChunks = 0
     let stable = 0
+    let lastEngine: string | undefined
     const timer = setInterval(async () => {
       try {
         const p: any = await api.uploadProgress(projectId || 'default', source)
@@ -82,6 +84,7 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
           clearInterval(timer); setUpProgress(null); resolve({ ok: false, chunks: 0, msg: p.msg }); return
         }
         if (p && p.status === 'ok') {
+          if (p.parse_engine) lastEngine = p.parse_engine
           lastChunks = Math.max(lastChunks, p.total || 0)
           const pct = p.total ? Math.max(6, Math.min(99, Math.round(100 * p.done / p.total)))
                               : (p.stage === 'parsing' ? 12 : 40)
@@ -90,7 +93,7 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
           if (embDone) stable++; else stable = 0
           // 完成判定：问题增强收尾（默认链路）或向量化满载连续两拍（增强被关闭的配置）
           if ((p.stage === 'enhancing' && (p.done || 0) >= (p.total || 1)) || stable >= 2) {
-            clearInterval(timer); setUpProgress(null); resolve({ ok: true, chunks: lastChunks }); return
+            clearInterval(timer); setUpProgress(null); resolve({ ok: true, chunks: lastChunks, engine: lastEngine }); return
           }
         }
         if (Date.now() - started > 10 * 60 * 1000) {
@@ -104,6 +107,7 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
     if (!projectId || !upItems.length || upUploading) return
     let total = 0; let ok = 0
     const count = upItems.length
+    const engines = new Set<string>() // F8-S2：本次上传实际用到的解析引擎（完成汇总展示）
     for (const it of upItems) {
       setUpUploading(it.name)
       try {
@@ -118,9 +122,9 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
             // 单步3：后台处理 + 进度轮询（解析→切分→向量化→问题增强）
             setUpProgress({ stage: '解析文档', pct: 6 })
             const r = await pollProgress(it.name)               // source = 文件名（后端 source=fname）
-            if (r.ok) { ok++; total += r.chunks }
+            if (r.ok) { ok++; total += r.chunks; if (r.engine) engines.add(r.engine) }
             else alert(`「${it.name}」处理失败${r.msg ? '：' + r.msg : '或超时'}，请稍后在知识库查看`)
-          } else if (d && d.status === 'ok') { total += (d.chunks || 0); ok++ }
+          } else if (d && d.status === 'ok') { total += (d.chunks || 0); ok++; if (d.parse_engine) engines.add(d.parse_engine) }
           else if (d && d.duplicate) { /* 重复内容视为成功跳过 */ }
           else alert(`「${it.name}」接入失败：${(d && d.msg) || '处理失败'}`)
         } else if (it.kind === 'text') {
@@ -136,7 +140,8 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
     setUpUploading('')
     setUpItems([])
     const failed = count - ok
-    setUpDone(failed === 0 ? `资源已上传：${count} 个资源已接入课程知识库（${total} 个内容块）` : `上传完成：${ok} 个成功（${total} 个内容块），${failed} 个失败`)
+    const engineSuffix = engines.size ? `（解析引擎：${Array.from(engines).join('、')}）` : ''
+    setUpDone(failed === 0 ? `资源已上传：${count} 个资源已接入课程知识库（${total} 个内容块）${engineSuffix}` : `上传完成：${ok} 个成功（${total} 个内容块），${failed} 个失败`)
     setTimeout(() => onUploaded(), 500)
   }
 

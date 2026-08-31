@@ -74,15 +74,21 @@ def _parse_fallback(filename: str, data: bytes) -> str:
     return data.decode("utf-8", errors="replace")
 
 
-def parse_file(filename: str, data: bytes) -> str:
-    """解析文件内容为文本：markitdown 优先（pdf/docx/pptx/xlsx/html 等），失败 fallback 基础解析。"""
+def parse_file_with_engine(filename: str, data: bytes) -> tuple[str, str]:
+    """同 parse_file，但附带引擎标注（F8-S2 可观测性）：markitdown | legacy。
+    parse_file 委托本函数——行为单一事实源，engine 标注只在这里产生。"""
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if ext in MARKITDOWN_EXTS:
         text = _parse_with_markitdown(data)
         if text:
-            return text
+            return text, "markitdown"
     # fallback
     try:
-        return _parse_fallback(filename, data)
+        return _parse_fallback(filename, data), "legacy"
     except Exception:
-        return ""
+        return "", "legacy"
+
+
+def parse_file(filename: str, data: bytes) -> str:
+    """解析文件内容为文本：markitdown 优先（pdf/docx/pptx/xlsx/html 等），失败 fallback 基础解析。"""
+    return parse_file_with_engine(filename, data)[0]
