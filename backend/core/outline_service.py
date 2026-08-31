@@ -21,6 +21,166 @@ _LLM_MAX_ENTRIES = 120   # LLM 大纲条目封顶（成本/防幻觉爆炸）
 _LLM_TEXT_CHARS = 8000   # 喂给 LLM 的正文上限（教材结构信息密度集中在前部）
 _LLM_MIN_TEXT = 500      # 短文本（如单图描述）不值得 LLM 兜底——成本护栏
 
+# ── F9-S2 正文/其他切割：类目常量与规则 ──
+CATEGORY_BODY = "正文"
+CATEGORY_SUMMARY = "小结"
+CATEGORY_QUIZ = "习题"
+CATEGORY_LAB = "实验"
+CATEGORY_TEST = "总测试"
+CATEGORY_APPENDIX = "附录"
+CATEGORIES = (CATEGORY_BODY, CATEGORY_SUMMARY, CATEGORY_QUIZ, CATEGORY_LAB,
+              CATEGORY_TEST, CATEGORY_APPENDIX)
+_ARB_MAX = 40           # LLM 仲裁批次条目封顶
+_SPAN_PATH_SEP = " > "  # _split_markdown_sections 的路径连接符（chunkers 域内约定）
+
+# 强规则：命中即定类（高置信，不进仲裁）
+_STRONG_RULES: list[tuple[str, "re.Pattern[str]"]] = [
+    (CATEGORY_APPENDIX, re.compile(r"^(附录|appendix|参考文献|索引|references)", re.I)),
+    (CATEGORY_SUMMARY, re.compile(r"(本章小结|本节小结|小结$|summary$)", re.I)),
+    (CATEGORY_QUIZ, re.compile(r"(习题|练习|思考题|课后题|复习题|exercise|problem)", re.I)),
+    (CATEGORY_TEST, re.compile(r"(总测试|测验|测试题|自测|试卷|期末|期中|模拟题|真题)", re.I)),
+    (CATEGORY_LAB, re.compile(r"(^实验|^实训|^实操|^上机|实验[一二三四五六七八九十\d]|lab\s*\d)", re.I)),
+]
+# 歧义词：含之但无强规则命中 → 送 LLM 仲裁（如「单元测试」是教学内容而非总测试）
+_AMBIGUOUS_RE = re.compile(r"(测试|训练|实践|案例|项目|作业|考核|评估|拓展|延伸|研讨)")
+
+
+def _span_title(path: str) -> str:
+    """span 路径取末段（节自身标题）。"""
+    return (path or "").split(_SPAN_PATH_SEP)[-1].strip()
+
+
+def _rule_classify(title: str) -> tuple[str, bool]:
+    """强规则判定：返回 (类目, 是否歧义待仲裁)。无命中且含歧义词 → 待仲裁；否则正文。"""
+    for cat, rx in _STRONG_RULES:
+        if rx.search(title):
+            return cat, False
+    if _AMBIGUOUS_RE.search(title):
+        return CATEGORY_BODY, True
+    return CATEGORY_BODY, False
+
+
+def classify_spans(text: str, api_key: str = "", llm_factory=None) -> list[dict]:
+    """F9-S2 双通道切割：把 markdown 文本切成标题节并分类（规则主通道 + LLM 边界仲裁）。
+    返回 [{"path"(> 连接), "title", "category", "arbitrated"}]，path 含祖先链。
+    继承规则：自身无强命中的节继承最近祖先的类目（防「习题章下的题」被误标正文）。
+    歧义节批量送一次 LLM（门控 KB_LLM_OUTLINE，失败/门关 → 规则缺省正文，绝不抛）。"""
+    from core.chunkers import _split_markdown_sections
+    spans: list[dict] = []
+    for path, body in _split_markdown_sections(text or ""):
+        title = _span_title(path)
+        cat, ambiguous = _rule_classify(title)
+        spans.append({"path": path, "title": title, "category": cat,
+                      "arbitrated": False, "ambiguous": ambiguous, "body_head": body[:200]})
+    # 继承：自身无强命中 → 最近祖先类目（祖先自身强命中才作为继承源）
+    inherited_strength: dict[str, tuple[int, str]] = {}  # path 前缀 → (深度, 类目)
+    for s in spans:
+        prefix = s["path"]
+        best = None
+        parts = prefix.split(_SPAN_PATH_SEP)
+        for depth in range(len(parts) - 1, 0, -1):
+            anc = _SPAN_PATH_SEP.join(parts[:depth])
+            if anc in inherited_strength:
+                best = inherited_strength[anc]
+                break
+        if best is not None:
+            s["category"] = best[1]
+        if not s["ambiguous"]:
+            inherited_strength[s["path"]] = (len(parts), s["category"])
+    # LLM 仲裁：仅歧义节（批量一次；失败不阻断）
+    arb = [s for s in spans if s.pop("ambiguous")]
+    if arb:
+        from core.config import config as _cfg
+        if int(getattr(_cfg, "KB_LLM_OUTLINE", 1) or 0) and (text or "").strip():
+            if llm_factory is None:
+                key = api_key or getattr(_cfg, "DEEPSEEK_API_KEY", "")
+                if key:
+                    llm_factory = _default_llm_factory
+            if llm_factory is not None:
+                _arbitrate(arb[:_ARB_MAX], llm_factory,
+                           api_key or getattr(_cfg, "DEEPSEEK_API_KEY", ""))
+    for s in spans:
+        s.pop("body_head", None)
+    return spans
+
+
+def _arbitrate(spans: list[dict], llm_factory, api_key: str) -> None:
+    """歧义节批量仲裁：LLM 只在六类白名单里选；任何失败保持规则缺省（正文）。"""
+    try:
+        llm = llm_factory(api_key)
+    except Exception:
+        logger.warning("[outline] 仲裁 LLM 构造失败，歧义节保持规则缺省", exc_info=True)
+        return
+    system = (
+        "你是教材章节分类器。对以下章节逐个判断类目，只能取："
+        + "、".join(CATEGORIES) + "。\n"
+        '只输出 JSON：[{"i": 序号(从0), "category": "类目"}]；拿不准时输出"正文"。'
+    )
+    user = "\n".join(f"{i}. {s['title']}（开头：{s.pop('body_head', '')[:80] or '无'}）"
+                     for i, s in enumerate(spans))
+    try:
+        raw = llm.chat([{"role": "system", "content": system},
+                        {"role": "user", "content": user}], temperature=0.2)
+        m = re.search(r"\[[\s\S]*\]", raw or "")
+        data = json.loads(m.group()) if m else []
+    except Exception:
+        logger.warning("[outline] 仲裁 LLM 调用失败，歧义节保持规则缺省", exc_info=True)
+        return
+    for it in data if isinstance(data, list) else []:
+        try:
+            i = int(it.get("i"))
+            cat = str(it.get("category") or "").strip()
+        except Exception:
+            continue
+        if 0 <= i < len(spans) and cat in CATEGORIES:
+            spans[i]["category"] = cat
+            spans[i]["arbitrated"] = True
+
+
+def annotate_categories_from_text(text: str, tree: list, api_key: str = "",
+                                  llm_factory=None) -> list:
+    """F9-S2：按 span 分类结果给 kb_tree 节点写 category 字段（display 用，best-effort：
+    节点 "/" 路径与 span " > " 路径全串匹配优先，末段标题名匹配兜底）。原树原地补字段后返回。"""
+    spans = classify_spans(text or "", api_key=api_key, llm_factory=llm_factory)
+    by_full: dict[str, str] = {}
+    by_name: dict[str, str] = {}
+    for s in spans:
+        p = s["path"].replace(_SPAN_PATH_SEP, "/")
+        by_full.setdefault(p, s["category"])
+        by_name.setdefault(s["title"], s["category"])
+
+    def walk(nodes, prefix):
+        for n in nodes or []:
+            if not isinstance(n, dict):
+                continue
+            name = str(n.get("name") or "").strip()
+            p = (prefix + "/" + name) if prefix else name
+            cat = by_full.get(p) or by_name.get(name)
+            if cat:
+                n["category"] = cat
+            walk(n.get("children"), p)
+
+    walk(tree, "")
+    return tree
+
+
+def scoped_text(text: str, include_paths: list[str]) -> str:
+    """F9-S2 留存范围切分：仅保留命中勾选路径（自身或其子树）的标题节。
+    子树语义：勾选父节即含全部子孙；首个标题前内容恒保留（前言/出版说明，无从归类）。
+    include 为空 → 空串（调用方须拒收空勾选，禁止静默清空知识库）。"""
+    from core.chunkers import _split_markdown_sections
+    inc = [p.strip() for p in (include_paths or []) if p and p.strip()]
+    if not inc:
+        return ""
+    kept: list[str] = []
+    for path, body in _split_markdown_sections(text or ""):
+        if not path:
+            kept.append(body)  # 首个标题前内容恒保留
+            continue
+        if any(path == p or path.startswith(p + _SPAN_PATH_SEP) for p in inc):
+            kept.append(body)
+    return "\n".join(kept)
+
 
 def _build_tree(items: list) -> list:
     """扁平 [{"name","level"[,"page"]}] → 嵌套树（栈式归组，_extract_tree 同款语义：

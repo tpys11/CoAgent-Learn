@@ -173,6 +173,10 @@ export const api = {
     apiFetch<any>('/api/kb/' + encodeURIComponent(pid) + '/chunk-node?source=' + encodeURIComponent(source) + '&chunk=' + chunk, { cache: 'no-store' }),
   getKbDoc: (pid: string, source: string) =>
     apiFetch<any>('/api/kb/' + encodeURIComponent(pid) + '/doc?source=' + encodeURIComponent(source), { cache: 'no-store' }),
+  // F9-S2：留存范围选择——按勾选章节路径（子树语义）重入库；进度复用 upload-progress 轮询
+  applyKbScope: (pid: string, source: string, include: string[], apiKey: string) =>
+    apiFetch<any>('/api/kb/' + encodeURIComponent(pid) + '/apply-scope',
+      jsonInit('POST', { source, include, api_key: apiKey })),
   getKb: (projectId: string) =>
     apiFetch<any>('/api/kb/' + encodeURIComponent(projectId), { cache: 'no-store' }),
   queryKnowledge: (projectId: string, q: string, topK = 3) =>

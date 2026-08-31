@@ -112,13 +112,16 @@ def _process_upload(project_id, text, source, session_id, api_key, skip_context:
     #   - 后台文本/URL（submit 直投）→ _process_upload_bg 包装捕获 → 同样写错误终态；
     #   - 同步 wait=1（3 处路由）→ 各自 try/except 转结构化错误响应（status:error + 原因）。
     # F9-S1：三通道大纲提取（书签→标题行→LLM 兜底）——上传链唯一收口点；
-    # 内部各级已兜底，此层再兜一道与标题树同级的保险（绝不阻断入库）。
+    # F9-S2：分类标注（正文 vs 小结/习题/附录/实验/总测试；规则主 + LLM 仲裁）写进节点
+    # category 字段，供上传完成后的「留存范围选择」UI 展示。各级内部已兜底，此层再兜一道。
     outline_tree = None
     try:
-        from core.outline_service import extract_outline
+        from core.outline_service import annotate_categories_from_text, extract_outline
         outline_tree = extract_outline(text, pdf_bytes=pdf_bytes, api_key=api_key)
+        if outline_tree:
+            outline_tree = annotate_categories_from_text(text, outline_tree, api_key=api_key)
     except Exception:
-        logger.warning("大纲提取失败（不阻断上传）", exc_info=True)
+        logger.warning("大纲提取/分类失败（不阻断上传）", exc_info=True)
     from core.knowledge_service import add_document
     n = add_document(project_id, text, source, session_id, api_key,
                      skip_context=skip_context, outline_tree=outline_tree) or 0
@@ -235,6 +238,52 @@ def _store_image_vector(project_id: str, source: str, data: bytes, desc: str, ex
         add_image(project_id, source, data_uri, desc, file_path=public_path, mime=mime)
     except Exception:
         logger.exception("图片向量处理失败 source=%s", source)
+
+
+def _rescope_bg(project_id: str, source: str, scoped_text: str, full_tree: list, api_key: str):
+    """F9-S2 留存范围重入库（后台）：按勾选范围切分原文 → 清旧块重灌向量；
+    大纲树整棵回写（被排除节仍可见），原文 resources / file_hashes 原样保留。
+    清旧依赖 add_document 既有同源清理（:delete_kb_by_source 内部路径），不新增删除面。"""
+    from core.knowledge_service import _set_progress, _set_progress_error, add_document
+    try:
+        _set_progress(project_id, source, done=0, total=1, stage="parsing")
+        n = add_document(project_id, scoped_text, source, session_id="project-rescope",
+                         api_key=api_key, outline_tree=full_tree) or 0
+        logger.info("留存范围重入库完成 source=%s chunks=%d", source, n)
+    except Exception as e:
+        logger.exception("留存范围重入库失败 source=%s", source)
+        _set_progress_error(project_id, source, "按范围重入库失败：" + str(e)[:150])
+
+
+class KbScopeRequest(BaseModel):
+    project_id: str = "default"
+    source: str = ""
+    include: list[str] = []   # 勾选保留的章节路径（"/" 连接，子树语义）
+    api_key: str = ""
+
+
+@router.post("/api/kb/{project_id}/apply-scope")
+async def kb_apply_scope(project_id: str, req: KbScopeRequest):
+    """F9-S2 留存范围选择：按勾选范围重入库（建议可改；原文/大纲/去重 hash 不动）。
+    后台执行（向量重算分钟级），进度复用 /upload-progress 轮询通道。"""
+    from core.db import get_kb_repo
+    from core.outline_service import scoped_text
+    repo = get_kb_repo()
+    source = (req.source or "").strip()
+    if not source:
+        return {"status": "error", "msg": "缺少文档来源，无法应用留存范围"}
+    if not req.include:
+        return {"status": "error", "msg": "至少保留一个章节（可点「全选」恢复全部内容入库）"}
+    import asyncio
+    original = await asyncio.to_thread(repo.get_resource_content, project_id, source) or ""
+    if not original.strip():
+        return {"status": "error", "msg": "未找到该文档原文，无法按范围重入库；请删除该资源后重新上传"}
+    scoped = scoped_text(original, req.include)
+    if not scoped.strip():
+        return {"status": "error", "msg": "所选章节内无可入库内容，请调整勾选范围"}
+    full_tree = repo.get_kb_tree(project_id, source) or []
+    submit(_rescope_bg, project_id, source, scoped, full_tree, req.api_key)
+    return {"status": "processing", "msg": "正在按所选范围重新入库，稍后查看"}
 
 
 class KnowledgeUpload(BaseModel):

@@ -3,6 +3,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Upload, FileText, Sparkles, Loader2, X } from 'lucide-react'
 import { LS, lsGet } from '../../storage'
 import { api } from '../../api'
+import { RetentionScopePanel, type ScopeNode } from './RetentionScopePanel'
 
 type UpItem = { id: string; kind: 'file' | 'text'; name: string; file?: File; body?: string }
 
@@ -26,6 +27,8 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
   const [upUploading, setUpUploading] = useState('')
   const [upDone, setUpDone] = useState('')
   const [upDropActive, setUpDropActive] = useState(false)
+  // F9-S2：上传成功且有章节结构的文档 → 出「留存范围选择」面板（建议可改、可全选正文）
+  const [scopeTargets, setScopeTargets] = useState<Array<{ source: string; tree: ScopeNode[] }>>([])
   const upFileRef = useRef<HTMLInputElement>(null)
   // 支持格式单一事实源：以后端 upload-constraints 为准（对齐 DeepTutor SupportedFileTypesInfo）。
   // 初始态即回退清单（而非留空）：拉取成功后被端点值覆盖；拉取失败时校验保持开启。
@@ -107,6 +110,7 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
     if (!projectId || !upItems.length || upUploading) return
     let total = 0; let ok = 0
     const count = upItems.length
+    const okSet = new Set<string>() // F9-S2：成功上传的资源名（留存面板候选）
     const engines = new Set<string>() // F8-S2：本次上传实际用到的解析引擎（完成汇总展示）
     for (const it of upItems) {
       setUpUploading(it.name)
@@ -122,15 +126,15 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
             // 单步3：后台处理 + 进度轮询（解析→切分→向量化→问题增强）
             setUpProgress({ stage: '解析文档', pct: 6 })
             const r = await pollProgress(it.name)               // source = 文件名（后端 source=fname）
-            if (r.ok) { ok++; total += r.chunks; if (r.engine) engines.add(r.engine) }
+            if (r.ok) { ok++; okSet.add(it.name); total += r.chunks; if (r.engine) engines.add(r.engine) }
             // D3 报错文案：失败项不会出现在知识库（非「稍后可见」），须删资源重传；句式避免 msg 尾「。」+「，」连排
             else alert(`「${it.name}」处理失败${r.msg ? `：${r.msg.replace(/。+$/, '')}` : '：处理超时'}。该条未完成向量化，不会出现在知识库；请删除该资源后重新上传`)
-          } else if (d && d.status === 'ok') { total += (d.chunks || 0); ok++; if (d.parse_engine) engines.add(d.parse_engine) }
+          } else if (d && d.status === 'ok') { total += (d.chunks || 0); ok++; okSet.add(it.name); if (d.parse_engine) engines.add(d.parse_engine) }
           else if (d && d.duplicate) { /* 重复内容视为成功跳过 */ }
           else alert(`「${it.name}」接入失败：${(d && d.msg) || '处理失败'}`)
         } else if (it.kind === 'text') {
           d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, source: it.name, session_id: 'project-res', api_key: lsGet(LS.apiKey, '') })
-          if (d && d.status === 'ok') { total += (d.chunks || 0); ok++ }
+          if (d && d.status === 'ok') { total += (d.chunks || 0); ok++; okSet.add(it.name) }
           else if (d && d.duplicate) { /* 重复内容视为成功跳过 */ }
           else alert(`「${it.name}」接入失败：${(d && d.msg) || '处理失败'}`)
         }
@@ -143,6 +147,19 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
     const failed = count - ok
     const engineSuffix = engines.size ? `（解析引擎：${Array.from(engines).join('、')}）` : ''
     setUpDone(failed === 0 ? `资源已上传：${count} 个资源已接入课程知识库（${total} 个内容块）${engineSuffix}` : `上传完成：${ok} 个成功（${total} 个内容块），${failed} 个失败`)
+    // F9-S2：本轮成功上传的资源里，凡后端给出章节树者 → 留存范围选择面板（建议=树节点 category）
+    const okSources = upItems.filter(it => okSet.has(it.name)).map(it => it.name)
+    if (okSources.length && projectId) {
+      try {
+        const d = await api.getKb(projectId)
+        const docs: any[] = Array.isArray(d) ? d : (d && d.docs) || []
+        const targets = okSources
+          .map(src => docs.find(x => (x.source || '') === src))
+          .filter(x => x && Array.isArray(x.tree) && x.tree.length > 0)
+          .map(x => ({ source: x.source, tree: x.tree }))
+        if (targets.length) setScopeTargets(targets)
+      } catch { /* 树拉取失败不阻断上传完成态（面板仅增强，非必经） */ }
+    }
     setTimeout(() => onUploaded(), 500)
   }
 
@@ -200,6 +217,11 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
       <input ref={upFileRef} type="file" multiple className="hidden"
         accept={accept}
         onChange={e => { if (e.target.files?.length) upAddFiles(e.target.files); e.target.value = '' }} />
+      {/* F9-S2：留存范围选择（上传完成且有章节结构的资源逐个出面板） */}
+      {scopeTargets.map(t => (
+        <RetentionScopePanel key={t.source} projectId={projectId!} source={t.source}
+          tree={t.tree} apiKey={lsGet(LS.apiKey, '')} onApplied={() => setScopeTargets(prev => prev.filter(x => x.source !== t.source))} />
+      ))}
       {/* 待上传列表 + 确认上传 */}
       {upItems.length > 0 && (
         <div className="flex flex-col gap-1.5 border-t hairline pt-3">
