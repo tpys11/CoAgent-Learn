@@ -64,6 +64,38 @@ def _sniff_image_mime(b64: str) -> str:
     return "image/png"
 
 
+def _format_search_detail(meta: dict, results: list) -> str:
+    """F11-S1：检索节点内容事件文案——改写 query + top 命中预览（source/chunk/融合分）。
+    纯函数供 pytest 直调；截断防爆：query ≤6 个各 40 字、命中 top3、snippet 80 字、
+    source 60 字——产出长度有界（tests/test_f11_s1_events.py R4 钉住）。
+    markdown 方言仅用粗体/行内码/编号列表（F8 renderMd 管线原生支持）。"""
+    m = meta or {}
+    qs = [str(q).strip()[:40] for q in (m.get("queries") or [])[:6] if str(q).strip()]
+    lines: list[str] = []
+    if qs:
+        lines.append("**检索查询**：" + "、".join("`" + q + "`" for q in qs))
+    hits: list[str] = []
+    for r in (results or [])[:3]:
+        if not isinstance(r, dict):
+            continue
+        rmeta = r.get("metadata") or {}
+        src = str(rmeta.get("source") or r.get("title") or "未知来源")[:60]
+        seg = f"{len(hits) + 1}. {src}"
+        ch = rmeta.get("chunk")
+        if ch is not None:
+            seg += f" #chunk-{ch}"
+        sc = r.get("rrf_score")
+        if isinstance(sc, (int, float)):
+            seg += f"（融合分 {sc}）"
+        snippet = str(r.get("content") or "").strip()[:80]
+        if snippet:
+            seg += f"：{snippet}"
+        hits.append(seg)
+    lines.append("**命中预览**：" + ("（本轮无命中）" if not hits else ""))
+    lines.extend(hits)
+    return "\n".join(lines)
+
+
 # --- 模型接缝（测试在此打补丁注入 FakeLLM） ---
 
 # D2：LLM client 进程级缓存——浪费点在 OpenAI() 每次新建 HTTP 连接池（TCP/TLS 握手+内存），
@@ -257,6 +289,12 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         _trace("plan", input_digest=req.message[:200],
                output_digest=json.dumps({"complexity": plan["complexity"]}, ensure_ascii=False))
         ctx_steps.append({"agent": "学习助手·规划", "status": "done", "detail": "意图分类完成"})
+        # F11-S1：规划节点内容化——要点进思维链（token 事件流式 + mindchain_entries 持久双写；
+        # done 帧无条件替换前端流式内容，只发事件会「闪现后消失」，故必须双写）
+        _plan_pt = (f"规划要点：复杂度 {plan['complexity']} · {template}档 · "
+                    + ("需检索知识库" if plan["complexity"] != "simple_direct" else "简单直答，不检索"))
+        token_queue.put(("token", "学习助手·规划", _plan_pt))
+        mindchain_entries.append({"agent": "学习助手·规划", "content": _plan_pt})
 
         recent_digest = "\n".join(
             f"{m.get('role')}: {str(m.get('content'))[:120]}"
@@ -338,6 +376,12 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                         logger.debug("error 路径观察窗收尾失败", exc_info=True)
             ctx_steps.append({"agent": "知识库管理", "status": "done",
                               "detail": f"检索{len(search_results)}条"})
+            # F11-S1：检索节点内容化——query 与命中预览（source/chunk/融合分，截断防爆）
+            # 进思维链，同款「token 事件 + mindchain 双写」；与既有 step/thought_token
+            # 词汇表对齐（复用 :378 输出策略 / :511 审核同款通道），零新协议。
+            _search_detail = _format_search_detail(_search_meta, search_results)
+            token_queue.put(("token", "知识库管理", _search_detail))
+            mindchain_entries.append({"agent": "知识库管理", "content": _search_detail})
             _trace("retrieve", input_digest=req.message[:200],
                    output_digest=json.dumps(
                        {"kept": len(search_results),

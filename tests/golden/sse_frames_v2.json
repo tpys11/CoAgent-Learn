@@ -8,6 +8,11 @@
   "agent": "学习助手·规划"
  },
  {
+  "type": "thought_token",
+  "agent": "学习助手·规划",
+  "chunk": "规划要点：复杂度 simple_direct · 思考档 · 简单直答，不检索"
+ },
+ {
   "type": "step",
   "agent": "学情与记忆管理"
  },
@@ -45,7 +50,12 @@
     "detail": "生成输出"
    }
   ],
-  "mindchain": [],
+  "mindchain": [
+   {
+    "agent": "学习助手·规划",
+    "content": "规划要点：复杂度 simple_direct · 思考档 · 简单直答，不检索"
+   }
+  ],
   "task_stats": {},
   "retrieved_images": [],
   "review": null

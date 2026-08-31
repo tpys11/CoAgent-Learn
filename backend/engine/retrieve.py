@@ -128,7 +128,13 @@ def rrf_merge(ranked_lists: list, k: float = 60.0) -> list[dict]:
             scores[key] = scores.get(key, 0.0) + 1.0 / (rank + k)
             best.setdefault(key, row)
     ordered = sorted(scores.items(), key=lambda kv: -kv[1])
-    return [best[key] for key, _ in ordered]
+    # F11-S1：融合分随行透传（浅拷贝附键，不改输入行）——供检索节点命中预览展示分数
+    out: list[dict] = []
+    for key, sc in ordered:
+        row = dict(best[key])
+        row["rrf_score"] = round(sc, 4)
+        out.append(row)
+    return out
 
 
 def _coverage_missing(ranked_lists_cols: list, threshold: int = 2) -> list[int]:
@@ -310,6 +316,8 @@ def retrieve_stage(llm_fast, message: str, template: str, project_id: str,
                 "content": str(r.get("content") or r.get("snippet") or "")[:600],
                 # A1：KB 命中携带原 metadata(source/chunk)，供兄弟聚合定位；web 条目无此键
                 **({"metadata": r["metadata"]} if r.get("metadata") else {}),
+                # F11-S1：融合分透传（rrf_merge 已随行附带）——检索内容事件展示分数用
+                **({"rrf_score": r["rrf_score"]} if "rrf_score" in r else {}),
             })
     kept = filter_results(llm_fast, candidates)
     _expand_sections(kept, project_id, emit=emit)
