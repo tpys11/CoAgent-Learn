@@ -92,14 +92,24 @@ export function RetentionScopePanel({ projectId, source, tree, apiKey, onApplied
     try {
       const d = await api.applyKbScope(projectId, source, include, apiKey || '')
       if (d && d.status === 'processing') {
-        // 进度复用 upload-progress 轮询（重入库是分钟级向量重算）
+        // 进度复用 upload-progress 轮询（重入库是分钟级向量重算）；
+        // 完成判定与 UploadPanel.pollProgress 同款：enhancing 收尾 OR embedding 满载稳定两拍
+        // （KB_META_ENHANCE=0 的栈没有 enhancing 阶段——f9tmp E2E 实测漏判会假超时）
         const started = Date.now()
+        let stable = 0
         const timer = setInterval(async () => {
           try {
             const p = await api.uploadProgress(projectId, source)
             if (p && p.status === 'error') { clearInterval(timer); setBusy(false); setMsg('重入库失败：' + (p.msg || '未知原因')); return }
-            if (p && p.status === 'ok' && p.stage === 'enhancing') {
-              clearInterval(timer); setBusy(false); setMsg('已按所选范围重新入库'); onApplied(); return
+            if (p && p.status === 'ok' && p.total) {
+              const done = p.done || 0
+              if (p.stage === 'enhancing' && done >= p.total) {
+                clearInterval(timer); setBusy(false); setMsg('已按所选范围重新入库'); onApplied(); return
+              }
+              if (p.stage === 'embedding' && done >= p.total) {
+                stable++
+                if (stable >= 2) { clearInterval(timer); setBusy(false); setMsg('已按所选范围重新入库'); onApplied(); return }
+              } else stable = 0
             }
             if (Date.now() - started > 10 * 60 * 1000) { clearInterval(timer); setBusy(false); setMsg('处理超时，请稍后在资源列表确认'); }
           } catch { /* 网络抖动继续轮询 */ }
