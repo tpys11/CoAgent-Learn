@@ -40,6 +40,12 @@ class ProjectRepo:
             "SELECT id, name, created_at FROM dialogues "
             "WHERE project_id=%s AND archived=FALSE AND (kind IS NULL OR kind='') ORDER BY created_at", (pid,))
 
+    def list_dialogue_summaries(self, pid):
+        # F12-S4：课程各对话的压缩滚动摘要只读聚合（compress.py 产出；空摘要不入结果）
+        return self._db.execute(
+            "SELECT id, name, summary FROM dialogues "
+            "WHERE project_id=%s AND IFNULL(summary,'')<>'' ORDER BY created_at", (pid,))
+
     def list_dialogue_briefs(self, pid):
         return self._db.execute("SELECT id, name FROM dialogues WHERE project_id=%s", (pid,))
 

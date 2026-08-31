@@ -26,6 +26,17 @@ def get_project_memory(project_id: str, session_id: str = "default"):
     return {"memory": _as_dict(data) if data else {}}
 
 
+@router.get("/api/projects/{pid}/compressed-summaries")
+def compressed_summaries(pid: str):
+    """F12-S4：课程各对话的压缩滚动摘要（compress.py 五段式）只读聚合，供记忆单框展示素材。
+    只读：不触发压缩、不动 compressed_upto 游标、不触碰预算机制。"""
+    rows = get_project_repo().list_dialogue_summaries(pid)
+    return {"summaries": [
+        {"dialogue_id": r.get("id"), "name": r.get("name") or "", "summary": r.get("summary") or ""}
+        for r in rows or []
+    ]}
+
+
 @router.get("/api/dialogues/{did}/followups")
 def get_followups(did: str):
     rows = get_memory_repo().get_followups(did)

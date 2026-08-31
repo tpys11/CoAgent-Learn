@@ -186,6 +186,10 @@ export const api = {
     apiFetch<ProfileData>('/api/project-memory/' + encodeURIComponent(pid), { cache: 'no-store' }),
   saveProjectMemory: (pid: string, profile: unknown) =>
     apiFetch<any>('/api/project-memory/' + encodeURIComponent(pid), jsonInit('POST', { profile })),
+  // F12-S4：课程各对话的压缩滚动摘要（五段式）只读聚合——记忆单框展示素材
+  getCompressedSummaries: (pid: string) =>
+    apiFetch<{ summaries: Array<{ dialogue_id: string; name: string; summary: string }> }>(
+      '/api/projects/' + encodeURIComponent(pid) + '/compressed-summaries', { cache: 'no-store' }),
   getDialogueProfile: (did: string) =>
     apiFetch<ProfileData>('/api/dialogues/' + encodeURIComponent(did) + '/profile'),
   getDialogueFollowups: (did: string) =>

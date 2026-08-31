@@ -6,6 +6,7 @@ import { api } from '../api'
 import { MiniMD } from './memoryView/MiniMD'
 import { PrefSummary } from './memoryView/PrefSummary'
 import MemoryBox from './memoryView/MemoryBox'
+import CompressMaterial from './memoryView/CompressMaterial'
 import MatchReport from './matchReport/MatchReport'
 
 /** 个人全局性记忆：基础信息字段（固定，纵向表单） */
@@ -81,6 +82,18 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
   const [mcSending, setMcSending] = useState(false)
   // 课程记忆刷新触发器（记忆对话后刷新）
   const [refreshTick, setRefreshTick] = useState(0)
+  // F12-S4：压缩摘要素材（只读）——随当前课程加载；空态整块不渲染
+  const [compressItems, setCompressItems] = useState<Array<{ dialogueId: string; name: string; summary: string }>>([])
+  useEffect(() => {
+    if (!activeProject) { setCompressItems([]); return }
+    let cancelled = false
+    api.getCompressedSummaries(activeProject)
+      .then(d => {
+        if (!cancelled) setCompressItems(((d && d.summaries) || []).map((s: any) => ({ dialogueId: s.dialogue_id, name: s.name, summary: s.summary })))
+      })
+      .catch(() => { if (!cancelled) setCompressItems([]) })
+    return () => { cancelled = true }
+  }, [activeProject, refreshTick])
   // F12-S2：原 detailCard 展开弹层随分块卡移除——单框完整展示所有要点，无截断
   useEffect(() => { setDayDetail(null) }, [level])
 
@@ -480,6 +493,8 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                             </div>
                           </div>
                         {/* 进度与细节（下） */}
+                        {/* F12-S4：压缩摘要素材（只读，单框结构映射）——位于记忆框下、大纲之上 */}
+                        {!initialEdit && <CompressMaterial items={compressItems} />}
                         {/* 文档大纲：树状结构（复用资料章节层级，节点颜色=掌握状态）；初始化时不展示 */}
                         {!initialEdit && (
                         <div className="flex flex-col gap-2 max-w-3xl">
