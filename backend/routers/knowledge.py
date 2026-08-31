@@ -149,6 +149,17 @@ def _parse_for_upload(fname: str, data: bytes, ext: str) -> tuple[str, str]:
     return text or "", engine
 
 
+def _unparsable_msg(ext: str) -> str:
+    """F8-S4：解析不出内容的结构化报错——PDF 场景附加扫描件出路指引
+    （原因/后果/怎么办，CONVENTIONS §6）；已配 MinerU token 时指引为空不掺噪声。"""
+    base = "无法解析该文件内容（可能为空或格式不支持）"
+    if ext != "pdf":
+        return base
+    from core import parse_service
+    guide = parse_service.scanned_pdf_guidance()
+    return base + "。" + guide if guide else base
+
+
 def _process_file_bg(project_id: str, fname: str, data: bytes, source: str,
                      session_id: str, api_key: str, content_hash: str, ext: str, desc: str = ""):
     """后台文件处理全链（上传提速·单步2）：解析 → _process_upload（去重/原文存档/入库/记录hash）→ 图片向量。
@@ -172,7 +183,7 @@ def _process_file_bg(project_id: str, fname: str, data: bytes, source: str,
         # F8-S2：引擎旁路记录——轮询全程（含完成终态）可见 parse_engine
         set_progress_engine(project_id, source, engine)
         if not text.strip():
-            _set_progress_error(project_id, source, "无法解析该文件内容（可能为空或格式不支持）")
+            _set_progress_error(project_id, source, _unparsable_msg(ext))
             return
         n = _process_upload(project_id, text, source, session_id, api_key, False, False, content_hash)
         if n == -1:
@@ -598,7 +609,7 @@ async def knowledge_upload_file(
         # F1 重构曾把解析提到 wait 判定之外，导致 wait=0 阻塞响应 + 第一遍解析结果被丢弃。
         text, engine = await run_in_threadpool(_parse_for_upload, fname, data, _ext)
         if not text.strip():
-            return {"status": "error", "msg": "无法解析该文件内容（可能为空或格式不支持）"}
+            return {"status": "error", "msg": _unparsable_msg(_ext)}
     # F1 修复：统一尾部。此前图片分支走到这里即函数结束→隐式 return None（HTTP body 'null'），
     # 且 _process_file_bg/_store_image_vector 的图片逻辑全部不可达。
     if wait:

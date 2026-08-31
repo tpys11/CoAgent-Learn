@@ -21,6 +21,30 @@ MATHPIX_API = "https://api.mathpix.com"
 _POLL_INTERVAL = 5      # 轮询间隔秒
 _POLL_TIMEOUT = 300     # 云引擎最长等待秒
 
+# F8-S4：扫描件判定阈值——前 3 页可提取文字层总字符 < 该值 → 判扫描件（is_ocr=True）
+_OCR_TEXT_THRESHOLD = 32
+# F8-S4：近空文本阈值——pymupdf4llm 输出低于该值视为「提不出内容」，触发 MinerU OCR 重试
+_NEAR_EMPTY_CHARS = 16
+
+
+def _needs_ocr(data: bytes) -> bool:
+    """fitz 文字层检测：前 3 页 get_text 总长 < 阈值 → 判扫描件。
+    打不开的文档不决策（返回 False），交给引擎链自己报错降级。"""
+    import fitz
+    try:
+        doc = fitz.open(stream=data, filetype="pdf")
+    except Exception:
+        return False
+    try:
+        total = 0
+        for page in list(doc)[:3]:
+            total += len((page.get_text() or "").strip())
+            if total >= _OCR_TEXT_THRESHOLD:
+                return False
+        return True
+    finally:
+        doc.close()
+
 
 # ── 引擎实现：每个返回 markdown 文本，失败抛异常 ──
 
@@ -35,16 +59,20 @@ def _parse_pymupdf4llm(data: bytes) -> str:
     return (md or "").strip()
 
 
-def _parse_mineru(data: bytes, filename: str) -> str:
+def _parse_mineru(data: bytes, filename: str, is_ocr: bool | None = None) -> str:
     import requests as _req
     from core.config import config as _cfg
     token = getattr(_cfg, "MINERU_API_TOKEN", "")
     if not token:
-        raise RuntimeError("未配置 MinerU API Token（设置 → AI 服务 → 文档解析）")
+        raise RuntimeError("未配置 MinerU API Token，扫描件/公式高保真解析不可用（原因）——PDF 将降级 pymupdf4llm（后果）。"
+                           "怎么办：mineru.net 免费申请 Token 后填入 设置 → AI 服务 → 文档解析")
+    if is_ocr is None:
+        # F8-S4：is_ocr auto——前 3 页无文字层（扫描件）才走 OCR；文字版 PDF 保持快速通道
+        is_ocr = _needs_ocr(data)
     h = {"Authorization": "Bearer " + token}
     # 1. 申请预签名上传 URL
     resp = _req.post(f"{MINERU_API}/file-urls/batch", headers=h, timeout=30, json={
-        "files": [{"name": filename, "is_ocr": False,
+        "files": [{"name": filename, "is_ocr": bool(is_ocr),
                    "enable_formula": True, "enable_table": True, "language": "ch"}]})
     resp.raise_for_status()
     d = resp.json().get("data") or {}
@@ -148,9 +176,37 @@ def check_engine_health(stage: str) -> None:
                        stage)
 
 
+def _try_mineru_ocr_retry(data: bytes, filename: str) -> tuple[str, str] | None:
+    """F8-S4：pymupdf4llm 输出近空（扫描件典型症状）时，降级链前用 MinerU(is_ocr=True)
+    重试一次——仅在已配 token 时尝试；失败静默回到降级链（优雅降级语义不变）。"""
+    from core.config import config as _cfg
+    if not getattr(_cfg, "MINERU_API_TOKEN", ""):
+        return None
+    try:
+        text = _parse_mineru(data, filename, is_ocr=True)
+        if text:
+            logger.warning("pymupdf4llm 输出近空，MinerU OCR 重试成功 fname=%s chars=%d",
+                           filename, len(text))
+            return text, "mineru-ocr"
+    except Exception as e:
+        logger.warning("MinerU OCR 重试失败：%s", str(e)[:200])
+    return None
+
+
+def scanned_pdf_guidance() -> str:
+    """F8-S4：扫描件无 OCR 出路时的「怎么办」指引；已配 token 返回空串（无此问题）。"""
+    from core.config import config as _cfg
+    if getattr(_cfg, "MINERU_API_TOKEN", ""):
+        return ""
+    return ("该 PDF 提取不出文字层，可能是扫描件/图片型 PDF。"
+            "怎么办：到 mineru.net 免费申请 API Token 并填入 设置 → AI 服务 → 文档解析"
+            "（配置后自动走 OCR 识别），或改用文字版 PDF。")
+
+
 def parse_document(filename: str, data: bytes) -> tuple[str, str]:
     """按设置解析 PDF，失败逐级降级，永不抛出。返回 (text, engine_used)。
-    降级链：配置引擎 → pymupdf4llm → 旧版 file_parser（markitdown/pypdf）。
+    降级链：配置引擎 → pymupdf4llm → 旧版 file_parser（markitdown/pypdf）；
+    F8-S4：pymupdf4llm 输出近空时先试 MinerU OCR 重试，再进降级链。
     F8-S3：引擎输出在返回前统一过规范化闸（legacy 回退路径在 file_parser 出口已过）。"""
     from core.file_parser import parse_file
     from core.text_normalizer import normalize_extracted_text
@@ -161,6 +217,11 @@ def parse_document(filename: str, data: bytes) -> tuple[str, str]:
     for eng in order:
         try:
             text = (_ENGINES[eng])(data, filename)
+            # F8-S4：快道（pymupdf4llm 无 OCR 能力）输出近空 → 先试 MinerU OCR，再降级
+            if eng == "pymupdf4llm" and (not text or len(text.strip()) < _NEAR_EMPTY_CHARS):
+                retry = _try_mineru_ocr_retry(data, filename)
+                if retry:
+                    return normalize_extracted_text(retry[0]), retry[1]
             if text:
                 text = normalize_extracted_text(text)
                 if text:
