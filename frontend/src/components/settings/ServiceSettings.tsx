@@ -6,6 +6,7 @@ import { LS } from '../../storage'
 import { SERVICE_GROUPS } from './serviceGroups'
 import { buildSvcBody } from './settingsPayload'
 import ZenProviderCard from './ZenProviderCard'
+import SelfCheckCard from './SelfCheckCard'
 import { PRESET_IDS, PRESET_LABELS, freePresetLsWrites, freePresetPutBody, standardPresetPutBody } from './presets'
 
 function Section({ icon: Icon, title, desc, children }: { icon: any; title: string; desc?: string; children: React.ReactNode }) {
@@ -114,6 +115,9 @@ export default function ServiceSettings() {
   return (
     <Section icon={Database} title="AI 服务配置" desc="各能力独立配置，保存后即时生效，无需重启">
       <div className="flex flex-col gap-4">
+        {/* F14-S3c：自检卡 */}
+        <SelfCheckCard settings={svc} onSaved={flash} />
+
         {/* F14-S5b1：预设档切换卡 */}
         <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2.5">
           <p className="text-sm font-semibold">预设档</p>
