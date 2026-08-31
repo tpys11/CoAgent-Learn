@@ -10,8 +10,10 @@ import 'react-pdf/dist/Page/TextLayer.css'
 import 'react-pdf/dist/Page/AnnotationLayer.css'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
-// worker 一次性配置（Vite ?url 模式，构建产物内离线可用）
-pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
+// worker 一次性配置（Vite ?url 模式，构建产物内离线可用）。
+// URL 追加版本参数：nginx immutable 长缓存 + 中间代理可能长期持有旧副本，
+// 换 worker 版本时必须让 URL 变化才能强制刷新（nginx location 匹配不含 query，MIME 补丁不受影响）。
+pdfjs.GlobalWorkerOptions.workerSrc = `${workerUrl}?v=1`
 
 /** pdf.js outline 项（getOutline 产物子集） */
 interface OutlineItem { title: string; dest?: unknown; items?: OutlineItem[] }
