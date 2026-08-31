@@ -163,6 +163,7 @@
 | **N2②** | `docs/dispatch/step-N2-pull.md`（2026-08-31 校准版） | 2026-08-31 | **✅ 已完成**（7/7+⑧，零改动 0 push；交接 `docs/progress/step-N2-pull.md`；新发现 T47/T48 上报） |
 | **F7** | `docs/dispatch/step-F7.md`（2026-08-31） | 2026-08-31 | **🔶 实证完成，未动代码**（缺陷当前不可复现=环境依赖；总领三处取证被其推翻；但其窗口 bracket 出 **T50 数据丢失事件**——待交代操作序列后改判调查） |
 | **F8** | `docs/dispatch/step-F8.md`（2026-08-31） | 2026-08-31 | **✅ 已完成并经总领验收**（7 commit `24266f5..224f90c` 已 push 两行一致；总领亲证三绿：pytest 409 / vitest 96 / tsc 0；实验全程副本库，真实库 10946 行零接触；纠错记录：「INFO 进不了容器日志」前提不成立，S2 收敛为 engine 透传；交接 `docs/progress/step-F8.md`，遗留 T51/T52 登记） |
+| **F11** | `docs/dispatch/step-F11.md`（2026-08-31） | 2026-08-31 | **✅ 已完成并经总领验收**（4 commit `7aa70bf..a761308` 已 push 两行一致；总领亲证三绿 pytest 416 / vitest 117 / tsc 0；正文后审核块 DOM 零残留、全链序 16/16、真实库 10946 零接触；S5 trace-export 按 owner 指令**验收后追加**（见派发单 §S5）；发现并修复 E-36 skills 遮蔽；交接 `docs/progress/step-F11.md`） |
 
 > 分发提示词统一存放于 `docs/dispatch/step-<id>.md`，交接文档归档于 `docs/progress/step-<id>.md`。
 
@@ -440,6 +441,7 @@ N3（推预构建镜像）→ N2（第 2 次，按 pull 路径复验）
 | **E-30** | **【双重静默降级 · 实测】未配置 `EMBEDDING_API_KEY` 时，embedding 与 rerank **同时**静默失效**。<br>**① embedding**：`_embed()` 的路由条件是 `EMBEDDING_BACKEND=="api" and EMBEDDING_API_KEY`（`embeddings.py:67`）。默认 `EMBEDDING_BACKEND="api"`、`EMBEDDING_BASE_URL` 已是硅基流动，**但 key 为空 → 判定 False → 落 `_embed_local`** → `EMBEDDING_LOCAL_MODEL=""`（`config.py:24`，本地通道已废弃）→ `SentenceTransformer("")` 抛 `AttributeError` → 被裸 `except Exception` 吞掉 → **伪向量 `ord(ch)%100/100`**。<br>**② rerank**：`_get_reranker()`（`knowledge_service.py:473-487`）同理——`RERANK_BACKEND="api"` 但 `RERANK_API_KEY` 与 `EMBEDDING_API_KEY` 皆空 → 落本地 `CrossEncoder("BAAI/bge-reranker-base")` → 需从 HF 下载 → 失败 → `_reranker_local=False` → 返回 None，**重排被静默关闭** | **只需配置一个硅基流动 Key（`EMBEDDING_API_KEY`），两条路径同时走 API，问题消失**：rerank 的判定是 `RERANK_API_KEY or EMBEDDING_API_KEY`，会复用同一把 key。<br>⚠️ **对 N3 的连带影响（重要）**：配置 key 后，torch / sentence-transformers 的**全部引用点**（`embeddings.py:19` 与 `knowledge_service.py:483`）均不可达 → 成为**死依赖**。而它们正是 backend 镜像 **3.25GB** 的主因（torch 2.13 + transformers 5.14 + sentence-transformers 5.6）。**→ 若决定「API 为唯一路径、移除本地兜底」，可大幅缩小镜像并显著缩短冷构建（现 433s，README 称大头是 torch 下载 ~190MB）。这是一个独立的新选项，须 owner 决策**。<br>**注**：未配置 key 时本地兜底**仍会尝试加载模型**，故 torch 当前并非完全无用——是否移除取决于是否保留离线能力 |
 | **E-34** | **【compose 行为 · N3 实测】显式 `-f` 下 compose v2 不自动加载 `docker-compose.override.yml`**（单 -f 带/不带该文件，config 输出相同；`--project-directory` 亦不加载）。本地开发 canonical 命令：`docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.override.yml up -d --build`（双 -f 合并验证 exit 0）；README 开发者路径已按此口径书写，且有守卫钉住 README 全部项目 compose 命令带 `-f` | 本地开发验证 / README 维护 |
 | **E-35** | **【取重视角 · F7 实证】①bind mount 不同步 mmap 写——`-shm` 宿主视图冻结 3B、`-wal` 视图滞后，宿主侧 sidecar 取证不可作为缺陷证据（须 `docker exec` 容器内视图）；②环境依赖 CANTOPEN 备案：N2② 实测一次 query 500（_new_conn CANTOPEN），Docker 29.4.1 版本前后一致、F7 全矩阵复现阴性——机制已消失，若复发按 F7 实验矩阵重查；③临时栈必须 `-p` 独立项目名**（F7 会话临时栈与开发栈同名 `deploy`，down 连带带下开发栈——数据无损但已构成事故条件） | F7 会话 + 总领采信 |
+| **E-36** | **【环境 · F11 实证 + 已修复】本地开发 override 的 skills 遮蔽**：`../backend:/app` bind mount 遮蔽镜像内 `/app/skills`（override 原注释「skills 已烤进镜像无需挂载」判断错误——镜像里有但被遮住）→ 技能 import 失败被静默吞 → **开发栈对话检索零命中**（GET /api/knowledge/query 不走 skills 故仍 200，与 T47「开发栈复现阴性」观察吻合）。**修复：override 补挂 `../skills:/app/skills` 并重启（08-31 总领执行，容器内 ls /app/skills 已见技能清单）**。评委不受影响（clone 无 override）；纯镜像路径无此问题 | F11 会话发现 + 总领现场证实并修复 |
 
 ---
 
@@ -652,6 +654,8 @@ N3（推预构建镜像）→ N2（第 2 次，按 pull 路径复验）
 | **T52** | **【P3 体验 · F8 遗留】CJK-CJK 段内空格保守保留**（pymupdf4llm 硬换行拼接产物，如「难以 还原」）——扩规则删除 vs 伤及有意分词，**待 owner 拍板** | F8 会话上报 | owner 决策后折进微改 |
 | **T53** | **【P2 UI 移除 · owner 指令 08-31】删除「项目介绍」按钮与点开后全部内容**：ActivityBar 两处按钮（`ActivityBar.tsx:69/:82`，`onChange('tutorial')`）+ tutorial 视图（`TutorialView.tsx`）+ 首次进入自动弹窗（`App.tsx:147/:523` showIntro/introSeen）+ `IntroPanel.tsx` 组件。**边界点（实施时判定）**：项目介绍 Agent 设定持久化（`App.tsx:76/:379`）与 `AgentsView.tsx:179` 对话设定共用——若仅服务 IntroPanel 则一并删，AgentsView 共用则保留持久化逻辑 | owner 指令 + 总领锚点 | **折进 F12 派发单**（纯前端，与 F11 文件无交集） |
 | **T54** | **【P2 UI 移除 · owner 指令 08-31】删除设置→AI 服务的「切块与检索参数」栏**：`ServiceSettings.tsx:224` 起整节（KB_CHUNK_SIZE/MODE/OVERLAP/RRF_K/FETCH_MULT 的 UI 呈现）。**后端 API 契约不动**——键保留走默认值，仅删 UI 栏；设置保存往返测试同步收缩 | owner 指令 + 总领锚点 | **折进 F12 派发单** |
+| **T55** | **【P2 检索质量 · F11 发现】检索查询规划器 need_search 偶发误判**：`rewrite_queries` 已产出 queries 仍偶发放弃检索（同输入一次 true 一次 false，非 F11 引入）——建议「queries 非空时无视 need_search」或 prompt 收紧 | F11 会话 E2E 观测 | 折进后续轮微改 |
+| **T56** | **【P3 展示 · F11 发现】模型输出 `\(...\)` 定界公式不渲染**（markdown-it-katex 只认 $/$$）——修法：生成提示词声明「公式用 $ 定界」 | F11 会话上报 | 折进 F12 微改 |
 
 ## 6 评估环节（对照官方比赛方案 XH-202630，2026-08-31 总领登记）
 
