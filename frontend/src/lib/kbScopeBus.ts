@@ -35,6 +35,13 @@ export function resolveScopeSurface(wizardOpen: boolean): 'wizard' | 'inline' {
   return wizardOpen ? 'wizard' : 'inline'
 }
 
+/** F10-S2 向导呈现面过滤（纯函数）：从 pending 取当前向导所属课程的待选择目标。
+ *  向导无所属课程（projectId 缺省，如 project 模式历史形态）→ 不弹选择步。 */
+export function wizardScopeTargets(pending: ScopeTarget[], wizardProjectId: string | undefined): ScopeTarget[] {
+  if (!wizardProjectId) return []
+  return pending.filter(x => x.projectId === wizardProjectId)
+}
+
 // ---------- 模块级单例状态（pending 通道） ----------
 
 let pendingTargets: ScopeTarget[] = []

@@ -38,7 +38,7 @@ import { DEFAULT_AGENTS } from './types'
 import { LS, lsGet, lsSet, lsGetJSON, lsSetJSON } from './storage'
 import { api } from './api'
 import { useChatStream } from './hooks/useChatStream'
-import { addPendingScopeTargets, getPendingScopeTargets, resolveScopeSurface, subscribeIngestDone, subscribePending, type ScopeTarget } from './lib/kbScopeBus'
+import { addPendingScopeTargets, getPendingScopeTargets, resolveScopeSurface, subscribeIngestDone, subscribePending, wizardScopeTargets, type ScopeTarget } from './lib/kbScopeBus'
 
 function generateId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }
 // 项目 ID 固定：首次生成后存 localStorage，刷新复用（保证知识库/图谱数据不因刷新丢失）
@@ -300,6 +300,9 @@ function App() {
   const configProjectId = projectKBId ?? currentProjectId
   const inlineScopeTargets: ScopeTarget[] = resolveScopeSurface(!!wizard) === 'inline'
     ? scopePending.filter(x => x.projectId === configProjectId) : []
+  // F10-S2：向导开着 → 向导呈现面（打断步）——按向导所属课程过滤后下发 ProfileWizard；
+  // 消费（选择/跳过）经 bus 撤销，内联面同步消失（防双呈现契约②）。
+  const wizardSurfaceTargets: ScopeTarget[] = wizardScopeTargets(scopePending, wizard?.projectId)
 
   const handleProjectKB = useCallback((id: string) => {
     setProjectKBId(id)
@@ -525,7 +528,7 @@ function App() {
           scopeTargets={inlineScopeTargets}
         /></LSusp>
       )}
-      {wizard && <LSusp><ProfileWizard mode={wizard.mode} projectName={wizard.name} projectId={wizard.projectId} onClose={() => {
+      {wizard && <LSusp><ProfileWizard mode={wizard.mode} projectName={wizard.name} projectId={wizard.projectId} scopeTargets={wizardSurfaceTargets} onClose={() => {
         // 跳过：项目标记为无画像（simple），名字加 [简]，后续对话不弹向导
         if (wizard.mode === 'project') {
           api.saveProjectProfile(wizard.id, {})

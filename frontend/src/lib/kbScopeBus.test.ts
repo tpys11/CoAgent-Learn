@@ -20,6 +20,7 @@ import {
   resolveScopeSurface,
   subscribeIngestDone,
   subscribePending,
+  wizardScopeTargets,
   type ScopeTarget,
 } from './kbScopeBus'
 
@@ -128,5 +129,44 @@ describe('resolveScopeSurface（呈现裁决纯函数）', () => {
   })
   it('向导没开 → inline（F9 内联面板现状保持）', () => {
     expect(resolveScopeSurface(false)).toBe('inline')
+  })
+})
+
+// ---------- F10-S2 打断向导：向导呈现面 ----------
+
+describe('wizardScopeTargets（向导呈现面过滤纯函数）', () => {
+  it('取当前向导所属课程的待选择目标（跨课程不串扰）', () => {
+    const pending = [t('pA', 'a.pdf'), t('pB', 'b.pdf')]
+    expect(wizardScopeTargets(pending, 'pA')).toEqual([t('pA', 'a.pdf')])
+  })
+  it('向导无所属课程（projectId 缺省）→ 不弹选择步', () => {
+    expect(wizardScopeTargets([t('pA', 'a.pdf')], undefined)).toEqual([])
+  })
+  it('pending 无匹配课程 → 空', () => {
+    expect(wizardScopeTargets([t('pA', 'a.pdf')], 'pZ')).toEqual([])
+  })
+})
+
+describe('S2 全链：向导消费 → 内联撤销（防双呈现，总领契约②）', () => {
+  it('向导侧选择/跳过 consume 后，内联呈现面拿到的目标为空——同一目标不会两处呈现', () => {
+    resetBus()
+    addPendingScopeTargets([t('pA', 'a.pdf')])
+    // 向导开着：向导呈现面拿到目标（打断发生）
+    expect(wizardScopeTargets(getPendingScopeTargets(), 'pA')).toHaveLength(1)
+    // 用户在向导步选择（apply 完成回调）或跳过 → 统一走 consume
+    consumeScopeTarget('pA', 'a.pdf')
+    // 此后无论内联面还是向导面都不会再呈现该目标
+    expect(wizardScopeTargets(getPendingScopeTargets(), 'pA')).toHaveLength(0)
+    expect(getPendingScopeTargets()).toHaveLength(0)
+  })
+  it('跳过=默认全量语义：consume 是唯一动作，不产生任何入库调用（纯前端状态流转）', () => {
+    resetBus()
+    addPendingScopeTargets([t('pA', 'a.pdf')])
+    const spy = vi.fn()
+    subscribePending(spy)
+    consumeScopeTarget('pA', 'a.pdf')
+    // pending 清空且通知恰好一次（撤销）——默认全量=上传时已全量入库，跳过零动作
+    expect(getPendingScopeTargets()).toHaveLength(0)
+    expect(spy).toHaveBeenCalledTimes(1)
   })
 })

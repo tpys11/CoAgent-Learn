@@ -1,15 +1,18 @@
 ﻿import { useRef, useState } from 'react'
-import { ClipboardList, PenLine, Upload } from 'lucide-react'
+import { ClipboardList, ListTree, PenLine, Upload } from 'lucide-react'
 import { LS, lsGet } from '../storage'
 import { api } from '../api'
-import { reportIngestDone } from '../lib/kbScopeBus'
+import { consumeScopeTarget, reportIngestDone, type ScopeTarget } from '../lib/kbScopeBus'
 import { watchUploadProgress } from '../lib/uploadProgressWatcher'
+import { RetentionScopePanel } from './resource/RetentionScopePanel'
 
 interface Props {
   mode: 'project' | 'dialogue'
   projectName?: string
   /** F10-S1：dialogue 模式携带所属课程——向导内可补传教材（上传与向导并行，发起后向导可立即关闭） */
   projectId?: string
+  /** F10-S2：向导呈现面的待选择目标（App 裁决下发）——非空时向导先出「知识库处理选择」步 */
+  scopeTargets?: ScopeTarget[]
   inheritedProfile?: Record<string, any>
   onClose: () => void
   onSave: (profile: Record<string, any>) => void
@@ -19,7 +22,7 @@ const DOMAINS = ['智能制造', '人工智能', '软件开发', '工业互联�
 const LEVELS = ['零基础', '有基础', '熟练', '精通']
 const PREFER = ['讲义讲解', '实操练习', '刷题巩固', '混合']
 
-export default function ProfileWizard({ mode, projectName, projectId, inheritedProfile, onClose, onSave }: Props) {
+export default function ProfileWizard({ mode, projectName, projectId, scopeTargets, inheritedProfile, onClose, onSave }: Props) {
   const [domain, setDomain] = useState(inheritedProfile?.domain || DOMAINS[0])
   const [background, setBackground] = useState(inheritedProfile?.background || LEVELS[0])
   const [goal, setGoal] = useState(inheritedProfile?.goal || '')
@@ -65,6 +68,13 @@ export default function ProfileWizard({ mode, projectName, projectId, inheritedP
 
   const isProject = mode === 'project'
 
+  // F10-S2 打断步：切割完成且有本课程待选择目标时，向导先呈现「知识库处理选择」，
+  // 选择/跳过后自动回到画像表单（表单 state 全程保留=恢复正确）。
+  // 跳过=默认全量：上传时已全量入库，跳过零动作、仅消费撤销（bus 契约②：消费后内联面同步消失）。
+  const scopeList = isProject ? [] : (scopeTargets || [])
+  const scopeStep = scopeList.length > 0
+  const skipScopeAll = () => { for (const t of scopeList) consumeScopeTarget(t.projectId, t.source) }
+
   const save = () => {
     const p: Record<string, any> = { domain, background, prefer }
     if (isProject) { p.goal = goal } else { p.topic = topic; p.selfLevel = selfLevel || background; p.target = target; p.questionType = questionType }
@@ -74,11 +84,27 @@ export default function ProfileWizard({ mode, projectName, projectId, inheritedP
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60]" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="bg-white rounded-2xl shadow-lift w-full max-w-md mx-4 p-6">
-        <h2 className="font-display text-lg mb-1 flex items-center gap-2">{isProject ? <><ClipboardList size={17} /> 课程画像向导</> : <><PenLine size={17} /> 对话画像向导</>}</h2>
+        <h2 className="font-display text-lg mb-1 flex items-center gap-2">
+          {scopeStep ? <><ListTree size={17} /> 知识库处理选择</> : isProject ? <><ClipboardList size={17} /> 课程画像向导</> : <><PenLine size={17} /> 对话画像向导</>}
+        </h2>
         <p className="text-[11px] text-gray-400 mb-4">
-          {isProject ? `为课程「${projectName || ''}」建立学情画像，AI 将据此调整学习内容` : '补充本次学习画像（已继承课程画像）'}
+          {scopeStep ? '上传的教材已完成切割入库：逐份选择留存范围；跳过则保留全部内容（默认）。'
+            : isProject ? `为课程「${projectName || ''}」建立学情画像，AI 将据此调整学习内容` : '补充本次学习画像（已继承课程画像）'}
         </p>
-        <div className="flex flex-col gap-3">
+        {scopeStep ? (
+          <div className="flex flex-col gap-2.5">
+            {scopeList.map(t => (
+              <RetentionScopePanel key={t.source} projectId={t.projectId} source={t.source}
+                tree={t.tree} apiKey={lsGet(LS.apiKey, '')}
+                onApplied={() => consumeScopeTarget(t.projectId, t.source)} />
+            ))}
+            <div className="flex justify-end">
+              <button onClick={skipScopeAll} className="text-xs px-3 py-1.5 text-gray-500 hover:bg-gray-100 rounded-lg">跳过，保留全部内容</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="flex flex-col gap-3">
           {isProject && (
             <>
               <div>
@@ -148,10 +174,12 @@ export default function ProfileWizard({ mode, projectName, projectId, inheritedP
             </div>
           </div>
         </div>
-        <div className="flex justify-end gap-2 mt-5">
-          <button onClick={onClose} className="text-xs px-3 py-1.5 text-gray-500 hover:bg-gray-100 rounded-lg">跳过</button>
-          <button onClick={save} className="text-xs px-4 py-1.5 bg-[#1a1a1a] text-white font-semibold rounded-lg hover:bg-[#333333]">保存画像</button>
-        </div>
+            <div className="flex justify-end gap-2 mt-5">
+              <button onClick={onClose} className="text-xs px-3 py-1.5 text-gray-500 hover:bg-gray-100 rounded-lg">跳过</button>
+              <button onClick={save} className="text-xs px-4 py-1.5 bg-[#1a1a1a] text-white font-semibold rounded-lg hover:bg-[#333333]">保存画像</button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   )
