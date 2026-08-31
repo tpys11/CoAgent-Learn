@@ -41,10 +41,24 @@ def pick_judge_llm(template: str, req):
     构造失败回退主模型接缝（原语义保留）。"""
     from core.base_llm import DeepSeekLLM
     from core.config import config as _cfg
+    from engine.pipeline_v2 import _cached_llm
     model = ((_cfg.REVIEW_MODEL_RESEARCH if template == "研究" else _cfg.REVIEW_MODEL_THINK) or "").strip() or MODEL_MAIN
     key = req.api_key or _cfg.DEEPSEEK_API_KEY
     base_url = req.base_url
-    if template == "研究" and "/" in model:
+    if model.startswith("zen:"):
+        # F14-S4e：zen: 前缀=OpenCode Zen 研究通道（同名 MAIN/REVIEW 但归 REVIEW 类）
+        # 区别于 "/"（硅基流动同源但跨厂商路由，前缀是通配模型名+走自己 key）
+        _zen_key = _cfg.ZEN_API_KEY or key
+        if _zen_key:
+            _body = model[4:].strip()
+            return _cached_llm(
+                _zen_key, _cfg.ZEN_BASE_URL, _body, False, None,
+                lambda: DeepSeekLLM(api_key=_zen_key, model=_body,
+                                    base_url=_cfg.ZEN_BASE_URL, thinking=False))
+        logger.warning("研究档模型 %s 需要 Zen key（设置→AI服务），未配置——响亮回退 %s",
+                        model, _FALLBACK_JUDGE)
+        model = _FALLBACK_JUDGE
+    elif template == "研究" and "/" in model:
         sf_key = _cfg.VL_API_KEY or _cfg.EMBEDDING_API_KEY
         if sf_key:
             key, base_url = sf_key, _cfg.VL_BASE_URL
@@ -58,9 +72,7 @@ def pick_judge_llm(template: str, req):
         # T32：走 D2 的通用进程级缓存（_cached_llm），传 judge 自己的组合参数
         # (key, base_url, model, thinking=False)——绝不复用 _make_llm（语义是
         # 「req 主模型」，会静默改变审核语义）；组合含 model/base_url/thinking，
-        # judge 与主模型/其他端点互不串味。函数内延迟导入：依赖方向是
-        # pipeline_v2 → engine.review，顶层反向 import 会成环（先例：下方 fallback）。
-        from engine.pipeline_v2 import _cached_llm
+        # judge 与主模型/其他端点互不串味。
         return _cached_llm(
             key, base_url, model, False, None,
             lambda: DeepSeekLLM(api_key=key, model=model, base_url=base_url,
