@@ -5,7 +5,7 @@
 export const LS = {
   apiKey: 'coagent-apikey',
   apiKeySkipped: 'coagent-apikey-skipped',
-  introSeen: 'coagent-intro-seen',
+  // T53：首弹标记键已随「项目介绍」移除；introGlobal/introTiers 仍被 AgentsView 对话设定使用，保留
   introGlobal: 'coagent-intro-global',
   introTiers: 'coagent-intro-tiers',
   agents: 'coagent-agents',

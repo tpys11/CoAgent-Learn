@@ -12,7 +12,6 @@ import ProjectSidebar from './components/ProjectSidebar'
 import CenterPanel from './components/CenterPanel'
 import RightPanel from './components/RightPanel'
 import ActivityBar, { type ViewKey } from './components/ActivityBar'
-import IntroPanel from './components/IntroPanel'
 
 // 首屏瘦身（perf）：重组件视图按需懒加载——主包 2.5MB→亚 MB，刷新秒开。
 // 全部为条件挂载视图，Suspense fallback=null 保证布局零抖动。
@@ -20,7 +19,6 @@ const SubAgentPage = lazy(() => import('./components/chat/subagent').then(m => (
 const ObsidianView = lazy(() => import('./components/ObsidianView'))
 const HomeView = lazy(() => import('./components/HomeView'))
 const ProfileWizard = lazy(() => import('./components/ProfileWizard'))
-const TutorialView = lazy(() => import('./components/TutorialView'))
 const ResourceView = lazy(() => import('./components/ResourceView'))
 const MemoryView = lazy(() => import('./components/MemoryView'))
 const KnowledgeView = lazy(() => import('./components/KnowledgeView'))
@@ -73,7 +71,7 @@ function App() {
 从第 1 项开始回复我即可，我会一步步帮你完善这门课程。`
   const [isLoading, setIsLoading] = useState(false)
   const [agents, setAgents] = useState<AgentConfig[]>(() => {
-    // 项目介绍 Agent 设定持久化：用户编辑后刷新保留（缺省用内置 DEFAULT_AGENTS）
+    // Agent 设定持久化：AgentsView（对话设定）与 Agent 团队编辑共用，刷新保留（缺省用内置 DEFAULT_AGENTS）
     try {
       const s = lsGet(LS.agents, '')
       if (s) {
@@ -144,8 +142,6 @@ function App() {
   }, [currentProjectId])
   // 项目记忆分析持久提示：从记忆界面跳转对话时显示（label 区分分析/修改基本情况）
   const [analyzeHint, setAnalyzeHint] = useState<{ label: string; project: string } | null>(null)
-  // 首次进入：弹出项目介绍面板（localStorage 标记，只弹一次）
-  const [showIntro, setShowIntro] = useState(() => !lsGet(LS.introSeen, ''))
   // 启动时应用保存的字体大小与主题（system 模式自动解析亮暗）
   useEffect(() => {
     const saved = lsGet(LS.fontSize, '')
@@ -376,7 +372,7 @@ function App() {
   const handleSaveAgent = useCallback((updated: AgentConfig) => {
     setAgents(prev => {
       const next = prev.map(a => a.id === updated.id ? updated : a)
-      // 持久化：用户对项目介绍 Agent 设定的编辑刷新后保留
+      // 持久化：用户对 Agent 设定（AgentsView 对话设定）的编辑刷新后保留
       lsSetJSON(LS.agents, next)
       return next
     })
@@ -399,7 +395,6 @@ function App() {
           <PanelLeftOpen size={15} />
         </button>
       )}
-      {view === 'tutorial' && <LSusp><TutorialView agents={agents} onSave={handleSaveAgent} onReplace={handleReplaceAgents} projectId={currentProjectId} /></LSusp>}
       {view === 'resources' && <LSusp><ResourceView projectId={currentProjectId} /></LSusp>}
       {view === 'memory' && <LSusp><MemoryView projectId={currentProjectId} onRequestModify={handleRequestModify} onRequestAnalyze={handleRequestAnalyze} /></LSusp>}
       {view === 'knowledge' && <LSusp><KnowledgeView projectId={projectKBId ?? currentProjectId} onClose={() => { setView('chat'); setChatOpen(true) }} /></LSusp>}
@@ -520,7 +515,6 @@ function App() {
           setWizard(null)
         }} /></LSusp>}
       {showApiKeyPrompt && <LSusp><ApiKeyPrompt provider={lsGet(LS.provider, 'deepseek')} onClose={() => { setShowApiKeyPrompt(false); lsSet(LS.apiKeySkipped, '1') }} /></LSusp>}
-      {showIntro && <IntroPanel onClose={() => { setShowIntro(false); lsSet(LS.introSeen, '1') }} />}
       {/* 知识库阅读器弹窗（5.1）：左栏资源条目点击 / 引用跳转共用 */}
       {reader && (
         <LSusp><KbReaderModal
