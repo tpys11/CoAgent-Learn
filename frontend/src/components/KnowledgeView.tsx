@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect } from 'react'
 import { Database, Clock, X } from 'lucide-react'
 import DragDropInput from './DragDropInput'
+import MemoryBox from './memoryView/MemoryBox'
 import { api } from '../api'
 
 /** 课程配置（知识库 + 课程记忆）：居中显示、占主区域 90%、左侧列表导航，右上角可关闭 */
@@ -8,45 +9,20 @@ export default function KnowledgeView({ projectId, onClose }: { projectId: strin
   const [tab, setTab] = useState<'knowledge' | 'memory'>('knowledge')
   const [kbInput, setKbInput] = useState('')
   const [showGuide, setShowGuide] = useState(false)
-  const [projectMemory, setProjectMemory] = useState('')
-  const [episodicMemory, setEpisodicMemory] = useState('')
+  // F12-S3：课程记忆改用与记忆界面/项目配置弹窗同一渲染组件（MemoryBox 单框），废弃本页自拼文本假编辑
+  const [mem, setMem] = useState<Record<string, any>>({})
   const [dialogueSummaries, setDialogueSummaries] = useState<Array<{dialogue_id?: string; name?: string; 概要?: any}>>([])
   const defaultResources = ['书籍', '百科', '论文', '官方文档', '教程', '视频', '代码仓库', '课件/PPT']
   const [selectedResources, setSelectedResources] = useState<Set<string>>(new Set(['书籍', '官方文档']))
 
-  // 加载课程记忆（永久化：按课程取最新一条）并解析对话概要列表
+  // 加载课程记忆（原始 dict 直供 MemoryBox，键值合并保存与记忆界面同一条写路径）
   useEffect(() => {
     if (!projectId) return
     api.getProjectMemory(projectId)
       .then((d) => {
-        if (d && d.memory) {
-          const NL = String.fromCharCode(10)
-          const mem = d.memory
-          let txt = ''
-          if (mem.课程概述) txt += '课程概述: ' + mem.课程概述 + NL
-          if (mem.当前进度) txt += '当前进度: ' + mem.当前进度 + NL
-          if (mem.领域) txt += '领域: ' + mem.领域 + NL
-          if (mem.背景) txt += '背景: ' + mem.背景 + NL
-          if (mem.水平) txt += '水平: ' + mem.水平 + NL
-          if (mem.学习目标) txt += '学习目标: ' + mem.学习目标 + NL
-          if (mem.偏好 && mem.偏好.length) txt += '偏好: ' + mem.偏好.join(', ') + NL
-          else if (mem.偏好 && typeof mem.偏好 === 'string') txt += '偏好: ' + mem.偏好 + NL
-          if (mem.薄弱点 && mem.薄弱点.length) txt += '薄弱点: ' + mem.薄弱点.join(', ') + NL
-          if (mem.兴趣 && mem.兴趣.length) txt += '兴趣: ' + mem.兴趣.join(', ') + NL
-          if (txt) setEpisodicMemory(txt.trim())
-          let txt2 = ''
-          if (mem.知识点 && mem.知识点.length) txt2 += '知识点: ' + mem.知识点.join(', ') + NL
-          if (mem.难点 && mem.难点.length) txt2 += '难点: ' + mem.难点.join(', ') + NL
-          if (mem.对话摘要 && mem.对话摘要.length) {
-            txt2 += '对话摘要:' + NL
-            for (let i = 0; i < mem.对话摘要.length; i++) {
-              txt2 += '  ' + (i + 1) + '. ' + (mem.对话摘要[i].摘要 || '') + NL
-            }
-          }
-          // 对话概要：本课程各对话的记忆，区分显示（挂课程记忆下）
-          setDialogueSummaries(mem.对话概要 || [])
-          if (txt2) setProjectMemory(txt2.trim())
-        }
+        const m = (d && d.memory) || {}
+        setMem(m)
+        setDialogueSummaries(m.对话概要 || [])
       })
       .catch(() => {})
   }, [projectId])
@@ -119,18 +95,9 @@ export default function KnowledgeView({ projectId, onClose }: { projectId: strin
               <div className="flex flex-col gap-5">
                 <div className="border border-indigo-200 rounded-xl p-4 bg-indigo-50/20">
                   <h3 className="text-sm font-bold flex items-center gap-1.5 text-indigo-700 mb-2"><Clock size={14} /> 课程记忆</h3>
-                  <p className="text-[10px] text-gray-400 mb-2">基于用户与AI对话内容的简要概述（≤1000字）。</p>
-                  <textarea value={episodicMemory} onChange={e => setEpisodicMemory(e.target.value)}
-                    placeholder="例：用户询问了LangGraph的状态管理机制……"
-                    rows={8}
-                    className="w-full px-3 py-2 border border-indigo-200 rounded-lg text-xs outline-none resize-none focus:border-indigo-400 bg-white" />
-                </div>
-                <div className="border border-[#e5e5e5] rounded-xl p-4">
-                  <h3 className="text-sm font-bold mb-2">课程上下文记忆</h3>
-                  <textarea value={projectMemory} onChange={e => setProjectMemory(e.target.value)}
-                    placeholder="例：本课程聚焦多智能体系统开发……"
-                    rows={4}
-                    className="w-full px-3 py-2 border border-[#d0d0d0] rounded-lg text-xs outline-none resize-none focus:border-[#1a1a1a] bg-[#fafafa]" />
+                  <p className="text-[10px] text-gray-400 mb-2">与记忆界面同源的单一记忆框：要点回车即存（键值合并保存）。</p>
+                  {/* F12-S3：三处统一——同一 MemoryBox 单框渲染与编辑持久化 */}
+                  <MemoryBox memory={mem} onSave={profile => { if (projectId) api.saveProjectMemory(projectId, profile) }} />
                 </div>
                 {/* 对话记忆：每个对话一条，区分显示在下方 */}
                 <div className="border border-[#e5e5e5] rounded-xl p-4">
