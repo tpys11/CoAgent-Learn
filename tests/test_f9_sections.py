@@ -103,6 +103,16 @@ def test_inheritance_for_unsignalled_child():
     assert by_path["第5章 习题"]["category"] == CATEGORY_QUIZ
 
 
+def test_own_strong_hit_survives_ancestor():
+    """自身强命中绝不被祖先覆盖（AI-Agents 真实书实测暴露：章下「本章小结」被覆盖回正文）。"""
+    text = "# 第5章 教学内容\n正文讲解。\n## 5.3 本章小结\n回顾。\n## 5.4 习题\n练习题。"
+    spans = classify_spans(text)
+    by_path = {s["path"]: s for s in spans}
+    assert by_path["第5章 教学内容 > 5.3 本章小结"]["category"] == CATEGORY_SUMMARY
+    assert by_path["第5章 教学内容 > 5.4 习题"]["category"] == CATEGORY_QUIZ
+    assert by_path["第5章 教学内容"]["category"] == CATEGORY_BODY
+
+
 # ---------- 树标注 ----------
 
 def test_annotate_tree_categories():
@@ -141,6 +151,24 @@ def test_scoped_text_full_include_keeps_all():
 
 def test_scoped_text_empty_include_returns_empty():
     assert scoped_text(DOC, []) == ""
+
+
+def test_scoped_text_segment_match_survives_root_shift():
+    """段级匹配：解析文本带书名根节/垃圾标题层使路径位移时仍命中（真实书教训）。"""
+    shifted = "\n".join([
+        "书名根节内容",
+        "# 书名根节",
+        "# 第1章 力学",
+        "力学内容。",
+        "## 1.1 牛顿定律",
+        "牛顿内容。",
+        "# 第2章 习题",
+        "习题内容。",
+    ])
+    out = scoped_text(shifted, ["第1章 力学"])
+    assert "力学内容" in out and "牛顿内容" in out
+    assert "习题内容" not in out
+    assert "书名根节内容" in out  # 首标题前内容恒保留
 
 
 # ---------- apply-scope 端点与后台 ----------

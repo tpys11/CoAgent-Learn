@@ -71,22 +71,24 @@ def classify_spans(text: str, api_key: str = "", llm_factory=None) -> list[dict]
         title = _span_title(path)
         cat, ambiguous = _rule_classify(title)
         spans.append({"path": path, "title": title, "category": cat,
-                      "arbitrated": False, "ambiguous": ambiguous, "body_head": body[:200]})
-    # 继承：自身无强命中 → 最近祖先类目（祖先自身强命中才作为继承源）
-    inherited_strength: dict[str, tuple[int, str]] = {}  # path 前缀 → (深度, 类目)
+                      "arbitrated": False, "ambiguous": ambiguous,
+                      "strong": cat != CATEGORY_BODY, "body_head": body[:200]})
+    # 继承：自身无强命中才继承最近祖先类目（防「习题章下的题」被误标正文）；
+    # 自身强命中（小结/习题等）绝不被祖先覆盖——AI-Agents 真实书实测暴露的 bug（F9-S5）。
+    inherited_strength: dict[str, str] = {}  # path 前缀 → 类目（非歧义节均登记为祖先源）
     for s in spans:
-        prefix = s["path"]
-        best = None
-        parts = prefix.split(_SPAN_PATH_SEP)
-        for depth in range(len(parts) - 1, 0, -1):
-            anc = _SPAN_PATH_SEP.join(parts[:depth])
-            if anc in inherited_strength:
-                best = inherited_strength[anc]
-                break
-        if best is not None:
-            s["category"] = best[1]
+        parts = s["path"].split(_SPAN_PATH_SEP)
+        if not s["strong"]:
+            best = None
+            for depth in range(len(parts) - 1, 0, -1):
+                anc = _SPAN_PATH_SEP.join(parts[:depth])
+                if anc in inherited_strength:
+                    best = inherited_strength[anc]
+                    break
+            if best is not None:
+                s["category"] = best
         if not s["ambiguous"]:
-            inherited_strength[s["path"]] = (len(parts), s["category"])
+            inherited_strength[s["path"]] = s["category"]
     # LLM 仲裁：仅歧义节（批量一次；失败不阻断）
     arb = [s for s in spans if s.pop("ambiguous")]
     if arb:
@@ -101,6 +103,7 @@ def classify_spans(text: str, api_key: str = "", llm_factory=None) -> list[dict]
                            api_key or getattr(_cfg, "DEEPSEEK_API_KEY", ""))
     for s in spans:
         s.pop("body_head", None)
+        s.pop("strong", None)
     return spans
 
 
@@ -165,19 +168,38 @@ def annotate_categories_from_text(text: str, tree: list, api_key: str = "",
 
 
 def scoped_text(text: str, include_paths: list[str]) -> str:
-    """F9-S2 留存范围切分：仅保留命中勾选路径（自身或其子树）的标题节。
-    子树语义：勾选父节即含全部子孙；首个标题前内容恒保留（前言/出版说明，无从归类）。
-    include 为空 → 空串（调用方须拒收空勾选，禁止静默清空知识库）。"""
+    """F9-S2 留存范围切分：仅保留命中勾选章节的标题节。
+    连续段序列匹配：include 路径（"/" 连接，可含多级）归一为段序列，span 路径段序列
+    含其作连续子串即保留——解析文本可能带书名根节/垃圾标题层使路径整体位移，
+    精确前缀匹配在真实书上必落空（AI-Agents 书实测教训）；子树语义天然保持
+    （子孙路径含同一连续段序列）。含 " > " 的子路径勾选同样生效（连读两段）。
+    首个标题前内容恒保留（前言/出版说明，无从归类）。include 为空 → 空串（调用方须拒收）。
+    已知限制：文本垃圾标题层插在勾选两级之间时该勾选可能落空——用户重勾父级纠偏。"""
     from core.chunkers import _split_markdown_sections
-    inc = [p.strip() for p in (include_paths or []) if p and p.strip()]
-    if not inc:
+
+    def norm(s: str) -> str:
+        return " ".join((s or "").split())
+
+    inc_lists: list[list[str]] = []
+    for p in (include_paths or []):
+        # include 兼容两种连接约定：UI 树路径 "/" 与 span 域 " > "（子路径勾选两段连读）
+        segs = [norm(x) for x in re.split(r"/| > ", (p or "")) if norm(x)]
+        if segs:
+            inc_lists.append(segs)
+    if not inc_lists:
         return ""
+
+    def hit(segs: list[str]) -> bool:
+        return any(
+            any(segs[i:i + len(ic)] == ic for i in range(len(segs) - len(ic) + 1))
+            for ic in inc_lists)
+
     kept: list[str] = []
     for path, body in _split_markdown_sections(text or ""):
         if not path:
             kept.append(body)  # 首个标题前内容恒保留
             continue
-        if any(path == p or path.startswith(p + _SPAN_PATH_SEP) for p in inc):
+        if hit([norm(x) for x in path.split(_SPAN_PATH_SEP)]):
             kept.append(body)
     return "\n".join(kept)
 
