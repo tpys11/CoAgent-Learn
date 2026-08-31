@@ -49,6 +49,7 @@ class Config:
     KB_CHUNK_OVERLAP: int = int(os.getenv("KB_CHUNK_OVERLAP", "50"))  # 相邻块重叠（字符）
     KB_META_ENHANCE: int = int(os.getenv("KB_META_ENHANCE", "1"))  # B1：入库后为每块生成≤3个可答问题存旁路表喂 BM25（0 关）
     KB_KG_EDGES: int = int(os.getenv("KB_KG_EDGES", "1"))          # 闭环五：入库后从标题树推断先修/相关边存 kg_edges（0 关）
+    KB_LLM_OUTLINE: int = int(os.getenv("KB_LLM_OUTLINE", "1"))    # F9-S1：无书签且无标题行时 LLM 兜底提取大纲（0 关；有前两通道永不触发）
     KB_RRF_K: int = int(os.getenv("KB_RRF_K", "60"))               # RRF 融合常数 score=Σ1/(k+rank)
     KB_FETCH_MULT: int = int(os.getenv("KB_FETCH_MULT", "3"))      # 向量/BM25 召回倍数（top_k×此值）
     # 独立审核模型（走硅基流动）：开关 + 模型；关闭时审核回退主模型快模型（deepseek v4 flash）

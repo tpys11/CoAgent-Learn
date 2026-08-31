@@ -168,13 +168,15 @@ def _make_doc_id(project_id: str, source: str, idx: int, chunk: str) -> str:
     return hashlib.md5(raw.encode("utf-8")).hexdigest()[:24]
 
 
-def add_document(project_id: str, text: str, source: str = "", session_id: str = "", api_key: str = "", skip_context: bool = False) -> int:
+def add_document(project_id: str, text: str, source: str = "", session_id: str = "", api_key: str = "", skip_context: bool = False, outline_tree: list | None = None) -> int:
     """上传文本：切块 → 向量化 → 入库，返回入库块数。
     已移除「每块 LLM 生成上下文前缀」（_gen_context，2026-08-15 删除）。
     闭环四·B1：入库后按 KB_META_ENHANCE 门控做分组批量问题增强（默认开，
     失败不阻断、无 key 静默跳过）——「上传链路零 LLM 调用」旧约定就此有条件打破。
     上下文连续性由切块重叠保证，检索质量由 bge+BM25（含问题语料）+rerank 保证。
-    skip_context 参数保留仅为兼容旧调用方，不再起作用。"""
+    skip_context 参数保留仅为兼容旧调用方，不再起作用。
+    F9-S1：outline_tree 为上游三通道提取的书签/标题行大纲（None=未提取，
+    直接调用方回退既有 _extract_tree 单通道；[] = 三通道皆空，空树照常落库）。"""
     from core.config import config as _cfg
     size = int(getattr(_cfg, "KB_CHUNK_SIZE", 512) or 512)
     overlap = int(getattr(_cfg, "KB_CHUNK_OVERLAP", 50) or 0)
@@ -254,10 +256,12 @@ def add_document(project_id: str, text: str, source: str = "", session_id: str =
         bulk.append((uid, project_id, source, i, session_id, False, chunks[i], embeddings[i]))
     _db.upsert_kb_vectors_bulk(bulk, table=table)
     # 标题树：复用文档自身的形式分类逻辑（markdown 标题层级），供项目记忆知识图谱
+    # F9-S1：上游 _process_upload 已做三通道提取时直接采用（书签带页码）；
+    # outline_tree=None（未提取/直接调用）保持既有 _extract_tree 单通道回退。
     tree: list = []
     try:
         if source:
-            tree = _extract_tree(text)
+            tree = outline_tree if outline_tree is not None else _extract_tree(text)
             _db.upsert_kb_tree(project_id, source, tree)
     except Exception:
         logger.warning("保存文档标题树失败 source=%s", source, exc_info=True)

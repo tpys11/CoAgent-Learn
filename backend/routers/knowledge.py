@@ -60,11 +60,13 @@ def _save_resource_text(project_id: str, source: str, text: str) -> None:
         logger.warning("保存原文到资源表失败", exc_info=True)
 
 
-def _process_upload(project_id, text, source, session_id, api_key, skip_context: bool = False, skip_graph: bool = False, content_hash: str = "") -> int:
+def _process_upload(project_id, text, source, session_id, api_key, skip_context: bool = False, skip_graph: bool = False, content_hash: str = "", *, pdf_bytes: bytes | None = None) -> int:
     """处理上传：存原文到资源表 + 切块向量化入库，返回入库块数。
     后台线程调用时忽略返回值；同步模式（wait=1）用它拿到块数反馈给前端。
     skip_context：跳过每块 LLM 上下文前缀（大批量内容）。
     content_hash：内容 sha256；命中 file_hashes 去重表时返回 -1（已存在，跳过）。
+    F9-S1：pdf_bytes 仅 PDF 文件上传链路传入——三通道大纲提取（书签优先）在此统一收口，
+    结果经 add_document(outline_tree=...) 落 kb_tree；提取失败不阻断入库。
     已移除 Neo4j 知识图谱抽取（2026-08-15）。"""
     n = 0
     try:
@@ -109,8 +111,17 @@ def _process_upload(project_id, text, source, session_id, api_key, skip_context:
     #   - 后台文件（:138/:151）→ _process_file_bg 捕获 → _set_progress_error（轮询可见）；
     #   - 后台文本/URL（submit 直投）→ _process_upload_bg 包装捕获 → 同样写错误终态；
     #   - 同步 wait=1（3 处路由）→ 各自 try/except 转结构化错误响应（status:error + 原因）。
+    # F9-S1：三通道大纲提取（书签→标题行→LLM 兜底）——上传链唯一收口点；
+    # 内部各级已兜底，此层再兜一道与标题树同级的保险（绝不阻断入库）。
+    outline_tree = None
+    try:
+        from core.outline_service import extract_outline
+        outline_tree = extract_outline(text, pdf_bytes=pdf_bytes, api_key=api_key)
+    except Exception:
+        logger.warning("大纲提取失败（不阻断上传）", exc_info=True)
     from core.knowledge_service import add_document
-    n = add_document(project_id, text, source, session_id, api_key, skip_context=skip_context) or 0
+    n = add_document(project_id, text, source, session_id, api_key,
+                     skip_context=skip_context, outline_tree=outline_tree) or 0
     if n > 0 and content_hash:
         try:
             from core.db import get_kb_repo
@@ -185,7 +196,8 @@ def _process_file_bg(project_id: str, fname: str, data: bytes, source: str,
         if not text.strip():
             _set_progress_error(project_id, source, _unparsable_msg(ext))
             return
-        n = _process_upload(project_id, text, source, session_id, api_key, False, False, content_hash)
+        n = _process_upload(project_id, text, source, session_id, api_key, False, False, content_hash,
+                            pdf_bytes=(data if ext == "pdf" else None))
         if n == -1:
             # F2：与图片分支对齐——去重命中（hash 已存在且向量仍在）无新增入库，写完成终态，
             # 否则前端按文件名轮询会悬挂 10 分钟后误报失败（F1 只修了图片分支，本步补齐非图片）。
@@ -615,7 +627,11 @@ async def knowledge_upload_file(
     if wait:
         # 修复①（F4′）：同步路径入库失败转结构化错误响应（含原因），不再 chunks:0 / 裸 500
         try:
-            chunks = await run_in_threadpool(_process_upload, project_id, text, source, session_id, api_key, False, False, _ch)
+            # F9-S1：同步文件路径同样传 PDF 原始字节（书签通道生效）；pdf_bytes 关键字传参
+            # （keyword-only 形参——测试桩以 **kw 兼容，9 个位置实参会破坏既有 8 参桩）。
+            chunks = await run_in_threadpool(
+                _process_upload, project_id, text, source, session_id, api_key, False, False, _ch,
+                pdf_bytes=(data if _ext == "pdf" else None))
         except Exception as e:
             logger.exception("同步入库失败 source=%s", source)
             return {"status": "error", "msg": "知识库入库失败：" + str(e)[:180], "source": source}

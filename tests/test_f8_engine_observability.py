@@ -30,7 +30,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setattr(core_db, "get_kb_repo", lambda: _StubKbRepo())
     monkeypatch.setattr(kmod, "_save_resource_text", lambda pid, src, text: None)
     monkeypatch.setattr(kmod, "_process_upload",
-                        lambda pid, text, source, session_id, api_key, sc, sg, ch: 3)
+                        lambda pid, text, source, session_id, api_key, sc, sg, ch, **kw: 3)
     subs = []
     monkeypatch.setattr(kmod, "submit", lambda fn, *a, **k: subs.append((fn, a, k)))
     app = FastAPI()

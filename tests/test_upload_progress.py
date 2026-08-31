@@ -70,7 +70,7 @@ def test_process_file_bg_parses_and_routes(env, monkeypatch):
     c, seen = env
     captured = {}
     monkeypatch.setattr(kmod, "_process_upload",
-                        lambda pid, text, source, session_id, api_key, sc, sg, ch:
+                        lambda pid, text, source, session_id, api_key, sc, sg, ch, **kw:
                         captured.update({"text": text, "source": source, "hash": ch}) or 3)
     import core.db as core_db
     monkeypatch.setattr(core_db, "get_kb_repo", lambda: _StubKbRepo())
