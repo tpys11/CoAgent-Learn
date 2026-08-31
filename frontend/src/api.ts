@@ -88,6 +88,19 @@ function urlScopeBody(scope: UrlIngestScope): Record<string, string[]> {
   return out
 }
 
+/* ---------- F13-S1 预设资源库契约 ---------- */
+
+export interface PresetFile {
+  name: string; rel_path: string; ext: string; size: number
+  pages: number | null
+  url: string
+}
+export interface PresetResource {
+  id: string; name: string; files: PresetFile[]
+  publisher: string; pub_year: string; cover: string
+}
+export interface PresetDomain { name: string; resources: PresetResource[] }
+
 export const api = {
   getSettings: () => apiFetch<SettingsData>('/api/settings', { cache: 'no-store' }),
   saveSettings: (body: unknown) => apiFetch<any>('/api/settings', jsonInit('PUT', body)),
@@ -213,6 +226,12 @@ export const api = {
   deleteResource: (rid: string) =>
     apiFetch<any>('/api/resources/' + encodeURIComponent(rid), jsonInit('DELETE')),
   generateDomain: (body: unknown) => apiFetch<any>('/api/generate-domain', jsonInit('POST', body)),
+  /** F13-S1：预设资源库三级清单（领域→资源→文件，含页数等元数据） */
+  getPresetLibrary: () =>
+    apiFetch<{ status: string; domains: PresetDomain[] }>('/api/preset-library', { cache: 'no-store' }),
+  /** F13-S1：占位元数据编辑（出版社/初版时间/封面），资源级 */
+  updatePresetMeta: (body: { rel_path: string; publisher: string; pub_year: string; cover: string }) =>
+    apiFetch<any>('/api/preset-library/meta', jsonInit('PUT', body)),
   listCapabilities: () =>
     apiFetch<CapabilityList>('/api/resources/capabilities', { cache: 'no-store' }),
   generateResource: (body: unknown) =>

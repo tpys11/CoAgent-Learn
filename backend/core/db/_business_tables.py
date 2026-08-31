@@ -203,4 +203,18 @@ class BusinessTablesMixin:
                 properties TEXT DEFAULT '{}'
             )
         """)
+        # F13-S1 预设资源库元数据旁表：rel_path 主键（preset_library 下 posix 相对路径）。
+        # 独立于 resources 旁路建表——预设资源不属于任何课程，resources.project_id NOT NULL
+        # 的语义不匹配，旁表可避开 T57 类孤儿形态域。pages=扫描时 pypdf 补算的缓存；
+        # publisher/pub_year/cover = owner 明示的可编辑占位字段（占位即可，不做必填）。
+        self.execute("""
+            CREATE TABLE IF NOT EXISTS preset_meta (
+                rel_path TEXT PRIMARY KEY,
+                pages INTEGER,
+                publisher TEXT DEFAULT '',
+                pub_year TEXT DEFAULT '',
+                cover TEXT DEFAULT '',
+                updated_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
         self.create_vector_tables()

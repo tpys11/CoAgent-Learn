@@ -4,6 +4,8 @@
 .venv/
 docs/
 data/*.db*
+# F13-S1：预设资源库（入库 3 文件 ~7MB；owner 全量 108MB 只进数据卷）不进镜像与构建上下文
+data/preset_library/
 frontend/node_modules/
 frontend/dist/
 **/__pycache__/

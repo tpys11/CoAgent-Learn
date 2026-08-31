@@ -1,11 +1,15 @@
-﻿/** 资源界面：只展示系统资源（预设教程 + 百科词条）。
+﻿/** 资源界面：展示系统资源（F13 起预设文件资源走 API 数据驱动 + 链接教程 + 百科词条）。
  *  2026-08-24 精简：移除 系统教程/我的生成/其他 三入口切换与上传页签——
- *  「我的生成」产物在对话界面右栏资源生成栏查看；上传走课程弹窗/对话侧栏的上传面板。 */
+ *  「我的生成」产物在对话界面右栏资源生成栏查看；上传走课程弹窗/对话侧栏的上传面板。
+ *  F13-S1：预设文件资源（data/preset_library 三级索引）经 GET /api/preset-library 驱动，
+ *  原 URL 型教程归入「链接资源」类别；无前端硬编码资源清单。 */
 import { useState, useEffect, useCallback } from 'react'
 import { BookOpen, Plus, FolderTree, Library, ExternalLink, Download } from 'lucide-react'
 import { LS, lsGet, lsGetJSON, lsSetJSON } from '../storage'
 import { api } from '../api'
+import type { PresetResource } from '../api'
 import { WIKI_ENTRIES, WikiEntry } from '../data/wikiEntries'
+import { mergeDomains, groupByDomain, firstPresetDomain, presetSummary, presetDetailBody } from '../lib/presetLibrary'
 import { ListItem, exportItem } from './resource/commons'
 import { ResourceCardGrid, ResourceEmpty } from './resource/ResourceCardGrid'
 import { ResourceDetailModal } from './resource/ResourceDetailModal'
@@ -40,30 +44,31 @@ const domainColor = (name: string) => {
   return DOMAIN_PALETTE[h % DOMAIN_PALETTE.length]
 }
 
-/** 分类：固定三类 */
+/** 分类：固定三类（F13-S1：预设资源=API 数据驱动；链接资源=URL 型教程归宿） */
 const CATEGORIES: Array<{ key: string; desc: string }> = [
-  { key: '系统学习', desc: '入门路线与系统性教程' },
-  { key: '技术工具', desc: '框架、协议与 API 文档' },
+  { key: '预设资源', desc: '系统内置教材与讲义' },
+  { key: '链接资源', desc: '外部教程与文档链接' },
   { key: '百科词条', desc: '名词速览与深入介绍' },
 ]
 const WIKI_CAT = '百科词条'
+const PRESET_CAT = '预设资源'
 
-/** 旧数据分类名 → 新三类 */
+/** 旧数据/AI 生成分类名 → 新三类（链接资源承接原系统学习/技术工具） */
 const LEGACY_CAT_MAP: Record<string, string> = {
-  '系统教程': '系统学习', '技术教程': '系统学习', '实践案例': '系统学习',
-  '工具与框架': '技术工具',
+  '系统教程': '链接资源', '技术教程': '链接资源', '实践案例': '链接资源',
+  '系统学习': '链接资源', '技术工具': '链接资源', '工具与框架': '链接资源',
 }
 const normalizeCat = (c?: string) => (c && LEGACY_CAT_MAP[c]) || c || CATEGORIES[0].key
 
 /** 预置第三方教程（领域 + 分类归位） */
 const PRESET_TUTORIALS: Tutorial[] = [
-  { id: 'preset-hello-agent', title: 'Hello Agent 入门教程', url: '', desc: 'GitHub 上的 Hello Agent 经典入门课程：从零理解并搭建一个 Agent 的最小实现（链接待补充）', category: '系统学习', domain: 'Agent 应用与开发', preset: true },
-  { id: 'preset-libo-jie', title: '李博杰的教程', url: 'https://bojieli.github.io/ai-agent-book/#_3', desc: '系统性 AI / 智能体学习教程（李博杰 · AI Agent 实战课），覆盖从基础到实践的学习路线', category: '系统学习', domain: 'Agent 应用与开发', preset: true },
-  { id: 'preset-langgraph', title: 'LangGraph 官方文档', url: 'https://langchain-ai.github.io/langgraph/', desc: '多智能体工作流编排框架官方文档：StateGraph、节点、条件边', category: '技术工具', domain: 'Agent 应用与开发', preset: true },
-  { id: 'preset-mcp', title: 'MCP 官方文档', url: 'https://modelcontextprotocol.io/', desc: 'Model Context Protocol：Agent 与外部工具连接的标准协议', category: '技术工具', domain: 'Agent 应用与开发', preset: true },
-  { id: 'preset-deepseek', title: 'DeepSeek API 文档', url: 'https://api-docs.deepseek.com/', desc: 'DeepSeek 大模型 API 调用指南（对话补全、流式输出）', category: '技术工具', domain: 'Agent 应用与开发', preset: true },
-  { id: 'preset-python', title: 'Python 官方教程', url: 'https://docs.python.org/zh-cn/3/tutorial/', desc: 'Python 入门到进阶的官方教程（中文）', category: '系统学习', domain: 'Python 编程', preset: true },
-  { id: 'preset-fastapi', title: 'FastAPI 官方文档', url: 'https://fastapi.tiangolo.com/zh/', desc: 'Python 异步 Web 框架官方文档：构建 API 与后端服务', category: '技术工具', domain: 'Python 编程', preset: true },
+  { id: 'preset-hello-agent', title: 'Hello Agent 入门教程', url: '', desc: 'GitHub 上的 Hello Agent 经典入门课程：从零理解并搭建一个 Agent 的最小实现（链接待补充）', category: '链接资源', domain: 'Agent 应用与开发', preset: true },
+  { id: 'preset-libo-jie', title: '李博杰的教程', url: 'https://bojieli.github.io/ai-agent-book/#_3', desc: '系统性 AI / 智能体学习教程（李博杰 · AI Agent 实战课），覆盖从基础到实践的学习路线', category: '链接资源', domain: 'Agent 应用与开发', preset: true },
+  { id: 'preset-langgraph', title: 'LangGraph 官方文档', url: 'https://langchain-ai.github.io/langgraph/', desc: '多智能体工作流编排框架官方文档：StateGraph、节点、条件边', category: '链接资源', domain: 'Agent 应用与开发', preset: true },
+  { id: 'preset-mcp', title: 'MCP 官方文档', url: 'https://modelcontextprotocol.io/', desc: 'Model Context Protocol：Agent 与外部工具连接的标准协议', category: '链接资源', domain: 'Agent 应用与开发', preset: true },
+  { id: 'preset-deepseek', title: 'DeepSeek API 文档', url: 'https://api-docs.deepseek.com/', desc: 'DeepSeek 大模型 API 调用指南（对话补全、流式输出）', category: '链接资源', domain: 'Agent 应用与开发', preset: true },
+  { id: 'preset-python', title: 'Python 官方教程', url: 'https://docs.python.org/zh-cn/3/tutorial/', desc: 'Python 入门到进阶的官方教程（中文）', category: '链接资源', domain: 'Python 编程', preset: true },
+  { id: 'preset-fastapi', title: 'FastAPI 官方文档', url: 'https://fastapi.tiangolo.com/zh/', desc: 'Python 异步 Web 框架官方文档：构建 API 与后端服务', category: '链接资源', domain: 'Python 编程', preset: true },
 ]
 
 /** 资源界面：只读系统资源（领域/分类选择 + 预设教程卡 + 百科词条） */
@@ -71,11 +76,10 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
   const [tutorials, setTutorials] = useState<Tutorial[]>(() => {
     return lsGetJSON<Tutorial[]>(LS.tutorials, [])
   })
-  // 领域：系统预设 + 自定义（localStorage 持久化）
+  // 领域：系统预设 + 预设库扫描出的领域（F13-S1 API 驱动）+ 自定义（localStorage 持久化）
   const [customDomains, setCustomDomains] = useState<string[]>(() => {
     return lsGetJSON<string[]>(LS.domains, [])
   })
-  const domains = [...DEFAULT_DOMAINS, ...customDomains]
   const [selectedDomain, setSelectedDomain] = useState(DEFAULT_DOMAINS[0])
   // 自定义百科词条（新建领域 AI 生成后存 localStorage）
   const [customWiki, setCustomWiki] = useState<WikiEntry[]>(() => {
@@ -91,6 +95,12 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
   const [wikiTheme, setWikiTheme] = useState('all')
   const [loading, setLoading] = useState(false)
   const [detail, setDetail] = useState<ListItem | null>(null)
+  // F13-S1：预设资源库状态（API 数据驱动；失败=结构化可见错误，不阻塞其他页签）
+  const [presetByDomain, setPresetByDomain] = useState<Record<string, PresetResource[]>>({})
+  const [presetLoaded, setPresetLoaded] = useState(false)
+  const [presetError, setPresetError] = useState('')
+  // 领域合成：默认（链接教程/百科）→ 预设库扫描领域 → 自定义
+  const domains = mergeDomains(DEFAULT_DOMAINS, Object.keys(presetByDomain), customDomains)
 
   const load = useCallback(() => {
     setLoading(true)
@@ -99,6 +109,25 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
 
   useEffect(() => { setDetail(null) }, [selectedDomain, selectedCat])
   useEffect(() => { if (refreshSignal) setDetail(null) }, [refreshSignal])
+
+  // F13-S1：拉取预设库三级清单（挂载一次；网络失败落可见错误态）
+  useEffect(() => {
+    let cancelled = false
+    api.getPresetLibrary()
+      .then(d => { if (!cancelled) { setPresetByDomain(groupByDomain(d.domains || [])); setPresetError('') } })
+      .catch(() => { if (!cancelled) setPresetError('预设资源加载失败，请检查后端服务') })
+      .finally(() => { if (!cancelled) setPresetLoaded(true) })
+    return () => { cancelled = true }
+  }, [])
+
+  // F13-S1：进入「预设资源」页签而当前领域无内容时，自动跳到第一个有预设资源的领域
+  useEffect(() => {
+    if (selectedCat !== PRESET_CAT || !presetLoaded) return
+    if ((presetByDomain[selectedDomain] || []).length > 0) return
+    const target = firstPresetDomain(domains, presetByDomain)
+    if (target && target !== selectedDomain) setSelectedDomain(target)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCat, presetLoaded, presetByDomain, selectedDomain])
 
   // 教程资源
   const allTutorials = [...PRESET_TUTORIALS, ...tutorials]
@@ -166,7 +195,7 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
     if (item.kind === 'tutorial') removeTutorial(item.id)
   }
 
-  /** 教程资源区（系统学习 / 技术工具） */
+  /** 教程资源区（链接资源） */
   const tutorialSection = (
     <>
       <div className="flex items-end justify-between mb-5">
@@ -178,10 +207,39 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
       </div>
 
       {loading && <p className="text-xs text-dim text-center py-16">加载中…</p>}
-      {!loading && tutorialList.length === 0 && <ResourceEmpty title={`「${selectedCat}」暂无教程`} hint="教程资源为系统预设内容" />}
+      {!loading && tutorialList.length === 0 && <ResourceEmpty title={`「${selectedCat}」暂无教程`} hint="链接资源为系统预设内容" />}
       {!loading && tutorialList.length > 0 && (
         <ResourceCardGrid items={tutorialList} onOpen={setDetail} onUseItem={onUseItem}
           onDelete={removeItem} onExport={exportItem} />
+      )}
+    </>
+  )
+
+  /** F13-S1 预设资源区：API 三级索引驱动（领域下资源卡片；详情含占位元数据与文件清单） */
+  const presetList: ListItem[] = (presetByDomain[selectedDomain] || []).map(r => ({
+    id: 'preset:' + r.id, title: r.name,
+    sub: presetSummary(r),
+    time: '',
+    body: presetDetailBody(r), icon: BookOpen,
+    kind: 'tutorial' as const, deletable: false,
+  }))
+  const presetSection = (
+    <>
+      <div className="flex items-end justify-between mb-5">
+        <div>
+          <h2 className="text-lg font-bold flex items-center gap-2">
+            <FolderTree size={18} /> {selectedDomain} · {PRESET_CAT}
+          </h2>
+        </div>
+      </div>
+      {presetError && <p className="text-xs text-red-500 text-center py-16">{presetError}</p>}
+      {!presetError && !presetLoaded && <p className="text-xs text-dim text-center py-16">加载中…</p>}
+      {!presetError && presetLoaded && presetList.length === 0 && (
+        <ResourceEmpty title="该领域暂无预设资源" hint="预设资源由系统内置，可切换其他领域查看" />
+      )}
+      {!presetError && presetLoaded && presetList.length > 0 && (
+        <ResourceCardGrid items={presetList} onOpen={setDetail} onUseItem={onUseItem}
+          onDelete={() => {}} onExport={() => {}} />
       )}
     </>
   )
@@ -295,14 +353,15 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
                 </button>
               ))}
             </div>
-            {selectedCat === WIKI_CAT ? wikiSection : tutorialSection}
+            {selectedCat === WIKI_CAT ? wikiSection : selectedCat === PRESET_CAT ? presetSection : tutorialSection}
           </div>
         </div>
       </div>
 
-      {/* 详情模态 */}
+      {/* 详情模态（F13-S2 留桩：预设资源的「加入课程」将走上传解析链，本轮先不给文本插入入口） */}
       {detail && (
-        <ResourceDetailModal detail={detail} onClose={() => setDetail(null)} onUseItem={onUseItem} onDelete={removeItem} />
+        <ResourceDetailModal detail={detail} onClose={() => setDetail(null)}
+          onUseItem={detail.id.startsWith('preset:') ? undefined : onUseItem} onDelete={removeItem} />
       )}
     </div>
   )

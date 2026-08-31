@@ -28,6 +28,7 @@ from routers.knowledge import router as knowledge_router
 from routers.resources import router as resources_router
 from routers.memory import router as memory_router
 from routers.skills import router as skills_router
+from routers.preset_library import router as preset_library_router
 from core.helpers import extract_json_obj
 # D1：三函数已原样迁至 services/chat_context——re-export 保持 main._auto_settings 等可解析
 from services.chat_context import _auto_settings, _build_preloaded, _parse_special_inputs
@@ -56,6 +57,14 @@ async def lifespan(app: FastAPI):
         _ensure_default_project()
     except Exception:
         logger.exception("启动时确保默认项目失败")
+    # F13-S1 预设库启动扫描：建三级索引并为缓存缺失的 PDF 补算页数（pypdf 只读 xref，
+    # 全库首扫秒级；失败仅降级页数留空，不阻断启动——列表接口每次调用会重扫兜底）
+    try:
+        import asyncio
+        from services.preset_library import scan_preset_library
+        await asyncio.to_thread(scan_preset_library)
+    except Exception:
+        logger.exception("启动扫描预设资源库失败")
     yield
 
 
@@ -95,12 +104,21 @@ try:
 except Exception:
     logger.exception("挂载上传目录失败")
 
+# F13-S1 预设资源库原始文件回源（md/pdf 直读；只读语义靠前端用途约束，与 /uploads 同模式）
+_PRESET_DIR = os.path.join(_APP_DATA_DIR, "preset_library")
+try:
+    os.makedirs(_PRESET_DIR, exist_ok=True)
+    app.mount("/preset-library", StaticFiles(directory=_PRESET_DIR), name="preset-library")
+except Exception:
+    logger.exception("挂载预设库目录失败")
+
 app.include_router(settings_router)
 app.include_router(projects_router)
 app.include_router(knowledge_router)
 app.include_router(resources_router)
 app.include_router(memory_router)
 app.include_router(skills_router)
+app.include_router(preset_library_router)
 
 
 from engine.cancel import ACTIVE_CANCELS as _active_cancels  # noqa: E402
