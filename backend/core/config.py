@@ -60,6 +60,14 @@ class Config:
     REVIEW_MODEL_THINK: str = os.getenv("REVIEW_MODEL_THINK", "")
     REVIEW_MODEL_RESEARCH: str = os.getenv("REVIEW_MODEL_RESEARCH", "")
 
+    # ── OpenCode Zen（F14）：OpenAI 兼容网关，免费模型限时轮换（/models 动态拉取+名单兜底）──
+    # 免费档隐私：免费期内部分模型数据可能被用于模型改进——UI 必须提示（ZenProviderCard 文案）。
+    # Zen 不提供 embedding：embedding 仍走硅基流动（EMBEDDING_*）。
+    ZEN_BASE_URL: str = os.getenv("ZEN_BASE_URL", "https://opencode.ai/zen/v1")
+    ZEN_API_KEY: str = os.getenv("ZEN_API_KEY", "")
+    ZEN_MODEL_MAIN: str = os.getenv("ZEN_MODEL_MAIN", "deepseek-v4-flash-free")   # 主对话免费默认（轮换时 UI 下拉改）
+    ZEN_MODEL_REVIEW: str = os.getenv("ZEN_MODEL_REVIEW", "")                      # 空=审核不指定 Zen 模型
+
     # ── 联网代理（可选）：容器访问国外站点（GitHub 等）失败时，配宿主梯子代理 ──
     # 例：PROXY_URL=http://host.docker.internal:7993（宿主梯子监听端口）
     PROXY_URL: str = os.getenv("PROXY_URL", "")
