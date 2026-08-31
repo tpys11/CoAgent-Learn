@@ -105,6 +105,9 @@ export const api = {
   getSettings: () => apiFetch<SettingsData>('/api/settings', { cache: 'no-store' }),
   saveSettings: (body: unknown) => apiFetch<any>('/api/settings', jsonInit('PUT', body)),
   testSettings: (body: unknown) => apiFetch<any>('/api/settings/test', jsonInit('POST', body)),
+  /** F14-S4f：拉取 Zen /models 名单（服务端代理+TTL 缓存；失败由前端 FALLBACK 兜底） */
+  zenModels: () => apiFetch<{ status: string; cached?: boolean; models?: string[]; msg?: string }>(
+    '/api/settings/zen/models', { cache: 'no-store' }),
 
   /** 答题反馈上报（闭环D）：后端落 quiz_answers 并合流 level_score，下轮策略指令随之变化 */
   submitQuizAnswers: (body: {
