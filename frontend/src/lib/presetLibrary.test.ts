@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  mergeDomains, groupByDomain, firstPresetDomain, presetSummary, presetDetailBody,
+  mergeDomains, groupByDomain, firstPresetDomain, presetSummary, presetDetailBody, presetMetaLine,
 } from './presetLibrary'
 import type { PresetDomain, PresetResource } from '../api'
 
@@ -56,6 +56,23 @@ describe('presetSummary 摘要', () => {
       { name: 'a.md', rel_path: 'd/a.md', ext: 'md', size: 1, pages: null, url: '' },
     ] })
     expect(presetSummary(md)).toBe('')
+  })
+})
+
+describe('presetMetaLine 大卡片元数据行', () => {
+  it('页数·出版社·初版时间齐全时全拼', () => {
+    const res = mkRes({ id: 'x', publisher: '清华出版社', pub_year: '2025', files: [
+      { name: 'a.pdf', rel_path: 'd/a.pdf', ext: 'pdf', size: 1, pages: 82, url: '' },
+    ] })
+    expect(presetMetaLine(res)).toBe('82 页 · 清华出版社 · 2025')
+  })
+  it('多文件显示文件数，缺省项不拼', () => {
+    const res = mkRes({ id: 'x', files: [
+      { name: 'a.pdf', rel_path: 'd/a.pdf', ext: 'pdf', size: 1, pages: null, url: '' },
+      { name: 'b.md', rel_path: 'd/b.md', ext: 'md', size: 1, pages: null, url: '' },
+    ] })
+    expect(presetMetaLine(res)).toBe('2 个文件')
+    expect(presetMetaLine(mkRes({ id: 'y', files: [] }))).toBe('')
   })
 })
 

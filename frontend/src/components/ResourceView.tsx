@@ -7,12 +7,15 @@ import { useState, useEffect, useCallback } from 'react'
 import { BookOpen, Plus, FolderTree, Library, ExternalLink, Download } from 'lucide-react'
 import { LS, lsGet, lsGetJSON, lsSetJSON } from '../storage'
 import { api } from '../api'
-import type { PresetResource } from '../api'
 import { WIKI_ENTRIES, WikiEntry } from '../data/wikiEntries'
 import { mergeDomains, groupByDomain, firstPresetDomain, presetSummary, presetDetailBody } from '../lib/presetLibrary'
+import { watchUploadProgress } from '../lib/uploadProgressWatcher'
+import { reportIngestDone } from '../lib/kbScopeBus'
 import { ListItem, exportItem } from './resource/commons'
 import { ResourceCardGrid, ResourceEmpty } from './resource/ResourceCardGrid'
 import { ResourceDetailModal } from './resource/ResourceDetailModal'
+import { PresetResourceCard } from './resource/PresetResourceCard'
+import type { PresetFile, PresetResource } from '../api'
 
 interface Tutorial {
   id: string
@@ -99,6 +102,9 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
   const [presetByDomain, setPresetByDomain] = useState<Record<string, PresetResource[]>>({})
   const [presetLoaded, setPresetLoaded] = useState(false)
   const [presetError, setPresetError] = useState('')
+  // F13-S2：「加入课程」编排态（同 /api/knowledge/upload-file 后台链 + upload-progress 轮询）
+  const [adding, setAdding] = useState<{ name: string; stage: string; pct: number } | null>(null)
+  const [presetDone, setPresetDone] = useState('')
   // 领域合成：默认（链接教程/百科）→ 预设库扫描领域 → 自定义
   const domains = mergeDomains(DEFAULT_DOMAINS, Object.keys(presetByDomain), customDomains)
 
@@ -215,14 +221,54 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
     </>
   )
 
-  /** F13-S1 预设资源区：API 三级索引驱动（领域下资源卡片；详情含占位元数据与文件清单） */
-  const presetList: ListItem[] = (presetByDomain[selectedDomain] || []).map(r => ({
-    id: 'preset:' + r.id, title: r.name,
-    sub: presetSummary(r),
-    time: '',
-    body: presetDetailBody(r), icon: BookOpen,
-    kind: 'tutorial' as const, deletable: false,
-  }))
+  /** F13-S2「加入课程」：预设文件走与手动上传完全相同的解析链——
+   *  ①从 /preset-library 回源取文件字节 → ②multipart POST /api/knowledge/upload-file
+   *  （wait=0 后台模式，source=文件名）→ ③复用 watchUploadProgress 轮询（单一正确实现）
+   *  → ④完成经 kbScopeBus.reportIngestDone 广播：F9 留存选择面板由 App 推进器自动呈现，
+   *  与 UploadPanel 同通道零新 UI（衔接点即此 bus，无留桩必要）。 */
+  const addPresetFile = async (f: PresetFile) => {
+    if (!projectId) { alert('请先进入课程，再添加预设资源'); return }
+    if (adding) return
+    setPresetDone('')
+    setAdding({ name: f.name, stage: '获取文件', pct: 4 })
+    try {
+      const resp = await fetch(f.url)
+      if (!resp.ok) throw new Error('HTTP ' + resp.status)
+      const blob = await resp.blob()
+      const file = new File([blob], f.name, { type: blob.type || 'application/octet-stream' })
+      const fd = new FormData()
+      fd.append('project_id', projectId); fd.append('session_id', 'project-res')
+      fd.append('api_key', lsGet(LS.apiKey, ''))
+      fd.append('wait', '0'); fd.append('file', file, f.name)
+      setAdding({ name: f.name, stage: '解析文档', pct: 8 })
+      const d = await api.uploadKnowledgeFile(fd)
+      if (d && d.status === 'processing') {
+        const r = await watchUploadProgress(projectId, f.name, {
+          onProgress: (stage, pct) => setAdding({ name: f.name, stage, pct }),
+        })
+        if (r.ok) {
+          setPresetDone(`「${f.name}」已加入课程知识库（${r.chunks} 个内容块）`)
+          reportIngestDone(projectId, [f.name])
+        } else {
+          // D3 句式：失败项不会出现在知识库，明确后果与补救
+          alert(`「${f.name}」处理失败${r.msg ? `：${r.msg.replace(/。+$/, '')}` : '：处理超时'}。该条未完成向量化，不会出现在知识库；请重新添加`)
+        }
+      } else if (d && d.status === 'ok') {
+        setPresetDone(`「${f.name}」已加入课程知识库（${d.chunks || 0} 个内容块）`)
+        reportIngestDone(projectId, [f.name])
+      } else if (d && d.duplicate) {
+        setPresetDone(`「${f.name}」内容已存在，已跳过重复入库`)
+      } else {
+        alert(`「${f.name}」加入失败：${(d && d.msg) || '处理失败'}`)
+      }
+    } catch (e) {
+      alert(`「${f.name}」加入失败：${((e as any)?.message as string) || '网络异常'}`)
+    } finally {
+      setAdding(null)
+    }
+  }
+
+  /** F13-S2 预设资源区：大卡片（封面占位+元数据+领域徽标）+ 逐文件「加入课程」 */
   const presetSection = (
     <>
       <div className="flex items-end justify-between mb-5">
@@ -232,14 +278,37 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
           </h2>
         </div>
       </div>
+      {adding && (
+        <div className="flex flex-col gap-1 mb-5 border border-[var(--border-color)] rounded-2xl p-3">
+          <div className="flex justify-between text-[10px] text-dim">
+            <span>「{adding.name}」{adding.stage}</span><span>{adding.pct}%</span>
+          </div>
+          <div className="h-1.5 rounded-full bg-[var(--bg-hover)] overflow-hidden">
+            <div className="h-full bg-[#1a1a1a] transition-all duration-300" style={{ width: `${adding.pct}%` }} />
+          </div>
+        </div>
+      )}
+      {!adding && presetDone && <p className="text-[11px] text-emerald-600 font-medium mb-5">✓ {presetDone}</p>}
       {presetError && <p className="text-xs text-red-500 text-center py-16">{presetError}</p>}
       {!presetError && !presetLoaded && <p className="text-xs text-dim text-center py-16">加载中…</p>}
-      {!presetError && presetLoaded && presetList.length === 0 && (
+      {!presetError && presetLoaded && (presetByDomain[selectedDomain] || []).length === 0 && (
         <ResourceEmpty title="该领域暂无预设资源" hint="预设资源由系统内置，可切换其他领域查看" />
       )}
-      {!presetError && presetLoaded && presetList.length > 0 && (
-        <ResourceCardGrid items={presetList} onOpen={setDetail} onUseItem={onUseItem}
-          onDelete={() => {}} onExport={() => {}} />
+      {!presetError && presetLoaded && (presetByDomain[selectedDomain] || []).length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+          {(presetByDomain[selectedDomain] || []).map(r => (
+            <PresetResourceCard key={r.id} resource={r} domain={selectedDomain}
+              adding={adding?.name || null}
+              onOpen={() => setDetail({
+                id: 'preset:' + r.id, title: r.name,
+                sub: presetSummary(r),
+                time: '',
+                body: presetDetailBody(r), icon: BookOpen,
+                kind: 'tutorial' as const, deletable: false,
+              })}
+              onAddFile={addPresetFile} />
+          ))}
+        </div>
       )}
     </>
   )

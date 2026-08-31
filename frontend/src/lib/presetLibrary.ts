@@ -32,6 +32,17 @@ export function presetSummary(res: PresetResource): string {
   return typeof p === 'number' && p > 0 ? `${p} 页` : ''
 }
 
+/** 大卡片元数据行（F13-S2）：页数/文件数 · 出版社 · 初版时间；缺省项不显示 */
+export function presetMetaLine(res: PresetResource): string {
+  const parts: string[] = []
+  const withPages = res.files.filter(f => typeof f.pages === 'number' && f.pages > 0)
+  if (res.files.length > 1) parts.push(`${res.files.length} 个文件`)
+  else if (withPages.length) parts.push(`${withPages[0].pages} 页`)
+  if (res.publisher) parts.push(res.publisher)
+  if (res.pub_year) parts.push(res.pub_year)
+  return parts.join(' · ')
+}
+
 /** 资源详情正文：占位元数据（出版社/初版时间/页数）+ 文件清单；缺省项不显示 */
 export function presetDetailBody(res: PresetResource): string {
   const lines: string[] = []

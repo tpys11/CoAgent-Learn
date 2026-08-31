@@ -35,6 +35,8 @@ export default defineConfig(({ mode }) => {
       proxy: {
         '/api': proxyTarget,
         '/uploads': proxyTarget,
+        // F13-S1 预设资源库原始文件回源（与 /uploads 同模式）
+        '/preset-library': proxyTarget,
         '/ws': {
           target: wsTarget,
           ws: true,
