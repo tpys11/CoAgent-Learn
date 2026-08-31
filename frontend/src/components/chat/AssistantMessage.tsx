@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, memo } from 'react'
-import { CheckCircle2, Image as ImageIcon, PenLine, Lightbulb } from 'lucide-react'
-import type { Message, Project } from '../../types'
+import { Image as ImageIcon, PenLine, Lightbulb } from 'lucide-react'
+import type { Message, Project, ReviewResult } from '../../types'
 import { renderMd } from '../../lib/mdRenderer'
 import { LS, lsGetJSON } from '../../storage'
 import { SubAgentLiveStrip } from './subagent'
@@ -196,6 +196,33 @@ const FLOW_NODE_MAP: Record<string, string> = {
 /** 导出仅供测试（streaming.test 同模式）；运行时组件内使用 */
 export const isFlowNode = (name: string): string | null => FLOW_NODE_MAP[name] ?? null
 
+// ---------- F11-S2：审核全程入思维链 ----------
+/** 审核结论的 markdown 文案（历史消息 msg.review → 思维链条目用，导出供测试直调）。
+ *  与后端 _format_review_conclusion 同语义（新消息由后端 mindchain 携带审核条目，
+ *  此函数只服务「旧消息 think 无审核条目但有 msg.review」的兼容期注入）。 */
+export const formatReviewMd = (review: ReviewResult): string => {
+  const lines: string[] = []
+  if (review.skipped) lines.push(`⏭ 审核跳过（${(review.suggestion || '').slice(0, 60)}），按通过处理`)
+  else lines.push(`${review.passed ? '✅ 审核通过' : '❌ 审核未通过'} · ${review.score}分`)
+  for (const it of (review.issues || []).slice(0, 5)) {
+    lines.push(`- ✗ ${it.problem}${it.fix ? ` → ${it.fix}` : ''}`)
+  }
+  if (!review.skipped && review.suggestion) lines.push(`💡 ${review.suggestion}`)
+  return lines.join('\n')
+}
+
+/** 历史消息兼容注入（导出供测试直调）：think 无「审核」条目且 msg.review 存在时
+ *  合成审核条目 append 到思维链——正文后的审核独立块已删除（S2），旧消息回看
+ *  的审核结论改由思维链区呈现，数据不丢。新消息 think 已含审核条目 → 不重复。 */
+export const withReviewEntry = (
+  think: Message['think'], review?: ReviewResult,
+): Array<{ agent: string; content: string }> => {
+  const items = (think || []).map(it => typeof it === 'string' ? { agent: '', content: it } : it)
+  if (!review) return items
+  if (items.some(it => it.agent === '审核')) return items
+  return [...items, { agent: '审核', content: formatReviewMd(review) }]
+}
+
 export interface AssistantMessageProps {
   msg: Message
   /** B1：该消息在全量 messages 数组中的下标——回调经 idx 定位目标消息，
@@ -218,7 +245,7 @@ export interface AssistantMessageProps {
   onGenerateSpecial?: (keys: string[], content: string) => void
 }
 
-/** AI 回复消息气泡：思考过程 + 回答正文 + 运行统计 + 资源生成建议 + 图片命中 + 审核报告 + 追问。
+/** AI 回复消息气泡：思考过程（含审核结论，S2 起全程在思维链区） + 回答正文 + 运行统计 + 资源生成建议 + 图片命中 + 追问。
  *  B1：memo 包裹——CenterPanel 侧 16 个 props 全部引用稳定（buildMessageProps 统一推导），
  *  流式期重渲染被浅比较精确限制在最后一条（msg 引用随帧变化的只有它）。 */
 function AssistantMessageImpl({
@@ -231,10 +258,11 @@ function AssistantMessageImpl({
     <>
       {/* 条目4·实时化：流式期间的子agent直播条（start 即现脉冲chip，完成翻✓）；历史消息不显示 */}
       {streaming && <SubAgentLiveStrip />}
-      {/* 思考过程区块（DeepSeek 式：流式展开逐字 / 完成自动折叠为一行） */}
+      {/* 思考过程区块（DeepSeek 式：流式展开逐字 / 完成自动折叠为一行）。
+          F11-S2：withReviewEntry——msg.review 兼容注入为思维链审核条目（历史消息回看） */}
       {msg.think && msg.think.length > 0 && (
         <div className="mb-3">
-          <ReasoningBlock items={msg.think} streaming={streaming} activeAgent={flowActiveAgent} activeStatus={flowStatus} flowAgents={flowAgents}
+          <ReasoningBlock items={withReviewEntry(msg.think, msg.review)} streaming={streaming} activeAgent={flowActiveAgent} activeStatus={flowStatus} flowAgents={flowAgents}
             hasAnswer={streaming && !!msg.content} />
         </div>
       )}
@@ -322,30 +350,10 @@ function AssistantMessageImpl({
               </div>
             </div>
           )}
-          {/* 审核报告（三维度审查结果） */}
-          {msg.review && (
-            <div className="mt-2.5 border hairline rounded-xl px-3 py-2.5 bg-[var(--bg-panel)]">
-              <div className="flex items-center gap-2 mb-1.5">
-                <p className="text-[10px] font-semibold text-dim flex items-center gap-1">
-                  <CheckCircle2 size={11} /> 审核报告
-                </p>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${msg.review.passed ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
-                  {msg.review.passed ? '通过' : '未通过'} · {msg.review.score} 分
-                </span>
-              </div>
-              {msg.review.issues && msg.review.issues.length > 0 && (
-                <div className="flex flex-col gap-1 mb-1">
-                  {msg.review.issues.map((it, i) => (
-                    <p key={i} className="text-[10px] text-dim">
-                      <span className="text-red-500">✗</span> {it.problem}
-                      {it.fix ? <span className="text-green-600"> → {it.fix}</span> : ''}
-                    </p>
-                  ))}
-                </div>
-              )}
-              {msg.review.suggestion && <p className="text-[10px] text-dim">💡 {msg.review.suggestion}</p>}
-            </div>
-          )}
+          {/* F11-S2：正文后审核独立块已删除——审核结论全程在思维链区呈现
+              （新消息由后端 mindchain 携带、旧消息经 withReviewEntry 兼容注入），
+              正文输出完成后追加块 = 0。msg.review 字段保留注入（useChatStream done
+              处理不变），仅不再渲染为完成态独立块。 */}
           {/* 新建课程引导消息：右下角「手动初始化」按钮（仅初次创建、未完成手动填写时显示） */}
           {msg.content.includes('课程创建成功') && onManualSetup && !(currentProject && (() => {
             return lsGetJSON<string[]>(LS.manualSetupDone, []).includes(currentProject.id)

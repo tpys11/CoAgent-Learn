@@ -96,6 +96,33 @@ def _format_search_detail(meta: dict, results: list) -> str:
     return "\n".join(lines)
 
 
+def _format_review_conclusion(verdict: dict, attempt: int, template: str) -> str:
+    """F11-S2：审核结论文案（流式事件与 mindchain 条目共用，纯函数供 pytest 直调）。
+    verdict 兼容 review_once（passed/score/reasons/skipped）与 review_claims 超集
+    （issues/claims）；截断防爆：problem/fix 各 100 字、issues top5。"""
+    score = verdict.get("score")
+    if verdict.get("skipped"):
+        head = f"⏭ 审核跳过（{str(verdict.get('reasons') or '')[:60]}），按通过处理"
+    elif verdict.get("passed"):
+        head = f"✅ 审核通过 · {score}分"
+    else:
+        head = f"❌ 审核未通过 · {score}分"
+    lines = [head]
+    claims = verdict.get("claims") or []
+    if template == "研究" and claims:
+        sup = sum(1 for c in claims if isinstance(c, dict) and c.get("label") == "supported")
+        lines.append(f"断言支撑 {sup}/{len(claims)}")
+    for it in (verdict.get("issues") or [])[:5]:
+        if not isinstance(it, dict):
+            continue
+        problem = str(it.get("problem") or "")[:100]
+        fix = str(it.get("fix") or "")[:100]
+        lines.append(f"- ✗ {problem}" + (f" → {fix}" if fix else ""))
+    if attempt > 0:
+        lines.append(f"（第 {attempt + 1} 稿）")
+    return "\n".join(lines)
+
+
 # --- 模型接缝（测试在此打补丁注入 FakeLLM） ---
 
 # D2：LLM client 进程级缓存——浪费点在 OpenAI() 每次新建 HTTP 连接池（TCP/TLS 握手+内存），
@@ -518,6 +545,7 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         attempt = 0
         recalled = False   # 召回审核：每轮至多一次（计入同一重试预算，防循环）
         reviewed_info = None
+        _review_notes: list = []   # F11-S2：各轮审核结论文本（mindchain 权威终稿汇总用）
         while True:
             sys_extra = (f"\n【审核反馈·上一稿未通过】{attempt_reasons}。请据此修正后重新完整输出。"
                          if attempt else "")
@@ -536,6 +564,11 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                 break
             # 研究档走断言级忠实度审核（参照系=全量留存块，非 top3）；
             # 思考档保持整体两维度评审（review_once 原样）
+            # F11-S2：审核发起过程进思维链（维度声明+证据规模）——gate 关闭时不发（语义：无审核）
+            _rv_mode = ("断言级忠实度审核（逐断言对照证据）" if template == "研究"
+                        else "双维度审核（知识正确性/指令遵从）")
+            token_queue.put(("token", "审核",
+                             f"发起审核：{_rv_mode}，对照 {len(search_results)} 块检索证据"))
             verdict = (review_claims if template == "研究" else review_once)(
                 pick_judge_llm(template, req), reply,
                 search_results if template == "研究"
@@ -550,6 +583,12 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                 reviewed_info.update(issues=verdict.get("issues") or [],
                                      claims=verdict.get("claims") or [],
                                      skipped=bool(verdict.get("skipped")))
+            # F11-S2：审核结论流式进思维链——通过与未通过都必须有（现状通过时零痕迹，
+            # 全靠正文后 msg.review 独立块）；事件先于 done 帧，done 是终止帧故
+            # 消息完成后（正文后）不再产生审核事件。
+            _concl = _format_review_conclusion(verdict, attempt, template)
+            token_queue.put(("token", "审核", _concl))
+            _review_notes.append(_concl)
             if verdict["passed"]:
                 break
             token_queue.put(("token", "审核",
@@ -612,6 +651,10 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         if gen_reasoning_text:
             mindchain_entries.append({"agent": "学习助手·生成",
                                       "content": gen_reasoning_text})
+        # F11-S2：审核结论入思维链权威终稿（历史回看持久；多轮结论合并一条，时序=生成之后）
+        if _review_notes:
+            mindchain_entries.append({"agent": "审核",
+                                      "content": "\n".join(_review_notes)})
         _trace("generate", input_digest=working_message[:200],
                output_digest=json.dumps({"reply_len": len(reply), "attempts": attempt + 1},
                                         ensure_ascii=False),
