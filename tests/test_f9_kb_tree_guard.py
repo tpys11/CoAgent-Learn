@@ -170,6 +170,18 @@ def test_delete_project_kb_purges_kb_tree(db, monkeypatch):
     assert db.get_kb_tree("pB", "c.pdf"), "跨项目删除可达=红线击穿"
 
 
+def test_purge_reachable_through_kb_repo_facade(db):
+    """真实应用路径走 KbRepo 门面（delete_project_kb 的 _db 即它）——
+    门面缺代理会让 purge 静默失效（F9-S5 E2E 实证），此守卫钉住门面链路。"""
+    from core.db.kb_repo import KbRepo
+    repo = KbRepo(db=db)
+    db.upsert_kb_tree("pA", "a.pdf", _legacy())
+    db.upsert_kb_tree("pB", "b.pdf", _legacy())
+    repo.purge_kb_tree_project("pA")
+    assert db.get_kb_tree("pA", "a.pdf") == []
+    assert db.get_kb_tree("pB", "b.pdf"), "门面 purge 越项目=红线击穿"
+
+
 def test_rescope_reingest_keeps_single_tree_row(db, monkeypatch):
     """留存范围重入库（重建路径）：同源重灌后 kb_tree 仍恰一行（无孤儿、无重复）。"""
     import core.knowledge_service as ks
@@ -182,3 +194,10 @@ def test_rescope_reingest_keeps_single_tree_row(db, monkeypatch):
     ks.add_document("pA", "# 第1章\n改后的正文块文字。", source="教材.pdf",
                     outline_tree=[{"name": "第1章", "children": []}])
     assert db.execute("SELECT COUNT(*) c FROM kb_tree WHERE project_id='pA'")[0]["c"] == 1
+
+
+def test_kb_repo_facade_exposes_purge():
+    """门面守卫（S5 E2E 实证教训）：knowledge_service._db 是 KbRepo 门面而非裸
+    SQLiteClient——新增 purge 必须在门面透传，否则删课级联静默失效（异常被路由吞）。"""
+    from core.db.kb_repo import KbRepo
+    assert hasattr(KbRepo, "purge_kb_tree_project")

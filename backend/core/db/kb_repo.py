@@ -95,6 +95,12 @@ class KbRepo:
     def delete_kb_tree_by_source(self, project_id, source):
         return self._db.delete_kb_tree_by_source(project_id, source)
 
+    def purge_kb_tree_project(self, project_id):
+        """F9-S3（T50 防御）：项目级联删除清理 kb_tree——门面必须代理，
+        否则 delete_project_kb 在真实路径 AttributeError 被上层吞掉、purge 形同虚设
+        （F9-S5 E2E 实证：单测裸 client 通过≠门面链路通）。"""
+        return self._db.purge_kb_tree_project(project_id)
+
     def _text_tables_for_read(self, tables=None) -> list:
         """读取类方法的候选表序列：显式指定 > 全部版本（最新在前）。
         老文档可能停留在旧版本表里，读取时逐版本回退保证仍可读。"""
