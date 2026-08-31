@@ -3,6 +3,7 @@ import { Database, Check } from 'lucide-react'
 import { api } from '../../api'
 import { SERVICE_GROUPS } from './serviceGroups'
 import { buildSvcBody } from './settingsPayload'
+import ZenProviderCard from './ZenProviderCard'
 
 function Section({ icon: Icon, title, desc, children }: { icon: any; title: string; desc?: string; children: React.ReactNode }) {
   return (
@@ -201,6 +202,9 @@ export default function ServiceSettings() {
         </div>
 
         {/* T54：切块/检索参数 UI 节已移除——后端 KB_CHUNK / KB_RRF 系列键契约不动，保存时按 svc 现值原样回传 */}
+
+        {/* F14-S4g：OpenCode Zen 免费通道配置（对话与审核组） */}
+        <ZenProviderCard settings={svc} onSaved={flash} />
 
         {/* 独立审核模型 */}
         <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2.5">
