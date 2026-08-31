@@ -649,7 +649,9 @@ N3（推预构建镜像）→ N2（第 2 次，按 pull 路径复验）
 | **T49** | **【测试基建 · F7 会话登记】宿主 pytest 与开发栈共用 `data/app.db`（conftest 无 DB 隔离，`:42` 触达 `db_path`）**——测试写操作直达真实库，364 测试 × 16 轮未出事故属侥幸面 | F7 会话上报，总领核验 conftest 触达点属实 | 待专项核实与隔离方案（勿与 T50 混同） |
 | **T50** | **🔴【数据丢失事件 · 总领取证】「ai Agent」课程知识库向量在 F7 会话窗口内消失**：总领 02:13 查询该库返回 3 条真实向量结果（AI-Agents-in-Depth-zh-CN.pdf chunk 108/192/287）→ F7 会话后同查询 `results:[]`，只读直查 `kb_vectors` 该项目 **0 行**（现库仅存 F7 会话写入的 smoke-web1 10136 行 + smoke-web3 371 行，且**两项目无 projects 表行 = 孤儿向量**）；`kb_tree` 残留 8 行（文档树在、向量无）。时间括号铁证：数据在 F7 窗口内消失。**疑似触发**：F7 会话向开发栈上传 smoke-web1（10136 块）的写入/重建路径存在跨项目清除，或其 pytest 基线——待会话交代完整操作序列。**恢复**：owner 重传源 PDF 即可重建向量，课程/聊天记录不受影响 | 总领只读直查取证（mode=ro）；**补充证据（08-31 体验期复查）**：projects 表现存 2 行（新课程/默认项目），kb_tree 残留孤儿——ai_agent 8 行 + smoke 3 行（projects 已无对应行）→ 删除路径级联疑点，归 T50 调查 |
 | **T51** | **【P1 API 契约 · F8 实证】部分字段 PUT /api/settings 会以 pydantic 默认值覆写未提交配置**（副本实证：EMBEDDING_MODEL→bge-m3 + dimensions=400，siliconflow code 20015）；前端全字段提交则无恙，API 层是坑——建议「空串/缺省不覆写」语义（改 routers/settings.py） | F8 会话 E4 实验 | 待派发（可折进 F11/F12 微改） |
-| **T52** | **【P3 体验 · F8 遗留】CJK-CJK 段内空格保守保留**（pymupdf4llm 硬换行拼接产物，如「难以 还原」）——扩规则删除 vs 伤及有意分词，**待 owner 拍板** | F8 会话上报 | owner 决策后折进微改 | **F7 改判 T50 调查（P0）** |
+| **T52** | **【P3 体验 · F8 遗留】CJK-CJK 段内空格保守保留**（pymupdf4llm 硬换行拼接产物，如「难以 还原」）——扩规则删除 vs 伤及有意分词，**待 owner 拍板** | F8 会话上报 | owner 决策后折进微改 |
+| **T53** | **【P2 UI 移除 · owner 指令 08-31】删除「项目介绍」按钮与点开后全部内容**：ActivityBar 两处按钮（`ActivityBar.tsx:69/:82`，`onChange('tutorial')`）+ tutorial 视图（`TutorialView.tsx`）+ 首次进入自动弹窗（`App.tsx:147/:523` showIntro/introSeen）+ `IntroPanel.tsx` 组件。**边界点（实施时判定）**：项目介绍 Agent 设定持久化（`App.tsx:76/:379`）与 `AgentsView.tsx:179` 对话设定共用——若仅服务 IntroPanel 则一并删，AgentsView 共用则保留持久化逻辑 | owner 指令 + 总领锚点 | **折进 F12 派发单**（纯前端，与 F11 文件无交集） |
+| **T54** | **【P2 UI 移除 · owner 指令 08-31】删除设置→AI 服务的「切块与检索参数」栏**：`ServiceSettings.tsx:224` 起整节（KB_CHUNK_SIZE/MODE/OVERLAP/RRF_K/FETCH_MULT 的 UI 呈现）。**后端 API 契约不动**——键保留走默认值，仅删 UI 栏；设置保存往返测试同步收缩 | owner 指令 + 总领锚点 | **折进 F12 派发单** | **F7 改判 T50 调查（P0）** |
 
 ---
 
