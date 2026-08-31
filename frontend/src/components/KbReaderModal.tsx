@@ -3,52 +3,8 @@
  */
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { X, ChevronRight, Loader2, FileText } from 'lucide-react'
-import MarkdownIt from 'markdown-it'
-import mermaid from 'mermaid'
-import * as echarts from 'echarts'
+import { renderMd } from '../lib/mdRenderer'
 import { api } from '../api'
-
-mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', theme: 'default' })
-let mmdSeq = 0
-let ecSeq = 0
-
-const md = new MarkdownIt({ html: false, linkify: true, breaks: true })
-const _fence = md.renderer.rules.fence!
-md.renderer.rules.fence = (tokens, idx, options, env, slf) => {
-  const t = tokens[idx]
-  if (t.info.trim() === 'mermaid') {
-    const id = 'kr-mmd-' + (++mmdSeq)
-    setTimeout(() => {
-      mermaid.render(id, t.content).then(({ svg }) => {
-        const el = document.getElementById(id)
-        if (el) el.innerHTML = svg
-      }).catch(() => {
-        const el = document.getElementById(id)
-        if (el) el.innerHTML = '<div class="text-red-500 text-[11px]">图表渲染失败</div>'
-      })
-    }, 0)
-    return `<pre id="${id}" class="kr-mermaid">加载图表…</pre>`
-  }
-  if (t.info.trim() === 'echarts') {
-    const id = 'kr-ec-' + (++ecSeq)
-    setTimeout(() => {
-      const el = document.getElementById(id)
-      if (!el) return
-      try {
-        const option = JSON.parse(t.content)
-        const old = echarts.getInstanceByDom(el)
-        if (old) old.dispose()
-        const chart = echarts.init(el)
-        chart.setOption(option)
-      } catch {
-        el.innerHTML = '<pre class="text-[11px] overflow-x-auto">图表配置无法解析</pre>'
-      }
-    }, 0)
-    return `<div id="${id}" class="kr-echarts" style="height:320px"></div>`
-  }
-  return _fence(tokens, idx, options, env, slf)
-}
-const renderMd = (t: string) => md.render(t || '')
 
 interface TreeNode { name: string; children: TreeNode[] }
 
@@ -390,8 +346,6 @@ export default function KbReaderModal({ title, content, projectId, source, focus
           </div>
         ) : null}
         <style>{`
-          .kr-mermaid { background: var(--bg-panel); border: 1px solid var(--border-color, #e5e5e5); border-radius: 10px; padding: 0.8em; text-align: center; overflow-x: auto; }
-          .kr-echarts { width: 100%; }
           .md-answer-body img { max-width: 100%; border-radius: 10px; margin: 6px 0; }
           .kr-heading-flash { animation: krFlash 1.5s ease-out; border-radius: 6px; }
           @keyframes krFlash { 0% { background: rgba(255, 200, 0, 0.35); } 100% { background: transparent; } }

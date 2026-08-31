@@ -1,55 +1,11 @@
 import { useState, useEffect } from 'react'
 import { FileText, ClipboardList, Wrench, Stethoscope, Send, Loader2, X, Pencil } from 'lucide-react'
-import MarkdownIt from 'markdown-it'
-import mermaid from 'mermaid'
-import * as echarts from 'echarts'
+import { renderMd } from '../lib/mdRenderer'
 import { api } from '../api'
 import { LS, lsGet, lsGetJSON } from '../storage'
 import QuizViewer from './quiz/QuizViewer'
 import KbReaderModal from './KbReaderModal'
 import ResourceChatPage from './resource/ResourceChatPage'
-
-mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', theme: 'default' })
-let mmdSeq = 0
-let ecSeq = 0
-
-const md = new MarkdownIt({ html: false, linkify: true, breaks: true })
-const _fence = md.renderer.rules.fence!
-md.renderer.rules.fence = (tokens, idx, options, env, slf) => {
-  const t = tokens[idx]
-  if (t.info.trim() === 'mermaid') {
-    const id = 'rp-mmd-' + (++mmdSeq)
-    setTimeout(() => {
-      mermaid.render(id, t.content).then(({ svg }) => {
-        const el = document.getElementById(id)
-        if (el) el.innerHTML = svg
-      }).catch(() => {
-        const el = document.getElementById(id)
-        if (el) el.innerHTML = '<div class="text-red-500 text-[11px]">图表渲染失败</div>'
-      })
-    }, 0)
-    return `<pre id="${id}" class="rp-mermaid">加载图表…</pre>`
-  }
-  if (t.info.trim() === 'echarts') {
-    const id = 'rp-ec-' + (++ecSeq)
-    setTimeout(() => {
-      const el = document.getElementById(id)
-      if (!el) return
-      try {
-        const option = JSON.parse(t.content)
-        const old = echarts.getInstanceByDom(el)
-        if (old) old.dispose()
-        const chart = echarts.init(el)
-        chart.setOption(option)
-      } catch {
-        el.innerHTML = '<pre class="text-[11px] overflow-x-auto">图表配置无法解析</pre>'
-      }
-    }, 0)
-    return `<div id="${id}" class="rp-echarts" style="height:320px"></div>`
-  }
-  return _fence(tokens, idx, options, env, slf)
-}
-const renderMd = (t: string) => md.render(t || '')
 
 const ICONS: Record<string, any> = {
   report: FileText,
@@ -254,8 +210,6 @@ export default function SpecialOutputPane({ projectId, dialogueId }: { projectId
       )}
 
       <style>{`
-        .rp-mermaid { background: var(--bg-panel); border: 1px solid var(--border-color, #e5e5e5); border-radius: 10px; padding: 0.8em; text-align: center; overflow-x: auto; }
-        .rp-echarts { width: 100%; }
         .md-answer-body img { max-width: 100%; border-radius: 10px; margin: 6px 0; }
       `}</style>
     </div>
