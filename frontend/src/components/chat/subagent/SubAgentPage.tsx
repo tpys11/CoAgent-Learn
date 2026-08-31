@@ -8,9 +8,10 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import { renderMd } from '../../../lib/mdRenderer'
 import { api } from '../../../api'
 import { subagentStore } from '../../../stores/subagentStore'
+import { SubAgentRunRow, toRowData } from './RunRow'
 import type { SubAgentRun } from '../../../types'
 
-/** 单次运行的对话段：右=主→子指令（输入姿态）；左=回答（直播delta流式 → 终稿markdown） */
+/** 单次运行的对话段：顶=共用行式五要素（F11-S3，可展开输出流）；右=主→子指令；左=回答。 */
 function RunTranscript({ runId }: { runId: string }) {
   useSyncExternalStore(subagentStore.subscribe, subagentStore.getVersion)
   const live = subagentStore.get(runId)
@@ -30,9 +31,13 @@ function RunTranscript({ runId }: { runId: string }) {
   const output = arch?.output || ''
   // 直播正文：delta 增量拼接；终稿以档案 output 为准（end 后自动切换）
   const liveText = (live?.events || []).filter(e => e.event === 'delta').map(e => String(e.text || '')).join('')
+  // F11-S3：共用行数据源——直播优先，回退档案（加载中两者皆无则不渲染行）
+  const rowSrc = live ?? arch
 
   return (
     <div className="flex flex-col gap-3">
+      {/* F11-S3：行式五要素（状态/类型/标题/耗时/token）+ 可展开输出流——与 LiveStrip 同一行组件 */}
+      {rowSrc && <SubAgentRunRow data={toRowData(rowSrc)} />}
       {/* 右侧：主 Agent 发给子的指令（用户输入姿态，样式同主聊 card-surface 气泡） */}
       <div className="flex flex-col items-end">
         <span className="text-[10px] text-dim mb-0.5">主 Agent → 子agent · 指令</span>

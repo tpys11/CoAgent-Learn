@@ -22,6 +22,9 @@ export interface RunLive {
   status: 'running' | 'ok' | 'error'
   summary: string
   events: SubAgentEventItem[]
+  /** F11-S3：首见时刻（行式耗时实时计时的起点）；end 时换算 elapsedMs 冻结 */
+  startedAt?: number
+  elapsedMs?: number
 }
 
 const runs = new Map<string, RunLive>()
@@ -38,7 +41,7 @@ export const subagentStore = {
   applySse(p: SubAgentSse) {
     let r = runs.get(p.run_id)
     if (!r) {
-      r = { runId: p.run_id, agent: p.agent || '', title: p.title || '', input: '', status: 'running', summary: '', events: [] }
+      r = { runId: p.run_id, agent: p.agent || '', title: p.title || '', input: '', status: 'running', summary: '', events: [], startedAt: Date.now() }
       runs.set(p.run_id, r)
     }
     if (p.event === 'start') {
@@ -50,6 +53,8 @@ export const subagentStore = {
     if (p.event === 'end') {
       r.status = p.status || 'ok'
       r.summary = p.summary || ''
+      // F11-S3：终态冻结耗时（running 行的 interval 计时随之停）
+      if (r.elapsedMs === undefined && r.startedAt) r.elapsedMs = Date.now() - r.startedAt
     }
     r.events.push({ event: p.event, content: p.content, text: p.text, status: p.status, summary: p.summary })
     touch()
