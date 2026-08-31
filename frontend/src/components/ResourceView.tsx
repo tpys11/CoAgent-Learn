@@ -15,6 +15,8 @@ import { ListItem, exportItem } from './resource/commons'
 import { ResourceCardGrid, ResourceEmpty } from './resource/ResourceCardGrid'
 import { ResourceDetailModal } from './resource/ResourceDetailModal'
 import { PresetResourceCard } from './resource/PresetResourceCard'
+import { PresetDetailModal } from './resource/PresetDetailModal'
+import KbReaderModal from './KbReaderModal'
 import type { PresetFile, PresetResource } from '../api'
 
 interface Tutorial {
@@ -105,6 +107,9 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
   // F13-S2：「加入课程」编排态（同 /api/knowledge/upload-file 后台链 + upload-progress 轮询）
   const [adding, setAdding] = useState<{ name: string; stage: string; pct: number } | null>(null)
   const [presetDone, setPresetDone] = useState('')
+  // F13-S3：预设详情（元数据占位编辑）+ 文件阅读器
+  const [presetDetail, setPresetDetail] = useState<PresetResource | null>(null)
+  const [readerFile, setReaderFile] = useState<PresetFile | null>(null)
   // 领域合成：默认（链接教程/百科）→ 预设库扫描领域 → 自定义
   const domains = mergeDomains(DEFAULT_DOMAINS, Object.keys(presetByDomain), customDomains)
 
@@ -116,15 +121,14 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
   useEffect(() => { setDetail(null) }, [selectedDomain, selectedCat])
   useEffect(() => { if (refreshSignal) setDetail(null) }, [refreshSignal])
 
-  // F13-S1：拉取预设库三级清单（挂载一次；网络失败落可见错误态）
-  useEffect(() => {
-    let cancelled = false
+  // F13-S1：拉取预设库三级清单（挂载一次 + 元数据保存后刷新；网络失败落可见错误态）
+  const loadPreset = useCallback(() => {
     api.getPresetLibrary()
-      .then(d => { if (!cancelled) { setPresetByDomain(groupByDomain(d.domains || [])); setPresetError('') } })
-      .catch(() => { if (!cancelled) setPresetError('预设资源加载失败，请检查后端服务') })
-      .finally(() => { if (!cancelled) setPresetLoaded(true) })
-    return () => { cancelled = true }
+      .then(d => { setPresetByDomain(groupByDomain(d.domains || [])); setPresetError('') })
+      .catch(() => setPresetError('预设资源加载失败，请检查后端服务'))
+      .finally(() => setPresetLoaded(true))
   }, [])
+  useEffect(() => { loadPreset() }, [loadPreset])
 
   // F13-S1：进入「预设资源」页签而当前领域无内容时，自动跳到第一个有预设资源的领域
   useEffect(() => {
@@ -299,13 +303,7 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
           {(presetByDomain[selectedDomain] || []).map(r => (
             <PresetResourceCard key={r.id} resource={r} domain={selectedDomain}
               adding={adding?.name || null}
-              onOpen={() => setDetail({
-                id: 'preset:' + r.id, title: r.name,
-                sub: presetSummary(r),
-                time: '',
-                body: presetDetailBody(r), icon: BookOpen,
-                kind: 'tutorial' as const, deletable: false,
-              })}
+              onOpen={() => setPresetDetail(r)}
               onAddFile={addPresetFile} />
           ))}
         </div>
@@ -431,6 +429,16 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
       {detail && (
         <ResourceDetailModal detail={detail} onClose={() => setDetail(null)}
           onUseItem={detail.id.startsWith('preset:') ? undefined : onUseItem} onDelete={removeItem} />
+      )}
+      {/* F13-S2/S3 预设详情：元数据占位编辑（持久化）+ 逐文件阅读/加入课程 */}
+      {presetDetail && (
+        <PresetDetailModal resource={presetDetail} domain={selectedDomain} adding={adding?.name || null}
+          onClose={() => setPresetDetail(null)} onAddFile={addPresetFile}
+          onRead={f => setReaderFile(f)} onSaved={loadPreset} />
+      )}
+      {/* F13-S3 文件阅读器（KbReaderModal 文件模式：pdf/md/office 分支 + iframe 兜底） */}
+      {readerFile && (
+        <KbReaderModal title={readerFile.name} fileUrl={readerFile.url} onClose={() => setReaderFile(null)} />
       )}
     </div>
   )

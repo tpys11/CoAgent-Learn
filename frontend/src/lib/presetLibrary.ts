@@ -43,6 +43,21 @@ export function presetMetaLine(res: PresetResource): string {
   return parts.join(' · ')
 }
 
+/* ---------- F13-S3 打开方式矩阵（派发单 §四.4：pdf=内嵌阅读器 / md·txt=统一渲染 / pptx·docx=下载 / 异常=iframe 兜底） ---------- */
+
+export type PresetFileKind = 'pdf' | 'text' | 'office' | 'other'
+
+/** 按文件名/URL 扩展名判打开方式（query/hash 剥离；编码 URL 的扩展名是 ASCII 不受影响） */
+export function presetFileKind(nameOrUrl: string): PresetFileKind {
+  const clean = (nameOrUrl || '').split('?')[0].split('#')[0]
+  const last = clean.slice(clean.lastIndexOf('/') + 1)
+  const e = last.includes('.') ? last.slice(last.lastIndexOf('.') + 1).toLowerCase() : ''
+  if (e === 'pdf') return 'pdf'
+  if (e === 'md' || e === 'markdown' || e === 'txt') return 'text'
+  if (e === 'pptx' || e === 'docx') return 'office'
+  return 'other'
+}
+
 /** 资源详情正文：占位元数据（出版社/初版时间/页数）+ 文件清单；缺省项不显示 */
 export function presetDetailBody(res: PresetResource): string {
   const lines: string[] = []

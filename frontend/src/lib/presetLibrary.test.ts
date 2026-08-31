@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   mergeDomains, groupByDomain, firstPresetDomain, presetSummary, presetDetailBody, presetMetaLine,
+  presetFileKind,
 } from './presetLibrary'
 import type { PresetDomain, PresetResource } from '../api'
 
@@ -73,6 +74,22 @@ describe('presetMetaLine 大卡片元数据行', () => {
     ] })
     expect(presetMetaLine(res)).toBe('2 个文件')
     expect(presetMetaLine(mkRes({ id: 'y', files: [] }))).toBe('')
+  })
+})
+
+describe('presetFileKind 打开方式矩阵', () => {
+  it('pdf→pdf；md/markdown/txt→text；pptx/docx→office；其他→other', () => {
+    expect(presetFileKind('/preset-library/a/b.pdf')).toBe('pdf')
+    expect(presetFileKind('/preset-library/AI%20%E7%BC%96%E7%A8%8B.md')).toBe('text')
+    expect(presetFileKind('notes.markdown')).toBe('text')
+    expect(presetFileKind('a.txt')).toBe('text')
+    expect(presetFileKind('Chapter11-表示和描述-2025-秋.pptx')).toBe('office')
+    expect(presetFileKind('spec.docx')).toBe('office')
+    expect(presetFileKind('img.png')).toBe('other')
+  })
+  it('query/hash 剥离；无扩展名→other', () => {
+    expect(presetFileKind('/x/b.pdf?token=1#p2')).toBe('pdf')
+    expect(presetFileKind('/x/noext')).toBe('other')
   })
 })
 

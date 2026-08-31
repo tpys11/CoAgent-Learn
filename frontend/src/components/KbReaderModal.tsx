@@ -1,10 +1,13 @@
 /** 知识库阅读器弹窗（5.1）：左侧标题树 + 右侧原文渲染 + 点击定位 / chunk 定位。
  * 全文来源：优先 props.content（生成类内容直给），否则按 source 调 /api/kb/{pid}/doc 重组。
+ * F13-S3 文件模式：fileUrl 存在时按扩展名分支——pdf→PdfReaderPane（懒加载，异常→iframe 兜底）、
+ * md/txt→fetch 后走统一 markdown 渲染管线、pptx/docx→下载+新标签（打开方式矩阵见派发单 §四.4）。
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { X, ChevronRight, Loader2, FileText } from 'lucide-react'
+import { X, ChevronRight, Loader2, FileText, Download, ExternalLink } from 'lucide-react'
 import { renderMd } from '../lib/mdRenderer'
 import { api } from '../api'
+import { presetFileKind } from '../lib/presetLibrary'
 import { OutlineTree } from './OutlineTree'
 
 interface TreeNode { name: string; children: TreeNode[] }
@@ -133,7 +136,7 @@ function splitSections(text: string): Array<{ title: string; body: string }> {
 /** 标题归一化：去 markdown 链接/强调符号后比较（树名来自原文，DOM 标题来自渲染结果） */
 const normHeading = (s: string) => (s || '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/[*_`~]/g, '').trim()
 
-export default function KbReaderModal({ title, content, projectId, source, focusChunk, seq, onClose, extraAction }: {
+export default function KbReaderModal({ title, content, projectId, source, focusChunk, seq, onClose, extraAction, fileUrl }: {
   title?: string
   content?: string
   projectId?: string | null
@@ -143,6 +146,8 @@ export default function KbReaderModal({ title, content, projectId, source, focus
   onClose: () => void
   /** 闭环六：header 附加动作（如资源编辑会话的「AI 修改」入口）；缺省不渲染，既有调用方零感知 */
   extraAction?: { label: string; icon?: any; onClick: () => void }
+  /** F13-S3：原始文件 URL（预设资源库）。存在时进入文件模式分支，与 KB chunk 路径互斥 */
+  fileUrl?: string
 }) {
   const [doc, setDoc] = useState<string | null>(content ?? null)
   const [backendTree, setBackendTree] = useState<TreeNode[] | null>(null)
@@ -150,10 +155,35 @@ export default function KbReaderModal({ title, content, projectId, source, focus
   const [error, setError] = useState('')
   const [selPath, setSelPath] = useState<string | null>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
+  // F13-S3 文件模式状态：PdfReaderPane 懒加载组件（模块加载失败→iframe 兜底）
+  const [PdfPane, setPdfPane] = useState<any>(null)
+  const [paneFailed, setPaneFailed] = useState(false)
+  const fileMode = useMemo(() => (fileUrl ? presetFileKind(fileUrl) : null), [fileUrl])
+
+  // PdfReaderPane 懒加载：仅 pdf 分支触发一次；模块级失败直接落 iframe 兜底
+  useEffect(() => {
+    if (fileMode !== 'pdf' || PdfPane || paneFailed) return
+    let cancelled = false
+    import('./PdfReaderPane')
+      .then(m => { if (!cancelled) setPdfPane(m.default) })
+      .catch(() => { if (!cancelled) setPaneFailed(true) })
+    return () => { cancelled = true }
+  }, [fileMode, PdfPane, paneFailed])
 
   // 拉取全文（content 已提供时直接使用，不再请求）；带竞态保护：快速切换 source 时丢弃旧响应
   useEffect(() => {
     let cancelled = false
+    // F13-S3：文件模式优先。md/txt → fetch 原文走统一渲染管线（origin=original：作者排版单块渲染）
+    if (fileUrl) {
+      if (presetFileKind(fileUrl) !== 'text') return
+      setLoading(true); setError('')
+      fetch(fileUrl)
+        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text() })
+        .then(t => { if (!cancelled) { setDoc(t); setOrigin('original') } })
+        .catch(() => { if (!cancelled) setError('文件加载失败，请检查后端服务') })
+        .finally(() => { if (!cancelled) setLoading(false) })
+      return () => { cancelled = true }
+    }
     if (content != null) { setDoc(content); return }
     if (!source || !projectId) { setError('缺少文档信息'); return }
     setLoading(true); setError('')
@@ -172,7 +202,7 @@ export default function KbReaderModal({ title, content, projectId, source, focus
       .catch(() => { if (!cancelled) setError('加载失败，请检查后端服务') })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [source, projectId, content])
+  }, [source, projectId, content, fileUrl])
 
   const tree = useMemo(() => backendTree ?? (doc ? extractTree(doc) : []), [backendTree, doc])
 
@@ -252,6 +282,37 @@ export default function KbReaderModal({ title, content, projectId, source, focus
 
   // F9-S4：左栏大纲换统一组件（展开由组件内部管理）；点章名=选中+滚动定位
 
+  // F13-S3：iframe 兜底（内嵌阅读器模块/文档加载失败时）+ office 下载面板（打开方式矩阵）
+  const fileFallback = fileUrl ? (
+    <div className="flex-1 flex flex-col min-h-0">
+      <div className="flex items-center justify-between px-5 py-2 border-b hairline flex-shrink-0">
+        <span className="text-[11px] text-dim">内嵌阅读器加载失败，已切换浏览器原生预览</span>
+        <a href={fileUrl} download={title || 'file'}
+          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-[#1a1a1a] text-white hover:opacity-85 transition-opacity">
+          <Download size={12} /> 下载文件
+        </a>
+      </div>
+      <iframe src={fileUrl} title={title || '文档预览'} className="flex-1 w-full" />
+    </div>
+  ) : null
+
+  const officePanel = fileUrl ? (
+    <div className="flex-1 flex flex-col items-center justify-center gap-3">
+      <FileText size={30} className="text-dim" />
+      <p className="text-[12px] text-dim">该格式暂不支持内嵌阅读，可下载后本地打开</p>
+      <div className="flex items-center gap-2">
+        <a href={fileUrl} download={title || 'file'}
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-medium text-white rounded-xl shadow-soft hover:opacity-90 transition-opacity bg-[#1a1a1a]">
+          <Download size={13} /> 下载文件
+        </a>
+        <a href={fileUrl} target="_blank" rel="noreferrer"
+          className="inline-flex items-center gap-1.5 px-3.5 py-2 text-[12px] font-medium text-dim rounded-xl border hairline hover:bg-[var(--bg-hover)] transition-colors">
+          <ExternalLink size={13} /> 新标签打开
+        </a>
+      </div>
+    </div>
+  ) : null
+
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-6" onClick={onClose}>
       <div className="bg-[var(--bg-panel)] rounded-2xl shadow-xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
@@ -276,6 +337,16 @@ export default function KbReaderModal({ title, content, projectId, source, focus
           </div>
         ) : error ? (
           <div className="flex-1 flex items-center justify-center text-[11px] text-red-500">{error}</div>
+        ) : fileMode === 'pdf' && fileUrl ? (
+          paneFailed ? fileFallback : PdfPane ? (
+            <PdfPane fileUrl={fileUrl} onBroken={() => setPaneFailed(true)} />
+          ) : (
+            <div className="flex-1 flex items-center justify-center gap-2 text-[11px] text-dim">
+              <Loader2 size={14} className="animate-spin" /> 阅读器加载中…
+            </div>
+          )
+        ) : fileMode === 'office' ? (
+          officePanel
         ) : doc ? (
           <div className="flex-1 flex min-h-0">
             {/* 左侧标题树：F9-S4 统一大纲组件（同左栏/右栏事实源与渲染） */}
