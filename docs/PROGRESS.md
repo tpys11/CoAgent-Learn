@@ -103,7 +103,7 @@
 | 33 | **「几行代码」收尾折进相邻会话**（T26/T34/T32 先例） | 合计 ~10 行不值得单开会话，但不能没有：各带守卫与变异验证 | 3 行代码付一次完整会话开销与决策 20 相悖 |
 | 34 | **A2 emit 守卫折进 B 组；`sse.ts` 越界追认**——已执行 | 行为被一次性 E2E 证明正确后缺永久回归保护 → 折入；越界须「先报批」或注明「未报批的必要越界」 | 内容正当差别在流程 |
 | 35 | **凭据与破坏性操作铁律** | ①凭据永不臆造/手拼——要么完整读取要么不读 ②清缓存/删除前先确认归属 ③拿不到凭据改用 route 拦截 SSE 桩 | B 组事故：手拼假 key 401 误判 + 误清 Playwright profile 有效凭据 |
-| 36 | **总领提效三则（08-31，owner 提出"总领是瓶颈"后立项）** | ①**验收分级**（RBI/hold-point 原则：hold point 应稀用）——T1 承重轮（DB/引擎/协议）=三绿+变异+快照；T2 功能轮=三绿+快照+交接通读；T3 轻量轮（docs/纯验证/微改）=push 两行+抽测+交接读；②**看板瘦身**：验收行只写状态+指针（≤200 字），证据一律留交接文档；③**回合纪律**：验收命令单消息并行批处理，长输出后台化，重活拆短回合（移动端通道不被长回合锁死）。**待拍板：CI 加 test job**（build-push.yml 加 pytest/vitest 门，public repo 免费——push 即机器验证，把总领人力复跑改机器门禁，Google presubmit 思想） | 自审计：验收回合 40-60% 挂机=等命令输出+重复全量跑；失误成本（E-37 类）占今日最大单块浪费；外部锚点=NATSPEC hold-point 稀用原则/API 580 RBI/Google eng-practices review speed |
+| 36 | **总领提效三则（08-31，owner 提出"总领是瓶颈"后立项）** | ①**验收分级**（RBI/hold-point 原则：hold point 应稀用）——T1 承重轮（DB/引擎/协议）=三绿+变异+快照；T2 功能轮=三绿+快照+交接通读；T3 轻量轮（docs/纯验证/微改）=push 两行+抽测+交接读；②**看板瘦身**：验收行只写状态+指针（≤200 字），证据一律留交接文档；③**回合纪律**：验收命令单消息并行批处理，长输出后台化，重活拆短回合（移动端通道不被长回合锁死）。**CI test job：✅ 已落地（08-31，owner 选 C 总领直改）**——tests job（pytest/tsc/vitest，Linux 首验全绿 435+133+0）gate 双镜像构建；随修三案：CI 补装 pytest（requirements 无，C1 既定）、test_eval_judges 加 importorskip（tests/eval 未入库，Wave 2 收口拍板）、去幽灵路径 backend/tests（零 tracked 文件）。诊断面：tools/ci_annotations.py 把失败转 ::error:: 注解（公开 API 可读）。**验收从本轮起降为 diff 审读+CI 徽章+抽样变异（T3 轮省全量复跑）** | 自审计：验收回合 40-60% 挂机=等命令输出+重复全量跑；失误成本（E-37 类）占今日最大单块浪费；外部锚点=NATSPEC hold-point 稀用原则/API 580 RBI/Google eng-practices review speed |
 
 ---
 
