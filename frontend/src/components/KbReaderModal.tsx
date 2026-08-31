@@ -160,12 +160,14 @@ export default function KbReaderModal({ title, content, projectId, source, focus
   const [paneFailed, setPaneFailed] = useState(false)
   const fileMode = useMemo(() => (fileUrl ? presetFileKind(fileUrl) : null), [fileUrl])
 
-  // PdfReaderPane 懒加载：仅 pdf 分支触发一次；模块级失败直接落 iframe 兜底
+  // PdfReaderPane 懒加载：仅 pdf 分支触发一次；模块级失败直接落 iframe 兜底。
+  // 注意 setState 包函数：组件本身是函数，直接 setPdfPane(m.default) 会被 React 当作
+  // updater 执行（basicStateReducer → PdfReaderPane(null) 崩溃），必须用惰性初始化包装。
   useEffect(() => {
     if (fileMode !== 'pdf' || PdfPane || paneFailed) return
     let cancelled = false
     import('./PdfReaderPane')
-      .then(m => { if (!cancelled) setPdfPane(m.default) })
+      .then(m => { if (!cancelled) setPdfPane(() => m.default) })
       .catch(() => { if (!cancelled) setPaneFailed(true) })
     return () => { cancelled = true }
   }, [fileMode, PdfPane, paneFailed])
