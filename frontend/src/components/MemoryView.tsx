@@ -5,6 +5,7 @@ import { LS, lsGet } from '../storage'
 import { api } from '../api'
 import { MiniMD } from './memoryView/MiniMD'
 import { PrefSummary } from './memoryView/PrefSummary'
+import MemoryBox from './memoryView/MemoryBox'
 import MatchReport from './matchReport/MatchReport'
 
 /** 个人全局性记忆：基础信息字段（固定，纵向表单） */
@@ -49,7 +50,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
   const [gPref, setGPref] = useState<Record<string, any> | null>(null) // 阅读偏好（问卷式）
 
   // 课程记忆（全部课程，默认展开显示）
-  const [projData, setProjData] = useState<Record<string, { fields: Record<string, string>; count: number; latest: string; days: Record<string, any[]>; progress: { items: any[]; daily: Array<{ date: string; count: number }>; pace: string }; chapters: Record<string, number>; treeDocs: Array<{ source: string; tree: any[] }> }>>({})
+  const [projData, setProjData] = useState<Record<string, { fields: Record<string, string>; rawMem: Record<string, any>; count: number; latest: string; days: Record<string, any[]>; progress: { items: any[]; daily: Array<{ date: string; count: number }>; pace: string }; chapters: Record<string, number>; treeDocs: Array<{ source: string; tree: any[] }> }>>({})
   // 初次手动初始化：基本情况/目的/初始情况 三个区域的编辑值
   const [projLoading, setProjLoading] = useState(false)
   // 当前查看的课程（点击课程按钮切换）
@@ -80,9 +81,8 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
   const [mcSending, setMcSending] = useState(false)
   // 课程记忆刷新触发器（记忆对话后刷新）
   const [refreshTick, setRefreshTick] = useState(0)
-  // 记忆模块只读详情（修改记忆由 AI 处理：跳转主对话并以 [模块名] 引用）
-  const [detailCard, setDetailCard] = useState<{ key: string; label: string; val: string } | null>(null)
-  useEffect(() => { setDayDetail(null); setDetailCard(null) }, [level])
+  // F12-S2：原 detailCard 展开弹层随分块卡移除——单框完整展示所有要点，无截断
+  useEffect(() => { setDayDetail(null) }, [level])
 
   const [saved, setSaved] = useState<'saving' | 'saved' | ''>('')
   const saveTimer = useRef<any>(null)
@@ -150,7 +150,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
       const plist = (Array.isArray(arr) ? arr : []) as Array<{ id: string; name: string; created_at?: string }>
       setProjects(plist)
       if (plist.length === 0) { setProjLoading(false); return }
-      const out: Record<string, { fields: Record<string, string>; count: number; latest: string; days: Record<string, any[]>; progress: { items: any[]; daily: Array<{ date: string; count: number }>; pace: string }; chapters: Record<string, number>; treeDocs: Array<{ source: string; tree: any[] }> }> = {}
+      const out: Record<string, { fields: Record<string, string>; rawMem: Record<string, any>; count: number; latest: string; days: Record<string, any[]>; progress: { items: any[]; daily: Array<{ date: string; count: number }>; pace: string }; chapters: Record<string, number>; treeDocs: Array<{ source: string; tree: any[] }> }> = {}
       let done = 0
       // 加载超时兜底：任何接口挂起也不让页面卡在「加载中…」
       const timer = window.setTimeout(() => {
@@ -183,7 +183,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
           const progress = { items: (pg.items || []), daily: (pg.daily || []), pace: (pg.pace || '') }
           const chapters = (mem['进度'] && typeof mem['进度'] === 'object' && !Array.isArray(mem['进度'])) ? mem['进度'] : {}
           const treeDocs = (Array.isArray(kb) ? kb : []).map((x: any) => ({ source: x.source || '未命名', tree: Array.isArray(x.tree) ? x.tree : [] }))
-          out[pid] = { fields, count, latest, days, progress, chapters, treeDocs }
+          out[pid] = { fields, rawMem: mem, count, latest, days, progress, chapters, treeDocs }
           finish()
         })
       }
@@ -414,10 +414,12 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                               </div>
                               )}
                               <div className="px-8 py-6 flex flex-col gap-7">
+                                {initialEdit ? (
+                                  <>
                                 {/* 第二栏：基本情况（大框） */}
                                 <section>
                                   <h3 className="text-[11px] font-bold uppercase tracking-widest mb-2" style={{ color: 'var(--accent)' }}>基本情况</h3>
-                                  {initialEdit ? (
+                                  {(
                                     <div className="flex flex-col gap-2.5">
                                       {/* 每项一行「设置项提示：输入」，用户跟着冒号填写；项目名在最前 */}
                                       <div className="flex items-center gap-2">
@@ -442,31 +444,6 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                                           className="flex-1 min-w-0 border hairline rounded-xl px-3 py-2 bg-[var(--bg-input)] text-[13px] leading-6 outline-none resize-y focus:border-[var(--accent)]" />
                                       </div>
                                     </div>
-                                  ) : (
-                                    <div className="border hairline rounded-xl px-5 py-4 bg-[var(--bg-input)] text-[13px] leading-7 text-[var(--text)]">
-                                      {/* 只显示一点字：截断预览 */}
-                                      <div className="line-clamp-4 overflow-hidden">
-                                        {['课程结束时间', '平均每日投入时间', '其他'].map(k => (data?.fields[k] || (k === '课程结束时间' ? data?.fields?.['时间限制'] : '') || '').trim() ? (
-                                          <div key={k} className="flex items-baseline gap-2 text-[11px] leading-6">
-                                            <span className="font-semibold text-[var(--text)] flex-shrink-0">{k}</span>
-                                            <span className="text-[var(--text-muted)]">{data?.fields[k]}</span>
-                                          </div>
-                                        ) : null)}
-                                        {(data?.fields['抽象项目情况'] || '').trim() ? <MiniMD text={data?.fields['抽象项目情况'] || ''} /> : null}
-                                      </div>
-                                      {/* 右下角高亮字（非按钮）：展开为独立显示窗口 */}
-                                      <div className="flex justify-end mt-1.5">
-                                        <span onClick={() => setDetailCard({
-                                          key: '基本情况', label: '基本情况',
-                                          val: ['课程结束时间', '平均每日投入时间', '其他'].map(k => {
-                                            const v = (data?.fields[k] || (k === '课程结束时间' ? data?.fields?.['时间限制'] : '') || '').trim()
-                                            return v ? `${k}：${v}` : ''
-                                          }).filter(Boolean).join('\n')
-                                            + ((data?.fields['抽象项目情况'] || '').trim() ? '\n\n抽象项目情况：\n' + data?.fields['抽象项目情况'] : '')
-                                        })}
-                                          className="text-[10px] font-semibold text-[var(--accent)] cursor-pointer hover:underline select-none">展开更多</span>
-                                      </div>
-                                    </div>
                                   )}
                                 </section>
                                 {/* 第三栏：大框内三个横向矩形（目的 / 初始情况 / 当前情况） */}
@@ -476,29 +453,28 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                                       {[['目的', '抽象目的'], ['初始情况', '起点'], ['当前情况', '当前水平']].map(([title, k]) => (
                                         <div key={k} className="rounded-xl border hairline bg-[var(--bg-panel)] px-4 py-3.5 flex flex-col gap-2 min-h-[110px]">
                                           <span className="text-[10px] font-semibold uppercase tracking-wider text-dim">{title}</span>
-                                          {initialEdit && k !== '当前水平' ? (
+                                          {k !== '当前水平' ? (
                                             <textarea value={editFields[k] || ''} rows={4}
                                               placeholder={k === '抽象目的' ? '学习目的（求职 / 兴趣 / 考试…）' : '开始学习前的水平'}
                                               onChange={(e) => { const v = e.target.value; setEditFields(prev => ({ ...prev, [k]: v })); onEditChange?.({ ...editFields, [k]: v }) }}
                                               className="w-full border hairline rounded-lg px-2 py-1.5 bg-[var(--bg-input)] text-xs leading-relaxed outline-none resize-y focus:border-[var(--accent)]" />
                                           ) : (
-                                            <>
-                                              {/* 只显示一点字：截断预览 */}
-                                              <div className="text-xs leading-relaxed text-[var(--text)] line-clamp-5">
-                                                {(data?.fields[k] || '').trim() ? <MiniMD text={data?.fields[k] || ''} /> : null}
-                                              </div>
-                                              {/* 右下角高亮字（非按钮）：展开为独立显示窗口 */}
-                                              <div className="flex justify-end mt-auto">
-                                                <span onClick={() => setDetailCard({ key: k, label: title, val: data?.fields[k] || '' })}
-                                                  className="text-[10px] font-semibold text-[var(--accent)] cursor-pointer hover:underline select-none">展开更多</span>
-                                              </div>
-                                            </>
+                                            <div className="text-xs leading-relaxed text-[var(--text)] line-clamp-5">
+                                              {(data?.fields[k] || '').trim() ? <MiniMD text={data?.fields[k] || ''} /> : null}
+                                            </div>
                                           )}
                                         </div>
                                       ))}
                                     </div>
                                   </div>
                                 </section>
+                                  </>
+                                ) : (
+                                  /* F12-S2 记忆单框化：替换原「基本情况+目的/初始情况/当前情况」分块卡——
+                                     ## 标题 + 要点列表 + 每节行尾补充输入 + 末尾新建标题输入；保存走键值合并，旧数据不丢 */
+                                  <MemoryBox memory={data?.rawMem || {}}
+                                    onSave={(profile: Record<string, unknown>) => scheduleSave(() => api.saveProjectMemory(pid, profile))} />
+                                )}
 
                               </div>
                             </div>
@@ -589,28 +565,6 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
           </div>
         )}
       </div>
-
-      {/* 记忆模块只读详情（修改记忆由 AI 处理：跳转主对话并以 [模块名] 引用） */}
-      {detailCard && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-6" onClick={() => setDetailCard(null)}>
-          <div className="w-[440px] max-h-[75vh] overflow-y-auto panel rounded-3xl p-6 flex flex-col gap-4" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between">
-              <span className="text-base font-bold">{detailCard.label}</span>
-              <button onClick={() => setDetailCard(null)} className="text-xs text-dim hover:text-[var(--text)]">关闭 ✕</button>
-            </div>
-            <div className="text-sm text-[var(--text-muted)]">
-              {detailCard.val.trim() ? <MiniMD text={detailCard.val} /> : <p className="text-xs text-dim">（暂无内容）</p>}
-            </div>
-            <div className="flex flex-col gap-2 pt-3 border-t hairline">
-              <button
-                onClick={() => { const lb = detailCard.label; setDetailCard(null); onRequestModify?.(lb) }}
-                className="py-2.5 rounded-xl bg-[#1a1a1a] text-white text-xs font-medium">
-                修改记忆
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
