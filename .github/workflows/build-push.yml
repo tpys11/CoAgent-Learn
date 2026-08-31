@@ -35,7 +35,10 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - name: Install backend deps
-        run: pip install -r backend/requirements.txt
+        run: |
+          pip install -r backend/requirements.txt
+          # pytest 不在 requirements（C1 有意不进镜像，宿主走 pyproject dev 组）——CI 需显式补齐
+          pip install pytest pytest-asyncio
       - name: Backend tests
         env:
           PYTHONPATH: backend

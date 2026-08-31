@@ -5,7 +5,13 @@
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
+
+# tests/eval 评估工具链暂未入库（untracked，EVAL-1 Wave 2 收口时拍板）——
+# fresh clone/CI 无该目录时整文件跳过；本地与入库后照常执行。
+pytest.importorskip("eval", reason="tests/eval 评估工具链未入库，跳过 judge 守卫")
 
 from eval.judges import coverage, fit, hallucination  # noqa: E402
 from eval.run_eval import _diff, evaluate, render_markdown  # noqa: E402
