@@ -20,8 +20,12 @@ def settings_env(tmp_path, monkeypatch):
 
 
 def test_chat_probe_success(settings_env, monkeypatch):
-    """对话探测成功：mock requests.get 返回 200"""
+    """对话探测成功：mock requests.get 返回 200。
+    CI 条件（无 .env）下 DEEPSEEK_* 为空会短路「未配置 Key」——显式桩 config，不依赖宿主环境。"""
     tc, _client = settings_env
+    from core.config import config as _cfg
+    monkeypatch.setattr(_cfg, "DEEPSEEK_API_KEY", "sk-test-only-fake-DO-NOT-USE")
+    monkeypatch.setattr(_cfg, "DEEPSEEK_BASE_URL", "https://fake.example/v1")
     import requests
     class MockResponse:
         status_code = 200
@@ -49,8 +53,11 @@ def test_chat_probe_missing_key(settings_env, monkeypatch):
 
 
 def test_chat_probe_timeout(settings_env, monkeypatch):
-    """对话探测超时：mock requests.get 抛出异常"""
+    """对话探测超时：mock requests.get 抛出异常（config 桩同上，不依赖宿主 .env）。"""
     tc, _client = settings_env
+    from core.config import config as _cfg
+    monkeypatch.setattr(_cfg, "DEEPSEEK_API_KEY", "sk-test-only-fake-DO-NOT-USE")
+    monkeypatch.setattr(_cfg, "DEEPSEEK_BASE_URL", "https://fake.example/v1")
     import requests
     def mock_get(*args, **kwargs):
         raise Exception("timeout")
