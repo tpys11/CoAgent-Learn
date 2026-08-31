@@ -43,7 +43,8 @@ jobs:
         env:
           PYTHONPATH: backend
         run: |
-          python -m pytest tests backend/tests -q --tb=short -rf --junitxml=pytest-report.xml
+          # backend/tests 为本地空目录（零 tracked 文件，git 不跟踪空目录）——CI 无此路径，勿传
+          python -m pytest tests -q --tb=short -rf --junitxml=pytest-report.xml
           code=$?
           python tools/ci_annotations.py pytest-report.xml || true
           exit $code
