@@ -163,7 +163,7 @@
 | **N2②** | `docs/dispatch/step-N2-pull.md`（2026-08-31 校准版） | 2026-08-31 | **✅ 已完成**（7/7+⑧，零改动 0 push；交接 `docs/progress/step-N2-pull.md`；新发现 T47/T48 上报） |
 | **F7** | `docs/dispatch/step-F7.md`（2026-08-31） | 2026-08-31 | **🔶 实证完成，未动代码**（缺陷当前不可复现=环境依赖；总领三处取证被其推翻；但其窗口 bracket 出 **T50 数据丢失事件**——待交代操作序列后改判调查） |
 | **F8** | `docs/dispatch/step-F8.md`（2026-08-31） | 2026-08-31 | **✅ 已完成并经总领验收**（7 commit `24266f5..224f90c` 已 push 两行一致；总领亲证三绿：pytest 409 / vitest 96 / tsc 0；实验全程副本库，真实库 10946 行零接触；纠错记录：「INFO 进不了容器日志」前提不成立，S2 收敛为 engine 透传；交接 `docs/progress/step-F8.md`，遗留 T51/T52 登记） |
-| **F11** | `docs/dispatch/step-F11.md`（2026-08-31） | 2026-08-31 | **✅ 已完成并经总领验收**（4 commit `7aa70bf..a761308` 已 push 两行一致；总领亲证三绿 pytest 416 / vitest 117 / tsc 0；正文后审核块 DOM 零残留、全链序 16/16、真实库 10946 零接触；S5 trace-export 按 owner 指令**验收后追加**（见派发单 §S5）；发现并修复 E-36 skills 遮蔽；交接 `docs/progress/step-F11.md`） |
+| **F11** | `docs/dispatch/step-F11.md`（2026-08-31） | 2026-08-31 | **✅ 已完成并经总领验收（含 S5）**（5 commit `7aa70bf..9506cbb` 已 push 两行一致；总领亲证 pytest 418 / vitest 117 / tsc 0；**S5 trace-export 冒烟亲测 HTTP 200 + attachment + 五类数据键齐**；正文后审核块 DOM 零残留；真实库零接触；交接 `docs/progress/step-F11.md`） |
 
 > 分发提示词统一存放于 `docs/dispatch/step-<id>.md`，交接文档归档于 `docs/progress/step-<id>.md`。
 
@@ -442,6 +442,7 @@ N3（推预构建镜像）→ N2（第 2 次，按 pull 路径复验）
 | **E-34** | **【compose 行为 · N3 实测】显式 `-f` 下 compose v2 不自动加载 `docker-compose.override.yml`**（单 -f 带/不带该文件，config 输出相同；`--project-directory` 亦不加载）。本地开发 canonical 命令：`docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.override.yml up -d --build`（双 -f 合并验证 exit 0）；README 开发者路径已按此口径书写，且有守卫钉住 README 全部项目 compose 命令带 `-f` | 本地开发验证 / README 维护 |
 | **E-35** | **【取重视角 · F7 实证】①bind mount 不同步 mmap 写——`-shm` 宿主视图冻结 3B、`-wal` 视图滞后，宿主侧 sidecar 取证不可作为缺陷证据（须 `docker exec` 容器内视图）；②环境依赖 CANTOPEN 备案：N2② 实测一次 query 500（_new_conn CANTOPEN），Docker 29.4.1 版本前后一致、F7 全矩阵复现阴性——机制已消失，若复发按 F7 实验矩阵重查；③临时栈必须 `-p` 独立项目名**（F7 会话临时栈与开发栈同名 `deploy`，down 连带带下开发栈——数据无损但已构成事故条件） | F7 会话 + 总领采信 |
 | **E-36** | **【环境 · F11 实证 + 已修复】本地开发 override 的 skills 遮蔽**：`../backend:/app` bind mount 遮蔽镜像内 `/app/skills`（override 原注释「skills 已烤进镜像无需挂载」判断错误——镜像里有但被遮住）→ 技能 import 失败被静默吞 → **开发栈对话检索零命中**（GET /api/knowledge/query 不走 skills 故仍 200，与 T47「开发栈复现阴性」观察吻合）。**修复：override 补挂 `../skills:/app/skills` 并重启（08-31 总领执行，容器内 ls /app/skills 已见技能清单）**。评委不受影响（clone 无 override）；纯镜像路径无此问题 | F11 会话发现 + 总领现场证实并修复 |
+| **E-37** | **【环境 · 总领失误认领 08-31】E-36 修复时违反 E-34 单 `-f` 操作，把开发栈打回定版镜像代码**：E-36 用 `docker compose -f deploy/... up -d`（单 -f）——override 在 `deploy/` 下不在项目根目录 → **未被自动加载** → compose 检测配置漂移把 backend 按纯镜像重建（F8/F11 功能在 dev 下线，S5 端点 404）；E-36 时 `/app/skills` 检查为**假阳性**（镜像自带，非我的挂载生效），掩盖了挂载缺失。**已修复**：E-34 canonical 双 `-f up -d` 恢复代码挂载（S5 冒烟 200）。**遗留一条：前端容器仍是纯镜像 bundle（override 无 frontend build 节）——F8/F11 前端功能（KaTeX/审核入链 UI）未上 dev 栈，9-5 录视频前必须补 frontend 本地构建并重建**。教训：本地栈任何操作必走双 `-f` canonical 命令；挂载验证不得用镜像自带内容当证据 | 总领现场定位（inspect 挂载对比）+ 认领 |
 
 ---
 
