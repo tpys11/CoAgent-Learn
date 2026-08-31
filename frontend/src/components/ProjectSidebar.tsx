@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from 'react'
-import { ArrowLeft, MessageSquare, FileText, X, SlidersHorizontal, Pencil, PanelLeftClose } from 'lucide-react'
+import { ArrowLeft, MessageSquare, FileText, X, SlidersHorizontal, Pencil, PanelLeftClose, Download } from 'lucide-react'
 import { LS, lsGetJSON, lsSetJSON } from '../storage'
 import { api } from '../api'
 
@@ -29,6 +29,23 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
   const [showSettings, setShowSettings] = useState(false)
   // 正在行内重命名的对话 id
   const [editingId, setEditingId] = useState<string | null>(null)
+  // F11-S5：协同中间数据导出——GET trace-export（纯只读聚合端点）→ blob 触发浏览器下载。
+  // 失败不走静默吞：结构化文案进 alert（原因 + 怎么办）。
+  const onExportTrace = (did: string) => {
+    fetch(`/api/chat/${did}/trace-export`)
+      .then(r => {
+        if (!r.ok) throw new Error('HTTP ' + r.status)
+        return r.blob()
+      })
+      .then(b => {
+        const a = document.createElement('a')
+        a.href = URL.createObjectURL(b)
+        a.download = `trace-${did}.json`
+        a.click()
+        URL.revokeObjectURL(a.href)
+      })
+      .catch(e => alert('导出失败（' + (e?.message || e) + '）：请确认后端服务可用后重试'))
+  }
   const toggleVisible = (k: 'memory' | 'resource' | 'chat') => {
     setVisible(prev => {
       const next = { ...prev, [k]: !prev[k] }
@@ -182,10 +199,13 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
                     <MessageSquare size={11} className="flex-shrink-0 opacity-70" />
                     <span className="truncate flex-1">{d.name}</span>
                   </button>
-                  {/* 重命名/删除：持久化显示（不依赖 hover） */}
+                  {/* 重命名/导出/删除：持久化显示（不依赖 hover） */}
                   <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
                     <button onClick={() => setEditingId(d.id)} className="p-1.5 rounded-md text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors" title="重命名">
                       <Pencil size={13} />
+                    </button>
+                    <button onClick={() => onExportTrace(d.id)} className="p-1.5 rounded-md text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors" title="导出协同中间数据 JSON（消息/步骤事件/检索/审核/子agent/资源）">
+                      <Download size={13} />
                     </button>
                     <button onClick={() => onDeleteDialogue(d.id)} className="p-1.5 rounded-md text-dim hover:bg-red-50 hover:text-red-500 transition-colors" title="删除对话">
                       <X size={14} />

@@ -232,3 +232,107 @@ async def chat_subagent_get(run_id: str):
     return {"run": run}
 
 
+@app.get("/api/chat/{dialogue_id}/trace-export")
+def chat_trace_export(dialogue_id: str):
+    """F11-S5 协同决策中间数据导出（赛题测试数据包取用）：输入 dialogue_id，输出可下载
+    JSON——五类数据（对话消息 / agent 步骤事件 eval_traces / 检索 query 与命中 / 审核过程
+    与结论 / subagent_runs 运行记录 + project 级资源清单）。**纯只读聚合**：零 schema 变更，
+    只走 SELECT，T50 领地不碰写路径；检索命中预览与审核结论全文取自消息 think（S1/S2
+    持久化），queries 与审核 digest 取自 eval_traces。结构化错误走 {"status":"error"} 约定。"""
+    import json as _json
+
+    from core.postgres_client import pg_client
+    from fastapi.responses import Response
+
+    def _rows(sql: str, args=()) -> list:
+        return [dict(r) for r in pg_client.execute(sql, args)]
+
+    dlg = _rows("SELECT id, name, project_id, session_id, created_at, archived "
+                "FROM dialogues WHERE id=%s", (dialogue_id,))
+    if not dlg:
+        return JSONResponse(status_code=404,
+                            content={"status": "error",
+                                     "msg": "对话不存在：无法导出不存在的 dialogue_id"})
+
+    messages = _rows("SELECT role, content, think, created_at FROM messages "
+                     "WHERE dialogue_id=%s ORDER BY id", (dialogue_id,))
+    traces = _rows("SELECT request_id, stage, input_digest, output_digest, metrics_json, "
+                   "elapsed_ms, created_at FROM eval_traces WHERE dialogue_id=%s ORDER BY id",
+                   (dialogue_id,))
+    runs = _rows("SELECT id, agent, title, input, status, output, events, created_at, "
+                 "finished_at FROM subagent_runs WHERE dialogue_id=%s ORDER BY created_at",
+                 (dialogue_id,))
+    pid = dlg[0]["project_id"]
+    resources = _rows("SELECT id, name, type, file_ext, created_at FROM resources "
+                      "WHERE project_id=%s ORDER BY created_at", (pid,))
+
+    for m in messages:
+        try:
+            m["think"] = _json.loads(m.get("think") or "null")
+        except Exception:
+            m["think"] = None
+    for r in runs:
+        try:
+            r["events"] = _json.loads(r.get("events") or "[]")
+        except Exception:
+            r["events"] = []
+
+    agent_traces, retrieval, review = [], [], []
+    for t in traces:
+        try:
+            od = _json.loads(t.get("output_digest") or "{}")
+        except Exception:
+            od = {}
+        try:
+            mj = _json.loads(t.get("metrics_json") or "{}")
+        except Exception:
+            mj = {}
+        agent_traces.append({"request_id": t["request_id"], "stage": t["stage"],
+                             "input_digest": t["input_digest"], "output_digest": od,
+                             "metrics": mj, "elapsed_ms": t["elapsed_ms"],
+                             "created_at": t["created_at"]})
+        if t["stage"] == "retrieve":
+            retrieval.append({"request_id": t["request_id"],
+                              "queries": od.get("queries") or [],
+                              "kept": od.get("kept"), "raw_count": od.get("raw_count"),
+                              "rounds": od.get("rounds")})
+        elif t["stage"] == "review":
+            review.append({"request_id": t["request_id"], **mj})
+
+    # 命中预览与审核结论全文：消息 think 的持久化条目（S1/S2 落库的权威展示层）
+    retrieval_hit_previews, review_conclusions = [], []
+    for m in messages:
+        for it in (m.get("think") or []) if isinstance(m.get("think"), list) else []:
+            if not isinstance(it, dict) or not it.get("content"):
+                continue
+            if it.get("agent") == "知识库管理":
+                retrieval_hit_previews.append(it["content"])
+            elif it.get("agent") == "审核":
+                review_conclusions.append(it["content"])
+
+    payload = {
+        "schema": "coagent-trace-export/1",
+        "exported_at": __import__("datetime").datetime.now().isoformat(timespec="seconds"),
+        "dialogue": dlg[0],
+        # ① 对话消息（think 已解析：内含规划要点/检索命中预览/审核结论全文）
+        "messages": messages,
+        # ② agent 步骤事件（eval_traces 全量 stage trace）
+        "agent_traces": agent_traces,
+        # ③ 检索 query（trace digest 解析）+ 命中预览全文（消息 think 提取）
+        "retrieval": retrieval,
+        "retrieval_hit_previews": retrieval_hit_previews,
+        # ④ 审核过程 digest（trace metrics）+ 结论全文（消息 think 提取）
+        "review": review,
+        "review_conclusions": review_conclusions,
+        # ⑤ subagent_runs 运行记录 + 最终生成资源（resources 为 project 级关联——
+        #    资源表无 dialogue 列，口径在此注明）
+        "subagent_runs": runs,
+        "resources": resources,
+    }
+    body = _json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
+    safe_did = "".join(c for c in dialogue_id if c.isalnum() or c in "-_")[:40] or "dialogue"
+    return Response(content=body, media_type="application/json",
+                    headers={"Content-Disposition":
+                             f'attachment; filename="trace-{safe_did}.json"'})
+
+
