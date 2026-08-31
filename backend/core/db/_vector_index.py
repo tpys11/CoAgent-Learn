@@ -53,6 +53,9 @@ class VectorIndexMixin:
             "project_id TEXT, source TEXT, tree TEXT, updated_at TEXT DEFAULT (datetime('now')), "
             "PRIMARY KEY (project_id, source))"
         )
+        # F9-S3：存量行层级化迁移随建表跑（幂等纯增量；坏行跳过不阻断启动）。
+        # 反向脚本：backend/core/db/rollback_f9_kb_tree.py（D4 先例：迁移必附回退路径）。
+        self.migrate_kb_tree_hierarchical()
 
         # 链接/内置资源内容缓存：首次上传联网抓取后存库，之后同一资源直接从内部获取（不联网）
         self.execute(

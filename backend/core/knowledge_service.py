@@ -573,8 +573,11 @@ def delete_doc(project_id: str, source: str) -> int:
 
 
 def delete_project_kb(project_id: str) -> int:
-    """删除项目全部知识库（级联删除时调用）"""
+    """删除项目全部知识库（级联删除时调用）。
+    F9-S3（T50 防御）：连带清理 kb_tree——此前漏清构成「kb_tree 残留孤儿」形态
+    （T50 实证：项目亡而 kb_tree 行在）。purge 为 project 域单条件，跨项目不可达。"""
     n = _db.delete_kb_project(project_id)
     _db.delete_image_project(project_id)
+    _db.purge_kb_tree_project(project_id)
     _invalidate_bm25(project_id)
     return n

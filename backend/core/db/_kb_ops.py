@@ -2,7 +2,32 @@
 """SQLiteClient 知识库域操作 mixin：向量块读写 / 旁路表（B1 问题、B4-lite 边）/
 图片向量 / 标题树 / 内容去重 / URL 缓存 / 级联删除。
 B2 拆分（2026-08-27）：方法自 base.py 逐字迁入。"""
+import hashlib
+import json
+
 import sqlite_vec
+
+# F9-S3 新增节点字段（层级化）；page/category 为 F9-S1/S2 先行增量的既有字段
+_TREE_ADDED_FIELDS = ("id", "parent", "level")
+
+
+def _hierarchify_tree(tree: list) -> list:
+    """F9-S3：kb_tree 节点补层级字段（id/parent/level）——纯增量，name/children/content/
+    page/category 一律原样保留（零丢失）。幂等：已有 id 的节点保持原值。
+    id = md5(全路径#兄弟序)[:12]：路径派生 → 同结构重提取产生同 id（引用稳定）。"""
+    def walk(nodes, parent_id, prefix, level):
+        for idx, n in enumerate(nodes or []):
+            if not isinstance(n, dict):
+                continue
+            name = str(n.get("name") or "")
+            path = (prefix + "/" + name) if prefix else name
+            if not n.get("id"):
+                n["id"] = hashlib.md5(f"{path}#{idx}".encode("utf-8")).hexdigest()[:12]
+            n["parent"] = parent_id
+            n["level"] = level
+            walk(n.get("children"), n["id"], path, level + 1)
+    walk(tree, "", "", 1)
+    return tree
 
 
 class KbOpsMixin:
@@ -202,12 +227,12 @@ class KbOpsMixin:
         return len(ids)
 
     def upsert_kb_tree(self, project_id: str, source: str, tree: list):
-        """保存文档标题树（json）"""
-        import json as _json
+        """保存文档标题树（json）。F9-S3：写入前补层级字段（幂等，纯增量）。"""
+        tree = _hierarchify_tree(tree or [])
         self.execute(
             "INSERT INTO kb_tree(project_id, source, tree, updated_at) VALUES (?,?,?,datetime('now')) "
             "ON CONFLICT(project_id, source) DO UPDATE SET tree=excluded.tree, updated_at=datetime('now')",
-            (project_id, source, _json.dumps(tree, ensure_ascii=False)),
+            (project_id, source, json.dumps(tree, ensure_ascii=False)),
         )
 
     def get_kb_tree(self, project_id: str, source: str) -> list:
@@ -225,6 +250,40 @@ class KbOpsMixin:
     def delete_kb_tree_by_source(self, project_id: str, source: str) -> int:
         """删除某来源文档的标题树"""
         return self.execute("DELETE FROM kb_tree WHERE project_id=? AND source=?", (project_id, source))
+
+    def purge_kb_tree_project(self, project_id: str) -> int:
+        """F9-S3（T50 防御）：项目级联删除时清理该项目全部 kb_tree 行。
+        项目内闭合（WHERE project_id=? 单域），杜绝「kb_tree 残留孤儿」（T50 实证形态）。
+        新增方法而非改动既有 delete_kb_*（T50 领地零接触纪律）。"""
+        return self.execute("DELETE FROM kb_tree WHERE project_id=?", (project_id,))
+
+    def migrate_kb_tree_hierarchical(self) -> int:
+        """F9-S3 存量迁移：为全部 kb_tree 行补层级字段（幂等、纯增量、零丢失）。
+        坏 JSON 行跳过（可见日志）交人工处置，绝不阻断启动。返回实际改写行数。"""
+        import logging as _logging
+        _log = _logging.getLogger("coagent.knowledge")
+        rows = self.execute("SELECT project_id, source, tree FROM kb_tree")
+        migrated = 0
+        for r in rows or []:
+            raw = r.get("tree")
+            if not raw:
+                continue
+            try:
+                t = json.loads(raw)
+                if not isinstance(t, list):
+                    raise ValueError("tree 不是数组")
+            except Exception:
+                _log.warning("[kb_tree 迁移] 坏 JSON 行跳过 project=%s source=%s",
+                             r.get("project_id"), r.get("source"))
+                continue
+            new = json.dumps(_hierarchify_tree(t), ensure_ascii=False)
+            if new != raw:
+                self.execute("UPDATE kb_tree SET tree=? WHERE project_id=? AND source=?",
+                             (new, r["project_id"], r["source"]))
+                migrated += 1
+        if migrated:
+            _log.info("[kb_tree 迁移] 层级化完成：%d 行补齐 id/parent/level", migrated)
+        return migrated
 
     def search_kb_vectors(self, project_id: str, query_embedding: list, k: int = 12,
                           table: str = "kb_vectors") -> list[dict]:
