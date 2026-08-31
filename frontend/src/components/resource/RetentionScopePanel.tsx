@@ -7,21 +7,12 @@
 import { useMemo, useState } from 'react'
 import { CheckSquare, Loader2, ListTree, Square } from 'lucide-react'
 import { api } from '../../api'
+import { categoryBadgeClass } from '../OutlineTree'
 
 export interface ScopeNode {
   name: string
   children?: ScopeNode[]
   category?: string
-}
-
-/** 分类徽章配色：正文=中性灰；五类非正文各给固定暖色提示（建议可改=勾选才是事实） */
-const CATEGORY_BADGE: Record<string, string> = {
-  '正文': 'text-dim',
-  '小结': 'text-amber-600',
-  '习题': 'text-amber-600',
-  '实验': 'text-sky-600',
-  '总测试': 'text-rose-600',
-  '附录': 'text-dim',
 }
 
 export interface FlatSection {
@@ -147,7 +138,7 @@ export function RetentionScopePanel({ projectId, source, tree, apiKey, onApplied
             </button>
             <span className="text-[10.5px] truncate flex-1" title={s.path}>{s.name}</span>
             {s.category !== '正文' && (
-              <span className={`text-[9px] flex-shrink-0 ${CATEGORY_BADGE[s.category] || 'text-dim'}`}>{s.category}</span>
+              <span className={`text-[9px] flex-shrink-0 ${categoryBadgeClass(s.category)}`}>{s.category}</span>
             )}
           </label>
         ))}

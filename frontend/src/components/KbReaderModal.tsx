@@ -1,10 +1,11 @@
 /** 知识库阅读器弹窗（5.1）：左侧标题树 + 右侧原文渲染 + 点击定位 / chunk 定位。
  * 全文来源：优先 props.content（生成类内容直给），否则按 source 调 /api/kb/{pid}/doc 重组。
  */
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { X, ChevronRight, Loader2, FileText } from 'lucide-react'
 import { renderMd } from '../lib/mdRenderer'
 import { api } from '../api'
+import { OutlineTree } from './OutlineTree'
 
 interface TreeNode { name: string; children: TreeNode[] }
 
@@ -148,8 +149,6 @@ export default function KbReaderModal({ title, content, projectId, source, focus
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [selPath, setSelPath] = useState<string | null>(null)
-  // 左树折叠语义（反向）：expandedPaths=显式展开的路径；有子节点的点默认收起，点章名逐层展开
-  const [expandedTree, setExpandedTree] = useState<Set<string>>(new Set())
   const bodyRef = useRef<HTMLDivElement>(null)
 
   // 拉取全文（content 已提供时直接使用，不再请求）；带竞态保护：快速切换 source 时丢弃旧响应
@@ -251,37 +250,7 @@ export default function KbReaderModal({ title, content, projectId, source, focus
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusChunk, seq, doc])
 
-  const renderTree = (nodes: TreeNode[], depth: number, prefix: string): ReactNode => (
-    nodes.map(n => {
-      const path = prefix ? prefix + '/' + n.name : n.name
-      const hasKids = n.children.length > 0
-      const isCollapsed = hasKids && !expandedTree.has(path)
-      const active = selPath === path
-      return (
-        <div key={path}>
-          <button
-            onClick={() => {
-              setSelPath(path)
-              // 分支节点：点章名=展开/收起子标题，同时定位正文
-              if (hasKids) setExpandedTree(prev => { const nx = new Set(prev); if (nx.has(path)) nx.delete(path); else nx.add(path); return nx })
-              locateWithRetry(path)
-            }}
-            className={`w-full flex items-center gap-1 text-left px-1.5 py-1 rounded-lg text-[11px] transition-colors ${active ? 'bg-[#1a1a1a] text-white' : 'hover:bg-[var(--bg-hover)]'}`}
-            style={{ paddingLeft: 6 + depth * 12 }}
-          >
-            <span
-              onClick={(e) => { e.stopPropagation(); setExpandedTree(prev => { const nx = new Set(prev); if (nx.has(path)) nx.delete(path); else nx.add(path); return nx }) }}
-              className={`flex-shrink-0 transition-transform ${isCollapsed ? '' : 'rotate-90'} ${hasKids ? 'cursor-pointer' : 'opacity-0'}`}
-            >
-              <ChevronRight size={12} />
-            </span>
-            <span className="truncate">{n.name}</span>
-          </button>
-          {hasKids && !isCollapsed && renderTree(n.children, depth + 1, path)}
-        </div>
-      )
-    })
-  )
+  // F9-S4：左栏大纲换统一组件（展开由组件内部管理）；点章名=选中+滚动定位
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-6" onClick={onClose}>
@@ -309,11 +278,14 @@ export default function KbReaderModal({ title, content, projectId, source, focus
           <div className="flex-1 flex items-center justify-center text-[11px] text-red-500">{error}</div>
         ) : doc ? (
           <div className="flex-1 flex min-h-0">
-            {/* 左侧标题树 */}
+            {/* 左侧标题树：F9-S4 统一大纲组件（同左栏/右栏事实源与渲染） */}
             <div className="w-52 flex-shrink-0 border-r hairline overflow-y-auto p-2">
               {tree.length === 0 ? (
                 <p className="text-[10px] text-dim px-1 py-2">无标题结构</p>
-              ) : renderTree(tree, 0, '')}
+              ) : (
+                <OutlineTree tree={tree} selPath={selPath} compact showBadges
+                  onSelect={(p) => { setSelPath(p); locateWithRetry(p) }} />
+              )}
             </div>
             {/* 右侧原文：original/生成类直给单块渲染；reassembled（重组脏文本）按 h1/h2 折叠面板分块 */}
             <div className="flex-1 overflow-y-auto p-5" ref={bodyRef}>

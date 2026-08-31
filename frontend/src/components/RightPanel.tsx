@@ -1,6 +1,7 @@
-﻿import { ListTree, Send, MessagesSquare, X, PanelRightClose, SlidersHorizontal, FileText } from 'lucide-react'
+﻿import { ListTree, Send, MessagesSquare, X, PanelRightClose, SlidersHorizontal, FileText, FolderTree } from 'lucide-react'
 import { useEffect, useRef, useState, Fragment } from 'react'
-import { KnowledgeTreeGraph } from './KbTreeGraph'
+import { OutlineTree } from './OutlineTree'
+import KbReaderModal from './KbReaderModal'
 import SpecialOutputPane from './SpecialOutputPane'
 import { renderMd as renderSideMd } from '../lib/mdRenderer'
 import { streamChatResponse } from '../sse'
@@ -113,6 +114,8 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
   // 文档大纲（树状）：基于上传资料标题层级
   const [treeDocs, setTreeDocs] = useState<Array<{ source: string; tree: any[] }>>([])
   const [progressItems, setProgressItems] = useState<any[]>([])
+  // F9-S4：大纲树点章名 → 本窗宿主阅读器（全文模式，读 own tree 与定位）
+  const [docModal, setDocModal] = useState<{ source: string } | null>(null)
   const loadKbTree = () => {
     if (!projectId) return
     api.listKnowledge(projectId)
@@ -227,7 +230,23 @@ export default function RightPanel({ messageCount, projectId, sideDialogueId, on
           <Pane title={w.title} icon={w.icon} height={heights[w.key]} flex={i === shown.length - 1} onClose={() => toggleWin(w.key)}>
             {w.key === 'graph' && (
               <div className="w-full h-full overflow-y-auto px-2 py-1.5">
-                <KnowledgeTreeGraph treeDocs={treeDocs} progressItems={progressItems} projectId={projectId} />
+                {/* F9-S4：文档大纲窗换统一大纲树组件（与对话左栏/阅读器侧栏同源同渲染）；
+                    点章名打开阅读器（全文+定位），替代旧图形化视图 */}
+                {(treeDocs || []).filter(d => (d.tree || []).length > 0).length === 0 ? (
+                  <p className="text-[10px] text-dim text-center py-6">暂无文档大纲，上传资料后自动生成</p>
+                ) : (treeDocs || []).filter(d => (d.tree || []).length > 0).map(d => (
+                  <div key={d.source} className="border hairline rounded-xl px-2 py-1.5 mb-2 bg-[var(--bg-input)]">
+                    <p className="flex items-center gap-1.5 text-[10px] font-semibold text-dim mb-0.5">
+                      <FolderTree size={11} /> <span className="truncate flex-1" title={d.source}>{d.source}</span>
+                    </p>
+                    <OutlineTree tree={d.tree} showBadges compact
+                      onSelect={() => setDocModal({ source: d.source })} />
+                  </div>
+                ))}
+                {docModal && (
+                  <KbReaderModal title={docModal.source} projectId={projectId ?? null}
+                    source={docModal.source} seq={Date.now()} onClose={() => setDocModal(null)} />
+                )}
               </div>
             )}
             {w.key === 'chat' && (
