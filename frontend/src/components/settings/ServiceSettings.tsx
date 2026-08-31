@@ -1,6 +1,8 @@
 ﻿import { useState, useEffect } from 'react'
 import { Database, Check } from 'lucide-react'
 import { api } from '../../api'
+import { SERVICE_GROUPS } from './serviceGroups'
+import { buildSvcBody } from './settingsPayload'
 
 function Section({ icon: Icon, title, desc, children }: { icon: any; title: string; desc?: string; children: React.ReactNode }) {
   return (
@@ -31,6 +33,7 @@ const inputCls = 'w-full px-3 py-2 input-surface rounded-lg text-xs outline-none
  *  图片理解由视觉主模型直接处理，无独立描述服务（2026-08-22 移除）。 */
 export default function ServiceSettings() {
   const [svc, setSvc] = useState({
+    embedding_base_url: '', embedding_model: 'Qwen/Qwen3-VL-Embedding-8B',
     embedding_key_set: false, embedding_key_hint: '',
     review_enabled: false,
     review_model: 'Qwen/Qwen2.5-72B-Instruct',
@@ -56,6 +59,8 @@ export default function ServiceSettings() {
     api.getSettings().then(d => {
       setSvc(s => ({
         ...s,
+        embedding_base_url: (d.embedding as any)?.base_url || '',
+        embedding_model: (d.embedding as any)?.model || 'Qwen/Qwen3-VL-Embedding-8B',
         embedding_key_set: !!d.embedding?.api_key_set,
         embedding_key_hint: d.embedding?.api_key_hint || '',
         review_enabled: !!d.review?.enabled,
@@ -74,37 +79,11 @@ export default function ServiceSettings() {
 
   const flash = (msg: string) => { setFeedback(msg); setTimeout(() => setFeedback(''), 2000) }
 
-  // 构造后端 SettingsSave 提交体（统一向量化模型固定 Qwen3-VL-Embedding-8B@1024）
-  const buildSvcBody = () => ({
-    vector_model: 'qwen',
-    embedding_backend: 'api',
-    embedding_base_url: 'https://api.siliconflow.cn/v1',
-    embedding_api_key: svcKeys.embedding_api_key,
-    embedding_model: 'Qwen/Qwen3-VL-Embedding-8B',
-    embedding_dim: 1024,
-    rerank_backend: 'api',
-    rerank_base_url: '',
-    rerank_api_key: '',
-    rerank_model: 'BAAI/bge-reranker-v2-m3',
-    vl_api_key: '',
-    zhipu_api_key: '',
-    kb_mode: 'full',
-    review_enabled: svc.review_enabled,
-    review_model: svc.review_model,
-    parse_engine: svc.parse_engine,
-    chunk_mode: svc.chunk_mode,
-    mineru_api_token: svcKeys.mineru_api_token,
-    mathpix_app_id: svcKeys.mathpix_app_id,
-    mathpix_app_key: svcKeys.mathpix_app_key,
-    chunk_size: svc.chunk_size,
-    chunk_overlap: svc.chunk_overlap,
-    rrf_k: svc.rrf_k,
-    fetch_mult: svc.fetch_mult,
-  })
+
 
   const saveService = async () => {
     try {
-      await api.saveSettings(buildSvcBody())
+      await api.saveSettings(buildSvcBody(svc, svcKeys))
       const g = await api.getSettings()
       setSvc(s => ({ ...s,
         embedding_key_set: !!g.embedding?.api_key_set,
@@ -162,7 +141,7 @@ export default function ServiceSettings() {
         <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2">
           <p className="text-sm font-semibold">知识库服务</p>
           <div className="flex flex-col gap-0.5 px-3 py-2.5 rounded-xl bg-[var(--bg-hover)]">
-            <span className="text-[12px] font-semibold">Qwen/Qwen3-VL-Embedding-8B</span>
+            <span className="text-[12px] font-semibold">{svc.embedding_model}</span>
             <span className="text-[10px] text-dim">统一向量化模型 · 1024 维 · 文字与图片同一向量空间（上传自动切块向量化 + 重排 + 跨模态检索）</span>
           </div>
         </div>
@@ -233,7 +212,7 @@ export default function ServiceSettings() {
             <span className="text-[12px] font-semibold">Qwen/Qwen2.5-72B-Instruct</span>
             <span className="text-[10px] text-dim">全学科知识点校验、概念辨析、主观论述正误判断</span>
           </div>
-          <p className="text-[10px] text-dim">不开启时审核默认调用 deepseek v4 flash</p>
+          <p className="text-[10px] text-dim">审核启用随对话档位：研究档恒开、极速档恒关（开关为预埋位，暂不改变运行行为）</p>
         </div>
 
         {feedback && <span className="text-[11px] text-green-600 flex items-center gap-1"><Check size={11} /> {feedback}</span>}
