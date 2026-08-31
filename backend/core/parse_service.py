@@ -150,8 +150,10 @@ def check_engine_health(stage: str) -> None:
 
 def parse_document(filename: str, data: bytes) -> tuple[str, str]:
     """按设置解析 PDF，失败逐级降级，永不抛出。返回 (text, engine_used)。
-    降级链：配置引擎 → pymupdf4llm → 旧版 file_parser（markitdown/pypdf）。"""
+    降级链：配置引擎 → pymupdf4llm → 旧版 file_parser（markitdown/pypdf）。
+    F8-S3：引擎输出在返回前统一过规范化闸（legacy 回退路径在 file_parser 出口已过）。"""
     from core.file_parser import parse_file
+    from core.text_normalizer import normalize_extracted_text
     check_engine_health("parse")
     engine = configured_engine()
     order = [engine] + [e for e in ("pymupdf4llm",) if e != engine]
@@ -160,9 +162,11 @@ def parse_document(filename: str, data: bytes) -> tuple[str, str]:
         try:
             text = (_ENGINES[eng])(data, filename)
             if text:
-                if eng != engine:
-                    logger.warning("解析引擎 %s 失败已降级 %s（原因见前条日志）", engine, eng)
-                return text, eng
+                text = normalize_extracted_text(text)
+                if text:
+                    if eng != engine:
+                        logger.warning("解析引擎 %s 失败已降级 %s（原因见前条日志）", engine, eng)
+                    return text, eng
             logger.warning("解析引擎 %s 返回空文本，尝试降级", eng)
         except Exception as e:
             last_err = e

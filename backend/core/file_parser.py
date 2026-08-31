@@ -76,15 +76,18 @@ def _parse_fallback(filename: str, data: bytes) -> str:
 
 def parse_file_with_engine(filename: str, data: bytes) -> tuple[str, str]:
     """同 parse_file，但附带引擎标注（F8-S2 可观测性）：markitdown | legacy。
-    parse_file 委托本函数——行为单一事实源，engine 标注只在这里产生。"""
+    parse_file 委托本函数——行为单一事实源，engine 标注只在这里产生。
+    F8-S3：本函数是 legacy 解析的统一出口——输出统一过规范化闸
+    （/api/file-to-text、资源上传等直接调用方一并覆盖）。"""
+    from core.text_normalizer import normalize_extracted_text
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if ext in MARKITDOWN_EXTS:
         text = _parse_with_markitdown(data)
         if text:
-            return text, "markitdown"
+            return normalize_extracted_text(text), "markitdown"
     # fallback
     try:
-        return _parse_fallback(filename, data), "legacy"
+        return normalize_extracted_text(_parse_fallback(filename, data)), "legacy"
     except Exception:
         return "", "legacy"
 
