@@ -120,40 +120,49 @@ def get_settings():
 
 @router.put("/api/settings")
 def save_settings(req: SettingsSave):
-    """保存配置到 settings 表并即时应用到 config 单例；空 key 表示清除（恢复 .env）"""
+    """保存配置到 settings 表并即时应用到 config 单例（T51 语义）：
+    缺省字段不覆写（exclude_unset）；空串不覆写（防默认值/空值打回已存配置）；
+    key 类字段空串=保持不变。本端点不提供清除能力（E-22：settings 表保存即永久压过 .env，清除需清库）。"""
     from core.db import get_settings_repo
     _s = get_settings_repo()
-    _s.set_setting("VECTOR_MODEL", req.vector_model)
-    _s.set_setting("EMBEDDING_BASE_URL", req.embedding_base_url)
-    # 前端不回显已存 Key，空输入 = 保持不变（不清除已保存的 Key）
-    if req.embedding_api_key:
-        _s.set_setting("EMBEDDING_API_KEY", req.embedding_api_key)
-    _s.set_setting("EMBEDDING_MODEL", req.embedding_model)
-    _s.set_setting("EMBEDDING_DIM", str(req.embedding_dim))
-    _s.set_setting("RERANK_BACKEND", req.rerank_backend)
-    _s.set_setting("RERANK_BASE_URL", req.rerank_base_url)
-    if req.rerank_api_key:
-        _s.set_setting("RERANK_API_KEY", req.rerank_api_key)
-    _s.set_setting("RERANK_MODEL", req.rerank_model)
-    if req.vl_api_key:
-        _s.set_setting("VL_API_KEY", req.vl_api_key)
-    if req.zhipu_api_key:
-        _s.set_setting("ZHIPU_API_KEY", req.zhipu_api_key)
-    _s.set_setting("KB_MODE", req.kb_mode)
-    _s.set_setting("REVIEW_ENABLED", "1" if req.review_enabled else "0")
-    _s.set_setting("REVIEW_MODEL", req.review_model)
-    _s.set_setting("PARSE_ENGINE", req.parse_engine)
-    if req.mineru_api_token:
-        _s.set_setting("MINERU_API_TOKEN", req.mineru_api_token)
-    if req.mathpix_app_id:
-        _s.set_setting("MATHPIX_APP_ID", req.mathpix_app_id)
-    if req.mathpix_app_key:
-        _s.set_setting("MATHPIX_APP_KEY", req.mathpix_app_key)
-    _s.set_setting("KB_CHUNK_MODE", req.chunk_mode if req.chunk_mode in ("window", "markdown", "auto") else "auto")
-    _s.set_setting("KB_CHUNK_SIZE", str(max(100, min(4000, int(req.chunk_size or 512)))))
-    _s.set_setting("KB_CHUNK_OVERLAP", str(max(0, min(500, int(req.chunk_overlap or 0)))))
-    _s.set_setting("KB_RRF_K", str(max(1, min(200, int(req.rrf_k or 60)))))
-    _s.set_setting("KB_FETCH_MULT", str(max(1, min(10, int(req.fetch_mult or 3)))))
+    _submitted = req.model_dump(exclude_unset=True)
+    # 非空字符串才允许落库（T51：F8 E4 实证缺省/空串会以 pydantic 默认值覆写已存配置）
+    _vals = {k: v for k, v in _submitted.items() if not (isinstance(v, str) and not v.strip())}
+
+    def _set(cfg_key: str, field: str, val=None):
+        if field in _vals:
+            _s.set_setting(cfg_key, str(_vals[field] if val is None else val))
+
+    _set("VECTOR_MODEL", "vector_model")
+    _set("EMBEDDING_BASE_URL", "embedding_base_url")
+    _set("EMBEDDING_API_KEY", "embedding_api_key")
+    _set("EMBEDDING_MODEL", "embedding_model")
+    if "embedding_dim" in _vals:
+        _s.set_setting("EMBEDDING_DIM", str(_vals["embedding_dim"]))
+    _set("RERANK_BACKEND", "rerank_backend")
+    _set("RERANK_BASE_URL", "rerank_base_url")
+    _set("RERANK_API_KEY", "rerank_api_key")
+    _set("RERANK_MODEL", "rerank_model")
+    _set("VL_API_KEY", "vl_api_key")
+    _set("ZHIPU_API_KEY", "zhipu_api_key")
+    _set("KB_MODE", "kb_mode")
+    if "review_enabled" in _vals:
+        _s.set_setting("REVIEW_ENABLED", "1" if _vals["review_enabled"] else "0")
+    _set("REVIEW_MODEL", "review_model")
+    _set("PARSE_ENGINE", "parse_engine")
+    _set("MINERU_API_TOKEN", "mineru_api_token")
+    _set("MATHPIX_APP_ID", "mathpix_app_id")
+    _set("MATHPIX_APP_KEY", "mathpix_app_key")
+    if "chunk_mode" in _vals:
+        _s.set_setting("KB_CHUNK_MODE", _vals["chunk_mode"] if _vals["chunk_mode"] in ("window", "markdown", "auto") else "auto")
+    if "chunk_size" in _vals:
+        _s.set_setting("KB_CHUNK_SIZE", str(max(100, min(4000, int(_vals["chunk_size"] or 512)))))
+    if "chunk_overlap" in _vals:
+        _s.set_setting("KB_CHUNK_OVERLAP", str(max(0, min(500, int(_vals["chunk_overlap"] or 0)))))
+    if "rrf_k" in _vals:
+        _s.set_setting("KB_RRF_K", str(max(1, min(200, int(_vals["rrf_k"] or 60)))))
+    if "fetch_mult" in _vals:
+        _s.set_setting("KB_FETCH_MULT", str(max(1, min(10, int(_vals["fetch_mult"] or 3)))))
     _apply_dynamic_settings()
     return {"status": "ok", "msg": "配置已保存并即时生效"}
 
