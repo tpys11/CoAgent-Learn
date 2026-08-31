@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useCallback, useRef, useEffect } from 'react'
+import { lazy, Suspense, useState, useCallback, useRef, useEffect, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
 import { PanelLeftOpen, PanelRightOpen } from 'lucide-react'
 
@@ -38,6 +38,7 @@ import { DEFAULT_AGENTS } from './types'
 import { LS, lsGet, lsSet, lsGetJSON, lsSetJSON } from './storage'
 import { api } from './api'
 import { useChatStream } from './hooks/useChatStream'
+import { addPendingScopeTargets, getPendingScopeTargets, resolveScopeSurface, subscribeIngestDone, subscribePending, type ScopeTarget } from './lib/kbScopeBus'
 
 function generateId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }
 // 项目 ID 固定：首次生成后存 localStorage，刷新复用（保证知识库/图谱数据不因刷新丢失）
@@ -91,7 +92,8 @@ function App() {
   // 弹窗默认页签（记忆与进程 / 资源）
   const [projectConfigTab, setProjectConfigTab] = useState<'memory' | 'resource'>('memory')
   const [projectKBId, setProjectKBId] = useState<string | null>(null)
-  const [wizard, setWizard] = useState<{mode: 'project'|'dialogue'; id: string; name?: string} | null>(null)
+  // F10-S1：projectId 供向导内「补传教材」直传课程知识库（dialogue 模式必带）
+  const [wizard, setWizard] = useState<{mode: 'project'|'dialogue'; id: string; name?: string; projectId?: string} | null>(null)
   // 新对话学情画像合成状态：pending 期间禁发（后端 409 + 前端禁用发送按钮）
   const [profilePendingDialogue, setProfilePendingDialogue] = useState<string | null>(null)
   const profilePollTimer = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -277,6 +279,28 @@ function App() {
     if (first) setCurrentDialogueId(first.id)
   }, [dialogues])
 
+  // F10-S1 推进器：上传完成事件（kbScopeBus.ingestDone）→ 拉章节树 → 有树资源进待选择目标（pending）。
+  // 与上传发起点解耦：无论从 UploadPanel 还是向导补传发起、发起点是否已卸载，完成事件都到这里；
+  // 树拉取失败不阻断完成态（面板仅增强非必经，对齐 F9 容错口径）。
+  useEffect(() => subscribeIngestDone((pid, sources) => {
+    api.getKb(pid).then(d => {
+      const docs: any[] = Array.isArray(d) ? d : (d && d.docs) || []
+      const targets = sources
+        .map(src => docs.find((x: any) => (x.source || '') === src))
+        .filter((x: any) => x && Array.isArray(x.tree) && x.tree.length > 0)
+        .map((x: any): ScopeTarget => ({ projectId: pid, source: x.source, tree: x.tree }))
+      addPendingScopeTargets(targets)
+    }).catch(() => { /* 树拉取失败：无树资源不弹选择面板（默认全量语义不受影响） */ })
+  }), [])
+  // F10-S1 待选择目标快照 + 呈现面裁决：向导开着 → 'wizard'（S2 渲染向导步；S1 挂起不喂内联）；
+  // 没开 → 'inline'（当前课程的 pending 下发 UploadPanel 内联面板，F9 行为保持）。
+  // 只喂当前项目：pending 全局持有，跨课程互不串扰。
+  const scopePending = useSyncExternalStore(subscribePending, getPendingScopeTargets)
+  // 配置弹窗可能开的是非当前课程（projectKBId）——内联呈现按弹窗实际课程过滤
+  const configProjectId = projectKBId ?? currentProjectId
+  const inlineScopeTargets: ScopeTarget[] = resolveScopeSurface(!!wizard) === 'inline'
+    ? scopePending.filter(x => x.projectId === configProjectId) : []
+
   const handleProjectKB = useCallback((id: string) => {
     setProjectKBId(id)
     setShowProjectConfig(true)
@@ -294,7 +318,7 @@ function App() {
     // 无画像（[简]）项目：不弹对话画像向导
     const proj = projects.find(p => p.id === projectId)
     if (!(proj && proj.simple)) {
-      setWizard({ mode: 'dialogue', id: d.id, name: d.name })
+      setWizard({ mode: 'dialogue', id: d.id, name: d.name, projectId })
     }
   }, [dialogues, projects])
   const loadDialogueMessages = useCallback((id: string) => {
@@ -498,9 +522,10 @@ function App() {
           onRequestAnalyze={handleRequestAnalyze}
           onClose={() => { setShowProjectConfig(false); setManualSetupOnly(false) }}
           onUploaded={() => setKbRefreshKey(k => k + 1)}
+          scopeTargets={inlineScopeTargets}
         /></LSusp>
       )}
-      {wizard && <LSusp><ProfileWizard mode={wizard.mode} projectName={wizard.name} onClose={() => {
+      {wizard && <LSusp><ProfileWizard mode={wizard.mode} projectName={wizard.name} projectId={wizard.projectId} onClose={() => {
         // 跳过：项目标记为无画像（simple），名字加 [简]，后续对话不弹向导
         if (wizard.mode === 'project') {
           api.saveProjectProfile(wizard.id, {})

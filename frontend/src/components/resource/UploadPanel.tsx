@@ -3,7 +3,9 @@ import { useState, useRef, useEffect } from 'react'
 import { Upload, FileText, Sparkles, Loader2, X } from 'lucide-react'
 import { LS, lsGet } from '../../storage'
 import { api } from '../../api'
-import { RetentionScopePanel, type ScopeNode } from './RetentionScopePanel'
+import { RetentionScopePanel } from './RetentionScopePanel'
+import { consumeScopeTarget, reportIngestDone, type ScopeTarget } from '../../lib/kbScopeBus'
+import { watchUploadProgress } from '../../lib/uploadProgressWatcher'
 
 type UpItem = { id: string; kind: 'file' | 'text'; name: string; file?: File; body?: string }
 
@@ -17,7 +19,14 @@ const FALLBACK_ACCEPT =
   '.txt,.md,.markdown,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml,.pdf,.docx,.pptx,.xlsx,.epub,.png,.jpg,.jpeg,.gif,.webp'
 const FALLBACK_EXTS = FALLBACK_ACCEPT.split(',').map(x => x.replace('.', ''))
 
-export function UploadPanel({ projectId, onUploaded }: { projectId: string | null; onUploaded: () => void }) {
+export function UploadPanel({ projectId, onUploaded, scopeTargets = [] }: {
+  projectId: string | null
+  onUploaded: () => void
+  /** F10-S1：留存选择目标由 App 裁决下发（呈现面=内联面板的 pending 子集）——
+   *  本组件不再自持目标状态，完成事件经 kbScopeBus 上报后由 App 决定内联/向导步呈现，
+   *  同一目标同一时刻只喂一个呈现面（互斥），消费经 bus 撤销。 */
+  scopeTargets?: ScopeTarget[]
+}) {
   const [upMode, setUpMode] = useState<'text' | 'file'>('text')
   // 单步3：后台处理进度条（轮询 /api/knowledge/upload-progress：解析→切分→向量化→增强）
   const [upProgress, setUpProgress] = useState<{ stage: string; pct: number } | null>(null)
@@ -27,8 +36,6 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
   const [upUploading, setUpUploading] = useState('')
   const [upDone, setUpDone] = useState('')
   const [upDropActive, setUpDropActive] = useState(false)
-  // F9-S2：上传成功且有章节结构的文档 → 出「留存范围选择」面板（建议可改、可全选正文）
-  const [scopeTargets, setScopeTargets] = useState<Array<{ source: string; tree: ScopeNode[] }>>([])
   const upFileRef = useRef<HTMLInputElement>(null)
   // 支持格式单一事实源：以后端 upload-constraints 为准（对齐 DeepTutor SupportedFileTypesInfo）。
   // 初始态即回退清单（而非留空）：拉取成功后被端点值覆盖；拉取失败时校验保持开启。
@@ -67,45 +74,6 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
       return [...prev, ...incoming.filter(f => !names.has(f.name)).map(f => ({ id: 'u' + Date.now() + Math.random().toString(36).slice(2, 6), kind: 'file' as const, name: f.name, file: f }))]
     })
   }
-  const STAGE_CN: Record<string, string> = {
-    parsing: '解析文档', chunking: '切分内容块', embedding: '向量化入库', enhancing: '问题增强',
-  }
-
-  /** 后台处理进度轮询：完成/错误/10 分钟超时退出；返回最终入库块数与失败原因（用于汇总文案）。
-   *  F4′修复①：后端 _set_progress_error 写入的失败原因（msg）随 resolve 透传给 alert，
-   *  此前被丢弃——评委只能看到「处理失败或超时」，看不到「未配置 EMBEDDING_API_KEY」。
-   *  F8-S2：进度载荷的 parse_engine（本次解析用的引擎）随 resolve 透传给完成汇总。 */
-  const pollProgress = (source: string) => new Promise<{ ok: boolean; chunks: number; msg?: string; engine?: string }>(resolve => {
-    const started = Date.now()
-    let lastChunks = 0
-    let stable = 0
-    let lastEngine: string | undefined
-    const timer = setInterval(async () => {
-      try {
-        const p: any = await api.uploadProgress(projectId || 'default', source)
-        if (p && p.status === 'error') {
-          clearInterval(timer); setUpProgress(null); resolve({ ok: false, chunks: 0, msg: p.msg }); return
-        }
-        if (p && p.status === 'ok') {
-          if (p.parse_engine) lastEngine = p.parse_engine
-          lastChunks = Math.max(lastChunks, p.total || 0)
-          const pct = p.total ? Math.max(6, Math.min(99, Math.round(100 * p.done / p.total)))
-                              : (p.stage === 'parsing' ? 12 : 40)
-          setUpProgress({ stage: STAGE_CN[p.stage || ''] || '处理中', pct })
-          const embDone = p.stage === 'embedding' && p.done === p.total && p.total > 0
-          if (embDone) stable++; else stable = 0
-          // 完成判定：问题增强收尾（默认链路）或向量化满载连续两拍（增强被关闭的配置）
-          if ((p.stage === 'enhancing' && (p.done || 0) >= (p.total || 1)) || stable >= 2) {
-            clearInterval(timer); setUpProgress(null); resolve({ ok: true, chunks: lastChunks, engine: lastEngine }); return
-          }
-        }
-        if (Date.now() - started > 10 * 60 * 1000) {
-          clearInterval(timer); setUpProgress(null); resolve({ ok: false, chunks: 0 })
-        }
-      } catch { /* 网络抖动：继续轮询（超时兜底） */ }
-    }, 1200)
-  })
-
   const upUploadAll = async () => {
     if (!projectId || !upItems.length || upUploading) return
     let total = 0; let ok = 0
@@ -124,8 +92,12 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
           d = await api.uploadKnowledgeFile(fd)
           if (d && d.status === 'processing') {
             // 单步3：后台处理 + 进度轮询（解析→切分→向量化→问题增强）
+            // F10-S1：轮询判定抽至 lib/uploadProgressWatcher 共享（向导补传同款语义，防双实现漂移）
             setUpProgress({ stage: '解析文档', pct: 6 })
-            const r = await pollProgress(it.name)               // source = 文件名（后端 source=fname）
+            const r = await watchUploadProgress(projectId, it.name, {
+              onProgress: (stage, pct) => setUpProgress({ stage, pct }),
+              onSettled: () => setUpProgress(null),
+            })                                     // source = 文件名（后端 source=fname）
             if (r.ok) { ok++; okSet.add(it.name); total += r.chunks; if (r.engine) engines.add(r.engine) }
             // D3 报错文案：失败项不会出现在知识库（非「稍后可见」），须删资源重传；句式避免 msg 尾「。」+「，」连排
             else alert(`「${it.name}」处理失败${r.msg ? `：${r.msg.replace(/。+$/, '')}` : '：处理超时'}。该条未完成向量化，不会出现在知识库；请删除该资源后重新上传`)
@@ -147,19 +119,10 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
     const failed = count - ok
     const engineSuffix = engines.size ? `（解析引擎：${Array.from(engines).join('、')}）` : ''
     setUpDone(failed === 0 ? `资源已上传：${count} 个资源已接入课程知识库（${total} 个内容块）${engineSuffix}` : `上传完成：${ok} 个成功（${total} 个内容块），${failed} 个失败`)
-    // F9-S2：本轮成功上传的资源里，凡后端给出章节树者 → 留存范围选择面板（建议=树节点 category）
+    // F10-S1：完成事件经 kbScopeBus 广播（活过本组件卸载——「先传文档→关弹窗→再走向导」不丢选择机会）；
+    // 树拉取与呈现面裁决移交 App 推进器。duplicate（内容已存在）不上报：树早已在库，重报会重弹面板。
     const okSources = upItems.filter(it => okSet.has(it.name)).map(it => it.name)
-    if (okSources.length && projectId) {
-      try {
-        const d = await api.getKb(projectId)
-        const docs: any[] = Array.isArray(d) ? d : (d && d.docs) || []
-        const targets = okSources
-          .map(src => docs.find(x => (x.source || '') === src))
-          .filter(x => x && Array.isArray(x.tree) && x.tree.length > 0)
-          .map(x => ({ source: x.source, tree: x.tree }))
-        if (targets.length) setScopeTargets(targets)
-      } catch { /* 树拉取失败不阻断上传完成态（面板仅增强，非必经） */ }
-    }
+    if (okSources.length && projectId) reportIngestDone(projectId, okSources)
     setTimeout(() => onUploaded(), 500)
   }
 
@@ -217,10 +180,12 @@ export function UploadPanel({ projectId, onUploaded }: { projectId: string | nul
       <input ref={upFileRef} type="file" multiple className="hidden"
         accept={accept}
         onChange={e => { if (e.target.files?.length) upAddFiles(e.target.files); e.target.value = '' }} />
-      {/* F9-S2：留存范围选择（上传完成且有章节结构的资源逐个出面板） */}
+      {/* F9-S2 留存范围选择（F10-S1 起目标由 App 裁决下发）：上传完成且有章节结构的资源逐个出面板；
+          apply 完成经 bus 消费撤销——向导步与内联面板共用同一撤销通道，防双呈现 */}
       {scopeTargets.map(t => (
-        <RetentionScopePanel key={t.source} projectId={projectId!} source={t.source}
-          tree={t.tree} apiKey={lsGet(LS.apiKey, '')} onApplied={() => setScopeTargets(prev => prev.filter(x => x.source !== t.source))} />
+        <RetentionScopePanel key={t.source} projectId={t.projectId} source={t.source}
+          tree={t.tree} apiKey={lsGet(LS.apiKey, '')}
+          onApplied={() => consumeScopeTarget(t.projectId, t.source)} />
       ))}
       {/* 待上传列表 + 确认上传 */}
       {upItems.length > 0 && (
