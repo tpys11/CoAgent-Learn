@@ -1,9 +1,12 @@
 ﻿import { useState, useEffect } from 'react'
 import { Database, Check } from 'lucide-react'
 import { api } from '../../api'
+import { lsGet, lsSet } from '../../storage'
+import { LS } from '../../storage'
 import { SERVICE_GROUPS } from './serviceGroups'
 import { buildSvcBody } from './settingsPayload'
 import ZenProviderCard from './ZenProviderCard'
+import { PRESET_IDS, PRESET_LABELS, freePresetLsWrites, freePresetPutBody, standardPresetPutBody } from './presets'
 
 function Section({ icon: Icon, title, desc, children }: { icon: any; title: string; desc?: string; children: React.ReactNode }) {
   return (
@@ -111,6 +114,53 @@ export default function ServiceSettings() {
   return (
     <Section icon={Database} title="AI 服务配置" desc="各能力独立配置，保存后即时生效，无需重启">
       <div className="flex flex-col gap-4">
+        {/* F14-S5b1：预设档切换卡 */}
+        <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2.5">
+          <p className="text-sm font-semibold">预设档</p>
+          <p className="text-[10px] text-dim">快速切换对话/审核/知识库服务的预设配置组合</p>
+          <div className="flex gap-2">
+            {PRESET_IDS.map(id => {
+              const current = lsGet(LS.preset, 'standard')
+              const active = current === id
+              return (
+                <button key={id}
+                  className={`flex-1 px-3 py-2 rounded-xl text-[11px] font-semibold border transition-colors ${
+                    active
+                      ? 'border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)]'
+                      : 'border hairline bg-[var(--bg-panel)] hover:bg-[var(--bg-hover)] text-dim'
+                  }`}
+                  onClick={async () => {
+                    lsSet(LS.preset, id)
+                    if (id === 'free') {
+                      // 免费档：写 LS + PUT body
+                      const zenModel = svc.review_model || 'deepseek-v4-flash-free'
+                      const ls = freePresetLsWrites(zenModel)
+                      lsSet(LS.provider, ls.provider)
+                      lsSet(LS.model, ls.model)
+                      await api.saveSettings(freePresetPutBody())
+                      flash('已切换到免费档')
+                    } else if (id === 'standard') {
+                      // 标准档：恢复默认
+                      lsSet(LS.provider, 'deepseek')
+                      await api.saveSettings(standardPresetPutBody())
+                      flash('已切换到标准档')
+                    } else {
+                      flash('自定义档：手动调整各项配置')
+                    }
+                    setSvc(s => ({ ...s })) // 强制重绘
+                  }}>
+                  {PRESET_LABELS[id]}
+                </button>
+              )
+            })}
+          </div>
+          {lsGet(LS.preset, 'standard') === 'free' && (
+            <p className="text-[10px] text-amber-600 font-medium">
+              ⚠️ 免费档使用 OpenCode Zen 免费模型，对话/审核共用通道。embedding 仍走硅基流动。
+            </p>
+          )}
+        </div>
+
         {/* 硅基流动 API Key */}
         <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2.5">
           <p className="text-sm font-semibold">硅基流动 API Key</p>
