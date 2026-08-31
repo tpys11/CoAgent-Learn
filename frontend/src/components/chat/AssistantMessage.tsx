@@ -1,14 +1,13 @@
 import { useState, useEffect, useRef, useMemo, memo } from 'react'
 import { CheckCircle2, Image as ImageIcon, PenLine, Lightbulb } from 'lucide-react'
 import type { Message, Project } from '../../types'
-import MarkdownIt from 'markdown-it'
+import { renderMd } from '../../lib/mdRenderer'
 import { LS, lsGetJSON } from '../../storage'
 import { SubAgentLiveStrip } from './subagent'
 
-// ---------- 思维链渲染：markdown-it 轻量渲染（html:false 防 XSS，换行生效）----------
-const mdThink = new MarkdownIt({ html: false, linkify: true, breaks: true })
+// ---------- 思维链渲染：统一渲染管线（F8-S5：html:false 防 XSS + KaTeX 公式 + 图表围栏）----------
 /** 导出仅供测试（isFlowNode 同模式）：B3 分片/整文一致性、XSS 守卫 */
-export const renderMd = (text: string) => mdThink.render(text || '')
+export { renderMd }
 // 审核引用标注（5.2）：`[来源:xxx#chunk-N]` 渲染为可点击元素（data-src/data-chunk 供事件委托跳知识库）
 const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 /** 导出仅供测试（isFlowNode 同模式） */

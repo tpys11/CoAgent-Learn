@@ -8,23 +8,22 @@
  * done 收养 resource_id/name 并写入 RES_DLG_KEY 映射，后续消息自动转编辑分支（生命周期：生成一次→续聊即修订）。
  */
 import { useEffect, useRef, useState } from 'react'
-import MarkdownIt from 'markdown-it'
+import { renderMd } from '../../lib/mdRenderer'
 import { ArrowLeft, PanelRightClose, PanelRightOpen, Send, Loader2 } from 'lucide-react'
 import { api } from '../../api'
 import { streamChatResponse } from '../../sse'
 import { LS, lsGet, lsGetJSON, lsSetJSON } from '../../storage'
 import { lineDiff, LineDiff } from './lineDiff'
 
-const md = new MarkdownIt({ html: false, linkify: true, breaks: true })
-
 /** markdown 渲染缓存（照 AssistantMessage.renderMdCached）：历史消息/版本预览 content 不变，
- *  命中即跳过 markdown-it 全量解析——流式期间该组件整体重渲染频繁，缓存是卡顿第二道闸。 */
+ *  命中即跳过 markdown-it 全量解析——流式期间该组件整体重渲染频繁，缓存是卡顿第二道闸。
+ *  F8-S5：渲染走统一管线（KaTeX 公式 + 图表围栏）。 */
 const _mdCache = new Map<string, string>()
 const renderMdCached = (text: string) => {
   const key = text || ''
   let h = _mdCache.get(key)
   if (h === undefined) {
-    h = md.render(key)
+    h = renderMd(key)
     if (_mdCache.size > 200) {
       const first = _mdCache.keys().next().value
       if (first !== undefined) _mdCache.delete(first)

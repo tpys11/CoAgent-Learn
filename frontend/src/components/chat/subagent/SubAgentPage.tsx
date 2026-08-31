@@ -5,12 +5,10 @@
  * 数据：挂载 REST 拉档（回看）+ 订阅 subagentStore 直播（delta 仅直播不入库，end 后切终稿）。
  */
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import MarkdownIt from 'markdown-it'
+import { renderMd } from '../../../lib/mdRenderer'
 import { api } from '../../../api'
 import { subagentStore } from '../../../stores/subagentStore'
 import type { SubAgentRun } from '../../../types'
-
-const md = new MarkdownIt({ html: false, linkify: true, breaks: true })
 
 /** 单次运行的对话段：右=主→子指令（输入姿态）；左=回答（直播delta流式 → 终稿markdown） */
 function RunTranscript({ runId }: { runId: string }) {
@@ -50,7 +48,7 @@ function RunTranscript({ runId }: { runId: string }) {
         <span className="text-[10px] text-dim">{arch?.title || live?.title || '子agent'} · 回答</span>
         {status !== 'running' && output ? (
           <div className="w-full text-sm leading-7">
-            <div className="md-answer-body" dangerouslySetInnerHTML={{ __html: md.render(output) }} />
+            <div className="md-answer-body" dangerouslySetInnerHTML={{ __html: renderMd(output) }} />
           </div>
         ) : (
           <div className="w-full text-sm leading-7 whitespace-pre-wrap break-words text-[var(--text)]">

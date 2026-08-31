@@ -2,14 +2,10 @@
 import { useEffect, useRef, useState, Fragment } from 'react'
 import { KnowledgeTreeGraph } from './KbTreeGraph'
 import SpecialOutputPane from './SpecialOutputPane'
-import MarkdownIt from 'markdown-it'
+import { renderMd as renderSideMd } from '../lib/mdRenderer'
 import { streamChatResponse } from '../sse'
 import { LS, lsGet, lsGetJSON, lsSetJSON } from '../storage'
 import { api } from '../api'
-
-// 第二对话回答渲染：markdown-it 轻量渲染（html:false 防 XSS，breaks 换行生效）
-const mdSide = new MarkdownIt({ html: false, linkify: true, breaks: true })
-const renderSideMd = (text: string) => mdSide.render(text || '')
 
 interface Props {
   messageCount: number

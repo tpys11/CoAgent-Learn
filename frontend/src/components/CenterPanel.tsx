@@ -3,6 +3,7 @@ import { Send, Bot, MessagesSquare, Coins, CheckCircle2, Check, ChevronDown, Upl
 import type { Message, Project } from '../types'
 import { LS, lsGet, lsSet, lsGetJSON } from '../storage'
 import { api } from '../api'
+import { renderMd } from '../lib/mdRenderer'
 import AssistantMessage, { type AssistantMessageProps } from './chat/AssistantMessage'
 
 /** 档位模式：极速/思考/研究（用户时间-质量期望的表达），与「对话流程」区块一致 */
@@ -22,13 +23,22 @@ const getApiKey = () => {
   return keys[prov] || lsGet(LS.apiKey, '')
 }
 
-/** 消息渲染：文件标记段转成卡片，其余文本正常显示 */
+/** 消息渲染（F8-S5 统一管线）：文件标记段先转占位符，markdown 渲染后回填卡片——
+ *  其余文本走统一 markdown 管线（用户粘贴的公式/代码亦可正确显示；html:false 防 XSS）。 */
+const _FILE_MARKER_RE = /【用户上传文件: ([^】]+)】[\s\S]*?(?=【用户上传文件:|$)/g
+const _escapeHtml = (s: string) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+const _fileCardHtml = (marker: string) => {
+  const name = /【用户上传文件: ([^】]+)】/.exec(marker)?.[1] || ''
+  return `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--bg-hover);border-radius:8px;padding:2px 8px;font-size:12px;color:var(--text-muted);margin:2px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> ${_escapeHtml(name)}</span>`
+}
 const renderContent = function(content: string) {
-  const html = content
-    .replace(/【用户上传文件: ([^】]+)】[\s\S]*?(?=【用户上传文件:|$)/g,
-      '<span style="display:inline-flex;align-items:center;gap:4px;background:var(--bg-hover);border-radius:8px;padding:2px 8px;font-size:12px;color:var(--text-muted);margin:2px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> $1</span>')
-    .replace(/\n/g, '<br/>')
-  return html
+  const markers: string[] = []
+  const masked = content.replace(_FILE_MARKER_RE, m => {
+    markers.push(m)
+    return `\n@F8FILE${markers.length - 1}@\n`
+  })
+  return renderMd(masked).replace(/@F8FILE(\d+)@/g, (_m, i) => _fileCardHtml(markers[Number(i)] || ''))
 }
 
 // ---------- B1：props 引用稳定化（memo 生效前提） ----------
