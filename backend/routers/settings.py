@@ -64,6 +64,8 @@ class SettingsSave(BaseModel):
     chunk_overlap: int = 50
     rrf_k: int = 60
     fetch_mult: int = 3
+    zen_api_key: str = ""               # F14-S4c：OpenCode Zen Bearer key
+    review_model_research: str = ""     # F14-S4c：研究档判卷模型（zen: 前缀=Zen 路由，"/"=硅基流动）
 
 
 @router.get("/api/settings")
@@ -101,8 +103,17 @@ def get_settings():
         },
         "review": {
             "model": getattr(_cfg, "REVIEW_MODEL", "Qwen/Qwen2.5-72B-Instruct"),
+            "model_research": getattr(_cfg, "REVIEW_MODEL_RESEARCH", ""),
             "enabled": str(getattr(_cfg, "REVIEW_ENABLED", "0")) == "1",
         },
+        "zen": {
+            "base_url": getattr(_cfg, "ZEN_BASE_URL", ""),
+            "api_key_set": bool(getattr(_cfg, "ZEN_API_KEY", "")),
+            "api_key_hint": _mask_key(getattr(_cfg, "ZEN_API_KEY", "")),
+            "model_main": getattr(_cfg, "ZEN_MODEL_MAIN", ""),
+            "model_review": getattr(_cfg, "ZEN_MODEL_REVIEW", ""),
+        },
+        "chat": {"deepseek_key_set": bool(getattr(_cfg, "DEEPSEEK_API_KEY", ""))},
         "parse": {
             "engine": getattr(_cfg, "PARSE_ENGINE", "pymupdf4llm"),
             "mineru_key_set": bool(getattr(_cfg, "MINERU_API_TOKEN", "")),
@@ -163,6 +174,8 @@ def save_settings(req: SettingsSave):
         _s.set_setting("KB_RRF_K", str(max(1, min(200, int(_vals["rrf_k"] or 60)))))
     if "fetch_mult" in _vals:
         _s.set_setting("KB_FETCH_MULT", str(max(1, min(10, int(_vals["fetch_mult"] or 3)))))
+    _set("ZEN_API_KEY", "zen_api_key")
+    _set("REVIEW_MODEL_RESEARCH", "review_model_research")
     _apply_dynamic_settings()
     return {"status": "ok", "msg": "配置已保存并即时生效"}
 
