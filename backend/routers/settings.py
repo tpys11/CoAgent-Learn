@@ -220,4 +220,42 @@ def test_settings(req: SettingsSave):
             except Exception as e:
                 results["image_embedding"] = {"ok": False, "msg": str(e)[:100]}
 
+    # F14-S3：对话/审核探测——GET /models 原语（零 token 计费，只验「端点可达+key 有效」）
+    _zen_key = getattr(_cfg, "ZEN_API_KEY", "")
+    _chat_targets = [("chat", getattr(_cfg, "DEEPSEEK_BASE_URL", ""), getattr(_cfg, "DEEPSEEK_API_KEY", ""))]
+    if getattr(_cfg, "ZEN_BASE_URL", ""):
+        _chat_targets.append(("chat_zen", getattr(_cfg, "ZEN_BASE_URL", ""), _zen_key))
+    for _name, _base, _key in _chat_targets:
+        if not _key or not _base:
+            results[_name] = {"ok": False, "msg": "未配置 Key"}
+            continue
+        try:
+            _r = _req.get(_base.rstrip("/") + "/models", headers={"Authorization": "Bearer " + _key}, timeout=20)
+            ok = _r.status_code == 200
+            results[_name] = {"ok": ok, "msg": "" if ok else f"HTTP {_r.status_code}"}
+        except Exception as e:
+            results[_name] = {"ok": False, "msg": str(e)[:100]}
+    # 审核行：判卷模型路由复刻 pick_judge_llm（zen: → Zen；"/" → 硅基流动；否则主通道）
+    _review_model = getattr(_cfg, "REVIEW_MODEL_RESEARCH", "")
+    if _review_model:
+        if _review_model.startswith("zen:"):
+            _review_base = getattr(_cfg, "ZEN_BASE_URL", "")
+            _review_key = _zen_key
+        elif "/" in _review_model:
+            _review_base = getattr(_cfg, "VL_BASE_URL", "https://api.siliconflow.cn/v1")
+            _review_key = getattr(_cfg, "VL_API_KEY", "") or _embed_key
+        else:
+            _review_base = getattr(_cfg, "DEEPSEEK_BASE_URL", "")
+            _review_key = getattr(_cfg, "DEEPSEEK_API_KEY", "")
+        if not _review_key or not _review_base:
+            results["review"] = {"ok": False, "msg": "未配置 Key"}
+        else:
+            try:
+                _r = _req.get(_review_base.rstrip("/") + "/models", headers={"Authorization": "Bearer " + _review_key}, timeout=20)
+                ok = _r.status_code == 200
+                results["review"] = {"ok": ok, "msg": "" if ok else f"HTTP {_r.status_code}"}
+            except Exception as e:
+                results["review"] = {"ok": False, "msg": str(e)[:100]}
+    else:
+        results["review"] = {"ok": False, "msg": "未配置审核模型"}
     return {"status": "ok", "results": results}
