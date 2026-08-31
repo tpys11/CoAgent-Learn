@@ -35,6 +35,8 @@ export const LS = {
   domains: 'coagent-domains',
   customWiki: 'coagent-custom-wiki',
   rpWindows: 'coagent-rp-windows',
+  /** F14-S5b2：预设档标记（standard/free/custom） */
+  preset: 'coagent-preset',
 } as const
 
 export function lsGet(key: string, fallback = ''): string {
