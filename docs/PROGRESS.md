@@ -164,6 +164,8 @@
 | **F7** | `docs/dispatch/step-F7.md`（2026-08-31） | 2026-08-31 | **🔶 实证完成，未动代码**（缺陷当前不可复现=环境依赖；总领三处取证被其推翻；但其窗口 bracket 出 **T50 数据丢失事件**——待交代操作序列后改判调查） |
 | **F8** | `docs/dispatch/step-F8.md`（2026-08-31） | 2026-08-31 | **✅ 已完成并经总领验收**（7 commit `24266f5..224f90c` 已 push 两行一致；总领亲证三绿：pytest 409 / vitest 96 / tsc 0；实验全程副本库，真实库 10946 行零接触；纠错记录：「INFO 进不了容器日志」前提不成立，S2 收敛为 engine 透传；交接 `docs/progress/step-F8.md`，遗留 T51/T52 登记） |
 | **F11** | `docs/dispatch/step-F11.md`（2026-08-31） | 2026-08-31 | **✅ 已完成并经总领验收（含 S5）**（5 commit `7aa70bf..9506cbb` 已 push 两行一致；总领亲证 pytest 418 / vitest 117 / tsc 0；**S5 trace-export 冒烟亲测 HTTP 200 + attachment + 五类数据键齐**；正文后审核块 DOM 零残留；真实库零接触；交接 `docs/progress/step-F11.md`） |
+| **F12** | `docs/dispatch/step-F12.md`（提示词 2026-08-31 交付 owner） | 待派发 | **⏳ 提示词已交付**（S0 打头微改：T53/T54/T48-D1-D6/T56 → 记忆单框化 → 三处统一 → 压缩摘要只读对接 → E2E） |
+| **EVAL-1 Wave 2** | 解锁提示词 2026-08-31 交付 owner（F13 不阻塞：KB 内容改 evaltmp 栈 API 上传） | 待 owner 粘贴 | **⏳ 解锁词已交付**（跑 60 用例 → 三指标实测 → 测试数据包组装 → 脚本终稿；副本栈 -p evaltmp + E-37 双 -f 铁律 + MinerU 配额护栏） |
 
 > 分发提示词统一存放于 `docs/dispatch/step-<id>.md`，交接文档归档于 `docs/progress/step-<id>.md`。
 
