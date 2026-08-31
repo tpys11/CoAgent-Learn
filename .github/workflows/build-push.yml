@@ -39,7 +39,11 @@ jobs:
       - name: Backend tests
         env:
           PYTHONPATH: backend
-        run: python -m pytest tests backend/tests -q --tb=short
+        run: |
+          python -m pytest tests backend/tests -q --tb=short -rf --junitxml=pytest-report.xml
+          code=$?
+          python tools/ci_annotations.py pytest-report.xml || true
+          exit $code
 
       - uses: actions/setup-node@v4
         with:
@@ -53,7 +57,10 @@ jobs:
         working-directory: frontend
         run: |
           npx tsc --noEmit
-          npx vitest run
+          npx vitest run --reporter=junit --outputFile=vitest-report.xml
+          code=$?
+          python3 ../tools/ci_annotations.py vitest-report.xml || true
+          exit $code
 
   backend:
     needs: tests
