@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect } from 'react'
 import { Database, Check } from 'lucide-react'
 import { api } from '../../api'
+import type { SettingsData } from '../../types'
 import { LS, lsGet, lsSet, lsRemove, lsGetJSON, lsSetJSON } from '../../storage'
 import { SERVICE_GROUPS, TEST_PRESET_NOTE, KB_MERGE_NOTE, TEST_PRESET_CONFIRM_TEXT, REVIEW_SUB_OFF_NOTE, reviewSubSwitchPutBody } from './serviceGroups'
 import { buildSvcBody } from './settingsPayload'
@@ -31,6 +32,17 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
 }
 
 const inputCls = 'w-full px-3 py-2 input-surface rounded-lg text-xs outline-none focus:border-[var(--accent)]'
+
+/** RA2-S2：Zen key 保存成功后的 UI 状态收敛（纯函数直调——repo 无 jsdom，组件测试不可行，serviceGroups.ts 头注先例）。
+ *  owner 反馈③：保存后输入保留（旧卡保存成功即清空输入=「以为没存上」），zen_key_set/hint 供尾号提示。 */
+export function zenSaveUiState(zenKey: string, g: SettingsData): { zenKey: string; zenKeySet: boolean; zenKeyHint: string } {
+  return { zenKey, zenKeySet: !!g.zen?.api_key_set, zenKeyHint: g.zen?.api_key_hint || '' }
+}
+
+/** RA2-S2：已保存尾号提示文案（GET zen.api_key_hint 已有，后端 _mask_key 尾号掩码）。 */
+export function zenSavedHintText(hint: string): string {
+  return `已保存：${hint}`
+}
 
 /** RA-S3：AI 服务配置 v2——分组渲染（SERVICE_GROUPS 单一事实源）：
  *  对话与审核=测试档卡（Zen key+总开关+审核子开关）；知识库检索=合并栏（一把硅基流动 key
@@ -132,8 +144,10 @@ export default function ServiceSettings() {
       lsSetJSON(LS.providerKeys, { ...keys, zen: zenKey.trim() })
       const g = await api.getSettings()
       lsSet(LS.zenBaseUrl, g.zen?.base_url || '')
-      setSvc(s => ({ ...s, zen_key_set: !!g.zen?.api_key_set, zen_key_hint: g.zen?.api_key_hint || '' }))
-      setZenKey('')
+      // RA2-S2：保存后状态收敛走纯函数——输入保留（旧卡保存即清空输入的交互已删，owner 反馈③）
+      const next = zenSaveUiState(zenKey, g)
+      setZenKey(next.zenKey)
+      setSvc(s => ({ ...s, zen_key_set: next.zenKeySet, zen_key_hint: next.zenKeyHint }))
       flash('Zen Key 已保存')
     } catch {
       flash('保存失败')
@@ -212,22 +226,18 @@ export default function ServiceSettings() {
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <p className="text-[11px] font-medium text-dim">Zen API Key</p>
-                  {svc.zen_key_set && !zenKey ? (
-                    <div className="flex items-center gap-2">
-                      <span className="flex-1 text-xs font-medium text-green-700">✓ 已配置：{svc.zen_key_hint}</span>
-                      <button onClick={() => setZenKey(' ')}
-                        className="text-[10px] text-dim hover:text-[var(--text)] flex-shrink-0">修改</button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <input type="password" autoComplete="new-password" value={zenKey}
-                        placeholder="sk-...（OpenCode Zen Key）"
-                        onChange={e => setZenKey(e.target.value)} className={inputCls} />
-                      <button onClick={saveZenKey} disabled={zenSaving || !zenKey.trim()}
-                        className={`px-4 py-1.5 text-[11px] rounded-lg font-semibold flex-shrink-0 ${zenSaving ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#1a1a1a] text-white'}`}>
-                        {zenSaving ? '保存中…' : '保存'}
-                      </button>
-                    </div>
+                  {/* RA2-S2：输入框常驻不再被「已配置」分支替换——保存后输入保留，尾号提示在其下方（不依赖清空触发） */}
+                  <div className="flex items-center gap-2">
+                    <input type="password" autoComplete="new-password" value={zenKey}
+                      placeholder="sk-...（OpenCode Zen Key）"
+                      onChange={e => setZenKey(e.target.value)} className={inputCls} />
+                    <button onClick={saveZenKey} disabled={zenSaving || !zenKey.trim()}
+                      className={`px-4 py-1.5 text-[11px] rounded-lg font-semibold flex-shrink-0 ${zenSaving ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#1a1a1a] text-white'}`}>
+                      {zenSaving ? '保存中…' : '保存'}
+                    </button>
+                  </div>
+                  {svc.zen_key_set && svc.zen_key_hint && (
+                    <p className="text-[10px] text-green-700">{zenSavedHintText(svc.zen_key_hint)}</p>
                   )}
                 </div>
                 <div className="flex items-center justify-between">
