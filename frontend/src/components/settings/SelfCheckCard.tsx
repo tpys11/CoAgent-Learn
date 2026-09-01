@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Activity, Check, AlertTriangle, X, Loader2 } from 'lucide-react'
 import { api } from '../../api'
 import { LS, lsGet, lsGetJSON } from '../../storage'
+import { resolveChatModel } from '../../hooks/useChatStream'
 import { computeSelfCheckRows } from './selfCheck'
 
 const inputCls = 'w-full px-3 py-2 input-surface rounded-lg text-xs outline-none focus:border-[var(--accent)]'
@@ -27,6 +28,9 @@ export default function SelfCheckCard({ settings, onSaved }: Props) {
     || !!lsGetJSON(LS.providerKeys, {} as Record<string, string>)['']
 
   // RA-S4：svc 为扁平结构（预置缺陷修正：原读嵌套路径恒 undefined）+ 模型名三源
+  // RA3-S1：chat 行模型名与 useChatStream 发送路径同源（同函数同取参表达式）——
+  // 标准档经 resolveChatModel 钉死 dsv4f，不再直读 LS.model（owner 反馈①根因行）
+  const provider = lsGet(LS.provider, 'deepseek')
   const rows = computeSelfCheckRows({
     providerKeySet,
     zenKeySet: !!settings?.zen_key_set,
@@ -35,7 +39,7 @@ export default function SelfCheckCard({ settings, onSaved }: Props) {
     mineruKeySet: !!settings?.mineru_key_set,
     reviewResearchModel: settings?.review_model_research,
     followMain: !!settings?.review_follow_main,
-    chatModel: lsGet(LS.model, 'deepseek-v4-flash-vision-exp'),
+    chatModel: resolveChatModel(provider, lsGet(LS.model, 'deepseek-v4-flash-vision-exp')),
     embeddingModel: settings?.embedding_model,
   })
 

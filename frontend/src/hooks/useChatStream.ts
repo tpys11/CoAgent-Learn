@@ -39,9 +39,15 @@ export function resolveChatBaseUrl(provider: string, zenBaseUrl: string): string
   return providerBaseUrls[provider]
 }
 
-/** RA-S5：主链路模型名解析（纯函数供 vitest）——deepseek 老存量 alias 迁移语义保留；
- * zen 模型名（如 mimo-V2.5 Free / Big Pickle）不在表内原样透传。 */
-export function resolveChatModel(rawModel: string): string {
+/** RA-S5：主链路模型名解析（纯函数供 vitest）。RA3-S1 升级双参——显示（SelfCheckCard）
+ * 与发送（fetch body）同源。标准档：legacy alias 迁移映射保留（老存量名→v4 系），其余
+ * 一律钉死 MODEL_MAIN 常量——LS.model 历史杂值（旧模型下拉残留，如千问名）与合法值无法
+ * 可靠区分，owner 原话「我不是说了要换成 deepseek-v4-flash-vision-exp 吗」，钉死常量才是
+ * 钉死；后端 pipeline_v2.py:170 真认 req.model，前端发对值即治本（杂值直发 DeepSeek API
+ * 会 400）。zen 测试档：模型名由 LS.model 承载（testPresetLsWrites 写入），轮换免疫是
+ * F14 设计原意，空值才兜底 'mimo-V2.5 Free'；zen 分支不吃 alias。 */
+export function resolveChatModel(provider: string, lsModel: string): string {
+  if (provider === 'zen') return lsModel || 'mimo-V2.5 Free'
   const alias: Record<string, string> = {
     'deepseek-chat': 'deepseek-v4-pro',
     'deepseek-reasoner': 'deepseek-v4-pro',
@@ -49,7 +55,7 @@ export function resolveChatModel(rawModel: string): string {
     'deepseek-flash': 'deepseek-v4-flash-vision-exp',
     'deepseek-v4-flash': 'deepseek-v4-flash-vision-exp',   // 老用户存量 localStorage 迁移到视觉版
   }
-  return alias[rawModel] || rawModel
+  return alias[lsModel] || 'deepseek-v4-flash-vision-exp'
 }
 
 /** RB-S2：用户停止的消息终态（纯函数供 vitest）——正文只放停止文案（改道后无
@@ -351,8 +357,9 @@ export function useChatStream(args: UseChatStreamArgs) {
     try {
       const provKeys = lsGetJSON<Record<string, string>>(LS.providerKeys, {})
       const provider = lsGet(LS.provider, 'deepseek')
-      // RA-S5：模型名与 base_url 解析抽纯函数（chatRouting.test 直调）；zen base_url 读 LS 写集
-      const model = resolveChatModel(lsGet(LS.model, 'deepseek-v4-flash-vision-exp'))
+      // RA-S5：模型名与 base_url 解析抽纯函数（chatRouting.test 直调）；zen base_url 读 LS 写集。
+      // RA3-S1：模型名走双参 resolveChatModel——标准档无视 LS.model 杂值钉死（与 SelfCheckCard 显示同源）
+      const model = resolveChatModel(provider, lsGet(LS.model, 'deepseek-v4-flash-vision-exp'))
       const baseUrl = resolveChatBaseUrl(provider, lsGet(LS.zenBaseUrl, ''))
       const apiKey = provKeys[provider] || lsGet(LS.apiKey, '') || undefined
       const ctxSettings = lsGetJSON<Record<string, any>>(LS.contextSettings, {})
