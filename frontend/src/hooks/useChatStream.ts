@@ -21,6 +21,37 @@ export const genRewriteAgent = (attempt: number) => `学习助手·生成（重�
 // RB-S2：用户停止的正文终态文案（草稿在链内可见，正文不收部分内容——owner 底线）
 const STOP_GENERATED_TEXT = '⏹ 已停止生成（草稿见思维链）'
 
+/** RA-S5：主链路 base_url 路由（纯函数供 vitest）——zen 取测试档 LS 写集的 zenBaseUrl；
+ * 空则与改动前现状等价回落 undefined（后端回落 DeepSeek 端点）并 console.warn 提示，不炸；
+ * deepseek/zhipu 硬编码不变（标准档零回归）。 */
+export function resolveChatBaseUrl(provider: string, zenBaseUrl: string): string | undefined {
+  if (provider === 'zen') {
+    if (!zenBaseUrl) {
+      console.warn('[chat] zen provider 缺 LS.zenBaseUrl——base_url 回落 DeepSeek 端点')
+      return undefined
+    }
+    return zenBaseUrl
+  }
+  const providerBaseUrls: Record<string, string> = {
+    deepseek: 'https://api.deepseek.com/v1',
+    zhipu: 'https://open.bigmodel.cn/api/paas/v4',
+  }
+  return providerBaseUrls[provider]
+}
+
+/** RA-S5：主链路模型名解析（纯函数供 vitest）——deepseek 老存量 alias 迁移语义保留；
+ * zen 模型名（如 mimo-V2.5 Free / Big Pickle）不在表内原样透传。 */
+export function resolveChatModel(rawModel: string): string {
+  const alias: Record<string, string> = {
+    'deepseek-chat': 'deepseek-v4-pro',
+    'deepseek-reasoner': 'deepseek-v4-pro',
+    'deepseek-pro': 'deepseek-v4-pro',
+    'deepseek-flash': 'deepseek-v4-flash-vision-exp',
+    'deepseek-v4-flash': 'deepseek-v4-flash-vision-exp',   // 老用户存量 localStorage 迁移到视觉版
+  }
+  return alias[rawModel] || rawModel
+}
+
 /** RB-S2：用户停止的消息终态（纯函数供 vitest）——正文只放停止文案（改道后无
  * 部分内容可拼，正文保持终稿语义）；think 携带当前链快照（草稿可见性落盘）。
  * 末条不是 assistant（异常时序/旧消息残留）则原样返回，绝不误伤。 */
@@ -320,21 +351,9 @@ export function useChatStream(args: UseChatStreamArgs) {
     try {
       const provKeys = lsGetJSON<Record<string, string>>(LS.providerKeys, {})
       const provider = lsGet(LS.provider, 'deepseek')
-      const model = (() => {
-        const m = lsGet(LS.model, 'deepseek-v4-flash-vision-exp')
-        const alias: Record<string, string> = {
-          'deepseek-chat': 'deepseek-v4-pro',
-          'deepseek-reasoner': 'deepseek-v4-pro',
-          'deepseek-pro': 'deepseek-v4-pro',
-          'deepseek-flash': 'deepseek-v4-flash-vision-exp',
-          'deepseek-v4-flash': 'deepseek-v4-flash-vision-exp',   // 老用户存量 localStorage 迁移到视觉版
-        }
-        return alias[m] || m
-      })()
-      const providerBaseUrls: Record<string, string> = {
-        deepseek: 'https://api.deepseek.com/v1',
-        zhipu: 'https://open.bigmodel.cn/api/paas/v4',
-      }
+      // RA-S5：模型名与 base_url 解析抽纯函数（chatRouting.test 直调）；zen base_url 读 LS 写集
+      const model = resolveChatModel(lsGet(LS.model, 'deepseek-v4-flash-vision-exp'))
+      const baseUrl = resolveChatBaseUrl(provider, lsGet(LS.zenBaseUrl, ''))
       const apiKey = provKeys[provider] || lsGet(LS.apiKey, '') || undefined
       const ctxSettings = lsGetJSON<Record<string, any>>(LS.contextSettings, {})
       ctxSettings.typing = true
@@ -364,7 +383,7 @@ export function useChatStream(args: UseChatStreamArgs) {
         try {
           const r = await fetch('/api/chat', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text.trim(), session_id: sessionId.current, client_msg_id: clientMsgId, dialogue_id: did, project_id: currentProjectId, api_key: apiKey, model: model, base_url: providerBaseUrls[provider], settings: mergedSettings, image: (mergedSettings && mergedSettings.image) || undefined, agents: agents, extra_followup_did: secondDialogueId.current, extra_followup_focus: 'expand' }),
+            body: JSON.stringify({ message: text.trim(), session_id: sessionId.current, client_msg_id: clientMsgId, dialogue_id: did, project_id: currentProjectId, api_key: apiKey, model: model, base_url: baseUrl, settings: mergedSettings, image: (mergedSettings && mergedSettings.image) || undefined, agents: agents, extra_followup_did: secondDialogueId.current, extra_followup_focus: 'expand' }),
             signal: ctrl.signal,
           })
           if (r.ok && r.body) { res = r; break }
