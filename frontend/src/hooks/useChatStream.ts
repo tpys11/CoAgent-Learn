@@ -18,6 +18,40 @@ const NET_GIVEUP_TEXT = '⚠️ 网络中断，自动取回未成功（已重试
 export const GEN_DRAFT_AGENT = '学习助手·生成'
 export const genRewriteAgent = (attempt: number) => `学习助手·生成（重写 #${attempt}）`
 
+// RB-S2：用户停止的正文终态文案（草稿在链内可见，正文不收部分内容——owner 底线）
+const STOP_GENERATED_TEXT = '⏹ 已停止生成（草稿见思维链）'
+
+/** RB-S2：用户停止的消息终态（纯函数供 vitest）——正文只放停止文案（改道后无
+ * 部分内容可拼，正文保持终稿语义）；think 携带当前链快照（草稿可见性落盘）。
+ * 末条不是 assistant（异常时序/旧消息残留）则原样返回，绝不误伤。 */
+export function applyStoppedGenerationMessage(
+  prev: Record<string, Message[]>,
+  did: string | null,
+  think: Array<{ agent: string; content: string }>,
+): Record<string, Message[]> {
+  const key = did || ''
+  const arr = prev[key] || []
+  const last = arr[arr.length - 1]
+  if (last && last.role === 'assistant') {
+    return { ...prev, [key]: [...arr.slice(0, -1), { ...last, content: STOP_GENERATED_TEXT, think }] }
+  }
+  return prev
+}
+
+/** RB-S2：done/error 的正文内容来源（纯函数供 vitest）——服务端权威终稿优先；
+ * 无终稿时 error 落正文（⚠️ 前缀）；两者皆无给「处理完成」兜底。 */
+export function resolveFinalContent(reply: string, flowError: string): string {
+  return reply || (flowError ? '⚠️ ' + flowError : '处理完成')
+}
+
+/** RB-S2：断线取回终稿判定（纯函数供 vitest）——取回不变量：正文内容来源=服务端
+ * 落库终稿（服务端只在 done 落库，中断场景取回语义 RB 改道前后不变）；空 content
+ * 与「（系统未生成内容）」占位不算取回成功，继续轮询。 */
+export function isRecoveredAssistantFinal(msgs: Array<{ role: string; content: string }>): boolean {
+  const last = msgs[msgs.length - 1]
+  return !!(last && last.role === 'assistant' && last.content && last.content !== '（系统未生成内容）')
+}
+
 /** 替换最后一条 assistant 消息：发送时插入的空占位（content=''）被结果替换，避免重复气泡。 */
 function upsertLastAssistant(prev: Message[], msg: Message): Message[] {
   const arr = [...prev]
@@ -494,7 +528,7 @@ export function useChatStream(args: UseChatStreamArgs) {
         }
         const thinkArr = mindchainRef.current
         if (debugLine) thinkArr.push({ agent: "运行统计", content: debugLine })
-        const finalContent = finalReply || (flowError ? '⚠️ ' + flowError : '处理完成')
+        const finalContent = resolveFinalContent(finalReply, flowError)
         // A3：打字机降级分支已删除。原 :347-348（streamedRef=true 终稿）与
         // :377-378（直出终稿）两分支内容完全相同，合并为一次无条件同步写入——
         // upsertLastAssistant 是一次同步盲写末条，不存在打字机那种 8 秒异步
@@ -506,16 +540,9 @@ export function useChatStream(args: UseChatStreamArgs) {
     } catch (e: any) {
       console.error('[chat] 网络中断：', e)
       if (userStoppedRef.current) {
-        setAllMessages(prev => {
-          const arr = [...(prev[did || ''] || [])]
-          if (arr.length) {
-            const last = arr[arr.length - 1]
-            if (last.role === 'assistant') {
-              arr[arr.length - 1] = { ...last, content: ((last.content || '').trim() ? last.content + '\n\n' : '') + '⏹ 已停止生成', think: mindchainRef.current }
-            }
-          }
-          return { ...prev, [did || '']: arr }
-        })
+        // RB-S2：停止终态——正文只放停止文案（改道后正文无部分内容可拼，拼接逻辑
+        // 已删；条件守卫收进纯函数防旧消息残留误伤），草稿已在链内随 think 快照保留
+        setAllMessages(prev => applyStoppedGenerationMessage(prev, did, mindchainRef.current))
       } else {
         setAllMessages(prev => ({ ...prev, [did || '']: upsertLastAssistant(prev[did || ''] || [], { role: 'assistant', content: NET_INTERRUPT_TEXT }) }))
         // B4：轮询收敛——上限 20 次（4s 首延迟 + 19×3s ≈ 61s 内），达上限给明确
@@ -528,8 +555,7 @@ export function useChatStream(args: UseChatStreamArgs) {
           fetchOnce: async () => {
             const d = await api.getDialogueMessages(did || '')
             const msgs = (d.messages || []).map((m: any) => ({ role: m.role, content: m.content || '', steps: m.steps, think: m.think }))
-            const last = msgs[msgs.length - 1]
-            if (last && last.role === 'assistant' && last.content && last.content !== '（系统未生成内容）') {
+            if (isRecoveredAssistantFinal(msgs)) {
               setAllMessages(prev => ({ ...prev, [did || '']: msgs }))
               return true
             }
