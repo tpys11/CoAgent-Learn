@@ -196,6 +196,23 @@ const FLOW_NODE_MAP: Record<string, string> = {
 /** 导出仅供测试（streaming.test 同模式）；运行时组件内使用 */
 export const isFlowNode = (name: string): string | null => FLOW_NODE_MAP[name] ?? null
 
+// ---------- RB-S3：草稿节点渲染（草稿即正文形态） ----------
+/** 重写段识别（导出供测试直调；live 链与落库链同一判定口径，防流式→完成样式跳变）：
+ *  agent=学习助手·生成（重写 #N）→ 返回 N，其余 null。 */
+export const rewriteAttemptOf = (agent: string): number | null => {
+  const m = /^学习助手·生成（重写 #(\d+)）$/.exec(agent || '')
+  return m ? Number(m[1]) : null
+}
+
+/** 重写段分隔小标题——「审核未通过 · 第 N 稿」。N=被拒稿的人类序号（重写段序号+1），
+ *  与后端 _format_review_conclusion 的（第 attempt+1 稿）同口径。 */
+export const rewriteDividerLabel = (attempt: number): string => `审核未通过 · 第 ${attempt + 1} 稿`
+
+/** 生成族节点判定（导出供测试直调）：草稿即正文形态 → 流式期启用 markdown 渲染管线
+ *  （StreamingMd/B3 渐进分片，围栏感知）；其余节点维持纯文本流式渲染。 */
+export const isDraftBodyNode = (agent: string): boolean =>
+  agent === '学习助手·生成' || rewriteAttemptOf(agent) !== null
+
 // ---------- F11-S2：审核全程入思维链 ----------
 /** 审核结论的 markdown 文案（历史消息 msg.review → 思维链条目用，导出供测试直调）。
  *  与后端 _format_review_conclusion 同语义（新消息由后端 mindchain 携带审核条目，
@@ -448,6 +465,14 @@ const ReasoningBlock = memo(function ReasoningBlock({ items, streaming, activeAg
   const [answerArrived, setAnswerArrived] = useState(false)
   // 切片④：节点数量上限的「展开全部」开关
   const [expandAll, setExpandAll] = useState(false)
+  // RB-S3：草稿流式滚动跟随——增长面在链体内滚容器（md-think-body max-height 320
+  // 自带 overflow-y，外层 stick-to-bottom 跟不到内滚），最后一个生成族条目的
+  // 内滚容器流式期间钉底，草稿逐字可见
+  const draftBodyRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const el = draftBodyRef.current
+    if (el && streaming) el.scrollTop = el.scrollHeight
+  })
   const prevStreaming = useRef(streaming)
   useEffect(() => {
     if (streaming) {
@@ -455,7 +480,12 @@ const ReasoningBlock = memo(function ReasoningBlock({ items, streaming, activeAg
       setFolded(prev => {
         const next: Record<number, boolean> = {}
         merged.forEach((it, i) => {
-          next[i] = !(activeAgent && displayAgent(it.agent) === displayAgent(activeAgent))
+          // RB-S3：生成族节点（草稿即正文形态）流式期保持展开——owner 跟看草稿与
+          // 被拒旧稿（重写段 agent 名≠activeAgent，原逻辑会把流式中的重写段误折）；
+          // 其余节点维持「activeAgent 展开」逻辑
+          next[i] = isDraftBodyNode(it.agent)
+            ? false
+            : !(activeAgent && displayAgent(it.agent) === displayAgent(activeAgent))
         })
         return next
       })
@@ -521,8 +551,10 @@ const ReasoningBlock = memo(function ReasoningBlock({ items, streaming, activeAg
             const isFolded = !!folded[i]
             const node = isFlowNode(it.agent)          // L1：流程节点名（null = L2 agent 名）
             const l2name = displayAgent(it.agent)
+            const rwa = rewriteAttemptOf(it.agent)     // RB-S3：重写段（分隔标注+视觉分隔）
+            const isLastEntry = i === merged.length - 1
             return (
-            <div key={i} className="animate-[fadeIn_0.15s_ease]">
+            <div key={i} className={"animate-[fadeIn_0.15s_ease]" + (rwa !== null ? " border-t hairline pt-1.5 mt-0.5" : "")}>
               {it.agent && merged.length > 1 && (
                 <button onClick={() => setFolded(f => ({ ...f, [i]: !f[i] }))}
                   className={"flex items-center gap-1 mb-0.5 text-left hover:opacity-80 " +
@@ -530,7 +562,7 @@ const ReasoningBlock = memo(function ReasoningBlock({ items, streaming, activeAg
                       ? 'text-[11px] text-dim'                       // L1 流程节点：弱化灰字
                       : 'text-[11px] font-semibold text-[var(--text)]')}>  {/* L2 agent 名：当前样式 */}
                   <span className="text-[9px] flex-shrink-0">{isFolded ? '▸' : '▾'}</span>
-                  {node ?? l2name}
+                  {rwa !== null ? rewriteDividerLabel(rwa) : (node ?? l2name)}
                   {isFolded && <span className="text-[9px] font-normal text-dim">（已折叠）</span>}
                 </button>
               )}
@@ -545,9 +577,16 @@ const ReasoningBlock = memo(function ReasoningBlock({ items, streaming, activeAg
                 </button>
               )}
               {!isFolded && (
-              <div className="text-[11px] leading-relaxed text-dim md-think-body">
+              <div ref={streaming && isLastEntry && isDraftBodyNode(it.agent) ? draftBodyRef : undefined}
+                className="text-[11px] leading-relaxed text-dim md-think-body">
                 {streaming ? (
-                  <div className="whitespace-pre-wrap break-words">{it.content}</div>
+                  isDraftBodyNode(it.agent) ? (
+                    // RB-S3：草稿即正文形态——复用正文同款 B3 渐进 markdown 管线
+                    //（围栏感知分片，代码块流式期即渲染），完成态仍走整文缓存
+                    <StreamingMd text={it.content} streaming />
+                  ) : (
+                    <div className="whitespace-pre-wrap break-words">{it.content}</div>
+                  )
                 ) : (
                   <div dangerouslySetInnerHTML={{ __html: renderMdCached(it.content) }} />
                 )}
