@@ -285,6 +285,15 @@ def test_settings(req: SettingsSave):
                 results["review"] = {"ok": False, "msg": str(e)[:100]}
     else:
         results["review"] = {"ok": False, "msg": "未配置审核模型"}
+
+    # RA-S4：parse 探测（additive，既有键不删）——配置态判定，零网络零计费：
+    # mineru→token 已配置即 ok；pymupdf4llm→本地引擎恒 ok（失败自动降级本地快道，故 mathpix 亦归此）
+    _parse_engine = getattr(_cfg, "PARSE_ENGINE", "pymupdf4llm")
+    if _parse_engine == "mineru":
+        _mineru_ok = bool(getattr(_cfg, "MINERU_API_TOKEN", ""))
+        results["parse"] = {"ok": _mineru_ok, "msg": "MinerU 已配置" if _mineru_ok else "未配置 MinerU Token"}
+    else:
+        results["parse"] = {"ok": True, "msg": "本地引擎"}
     return {"status": "ok", "results": results}
 
 

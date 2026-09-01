@@ -8,124 +8,107 @@ describe('computeSelfCheckRows', () => {
     embeddingKeySet: true,
     parseEngine: 'pymupdf4llm',
     mineruKeySet: false,
-    kbMode: 'full',
-    vlKeySet: false,
     reviewResearchModel: '',
+    followMain: false,
+    chatModel: 'deepseek-v4-flash-vision-exp',
+    embeddingModel: 'Qwen/Qwen3-VL-Embedding-8B',
   }
 
+  // ── RA-S4 行集结构（四项，vision/kb 删除）──
+  it('rows 恰为四行 chat/review/parse/embedding', () => {
+    expect(computeSelfCheckRows(baseInput).map(r => r.id)).toEqual(['chat', 'review', 'parse', 'embedding'])
+  })
+
+  it('vision 行不存在', () => {
+    expect(computeSelfCheckRows(baseInput).map(r => r.id)).not.toContain('vision')
+  })
+
+  it('kb 行不存在（rerank 说明随行删除，四项之外不展示）', () => {
+    expect(computeSelfCheckRows(baseInput).map(r => r.id)).not.toContain('kb')
+  })
+
+  // ── chat ──
   it('chat row: providerKeySet true -> ok', () => {
-    const rows = computeSelfCheckRows(baseInput)
-    const chat = rows.find(r => r.id === 'chat')
+    const chat = computeSelfCheckRows(baseInput).find(r => r.id === 'chat')
     expect(chat?.state).toBe('ok')
   })
 
   it('chat row: providerKeySet false, zenKeySet true -> ok', () => {
     const input = { ...baseInput, providerKeySet: false, zenKeySet: true }
-    const rows = computeSelfCheckRows(input)
-    const chat = rows.find(r => r.id === 'chat')
-    expect(chat?.state).toBe('ok')
+    expect(computeSelfCheckRows(input).find(r => r.id === 'chat')?.state).toBe('ok')
   })
 
   it('chat row: both false -> missing', () => {
     const input = { ...baseInput, providerKeySet: false, zenKeySet: false }
-    const rows = computeSelfCheckRows(input)
-    const chat = rows.find(r => r.id === 'chat')
-    expect(chat?.state).toBe('missing')
+    expect(computeSelfCheckRows(input).find(r => r.id === 'chat')?.state).toBe('missing')
   })
 
-  it('review row: empty model -> warn', () => {
-    const rows = computeSelfCheckRows(baseInput)
-    const review = rows.find(r => r.id === 'review')
+  it('chat row: 模型名=LS 当前模型名', () => {
+    const input = { ...baseInput, chatModel: 'mimo-V2.5 Free' }
+    expect(computeSelfCheckRows(input).find(r => r.id === 'chat')?.model).toBe('mimo-V2.5 Free')
+  })
+
+  // ── review ──
+  it('review row: follow_main=true -> 主模型通道（模型名列显「主模型」）', () => {
+    const input = { ...baseInput, followMain: true, reviewResearchModel: 'zen:Big Pickle', providerKeySet: true }
+    const review = computeSelfCheckRows(input).find(r => r.id === 'review')
+    expect(review?.state).toBe('ok')
+    expect(review?.model).toBe('主模型')
+  })
+
+  it('review row: follow_main=true 但无对话 key -> warn', () => {
+    const input = { ...baseInput, followMain: true, providerKeySet: false }
+    expect(computeSelfCheckRows(input).find(r => r.id === 'review')?.state).toBe('warn')
+  })
+
+  it('review row: zen: 前缀 -> 模型名=reviewResearchModel 原值，key 齐则 ok', () => {
+    const input = { ...baseInput, reviewResearchModel: 'zen:Big Pickle', zenKeySet: true }
+    const review = computeSelfCheckRows(input).find(r => r.id === 'review')
+    expect(review?.state).toBe('ok')
+    expect(review?.model).toBe('zen:Big Pickle')
+  })
+
+  it('review row: zen: 前缀缺 zen key -> warn', () => {
+    const input = { ...baseInput, reviewResearchModel: 'zen:Big Pickle', zenKeySet: false }
+    expect(computeSelfCheckRows(input).find(r => r.id === 'review')?.state).toBe('warn')
+  })
+
+  it('review row: "/" 模型缺硅基流动 key -> warn', () => {
+    const input = { ...baseInput, reviewResearchModel: 'Qwen/Qwen2.5-72B-Instruct', embeddingKeySet: false }
+    expect(computeSelfCheckRows(input).find(r => r.id === 'review')?.state).toBe('warn')
+  })
+
+  it('review row: 空 research 模型 -> warn「研究档判卷=主模型同源」', () => {
+    const review = computeSelfCheckRows(baseInput).find(r => r.id === 'review')
     expect(review?.state).toBe('warn')
     expect(review?.text).toBe('研究档判卷=主模型同源')
   })
 
-  it('review row: zen: prefix with zenKeySet -> ok', () => {
-    const input = { ...baseInput, reviewResearchModel: 'zen:mimo-v2.5-free', zenKeySet: true }
-    const rows = computeSelfCheckRows(input)
-    const review = rows.find(r => r.id === 'review')
-    expect(review?.state).toBe('ok')
-  })
-
-  it('review row: zen: prefix without zenKeySet -> warn', () => {
-    const input = { ...baseInput, reviewResearchModel: 'zen:mimo-v2.5-free', zenKeySet: false }
-    const rows = computeSelfCheckRows(input)
-    const review = rows.find(r => r.id === 'review')
-    expect(review?.state).toBe('warn')
-  })
-
-  it('review row: "/" in model with embeddingKeySet -> ok', () => {
-    const input = { ...baseInput, reviewResearchModel: 'Qwen/Qwen2.5-72B-Instruct', embeddingKeySet: true }
-    const rows = computeSelfCheckRows(input)
-    const review = rows.find(r => r.id === 'review')
-    expect(review?.state).toBe('ok')
-  })
-
-  it('review row: "/" in model without embeddingKeySet -> warn', () => {
-    const input = { ...baseInput, reviewResearchModel: 'Qwen/Qwen2.5-72B-Instruct', embeddingKeySet: false }
-    const rows = computeSelfCheckRows(input)
-    const review = rows.find(r => r.id === 'review')
-    expect(review?.state).toBe('warn')
-  })
-
-  it('kb row: embeddingKeySet true -> ok', () => {
-    const rows = computeSelfCheckRows(baseInput)
-    const kb = rows.find(r => r.id === 'kb')
-    expect(kb?.state).toBe('ok')
-  })
-
-  it('kb row: embeddingKeySet false -> missing', () => {
-    const input = { ...baseInput, embeddingKeySet: false }
-    const rows = computeSelfCheckRows(input)
-    const kb = rows.find(r => r.id === 'kb')
-    expect(kb?.state).toBe('missing')
-  })
-
-  it('parse row: mineru without key -> warn', () => {
+  // ── parse ──
+  it('parse row: mineru 缺 token -> warn', () => {
     const input = { ...baseInput, parseEngine: 'mineru', mineruKeySet: false }
-    const rows = computeSelfCheckRows(input)
-    const parse = rows.find(r => r.id === 'parse')
-    expect(parse?.state).toBe('warn')
+    expect(computeSelfCheckRows(input).find(r => r.id === 'parse')?.state).toBe('warn')
   })
 
-  it('parse row: mineru with key -> ok', () => {
+  it('parse row: mineru 有 token -> ok', () => {
     const input = { ...baseInput, parseEngine: 'mineru', mineruKeySet: true }
-    const rows = computeSelfCheckRows(input)
-    const parse = rows.find(r => r.id === 'parse')
-    expect(parse?.state).toBe('ok')
+    expect(computeSelfCheckRows(input).find(r => r.id === 'parse')?.state).toBe('ok')
   })
 
-  it('parse row: pymupdf4llm -> ok', () => {
-    const rows = computeSelfCheckRows(baseInput)
-    const parse = rows.find(r => r.id === 'parse')
-    expect(parse?.state).toBe('ok')
+  it('parse row: 模型名=parse_engine 值', () => {
+    const input = { ...baseInput, parseEngine: 'mineru', mineruKeySet: true }
+    expect(computeSelfCheckRows(input).find(r => r.id === 'parse')?.model).toBe('mineru')
   })
 
-  it('vision row: light mode -> off', () => {
-    const input = { ...baseInput, kbMode: 'light' }
-    const rows = computeSelfCheckRows(input)
-    const vision = rows.find(r => r.id === 'vision')
-    expect(vision?.state).toBe('off')
+  // ── embedding ──
+  it('embedding row: key 齐 -> ok；缺 -> missing', () => {
+    expect(computeSelfCheckRows(baseInput).find(r => r.id === 'embedding')?.state).toBe('ok')
+    const missing = computeSelfCheckRows({ ...baseInput, embeddingKeySet: false })
+    expect(missing.find(r => r.id === 'embedding')?.state).toBe('missing')
   })
 
-  it('vision row: full mode with vlKeySet -> ok', () => {
-    const input = { ...baseInput, kbMode: 'full', vlKeySet: true }
-    const rows = computeSelfCheckRows(input)
-    const vision = rows.find(r => r.id === 'vision')
-    expect(vision?.state).toBe('ok')
-  })
-
-  it('vision row: full mode with embeddingKeySet -> ok', () => {
-    const input = { ...baseInput, kbMode: 'full', vlKeySet: false, embeddingKeySet: true }
-    const rows = computeSelfCheckRows(input)
-    const vision = rows.find(r => r.id === 'vision')
-    expect(vision?.state).toBe('ok')
-  })
-
-  it('vision row: full mode without any key -> missing', () => {
-    const input = { ...baseInput, kbMode: 'full', vlKeySet: false, embeddingKeySet: false }
-    const rows = computeSelfCheckRows(input)
-    const vision = rows.find(r => r.id === 'vision')
-    expect(vision?.state).toBe('missing')
+  it('embedding row: 模型名=GET embedding.model', () => {
+    const input = { ...baseInput, embeddingModel: 'BAAI/bge-m3' }
+    expect(computeSelfCheckRows(input).find(r => r.id === 'embedding')?.model).toBe('BAAI/bge-m3')
   })
 })

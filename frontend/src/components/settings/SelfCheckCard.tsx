@@ -1,8 +1,7 @@
 import { useState } from 'react'
 import { Activity, Check, AlertTriangle, X, Loader2 } from 'lucide-react'
 import { api } from '../../api'
-import { lsGetJSON } from '../../storage'
-import { LS } from '../../storage'
+import { LS, lsGet, lsGetJSON } from '../../storage'
 import { computeSelfCheckRows } from './selfCheck'
 
 const inputCls = 'w-full px-3 py-2 input-surface rounded-lg text-xs outline-none focus:border-[var(--accent)]'
@@ -27,15 +26,17 @@ export default function SelfCheckCard({ settings, onSaved }: Props) {
   const providerKeySet = !!lsGetJSON(LS.providerKeys, {} as Record<string, string>)['deepseek']
     || !!lsGetJSON(LS.providerKeys, {} as Record<string, string>)['']
 
+  // RA-S4：svc 为扁平结构（预置缺陷修正：原读嵌套路径恒 undefined）+ 模型名三源
   const rows = computeSelfCheckRows({
     providerKeySet,
-    zenKeySet: !!settings?.zen?.api_key_set,
-    embeddingKeySet: !!settings?.embedding?.api_key_set,
-    parseEngine: settings?.parse?.engine,
-    mineruKeySet: !!settings?.parse?.mineru_key_set,
-    kbMode: settings?.kb_mode,
-    vlKeySet: !!settings?.vl?.api_key_set,
-    reviewResearchModel: settings?.review?.model_research,
+    zenKeySet: !!settings?.zen_key_set,
+    embeddingKeySet: !!settings?.embedding_key_set,
+    parseEngine: settings?.parse_engine,
+    mineruKeySet: !!settings?.mineru_key_set,
+    reviewResearchModel: settings?.review_model_research,
+    followMain: !!settings?.review_follow_main,
+    chatModel: lsGet(LS.model, 'deepseek-v4-flash-vision-exp'),
+    embeddingModel: settings?.embedding_model,
   })
 
   const runProbe = async () => {
@@ -78,6 +79,7 @@ export default function SelfCheckCard({ settings, onSaved }: Props) {
             <div key={r.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--bg-hover)]">
               <Icon size={12} className={s.color} />
               <span className="text-[11px] font-medium flex-1">{r.text}</span>
+              {r.model && <span className="text-[10px] text-dim font-mono flex-shrink-0 max-w-[45%] truncate">{r.model}</span>}
               {probe && (
                 <span className={`text-[10px] ${probe.ok ? 'text-green-600' : 'text-red-500'}`}>
                   {probe.ok ? '✓ 可用' : probe.msg || '不可用'}
