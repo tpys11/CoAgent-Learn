@@ -2,7 +2,7 @@ import { useRef, useState, useCallback, useEffect } from 'react'
 import type { Dispatch, SetStateAction, MutableRefObject } from 'react'
 import type { AgentConfig, Message, Dialogue, ReviewResult } from '../types'
 import { streamChatResponse, type ChatEvent } from '../sse'
-import { drainTake, feedThoughtChunk, newFenceState } from '../streaming'
+import { drainTake, feedThoughtChunk, feedDraftChunk, newFenceState } from '../streaming'
 import { LS, lsGet, lsGetJSON, lsSetJSON } from '../storage'
 import { api } from '../api'
 import { subagentStore } from '../stores/subagentStore'
@@ -12,6 +12,11 @@ const generateId = () => Date.now().toString(36) + Math.random().toString(36).sl
 // B4：断线占位提示与失败终态文案（giveUp 仅替换仍是占位提示的末条）
 const NET_INTERRUPT_TEXT = '⚠️ 网络中断，正在后台继续生成并自动取回结果…'
 const NET_GIVEUP_TEXT = '⚠️ 网络中断，自动取回未成功（已重试 1 分钟）。请检查网络后重新发送。'
+
+// RB-S1：草稿/重写段在思维链中的 agent 命名——与后端 mindchain_entries 同款
+//（done 帧权威替换后 live↔终态同口径的前提）；重写段序号取 SSE 帧 data.attempt。
+export const GEN_DRAFT_AGENT = '学习助手·生成'
+export const genRewriteAgent = (attempt: number) => `学习助手·生成（重写 #${attempt}）`
 
 /** 替换最后一条 assistant 消息：发送时插入的空占位（content=''）被结果替换，避免重复气泡。 */
 function upsertLastAssistant(prev: Message[], msg: Message): Message[] {
@@ -36,6 +41,44 @@ export function applyAnswerResetMessage(prev: Record<string, Message[]>, did: st
     return { ...prev, [key]: [...arr.slice(0, -1), { ...last, content: '' }] }
   }
   return prev
+}
+
+/** RB-S1：草稿 token 入链（纯函数，供 vitest）——向指定 agent 条目追加文本，无则建。
+ * 追加目标取 lastIndexOf（同名多条目时贴最后一节，与 revealTick 既有语义一致）；
+ * 空 chunk 原样返回同一引用（调用方 zero-diff）。 */
+export function applyAnswerTokenToChain(
+  chain: Array<{ agent: string; content: string }>,
+  agent: string,
+  chunk: string,
+): Array<{ agent: string; content: string }> {
+  if (!chunk) return chain
+  const idx = chain.map(x => x.agent).lastIndexOf(agent)
+  const next = chain.slice()
+  if (idx >= 0) next[idx] = { agent, content: next[idx].content + chunk }
+  else next.push({ agent, content: chunk })
+  return next
+}
+
+/** RB-S1：answer_reset 入链（纯函数，供 vitest）——追加重写段条目，旧条目原样保留
+ * （owner 底线：被拒旧稿不得消失）。插入位置=首个「审核」条目之前（owner 时序要求：
+ * 草稿只准出现在思维链审核节点之前），无审核条目则追加末尾；后端 done 权威替换后
+ * 由 mindchain_entries 同款命名条目接棒（S4），live↔终态不断链。
+ * reason 与 SSE 帧对齐保留（当前段名不含 reason，「审核未通过 · 第 N 稿」分隔文案
+ * 由渲染层从段名派生）；同名重写段已存在时不重复建（幂等：重发帧不重复开段）。 */
+export function applyAnswerResetToChain(
+  chain: Array<{ agent: string; content: string }>,
+  attempt: number,
+  reason: string,
+): Array<{ agent: string; content: string }> {
+  void reason
+  const agent = genRewriteAgent(attempt)
+  if (chain.some(x => x.agent === agent)) return chain
+  const entry = { agent, content: '' }
+  const ri = chain.findIndex(x => x.agent === '审核')
+  if (ri < 0) return [...chain, entry]
+  const next = chain.slice()
+  next.splice(ri, 0, entry)
+  return next
 }
 
 // ---------- B4：断线取回轮询（独立函数，vitest 假计时器钉住收敛性） ----------
@@ -117,6 +160,10 @@ export function useChatStream(args: UseChatStreamArgs) {
   const userStoppedRef = useRef(false)
   const requestIdRef = useRef<string | null>(null)
   const fenceRef = useRef(newFenceState())
+  // RB-S1：草稿围栏状态独立于 thought 的 fenceRef（围栏互染陷阱：answer 流含代码
+  // 围栏，共用状态机会互相吞块）+ 当前草稿段的目标 agent 名（reset 后切到重写段）
+  const draftFenceRef = useRef(newFenceState())
+  const draftAgentRef = useRef(GEN_DRAFT_AGENT)
   // B4：断线取回轮询句柄——stop()/卸载/新一轮发送时 cancel（旧实现泄漏且无法终止）
   const pollCtlRef = useRef<{ cancel: () => void } | null>(null)
   useEffect(() => () => {
@@ -149,14 +196,9 @@ export function useChatStream(args: UseChatStreamArgs) {
       pm.text = pm.text.slice(take)
       if (pm.text.length === 0) pendingMindRef.current = null
       setFlowMindchain(prev => {
-        const idx = prev.map(x => x.agent).lastIndexOf(pm.agent)
-        let next: Array<{ agent: string; content: string }>
-        if (idx >= 0) {
-          next = prev.slice()
-          next[idx] = { agent: pm.agent, content: next[idx].content + out }
-        } else {
-          next = [...prev, { agent: pm.agent, content: out }]
-        }
+        // RB-S1：答案排水目标=思维链生成条目（applyAnswerTokenToChain 与原内联
+        // lastIndexOf 追加语义逐字节一致，纯函数抽出供 vitest 直调）
+        const next = applyAnswerTokenToChain(prev, pm.agent, out)
         mindchainRef.current = next
         return next
       })
@@ -225,6 +267,9 @@ export function useChatStream(args: UseChatStreamArgs) {
     userStoppedRef.current = false
     requestIdRef.current = null
     fenceRef.current = newFenceState()
+    // RB-S1：草稿围栏状态与目标段名随新一轮发送重置
+    draftFenceRef.current = newFenceState()
+    draftAgentRef.current = GEN_DRAFT_AGENT
     pendingAnswerRef.current = ''
     pendingMindRef.current = null
     activeDidRef.current = did || null
@@ -360,16 +405,46 @@ export function useChatStream(args: UseChatStreamArgs) {
           if (ch) {
             streamedRef.current = true
             setFlowStatus('正在输出回答…')
-            pendingAnswerRef.current += ch
+            // RB-S1：草稿改道——不再直灌正文（pendingAnswerRef 路径停用，正文只收
+            // done 帧 finalReply，owner 底线「正文只收终稿」）；草稿经独立
+            // draftFenceRef（与 thought 的 fenceRef 物理隔离，围栏互染陷阱）流入
+            // 思维链「学习助手·生成」条目，复用同一 rAF reveal 循环（不另起循环）。
+            // 围栏直通语义（feedDraftChunk）：代码块完整入链，草稿即正文形态。
+            feedDraftChunk(draftFenceRef.current, ch, draftAgentRef.current, (ag, text) => {
+              const cur = pendingMindRef.current
+              if (cur && cur.agent === ag) {
+                cur.text += text
+              } else {
+                pendingMindRef.current = { agent: ag, text }
+              }
+            })
             ensureRevealLoop()
           }
           return
         }
         if (data.type === 'answer_reset') {
-          // A2：审核未通过重新生成——必须先清流式缓冲、再置空气泡 content
-          //（顺序错了会漏字符：reset 前已排队的 token 会残留在新稿里）；
-          // think/steps 保留。attempt 递增仅作区分记录，清空是无条件的。
+          // RB-S1：审核未通过重新生成——A2 时序保持「先清缓冲、再动消息态」。
+          // 改道后语义：旧稿在链内保留（owner 底线：不得消失），链内开重写段新条目
+          // （段名取 SSE 帧 data.attempt），后续草稿 token 流入新段；正文置空语义
+          // 保留（改道后正文本就是空占位，等价「正文从未开始」）。
           pendingAnswerRef.current = ''
+          // 冲 pm 缓冲尾段进旧条目（旧稿完整性）再开新段——顺序反了会因
+          // pendingMindRef 被新段接管而丢旧稿尾字符
+          const leftover = pendingMindRef.current
+          if (leftover && leftover.text) {
+            setFlowMindchain(prev => {
+              const next = applyAnswerTokenToChain(prev, leftover.agent, leftover.text)
+              mindchainRef.current = next
+              return next
+            })
+          }
+          pendingMindRef.current = null
+          setFlowMindchain(prev => {
+            const next = applyAnswerResetToChain(prev, data.attempt, data.reason)
+            mindchainRef.current = next
+            return next
+          })
+          draftAgentRef.current = genRewriteAgent(data.attempt)
           setAllMessages(prev => applyAnswerResetMessage(prev, activeDidRef.current))
           return
         }
