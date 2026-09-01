@@ -74,6 +74,7 @@ def get_settings():
     """返回当前生效配置（key 只回显是否已配置，不回显内容）"""
     from core.config import config as _cfg
     from core.db import get_settings_repo
+    from core.model_provider import MODEL_MAIN  # RA2-S1：函数内延迟导入（CONVENTIONS §1）——主模型实名出接口，自检卡两行同源对照用
     _embed_key = getattr(_cfg, "EMBEDDING_API_KEY", "")
     _vl_key = getattr(_cfg, "VL_API_KEY", "")
     return {
@@ -115,7 +116,8 @@ def get_settings():
             "model_main": getattr(_cfg, "ZEN_MODEL_MAIN", ""),
             "model_review": getattr(_cfg, "ZEN_MODEL_REVIEW", ""),
         },
-        "chat": {"deepseek_key_set": bool(getattr(_cfg, "DEEPSEEK_API_KEY", ""))},
+        # RA2-S1：chat 节 additive main_model——owner 冒烟反馈①②：自检卡需显主模型实名（deepseek-v4-flash-vision-exp）
+        "chat": {"deepseek_key_set": bool(getattr(_cfg, "DEEPSEEK_API_KEY", "")), "main_model": MODEL_MAIN},
         "parse": {
             "engine": getattr(_cfg, "PARSE_ENGINE", "pymupdf4llm"),
             "mineru_key_set": bool(getattr(_cfg, "MINERU_API_TOKEN", "")),

@@ -49,11 +49,12 @@ describe('computeSelfCheckRows', () => {
   })
 
   // ── review ──
-  it('review row: follow_main=true -> 主模型通道（模型名列显「主模型」）', () => {
+  it('review row: follow_main=true -> 主模型通道（RA2-S1：模型名=chat 行同源具体名，禁「主模型」字面量）', () => {
     const input = { ...baseInput, followMain: true, reviewResearchModel: 'zen:Big Pickle', providerKeySet: true }
     const review = computeSelfCheckRows(input).find(r => r.id === 'review')
     expect(review?.state).toBe('ok')
-    expect(review?.model).toBe('主模型')
+    expect(review?.model).toBe('deepseek-v4-flash-vision-exp')
+    expect(review?.model).not.toBe('主模型')
   })
 
   it('review row: follow_main=true 但无对话 key -> warn', () => {
@@ -82,6 +83,47 @@ describe('computeSelfCheckRows', () => {
     const review = computeSelfCheckRows(baseInput).find(r => r.id === 'review')
     expect(review?.state).toBe('warn')
     expect(review?.text).toBe('研究档判卷=主模型同源')
+    // RA2-S1：空 research 判卷回落主模型（pick_judge: REVIEW_MODEL_RESEARCH or MODEL_MAIN），显具体名
+    expect(review?.model).toBe('deepseek-v4-flash-vision-exp')
+  })
+
+  // ── RA2-S1：模型名同源与缺省兜底（owner 反馈①②——chat 行与 review 行 follow_main 同一具体名）──
+  it('RA2-S1: chatModel 缺省 -> chat 行兜底 deepseek-v4-flash-vision-exp（与 backend MODEL_MAIN 同值）', () => {
+    // 完整字面量构造（不写 chatModel 键），模拟消费端未喂
+    const input: SelfCheckInput = {
+      providerKeySet: true,
+      zenKeySet: false,
+      embeddingKeySet: true,
+      parseEngine: 'pymupdf4llm',
+      mineruKeySet: false,
+      reviewResearchModel: '',
+      followMain: false,
+      embeddingModel: 'Qwen/Qwen3-VL-Embedding-8B',
+    }
+    expect(computeSelfCheckRows(input).find(r => r.id === 'chat')?.model).toBe('deepseek-v4-flash-vision-exp')
+  })
+
+  it('RA2-S1: chatModel 缺省 + follow_main -> review 行兜底同一具体名（两行同源）', () => {
+    const input: SelfCheckInput = {
+      providerKeySet: true,
+      zenKeySet: false,
+      embeddingKeySet: true,
+      parseEngine: 'pymupdf4llm',
+      mineruKeySet: false,
+      reviewResearchModel: '',
+      followMain: true,
+      embeddingModel: 'Qwen/Qwen3-VL-Embedding-8B',
+    }
+    const review = computeSelfCheckRows(input).find(r => r.id === 'review')
+    expect(review?.model).toBe('deepseek-v4-flash-vision-exp')
+    expect(review?.model).not.toBe('主模型')
+  })
+
+  it('RA2-S1: 测试档（LS.model=mimo）follow_main -> review 行=chat 行同源显 mimo（两档语义不搅）', () => {
+    const input = { ...baseInput, chatModel: 'mimo-V2.5 Free', followMain: true }
+    const rows = computeSelfCheckRows(input)
+    expect(rows.find(r => r.id === 'chat')?.model).toBe('mimo-V2.5 Free')
+    expect(rows.find(r => r.id === 'review')?.model).toBe('mimo-V2.5 Free')
   })
 
   // ── parse ──

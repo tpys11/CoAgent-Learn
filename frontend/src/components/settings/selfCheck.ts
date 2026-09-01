@@ -15,24 +15,32 @@ export interface SelfCheckInput {
 }
 export interface SelfCheckRow { id: 'chat' | 'review' | 'parse' | 'embedding'
   state: 'ok' | 'warn' | 'missing' | 'off'; text: string; model?: string }
+
+/** RA2-S1：主模型缺省兜底——与 backend core/model_provider.py:11 MODEL_MAIN 同值（GET chat.main_model 可对照）。
+ *  为什么在纯函数内兜底：消费端漏喂 chatModel 时两行仍显具体名，owner 反馈②禁「主模型」字面量复活。 */
+const DEFAULT_MAIN_MODEL = 'deepseek-v4-flash-vision-exp'
+
 export function computeSelfCheckRows(i: SelfCheckInput): SelfCheckRow[] {
   const rows: SelfCheckRow[] = []
-  // chat: providerKeySet||zenKeySet → ok 否则 missing；模型名=LS 当前模型名
+  // RA2-S1：mainModel 是 chat 行与 review 行（follow_main / 空 research 回落）的唯一同源——
+  // 主对话与研究档判卷共用 MODEL_MAIN（pick_judge 同款短路），两行各接各的源会不一致。
+  const mainModel = i.chatModel || DEFAULT_MAIN_MODEL
+  // chat: providerKeySet||zenKeySet → ok 否则 missing；模型名=LS 当前模型名（缺省兜底具体名）
   const chatOk = i.providerKeySet || i.zenKeySet
   rows.push({
     id: 'chat',
     state: chatOk ? 'ok' : 'missing',
     text: chatOk ? '主通道已配置' : '未配置对话 Key',
-    model: i.chatModel,
+    model: mainModel,
   })
-  // review: follow_main=true → 主模型通道（模型名列显「主模型」，与 pick_judge/test 探测同款短路）；
+  // review: follow_main=true → 主模型通道（模型名=同源具体名，owner 反馈②：非「主模型」字面量）；
   //         否则依 reviewResearchModel 前缀路由：zen:→zenKeySet；"/"→embeddingKeySet；其余主通道
   if (i.followMain) {
     rows.push({
       id: 'review',
       state: i.providerKeySet ? 'ok' : 'warn',
       text: i.providerKeySet ? '审核模型已配置' : '审核模型需要对话 Key',
-      model: '主模型',
+      model: mainModel,
     })
   } else if (i.reviewResearchModel) {
     if (i.reviewResearchModel.startsWith('zen:')) {
@@ -66,7 +74,7 @@ export function computeSelfCheckRows(i: SelfCheckInput): SelfCheckRow[] {
       id: 'review',
       state: 'warn',
       text: '研究档判卷=主模型同源',
-      model: '主模型',
+      model: mainModel,  // RA2-S1：空 research 判卷回落主模型，显同源具体名（原「主模型」字面量删除）
     })
   }
   // parse: 模型名=parse_engine 值；mineru 缺 token → warn「本地 pymupdf4llm 兜底可用」
