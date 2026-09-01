@@ -79,10 +79,12 @@ describe('computeSelfCheckRows', () => {
     expect(computeSelfCheckRows(input).find(r => r.id === 'review')?.state).toBe('warn')
   })
 
-  it('review row: 空 research 模型 -> warn「研究档判卷=主模型同源」', () => {
+  it('review row: 空 research 模型 -> warn「审核模型（研究档判卷走主模型）」', () => {
     const review = computeSelfCheckRows(baseInput).find(r => r.id === 'review')
     expect(review?.state).toBe('warn')
-    expect(review?.text).toBe('研究档判卷=主模型同源')
+    // RA2 补充修复（验收打回）：text 也是 owner 反馈②点名的展示面，禁旧短语「研究档判卷=主模型同源」
+    expect(review?.text).toBe('审核模型（研究档判卷走主模型）')
+    expect(review?.text).not.toContain('主模型同源')
     // RA2-S1：空 research 判卷回落主模型（pick_judge: REVIEW_MODEL_RESEARCH or MODEL_MAIN），显具体名
     expect(review?.model).toBe('deepseek-v4-flash-vision-exp')
   })

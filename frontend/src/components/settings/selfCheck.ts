@@ -73,7 +73,7 @@ export function computeSelfCheckRows(i: SelfCheckInput): SelfCheckRow[] {
     rows.push({
       id: 'review',
       state: 'warn',
-      text: '研究档判卷=主模型同源',
+      text: '审核模型（研究档判卷走主模型）',  // RA2 补充修复（验收打回）：旧短语「研究档判卷=主模型同源」是 owner 反馈②点名的展示面
       model: mainModel,  // RA2-S1：空 research 判卷回落主模型，显同源具体名（原「主模型」字面量删除）
     })
   }
