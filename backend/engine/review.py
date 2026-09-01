@@ -42,7 +42,12 @@ def pick_judge_llm(template: str, req):
     from core.base_llm import DeepSeekLLM
     from core.config import config as _cfg
     from engine.pipeline_v2 import _cached_llm
-    model = ((_cfg.REVIEW_MODEL_RESEARCH if template == "研究" else _cfg.REVIEW_MODEL_THINK) or "").strip() or MODEL_MAIN
+    # RA-S1：审核子开关「关=审核时用主模型」——follow_main='1' 时研究档判卷直接用主模型，
+    # 短路下方 zen:/"/" 路由（关闭语义由独立布尔键承载，T51 禁空串写入）
+    if template == "研究" and str(getattr(_cfg, "REVIEW_FOLLOW_MAIN", "0")) == "1":
+        model = MODEL_MAIN
+    else:
+        model = ((_cfg.REVIEW_MODEL_RESEARCH if template == "研究" else _cfg.REVIEW_MODEL_THINK) or "").strip() or MODEL_MAIN
     key = req.api_key or _cfg.DEEPSEEK_API_KEY
     base_url = req.base_url
     if model.startswith("zen:"):

@@ -66,6 +66,7 @@ class SettingsSave(BaseModel):
     fetch_mult: int = 3
     zen_api_key: str = ""               # F14-S4c：OpenCode Zen Bearer key
     review_model_research: str = ""     # F14-S4c：研究档判卷模型（zen: 前缀=Zen 路由，"/"=硅基流动）
+    review_follow_main: bool = False    # RA-S1：审核子开关——true=审核时用主模型（关闭独立审核路由）
 
 
 @router.get("/api/settings")
@@ -105,6 +106,7 @@ def get_settings():
             "model": getattr(_cfg, "REVIEW_MODEL", "Qwen/Qwen2.5-72B-Instruct"),
             "model_research": getattr(_cfg, "REVIEW_MODEL_RESEARCH", ""),
             "enabled": str(getattr(_cfg, "REVIEW_ENABLED", "0")) == "1",
+            "follow_main": str(getattr(_cfg, "REVIEW_FOLLOW_MAIN", "0")) == "1",  # RA-S1：审核子开关回显
         },
         "zen": {
             "base_url": getattr(_cfg, "ZEN_BASE_URL", ""),
@@ -159,6 +161,9 @@ def save_settings(req: SettingsSave):
     _set("KB_MODE", "kb_mode")
     if "review_enabled" in _vals:
         _s.set_setting("REVIEW_ENABLED", "1" if _vals["review_enabled"] else "0")
+    # RA-S1：bool 用 in _vals 显式判断（R14 红线：false 必须能落 0，不能被 exclude_unset 吞掉）
+    if "review_follow_main" in _vals:
+        _s.set_setting("REVIEW_FOLLOW_MAIN", "1" if _vals["review_follow_main"] else "0")
     _set("REVIEW_MODEL", "review_model")
     _set("PARSE_ENGINE", "parse_engine")
     _set("MINERU_API_TOKEN", "mineru_api_token")
@@ -249,8 +254,14 @@ def test_settings(req: SettingsSave):
         except Exception as e:
             results[_name] = {"ok": False, "msg": str(e)[:100]}
     # 审核行：判卷模型路由复刻 pick_judge_llm（zen: → Zen；"/" → 硅基流动；否则主通道）
-    _review_model = getattr(_cfg, "REVIEW_MODEL_RESEARCH", "")
-    if _review_model:
+    # RA-S1：follow_main='1' 时审核=主模型——探测按主通道、研究档模型路由短路（与 pick_judge 同款，
+    # 两处只改一处则 GET/探测回显不一致=自检卡说谎）
+    _follow_main = str(getattr(_cfg, "REVIEW_FOLLOW_MAIN", "0")) == "1"
+    _review_model = "" if _follow_main else getattr(_cfg, "REVIEW_MODEL_RESEARCH", "")
+    if _follow_main:
+        _review_base = getattr(_cfg, "DEEPSEEK_BASE_URL", "")
+        _review_key = getattr(_cfg, "DEEPSEEK_API_KEY", "")
+    elif _review_model:
         if _review_model.startswith("zen:"):
             _review_base = getattr(_cfg, "ZEN_BASE_URL", "")
             _review_key = _zen_key
@@ -260,6 +271,9 @@ def test_settings(req: SettingsSave):
         else:
             _review_base = getattr(_cfg, "DEEPSEEK_BASE_URL", "")
             _review_key = getattr(_cfg, "DEEPSEEK_API_KEY", "")
+    else:
+        _review_base, _review_key = "", ""
+    if _follow_main or _review_model:
         if not _review_key or not _review_base:
             results["review"] = {"ok": False, "msg": "未配置 Key"}
         else:

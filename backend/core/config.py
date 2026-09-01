@@ -54,6 +54,9 @@ class Config:
     KB_FETCH_MULT: int = int(os.getenv("KB_FETCH_MULT", "3"))      # 向量/BM25 召回倍数（top_k×此值）
     # 独立审核模型（走硅基流动）：开关 + 模型；关闭时审核回退主模型快模型（deepseek v4 flash）
     REVIEW_ENABLED: str = os.getenv("REVIEW_ENABLED", "0")
+    # RA-S1：审核子开关「关=审核时用主模型」——T51 空串不覆写，关闭语义无法写
+    # REVIEW_MODEL_RESEARCH=''（会被吞掉=假关闭），故用独立布尔键承载（'1'=判卷直接用主模型）
+    REVIEW_FOLLOW_MAIN: str = os.getenv("REVIEW_FOLLOW_MAIN", "0")
     REVIEW_MODEL: str = os.getenv("REVIEW_MODEL", "Qwen/Qwen2.5-72B-Instruct")
     # 审核判卷模型覆盖（3.5 双 LLM 审核）：空=跟随 core/model_provider.MODEL_MAIN 单一事实源；
     # 研究档可设硅基流动模型名（含"/"，如 Qwen/Qwen2.5-72B-Instruct）+ 设置里配硅基流动 key → 跨厂商判卷
