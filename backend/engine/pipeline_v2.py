@@ -64,10 +64,15 @@ def _sniff_image_mime(b64: str) -> str:
     return "image/png"
 
 
+# RB-S4：检索命中预览 snippet 长度（80→240 增厚；payload 权衡：top3×240 字可控）
+_SEARCH_SNIPPET_LEN = 240
+
+
 def _format_search_detail(meta: dict, results: list) -> str:
     """F11-S1：检索节点内容事件文案——改写 query + top 命中预览（source/chunk/融合分）。
-    纯函数供 pytest 直调；截断防爆：query ≤6 个各 40 字、命中 top3、snippet 80 字、
-    source 60 字——产出长度有界（tests/test_f11_s1_events.py R4 钉住）。
+    纯函数供 pytest 直调；截断防爆：query ≤6 个各 40 字、命中 top3、
+    snippet 240 字（RB-S4 增厚 80→240，常量参数化）、source 60 字——产出长度有界
+    （tests/test_f11_s1_events.py R4 与 tests/test_rb_s4_thickening.py 钉住）。
     markdown 方言仅用粗体/行内码/编号列表（F8 renderMd 管线原生支持）。"""
     m = meta or {}
     qs = [str(q).strip()[:40] for q in (m.get("queries") or [])[:6] if str(q).strip()]
@@ -87,7 +92,7 @@ def _format_search_detail(meta: dict, results: list) -> str:
         sc = r.get("rrf_score")
         if isinstance(sc, (int, float)):
             seg += f"（融合分 {sc}）"
-        snippet = str(r.get("content") or "").strip()[:80]
+        snippet = str(r.get("content") or "").strip()[:_SEARCH_SNIPPET_LEN]
         if snippet:
             seg += f"：{snippet}"
         hits.append(seg)
@@ -313,6 +318,10 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         if plan_thinking.strip():
             mindchain_entries.append({"agent": "学习助手·规划",
                                       "content": plan_thinking.strip()})
+            # RB-S4：规划思考流式化——plan_thinking 原先只进 mindchain_entries，
+            # 流式期规划节点只有一行要点；补发 token 事件让 LLM 规划分析流内可见
+            # （双写已由上方 append 承担，符合 F11「事件+持久」双写纪律）
+            token_queue.put(("token", "学习助手·规划", plan_thinking.strip()))
         _trace("plan", input_digest=req.message[:200],
                output_digest=json.dumps({"complexity": plan["complexity"]}, ensure_ascii=False))
         ctx_steps.append({"agent": "学习助手·规划", "status": "done", "detail": "意图分类完成"})
@@ -446,8 +455,16 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         strategy_id = _os.route(template, t_val)
         strategy_text = _os.directive(strategy_id, t_val)
         _basis = (f"level={assess_score:.2f}" if assess_score is not None else "规则地板")
-        token_queue.put(("token", "输出策略",
-                         f"{_os.strategy_name(strategy_id)} T={t_val:.2f}（{_basis}）"))
+        # RB-S4：策略增厚——一行摘要头 + directive 全文。策略全文挂在本 token 上：
+        # directive 在 :447 才可算，晚于规划事件，不得把计算前移（会改变 T 路由
+        # 依赖的 profile_cache 时序）
+        _strategy_head = f"{_os.strategy_name(strategy_id)} T={t_val:.2f}（{_basis}）"
+        token_queue.put(("token", "输出策略", _strategy_head + "\n" + strategy_text))
+        # RB-S4：策略全文双写 mindchain_entries（F11 双写纪律：只发事件会「闪现后
+        # 消失」——done 权威替换把流式内容打回原形；此前输出策略只有 token 无条目
+        # 正是该坑的存量实例，本笔一并补齐）
+        mindchain_entries.append({"agent": "输出策略",
+                                  "content": _strategy_head + "\n" + strategy_text})
 
         # --- S4 Generate × S5 ReviewGate（研究必开/思考可配/极速关） ---
         from engine.review import (REVIEW_MAX_RETRY, pick_judge_llm, review_claims,
@@ -549,6 +566,7 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         recalled = False   # 召回审核：每轮至多一次（计入同一重试预算，防循环）
         reviewed_info = None
         _review_notes: list = []   # F11-S2：各轮审核结论文本（mindchain 权威终稿汇总用）
+        drafts: list = []          # RB-S4（经批准越界）：各稿正文留存，供思维链重写段补齐
         while True:
             sys_extra = (f"\n【审核反馈·上一稿未通过】{attempt_reasons}。请据此修正后重新完整输出。"
                          if attempt else "")
@@ -561,6 +579,7 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                 cancel_event=cancel_evt,
             )
             reply = "".join(collected)
+            drafts.append(reply)   # RB-S4（经批准越界）：留存本稿正文供重写段补齐
             if cancel_evt.is_set():
                 break
             if not gate_on:
@@ -654,6 +673,23 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         if gen_reasoning_text:
             mindchain_entries.append({"agent": "学习助手·生成",
                                       "content": gen_reasoning_text})
+        # RB-S4（经批准越界，owner/总领 2026-09-02 批准）：草稿/重写段补齐思维链
+        # 权威终稿——done 帧 mindchain 无条件替换前端链（useChatStream :401-408），
+        # 无此块则流式期可见的全部草稿段在完成瞬间消失（owner 底线「被拒旧稿保留
+        # 可见」被打破）。草稿文本只存在于重试环内（collected 每稿清空），S4 三处
+        # 允许区域拿不到，故按派发单 S1 安全设计的授权路径在此最小插入：不触碰
+        # answer/answer_reset 发射行（:463/:645）与重试控制流（attempt 递增/reset
+        # 条件原样）。命名与前端 genRewriteAgent 同款（live↔终态同口径）；首稿并入
+        # 生成条目（merge_consecutive 相邻同名合并）；全部草稿段位于审核条目之前
+        # （owner 时序要求：草稿只准出现在思维链审核节点之前）。
+        for _di, _draft in enumerate(drafts):
+            if not _draft.strip():
+                continue
+            if _di == 0:
+                mindchain_entries.append({"agent": "学习助手·生成", "content": _draft})
+            else:
+                mindchain_entries.append({"agent": f"学习助手·生成（重写 #{_di - 1}）",
+                                          "content": _draft})
         # F11-S2：审核结论入思维链权威终稿（历史回看持久；多轮结论合并一条，时序=生成之后）
         if _review_notes:
             mindchain_entries.append({"agent": "审核",
