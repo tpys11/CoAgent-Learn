@@ -36,6 +36,7 @@
 | **F15** | KnowledgeView 死视图删除（T58，直发微轮；提示词总领出） | 待派发 | 一笔 commit；tsc 0+vitest 全绿+CI 徽章；可与 N5 任意排序 |
 | **R-B** | **思维链改道**（X-2 首批：草稿入链+正文终稿化+规划/策略/检索增厚；owner 底线=正文只收终稿） | **✅ 已验收（靶向）** | **5 commit `249a4e7..e458d3c`；CI 徽章亲核 success=524/228/0；发射行 L480/L664 逐字原样、5 行删除全映射预批项、越界两处有批准与标注；总领亲放变异①恰 1 红→14 绿；vitest 新面 answerChain10+answerReset4+answerTerminal7+chainDraft6；交接九节+6 证据齐**（`step-RB.md`）。遗留：重写 #0 命名 0-based、merge_consecutive 微差——owner 观察点。**F14 S6 重定义为 R-A（测试档）收口 E2E 一并做** |
 | **R-A** | **设置页 v2**（X-2 第二批：测试档+自检四项+合并栏+清理；owner 需求逐条固化） | **✅ 已验收（靶向）** | **5 commit `4aedd86..62969fc`；CI 徽章亲核 success=533/242/0；pipeline_v2/ResourceChatPage 零触碰亲证、review.py 恰为预批分支；变异①亲放恰 2 红→还原 5 绿；小字三串常量化（serviceGroups.ts:13/16/19）+toBe 钉死+挂载亲证（:148/:240/:264）；三处越界申报吻合；交接齐**（`step-RA.md`）。**前提修正认领 ×2**：vl_api_key 空串在 T51 下本不打空（总领派发单前提有误，同值写仍必要）；SelfCheckCard 预置缺陷（嵌套读）顺带修复。**下一步=owner 冒烟测试档（=F14 S6 收口）** |
+| **R-A2** | **R-A 冒烟反馈修复**（owner 4 条：①主模型行应显 dsv4f 非千问 ②审核行显具体名非「主模型」③Zen key 保存后输入被清空=前端 :136 主动清空（后端无病，副本库实证）④气泡缺模型名+bge 展示清算+新增独立审核气泡 Qwen2.5-72B-Instruct） | 提示词已交付 | **🔄 `docs/dispatch/step-RA2.md`（09-01，微轮直发）**——3 子步：S1 自检模型名修正（GET chat.main_model+LS 同源）/S2 输入保留+尾号提示/S3 气泡双联+wikiEntries 例句清算+变异×2 |
 | **X-2** | **二次完整体验与综合优化计划**：owner 亲用 dev 栈（F9 完全体）自由记录（建议 X-A~F 分区随手记）→ 总领出综合优化计划（证据基准 commit+定级+归属步骤映射；**9-5 前抢救项 vs 10 月窗口分流**，兼作 10 月窗口工作稿） | 待 owner 体验 | **⏳ 窗口已排**（N5 后、Wave 2 信号前；预计 owner 1-2h + 总领 1h） |
 
 > 分发提示词统一存放于 `docs/dispatch/step-<id>.md`，交接文档归档于 `docs/progress/step-<id>.md`。历史分发记录（C1…F8 共 20 行）→ 归档 §1.1。
