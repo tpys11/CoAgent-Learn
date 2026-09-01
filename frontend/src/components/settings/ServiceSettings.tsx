@@ -7,7 +7,7 @@ import { SERVICE_GROUPS } from './serviceGroups'
 import { buildSvcBody } from './settingsPayload'
 import ZenProviderCard from './ZenProviderCard'
 import SelfCheckCard from './SelfCheckCard'
-import { PRESET_IDS, PRESET_LABELS, freePresetLsWrites, freePresetPutBody, standardPresetPutBody } from './presets'
+import { PRESET_IDS, PRESET_LABELS, testPresetLsWrites, testPresetPutBody, standardPresetPutBody } from './presets'
 
 function Section({ icon: Icon, title, desc, children }: { icon: any; title: string; desc?: string; children: React.ReactNode }) {
   return (
@@ -135,14 +135,16 @@ export default function ServiceSettings() {
                   }`}
                   onClick={async () => {
                     lsSet(LS.preset, id)
-                    if (id === 'free') {
-                      // 免费档：写 LS + PUT body
-                      const zenModel = svc.review_model || 'deepseek-v4-flash-free'
-                      const ls = freePresetLsWrites(zenModel)
+                    if (id === 'test') {
+                      // RA-S2 过渡态（S3 整卡重排）：测试档=写 LS 写集 + PUT body；zenBaseUrl 空串禁走
+                      const zenBaseUrl = lsGet(LS.zenBaseUrl, '')
+                      if (!zenBaseUrl) { flash('缺少 Zen Base URL，未切换'); return }
+                      const ls = testPresetLsWrites(zenBaseUrl)
                       lsSet(LS.provider, ls.provider)
                       lsSet(LS.model, ls.model)
-                      await api.saveSettings(freePresetPutBody())
-                      flash('已切换到免费档')
+                      lsSet(LS.zenBaseUrl, ls.zenBaseUrl)
+                      await api.saveSettings(testPresetPutBody())
+                      flash('已切换到测试档')
                     } else if (id === 'standard') {
                       // 标准档：恢复默认
                       lsSet(LS.provider, 'deepseek')
@@ -158,7 +160,7 @@ export default function ServiceSettings() {
               )
             })}
           </div>
-          {lsGet(LS.preset, 'standard') === 'free' && (
+          {lsGet(LS.preset, 'standard') === 'test' && (
             <p className="text-[10px] text-amber-600 font-medium">
               ⚠️ 免费档使用 OpenCode Zen 免费模型，对话/审核共用通道。embedding 仍走硅基流动。
             </p>

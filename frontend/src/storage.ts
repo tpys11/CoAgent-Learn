@@ -35,8 +35,10 @@ export const LS = {
   domains: 'coagent-domains',
   customWiki: 'coagent-custom-wiki',
   rpWindows: 'coagent-rp-windows',
-  /** F14-S5b2：预设档标记（standard/free/custom） */
+  /** F14-S5b2/RA-S2：预设档标记（standard/test/custom） */
   preset: 'coagent-preset',
+  /** RA-S2：OpenCode Zen 网关地址（测试档 LS 写集之一；S5 主链路 zen 路由读此键） */
+  zenBaseUrl: 'coagent-zen-base-url',
 } as const
 
 export function lsGet(key: string, fallback = ''): string {
