@@ -174,8 +174,8 @@ export interface StatsData {
 
 export interface SettingsData {
   kb_mode?: string
-  embedding?: { api_key_set?: boolean; api_key_hint?: string }
-  review?: { enabled?: boolean; model?: string }
+  embedding?: { api_key_set?: boolean; api_key_hint?: string; model?: string; base_url?: string }
+  review?: { enabled?: boolean; model?: string; model_research?: string; follow_main?: boolean }
   [key: string]: any
 }
 

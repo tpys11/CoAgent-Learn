@@ -15,7 +15,9 @@ export function buildSvcBody(svc: SvcState, keys: SvcKeys): Record<string, unkno
     embedding_dim: 1024,
     rerank_backend: 'api', rerank_base_url: '', rerank_api_key: '',
     rerank_model: 'BAAI/bge-reranker-v2-m3',
-    vl_api_key: '', zhipu_api_key: '', kb_mode: 'full',
+    // RA-S3：合并栏一把 key 同值写两键——只写 embedding 会漏掉 VL（视觉向量化），
+    // 空串时后端 T51 不覆写兜底，不会打空已有 key
+    vl_api_key: keys.embedding_api_key, zhipu_api_key: '', kb_mode: 'full',
     review_enabled: svc.review_enabled, review_model: svc.review_model,
     parse_engine: svc.parse_engine,
     mineru_api_token: keys.mineru_api_token,

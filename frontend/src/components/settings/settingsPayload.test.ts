@@ -55,4 +55,16 @@ describe('buildSvcBody', () => {
     const body = buildSvcBody(svc, baseKeys)
     expect(body.embedding_base_url).toBe('https://api.siliconflow.cn/v1')
   })
+
+  it('RA-S3：合并栏一把 key 同值写 embedding_api_key 与 vl_api_key', () => {
+    const body = buildSvcBody(baseSvc, baseKeys)
+    expect(body.embedding_api_key).toBe('sk-test')
+    expect(body.vl_api_key).toBe('sk-test')
+  })
+
+  it('RA-S3：空 key 时两键同为空串（后端 T51 空串不覆写兜底，不打空已有 VL key）', () => {
+    const body = buildSvcBody(baseSvc, { ...baseKeys, embedding_api_key: '' })
+    expect(body.embedding_api_key).toBe('')
+    expect(body.vl_api_key).toBe('')
+  })
 })
