@@ -34,7 +34,7 @@
 | **F14** | **AI 服务整合轮**（三层模式首轮） | **S1-S5c ✅ 正式验收** | **S1-S5c 代码验收通过（T2 全套）**：18 commit `0973fa0..e069027` 对照设计 §2；f14 后端 24+vitest 205+tsc 0 双条件；变异②exclude_unset 恰 1 红（F8 E4 钉）+变异①存活=纵深防御；**CI：e069027 failure（probe 测试宿主 .env 依赖）→总领修 `2915e81`→徽章 success ✓**；真实库 10946 未动；dev 栈对齐 `BuMoXeg2`；执行层泄漏五项→E-39；详情 `docs/progress/step-F14.md`。**S6 E2E ⏳ 待 owner 在 f14tmp UI 填 Zen key**（A4/A5 活体，通过即整轮关闭） |
 | **N5** | compose 重钉新镜像 sha + README 拉取口径核对 + **T52 README 假空格提示语（一句，顺带）** + N2③ pull 路径复验 7 项（提示词 F13 收口后出） | 待派发 | 微会话（CI 已自动建镜像——重推免费，只剩钉+验；冷拉取=CANTOPEN 观察点，预案 E-35） |
 | **F15** | KnowledgeView 死视图删除（T58，直发微轮；提示词总领出） | 待派发 | 一笔 commit；tsc 0+vitest 全绿+CI 徽章；可与 N5 任意排序 |
-| **R-B** | **思维链改道**（X-2 首批：草稿入链+正文终稿化+规划/策略/检索增厚；owner 底线=正文只收终稿；方案1前端改道，S4 唯一后端增量） | 提示词已交付 | **🔄 `docs/dispatch/step-RB.md`（09-01，直发十节）**——5 子步：S1 改道核心/S2 终态边界/S3 链渲染/S4 后端增厚（snippet 240+directive 全文+plan_thinking 流式）/S5 变异×2；ResourceChatPage 明确不动（10 月收编）；F14 S6 折本轮收口后 E2E |
+| **R-B** | **思维链改道**（X-2 首批：草稿入链+正文终稿化+规划/策略/检索增厚；owner 底线=正文只收终稿） | **✅ 已验收（靶向）** | **5 commit `249a4e7..e458d3c`；CI 徽章亲核 success=524/228/0；发射行 L480/L664 逐字原样、5 行删除全映射预批项、越界两处有批准与标注；总领亲放变异①恰 1 红→14 绿；vitest 新面 answerChain10+answerReset4+answerTerminal7+chainDraft6；交接九节+6 证据齐**（`step-RB.md`）。遗留：重写 #0 命名 0-based、merge_consecutive 微差——owner 观察点。**F14 S6 重定义为 R-A（测试档）收口 E2E 一并做** |
 | **X-2** | **二次完整体验与综合优化计划**：owner 亲用 dev 栈（F9 完全体）自由记录（建议 X-A~F 分区随手记）→ 总领出综合优化计划（证据基准 commit+定级+归属步骤映射；**9-5 前抢救项 vs 10 月窗口分流**，兼作 10 月窗口工作稿） | 待 owner 体验 | **⏳ 窗口已排**（N5 后、Wave 2 信号前；预计 owner 1-2h + 总领 1h） |
 
 > 分发提示词统一存放于 `docs/dispatch/step-<id>.md`，交接文档归档于 `docs/progress/step-<id>.md`。历史分发记录（C1…F8 共 20 行）→ 归档 §1.1。
