@@ -48,7 +48,7 @@ export const WIKI_ENTRIES: WikiEntry[] = [
     detail: '流式输出让模型边生成边把 Token 推给前端（SSE 或 chunked 流），用户看到"打字机"效果，首字延迟大幅降低。本课程 /api/chat 返回流式响应，前端用 ReadableStream 逐段读取渲染；同时在工作流节点间传递时仍保留完整结构化数据供审核与记忆使用。' },
   { name: 'Embedding（向量化）', theme: '协议与框架', domain: 'Agent 应用与开发',
     intro: '把文本转成高维向量，用"距离"衡量语义相似度',
-    detail: 'Embedding 模型把文本映射到高维向量空间，语义相近的文本向量距离也近。它是 RAG 的基石：文档切片向量化后存入向量库，查询时把问题向量化做相似度检索。常见模型如 bge、text-embedding；向量库如 Chroma、FAISS、pgvector。' },
+    detail: 'Embedding 模型把文本映射到高维向量空间，语义相近的文本向量距离也近。它是 RAG 的基石：文档切片向量化后存入向量库，查询时把问题向量化做相似度检索。常见模型如 Qwen3-VL-Embedding、text-embedding；向量库如 Chroma、FAISS、pgvector。' },
   { name: '向量数据库', theme: '协议与框架', domain: 'Agent 应用与开发',
     intro: '专为向量相似度检索优化的存储引擎',
     detail: '向量数据库以向量为索引核心，提供高效的近似最近邻（ANN）检索。相比普通数据库按字段匹配，它按"语义距离"召回内容。本课程知识库文档切片后向量化存入向量库，检索时支持 Small-to-Big 两阶段重排，保证"强制引用来源"。' },

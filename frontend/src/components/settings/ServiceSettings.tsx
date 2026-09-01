@@ -44,6 +44,24 @@ export function zenSavedHintText(hint: string): string {
   return `已保存：${hint}`
 }
 
+/** RA2-S3：合并栏双气泡数据模型（纯函数直调钉行为——无 jsdom 先例）。
+ *  气泡 A「知识库服务」= owner 指定文案：向量化侧带全名 Qwen/Qwen3-VL-Embedding-8B（1024 维，文字与图片同一
+ *  向量空间）、重排侧 BAAI/bge-reranker-v2-m3——重排器不是向量化模型，必须分开表述（owner 质疑原委）；
+ *  模型组固定且所在文件禁改，故 A 写死。气泡 B「独立审核模型」= GET review.model 动态值——写死会在改
+ *  REVIEW_MODEL 时再次说谎（派发单陷阱），故经入参透传。 */
+export function kbServiceBubbles(reviewModel: string): Array<{ title: string; lines: string[] }> {
+  return [
+    {
+      title: '知识库服务',
+      lines: [
+        '向量化：Qwen/Qwen3-VL-Embedding-8B（1024 维，文字与图片同一向量空间）· 重排：BAAI/bge-reranker-v2-m3',
+        '（上传自动切块向量化 + 重排 + 跨模态检索）',
+      ],
+    },
+    { title: '独立审核模型', lines: [reviewModel] },
+  ]
+}
+
 /** RA-S3：AI 服务配置 v2——分组渲染（SERVICE_GROUPS 单一事实源）：
  *  对话与审核=测试档卡（Zen key+总开关+审核子开关）；知识库检索=合并栏（一把硅基流动 key
  *  同值写 embedding/vl 两键）；文档解析=解析引擎卡。自检卡置顶不属组。 */
@@ -272,9 +290,16 @@ export default function ServiceSettings() {
                   )}
                 </div>
                 <p className="text-[10px] text-dim">{KB_MERGE_NOTE}</p>
-                <div className="flex flex-col gap-0.5 px-3 py-2.5 rounded-xl bg-[var(--bg-hover)]">
-                  <span className="text-[12px] font-semibold">{svc.embedding_model}</span>
-                  <span className="text-[10px] text-dim">统一向量化模型 · 1024 维 · 文字与图片同一向量空间（上传自动切块向量化 + 重排 + 跨模态检索）</span>
+                {/* RA2-S3：单气泡改双联——A=知识库服务（向量化/重排分开表述，owner 指定文案）、B=独立审核模型（GET review.model 动态值） */}
+                <div className="flex flex-col sm:flex-row gap-2">
+                  {kbServiceBubbles(svc.review_model).map(b => (
+                    <div key={b.title} className="flex-1 flex flex-col gap-0.5 px-3 py-2.5 rounded-xl bg-[var(--bg-hover)]">
+                      <span className="text-[12px] font-semibold">{b.title}</span>
+                      {b.lines.map((line, idx) => (
+                        <span key={idx} className="text-[10px] text-dim">{line}</span>
+                      ))}
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
