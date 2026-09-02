@@ -3,6 +3,7 @@ import { Send, Bot, MessagesSquare, Coins, CheckCircle2, Check, ChevronDown, Upl
 import type { Message, Project } from '../types'
 import { LS, lsGet, lsSet, lsGetJSON } from '../storage'
 import { api } from '../api'
+import { resolveAuxCall } from '../models'
 import { renderMd } from '../lib/mdRenderer'
 import AssistantMessage, { type AssistantMessageProps } from './chat/AssistantMessage'
 
@@ -415,12 +416,12 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
     const apiKey = getApiKey()
     if (!apiKey) { c.onRequestKey?.(); return }
     const prov = lsGet(LS.provider, 'deepseek')
-    const baseUrl = prov === 'zhipu' ? 'https://open.bigmodel.cn/api/paas/v4' : 'https://api.deepseek.com/v1'
-    const model = prov === 'zhipu' ? 'glm-4-flash' : 'deepseek-v4-flash-vision-exp'
+    // R-D S5：辅助调用改走注册表镜像（后端 S3 已改注册表决策，base_url/model 传参降级为自洽值）
+    const aux = resolveAuxCall(prov, lsGet(LS.zenBaseUrl, ''))
     const done: string[] = []
     for (const key of keys) {
       try {
-        const r = await api.generateResource({ key, content, api_key: apiKey, base_url: baseUrl, model })
+        const r = await api.generateResource({ key, content, api_key: apiKey, base_url: aux.base_url, model: aux.model })
         if (r?.status === 'ok' && r.content) {
           await api.saveResource({ name: `生成·${r.label}`, content: r.content, project_id: c.currentProject.id, type: 'gen:' + key, append: true })
           done.push(r.label)

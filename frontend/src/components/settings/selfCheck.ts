@@ -2,6 +2,7 @@
  * 「可用」必须由用户显式触发检测（test 端点）后作为覆盖态传入。
  * RA-S4：行集瘦身为四项——主模型(chat)/审核模型(review)/文档解析(parse)/embedding 模型；
  * vision/kb 行删除（owner 四项之外不展示，rerank 说明随 kb 行删除）；每行带 model 字段显示模型名。 */
+import { MODEL_MAIN as DEFAULT_MAIN_MODEL } from '../../models'   // R-D S5：缺省主模型名入注册表镜像（删除本地字面量）
 export interface SelfCheckInput {
   providerKeySet: boolean                 // 前端主通道 key（LS）
   zenKeySet?: boolean                     // 后端 ZEN_API_KEY（GET zen.api_key_set）
@@ -16,10 +17,6 @@ export interface SelfCheckInput {
 }
 export interface SelfCheckRow { id: 'chat' | 'review' | 'parse' | 'embedding'
   state: 'ok' | 'warn' | 'missing' | 'off'; text: string; model?: string }
-
-/** RA2-S1：主模型缺省兜底——与 backend core/model_provider.py:11 MODEL_MAIN 同值（GET chat.main_model 可对照）。
- *  为什么在纯函数内兜底：消费端漏喂 chatModel 时两行仍显具体名，owner 反馈②禁「主模型」字面量复活。 */
-const DEFAULT_MAIN_MODEL = 'deepseek-v4-flash-vision-exp'
 
 export function computeSelfCheckRows(i: SelfCheckInput): SelfCheckRow[] {
   const rows: SelfCheckRow[] = []
