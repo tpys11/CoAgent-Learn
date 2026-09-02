@@ -104,6 +104,10 @@ export interface PresetDomain { name: string; resources: PresetResource[] }
 export const api = {
   getSettings: () => apiFetch<SettingsData>('/api/settings', { cache: 'no-store' }),
   saveSettings: (body: unknown) => apiFetch<any>('/api/settings', jsonInit('PUT', body)),
+  /** RA5-S2：Zen key 专用保存通道（不经通用 saveSettings）——E-40 教训：字段存活不靠约定靠通道。
+   *  通用入口 body 是 unknown 黑盒，未来表单保存路径改动时 zen_api_key 会被静默丢字段；
+   *  专用函数把「该通道只发 zen_api_key」钉在类型签名上（api.test.ts PUT 体契约守卫）。 */
+  saveZenKey: (key: string) => apiFetch<any>('/api/settings', jsonInit('PUT', { zen_api_key: key })),
   testSettings: (body: unknown) => apiFetch<any>('/api/settings/test', jsonInit('POST', body)),
   /** F14-S4f：拉取 Zen /models 名单（服务端代理+TTL 缓存；失败由前端 FALLBACK 兜底） */
   zenModels: () => apiFetch<{ status: string; cached?: boolean; models?: string[]; msg?: string }>(

@@ -185,7 +185,8 @@ export default function ServiceSettings() {
     if (!zenKey.trim()) return
     setZenSaving(true)
     try {
-      await api.saveSettings({ zen_api_key: zenKey.trim() })
+      // RA5-S2：改调专用通道 saveZenKey（不再经通用 saveSettings）——E-40 教训：字段存活不靠约定靠通道
+      await api.saveZenKey(zenKey.trim())
       const keys = lsGetJSON(LS.providerKeys, {} as Record<string, string>)
       lsSetJSON(LS.providerKeys, { ...keys, zen: zenKey.trim() })
       const g = await api.getSettings()
