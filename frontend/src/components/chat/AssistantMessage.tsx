@@ -184,17 +184,37 @@ const displayAgent = (name: string) => {
   return base
 }
 
-/** 闭环六规范·两级标题：L1 流程节点（弱化灰字）映射表——帧名 → 五段式节点名。
- *  映射表外（如「视觉理解」及任何未知名）返回 null = L2 按 agent 名展示（真实数据取证定稿）。 */
+/** 闭环六规范·两级标题：L1 流程节点（弱化灰字）映射表——帧名 → 节点名。
+ *  RC3-S2 废节点治理：仅保留 displayAgent 会截掉真实阶段信息的「·规划/·生成」
+ *  后缀名（映射后仍比裸名多信息）；「知识库管理/学情与记忆管理/审核」等有内容
+ *  链目一律按真实 agent 名独立显示（L2），不再改名归并成「反思」「检索」壳节点
+ *  （owner 反馈①：节点名=真实发生的事）。映射表外任何未知名返回 null = L2 展示。 */
 const FLOW_NODE_MAP: Record<string, string> = {
   '学习助手·规划': '规划',
-  '知识库管理': '检索',
-  '学情与记忆管理': '反思',
-  '审核': '反思',
   '学习助手·生成': '生成',
 }
 /** 导出仅供测试（streaming.test 同模式）；运行时组件内使用 */
 export const isFlowNode = (name: string): string | null => FLOW_NODE_MAP[name] ?? null
+
+/** RC3-S2 导出纯函数（原 ReasoningBlock useMemo 内联逻辑逐字提升，供测试直调）：
+ *  思维链条目归并管线——string 归一 → 「运行统计」剔除 → 完成态空内容剔除
+ *  （无内容节点不渲染；流式期保留 step 帧空占位=进行中标记）→ 相邻同名归并+run_ids 去重。 */
+export const mergeThinkItems = (items: Array<{ agent: string; content: string; run_ids?: string[] }> | string[], streaming?: boolean) => {
+  const list = (items || []).map(it => typeof it === 'string' ? { agent: '', content: it, run_ids: [] as string[] } : { ...it, run_ids: Array.from(new Set(it.run_ids || [])) })
+    .filter(it => it.agent !== '运行统计')
+    .filter(it => streaming || (it.content || '').trim().length > 0)
+  return list.reduce<Array<{ agent: string; content: string; run_ids: string[] }>>((acc, it) => {
+    const dn = displayAgent(it.agent)
+    const last = acc[acc.length - 1]
+    if (last && dn && displayAgent(last.agent) === dn) {
+      if (it.content) last.content = (last.content ? last.content + '\n' : '') + it.content
+      for (const rid of it.run_ids) if (!last.run_ids.includes(rid)) last.run_ids.push(rid)
+      return acc
+    }
+    acc.push({ agent: it.agent, content: it.content, run_ids: [...it.run_ids] })
+    return acc
+  }, [])
+}
 
 // ---------- RB-S3：草稿节点渲染（草稿即正文形态） ----------
 /** 重写段识别（导出供测试直调；live 链与落库链同一判定口径，防流式→完成样式跳变）：
@@ -441,23 +461,9 @@ const StreamingMd = memo(function StreamingMd({ text, streaming }: { text: strin
  *  B1：memo 包裹——流式纯 answer 排水期 think/flow 引用不变 → 本块跳过重渲染；
  *  折叠/展开是内部 state，不受 memo 影响（外部 props 不变时按原样保留）。 */
 const ReasoningBlock = memo(function ReasoningBlock({ items, streaming, activeAgent, activeStatus, flowAgents, hasAnswer }: { items: Array<{ agent: string; content: string; run_ids?: string[] }> | string[]; streaming?: boolean; activeAgent?: string | null; activeStatus?: string; flowAgents?: string[]; hasAnswer?: boolean }) {
-  const merged = useMemo(() => {
-    const list = (items || []).map(it => typeof it === 'string' ? { agent: '', content: it, run_ids: [] as string[] } : { ...it, run_ids: Array.from(new Set(it.run_ids || [])) })
-      .filter(it => it.agent !== '运行统计')
-      // 完成态不显示空内容占位（step 帧的"进行中"标记在流式期有意义，结束后是杂乱光杆标题）
-      .filter(it => streaming || (it.content || '').trim().length > 0)
-    return list.reduce<Array<{ agent: string; content: string; run_ids: string[] }>>((acc, it) => {
-      const dn = displayAgent(it.agent)
-      const last = acc[acc.length - 1]
-      if (last && dn && displayAgent(last.agent) === dn) {
-        if (it.content) last.content = (last.content ? last.content + '\n' : '') + it.content
-        for (const rid of it.run_ids) if (!last.run_ids.includes(rid)) last.run_ids.push(rid)
-        return acc
-      }
-      acc.push({ agent: it.agent, content: it.content, run_ids: [...it.run_ids] })
-      return acc
-    }, [])
-  }, [items])
+  // RC3-S2：归并逻辑提升为导出纯函数 mergeThinkItems（逻辑逐字不变，deps 补 streaming——
+  // 流式翻 false 时空占位即可被过滤，不等下一帧）
+  const merged = useMemo(() => mergeThinkItems(items, streaming), [items, streaming])
   const [open, setOpen] = useState(true)
   // 块级折叠（5.2）：流式中非当前输出的 agent 块折叠为小标题行；完成后整块折叠
   const [folded, setFolded] = useState<Record<number, boolean>>({})
