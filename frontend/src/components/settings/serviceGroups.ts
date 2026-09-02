@@ -15,14 +15,19 @@ export const TEST_PRESET_NOTE =
 /** RA-S3：合并栏小字（owner 指定原文，一字不改） */
 export const KB_MERGE_NOTE = '填写一个key，选用固定的知识库服务与独立审核模型'
 
-/** RA-S3：测试档总开关开启前确认框文案（固定，不可自由发挥——E-22：settings 保存即永久压过 .env） */
-export const TEST_PRESET_CONFIRM_TEXT = '测试档将按固定模型组合覆盖当前配置（保存后永久生效，恢复需手动改回）。确认进入？'
+/** RA4-S2：zenBaseUrl 空守卫持久内联文案（旧瞬时 flash 即 return=开关不亮无反馈根因——owner 反馈②b） */
+export const TEST_PRESET_ZEN_GUARD_NOTE = '请先填写并保存 Zen Key，测试档走 Zen 通道'
 
-/** RA-S3：审核子开关关闭状态文案（owner 指定） */
-export const REVIEW_SUB_OFF_NOTE = '审核时用主模型'
+/** RA4-S2：测试档启用后常驻绿字（模型组实名；owner 拍板点击直切，持久态替代确认框） */
+export const TEST_PRESET_ON_NOTE =
+  '测试档已启用（解析 mineru · embedding qwen3-VL · 主模型 mimo-V2.5 Free · 审核 zen:Big Pickle）'
+
+/** RA4-S2：未启用时常驻灰字 */
+export const TEST_PRESET_OFF_NOTE = '标准档'
 
 /** RA-S3：审核子开关联动——开(独立审核模型)=review_follow_main=false；关(审核时用主模型)=true。
- *  为什么经 follow_main 表达「关」：T51 空串不覆写，写 review_model_research:'' 会被吞掉=假关闭。 */
+ *  为什么经 follow_main 表达「关」：T51 空串不覆写，写 review_model_research:'' 会被吞掉=假关闭。
+ *  RA4-S3：处理器从测试档卡搬迁至合并栏独立审核气泡（reviewSubSwitchPutBody 写法照旧）。 */
 export function reviewSubSwitchPutBody(subSwitchOn: boolean): { review_follow_main: boolean } {
   return { review_follow_main: !subSwitchOn }
 }

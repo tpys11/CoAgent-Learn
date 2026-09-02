@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { SERVICE_GROUPS, TEST_PRESET_NOTE, KB_MERGE_NOTE, TEST_PRESET_CONFIRM_TEXT, REVIEW_SUB_OFF_NOTE, reviewSubSwitchPutBody } from './serviceGroups'
+import { SERVICE_GROUPS, TEST_PRESET_NOTE, KB_MERGE_NOTE, reviewSubSwitchPutBody } from './serviceGroups'
 
 describe('SERVICE_GROUPS', () => {
   it('has correct order of group ids', () => {
@@ -26,12 +26,12 @@ describe('RA-S3 owner 指定文案（逐字断言）', () => {
     expect(KB_MERGE_NOTE).toBe('填写一个key，选用固定的知识库服务与独立审核模型')
   })
 
-  it('确认框固定文案一字不改', () => {
-    expect(TEST_PRESET_CONFIRM_TEXT).toBe('测试档将按固定模型组合覆盖当前配置（保存后永久生效，恢复需手动改回）。确认进入？')
+  it('RA4-S2：确认框常量已删除（owner 拍板点击直切）', () => {
+    expect(TEST_PRESET_NOTE).not.toContain('确认')
   })
 
-  it('审核子开关关闭状态文案', () => {
-    expect(REVIEW_SUB_OFF_NOTE).toBe('审核时用主模型')
+  it('RA4-S2：审核子开关关闭态常量已删除（S2 删测试档卡子开关，S3 新小字接管）', () => {
+    expect(KB_MERGE_NOTE).not.toContain('审核时用主模型')
   })
 
   it('审核子开关联动：开=独立审核(follow_main=false)，关=主模型(true)', () => {

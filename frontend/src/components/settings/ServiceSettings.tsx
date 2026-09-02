@@ -3,7 +3,7 @@ import { Database, Check, X } from 'lucide-react'
 import { api } from '../../api'
 import type { SettingsData } from '../../types'
 import { LS, lsGet, lsSet, lsRemove, lsGetJSON, lsSetJSON } from '../../storage'
-import { SERVICE_GROUPS, TEST_PRESET_NOTE, KB_MERGE_NOTE, TEST_PRESET_CONFIRM_TEXT, REVIEW_SUB_OFF_NOTE, reviewSubSwitchPutBody } from './serviceGroups'
+import { SERVICE_GROUPS, TEST_PRESET_NOTE, KB_MERGE_NOTE, TEST_PRESET_ZEN_GUARD_NOTE, TEST_PRESET_ON_NOTE, TEST_PRESET_OFF_NOTE } from './serviceGroups'
 import { buildSvcBody } from './settingsPayload'
 import { testPresetLsWrites, testPresetPutBody, standardPresetPutBody } from './presets'
 import SelfCheckCard from './SelfCheckCard'
@@ -114,6 +114,9 @@ export default function ServiceSettings() {
   const [zenSaveErr, setZenSaveErr] = useState(false)
   // 测试档总开关态（LS.preset 单一事实源）
   const [testPresetOn, setTestPresetOn] = useState(() => lsGet(LS.preset, 'standard') === 'test')
+  // RA4-S2：依赖链持久反馈——zenBaseUrl 空守卫 amber 常驻 + PUT 失败红字常驻（flash 只做动作回执）
+  const [presetGuardHint, setPresetGuardHint] = useState(false)
+  const [presetFailMsg, setPresetFailMsg] = useState('')
   const [svcSaved, setSvcSaved] = useState(false)
   const [keyEditing, setKeyEditing] = useState(false)
   const [feedback, setFeedback] = useState('')
@@ -202,12 +205,13 @@ export default function ServiceSettings() {
     }
   }
 
-  /** RA-S3：进入测试档——确认框 → 先 PUT（失败中止不写 LS，防 DB/LS 两端漂移）→ 再写 LS 写集。
-   *  zenBaseUrl 空串禁走（S5：zen 路由 base_url 取 LS.zenBaseUrl，空=回落 DeepSeek 端点）。 */
+  /** RA4-S2：进入测试档——owner 拍板取消确认框，点击直接转换；
+   *  先 PUT（失败回弹不写 LS，防 DB/LS 两端漂移）→ 再写 LS 写集。
+   *  zenBaseUrl 空串禁走（S5：zen 路由 base_url 取 LS.zenBaseUrl，空=回落 DeepSeek 端点）——
+   *  守卫从瞬时 flash 改为持久内联 amber（旧版只闪一下即 return=开关不亮无反馈根因）。 */
   const enableTestPreset = async () => {
-    if (!window.confirm(TEST_PRESET_CONFIRM_TEXT)) return
     const zenBaseUrl = lsGet(LS.zenBaseUrl, '')
-    if (!zenBaseUrl) { flash('请先填写并保存 Zen Key（测试档走 Zen 通道）'); return }
+    if (!zenBaseUrl) { setPresetGuardHint(true); return }
     try {
       await api.saveSettings(testPresetPutBody())
       const ls = testPresetLsWrites(zenBaseUrl)
@@ -215,10 +219,14 @@ export default function ServiceSettings() {
       lsSet(LS.provider, ls.provider)
       lsSet(LS.model, ls.model)
       lsSet(LS.zenBaseUrl, ls.zenBaseUrl)
+      setPresetGuardHint(false)
+      setPresetFailMsg('')
       setTestPresetOn(true)
       flash('已进入测试档')
     } catch {
-      flash('保存失败（后端不可达），未进入测试档')
+      // owner 语义「点击直接转换」含失败情形——开关回弹+持久红字，不做半开状态
+      setPresetFailMsg('切换失败（后端不可达），请重试')
+      flashErr('保存失败（后端不可达），未进入测试档')
     }
   }
 
@@ -230,25 +238,16 @@ export default function ServiceSettings() {
       lsSet(LS.preset, 'standard')
       lsSet(LS.provider, 'deepseek')
       lsRemove(LS.model)
+      setPresetFailMsg('')
       setTestPresetOn(false)
       flash('已退出测试档')
     } catch {
-      flash('保存失败（后端不可达）')
+      setPresetFailMsg('退出失败（后端不可达），请重试')
+      flashErr('保存失败（后端不可达）')
     }
   }
 
   const onTestPresetToggle = (v: boolean) => { if (v) void enableTestPreset(); else void disableTestPreset() }
-
-  /** RA-S3：审核子开关——开=独立审核模型（follow_main=false）；关=审核时用主模型（follow_main=true）。 */
-  const onReviewSubSwitch = async (v: boolean) => {
-    try {
-      await api.saveSettings(reviewSubSwitchPutBody(v))
-      setSvc(s => ({ ...s, review_follow_main: !v }))
-      flash(v ? '审核使用独立模型' : REVIEW_SUB_OFF_NOTE)
-    } catch {
-      flash('保存失败（后端不可达）')
-    }
-  }
 
   return (
     <Section icon={Database} title="AI 服务配置" desc="各能力独立配置，保存后即时生效，无需重启">
@@ -270,6 +269,16 @@ export default function ServiceSettings() {
                   <p className="text-sm font-semibold">测试档</p>
                   <Toggle checked={testPresetOn} onChange={onTestPresetToggle} />
                 </div>
+                {/* RA4-S2：三态持久指示——启用绿字/未启用灰字/守卫 amber/失败红字（flash 只做动作回执） */}
+                {testPresetOn ? (
+                  <p className="text-[10px] text-green-700">{TEST_PRESET_ON_NOTE}</p>
+                ) : (
+                  <p className="text-[10px] text-dim">{TEST_PRESET_OFF_NOTE}</p>
+                )}
+                {presetGuardHint && !testPresetOn && (
+                  <p className="text-[10px] text-amber-600">{TEST_PRESET_ZEN_GUARD_NOTE}</p>
+                )}
+                {presetFailMsg && <p className="text-[10px] text-red-500">{presetFailMsg}</p>}
                 <div className="flex flex-col gap-1.5">
                   <p className="text-[11px] font-medium text-dim">Zen API Key</p>
                   {/* RA2-S2：输入框常驻不再被「已配置」分支替换——保存后输入保留，尾号提示在其下方（不依赖清空触发） */}
@@ -289,13 +298,6 @@ export default function ServiceSettings() {
                   {zenSaveErr && (
                     <p className="text-[10px] text-red-500">{zenSaveFailPersistText()}</p>
                   )}
-                </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-[11px] font-medium">审核模型</p>
-                    {svc.review_follow_main && <p className="text-[10px] text-dim">{REVIEW_SUB_OFF_NOTE}</p>}
-                  </div>
-                  <Toggle checked={!svc.review_follow_main} onChange={onReviewSubSwitch} />
                 </div>
                 <p className="text-[10px] text-dim">{TEST_PRESET_NOTE}</p>
               </div>
