@@ -3,7 +3,7 @@ import { Image as ImageIcon, PenLine, Lightbulb } from 'lucide-react'
 import type { Message, Project, ReviewResult } from '../../types'
 import { renderMd } from '../../lib/mdRenderer'
 import { LS, lsGetJSON } from '../../storage'
-import { SubAgentLiveStrip, HitBlocks, splitHitSection } from './subagent'
+import { SubAgentLiveStrip, splitHitSection, hitGuideLabel } from './subagent'
 
 // ---------- 思维链渲染：统一渲染管线（F8-S5：html:false 防 XSS + KaTeX 公式 + 图表围栏）----------
 /** 导出仅供测试（isFlowNode 同模式）：B3 分片/整文一致性、XSS 守卫 */
@@ -588,9 +588,11 @@ const ReasoningBlock = memo(function ReasoningBlock({ items, streaming, activeAg
               <div ref={streaming && isLastEntry && isDraftBodyNode(it.agent) ? draftBodyRef : undefined}
                 className="text-[11px] leading-relaxed text-dim md-think-body">
                 {(() => {
-                  // RC2-S3：命中内容块双写 markdown → 结构化卡片（与观察窗共用 HitBlocks）。
-                  // 无标记内容走既有原渲染路径（字面量保持 RB-S3 结构守卫所钉原样，零行为变化）；
-                  // 命中块只出现在知识库管理节点（非草稿族），命中分支无需 StreamingMd 渐进管线
+                  // RC3-S3：命中内容块卡片迁移进检索观察窗（🛰 按钮/↗ 点开即见，可展开全文，
+                  // 刷新经 run_ids→REST 档案回看仍在）——思维链面只留一行定长短指引
+                  // （owner 反馈②「不是出现在这个地方，而是点开检索视窗里面」）。
+                  // splitHitSection 的 md 解析契约保持（后端双写不变，只改渲染位置）；
+                  // 无标记内容走既有原渲染路径（字面量保持 RB-S3 结构守卫所钉原样，零行为变化）
                   const sec = splitHitSection(it.content)
                   if (sec.hits.length === 0) {
                     return (<>
@@ -613,7 +615,7 @@ const ReasoningBlock = memo(function ReasoningBlock({ items, streaming, activeAg
                     ) : (
                       <div dangerouslySetInnerHTML={{ __html: renderMdCached(sec.head) }} />
                     )}
-                    <HitBlocks hits={sec.hits} />
+                    <div className="text-[10px] text-dim my-1">{hitGuideLabel(sec.hits.length)}</div>
                   </>)
                 })()}
               </div>

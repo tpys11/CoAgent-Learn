@@ -18,6 +18,12 @@ export const hitBlocksFromEvents = (events: RunRowEvent[]): HitBlock[] => {
 /** 后端 _format_hit_blocks_md 的区段标记（双写纪律：done 权威替换后仍在此文本里） */
 export const HIT_SECTION_MARK = '**命中内容块**：'
 
+/** RC3-S3：思维链面指引行——命中卡片只渲染在检索观察窗内（点开 ↗ 即见、可展开全文、
+ *  刷新经 REST 档案回看仍在；owner 反馈②「不是出现在这个地方，而是点开检索视窗里面」）。
+ *  思维链面只留一行定长短文案（载荷截断防爆），解析契约 splitHitSection 保持不变。 */
+export const hitGuideLabel = (count: number): string =>
+  `命中 ${count} 条 · 详见检索观察窗 ↗`
+
 /** 思维链面薄适配：双写 markdown → 结构化命中块 + 其余正文。
  * 纯函数；无标记的内容原样返回（hits=[]，调用方走既有渲染零行为变化）。 */
 export const splitHitSection = (content: string): { head: string; hits: HitBlock[] } => {
