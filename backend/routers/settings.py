@@ -75,6 +75,7 @@ def get_settings():
     from core.config import config as _cfg
     from core.db import get_settings_repo
     from core.model_provider import MODEL_MAIN  # RA2-S1：函数内延迟导入（CONVENTIONS §1）——主模型实名出接口，自检卡两行同源对照用
+    from engine.review import resolve_review_route  # RA5-S1：判卷路由单一事实源（effective_model 回显）
     _embed_key = getattr(_cfg, "EMBEDDING_API_KEY", "")
     _vl_key = getattr(_cfg, "VL_API_KEY", "")
     return {
@@ -108,6 +109,9 @@ def get_settings():
             "model_research": getattr(_cfg, "REVIEW_MODEL_RESEARCH", ""),
             "enabled": str(getattr(_cfg, "REVIEW_ENABLED", "0")) == "1",
             "follow_main": str(getattr(_cfg, "REVIEW_FOLLOW_MAIN", "0")) == "1",  # RA-S1：审核子开关回显
+            # RA5-S1 additive：实际生效判卷模型（resolve_review_route 权威判定）——
+            # 前端自检卡审核行改读此值，删除前端路由复算（T59 漂移根因）
+            "effective_model": resolve_review_route("研究")["model"],
         },
         "zen": {
             "base_url": getattr(_cfg, "ZEN_BASE_URL", ""),
@@ -255,27 +259,22 @@ def test_settings(req: SettingsSave):
             results[_name] = {"ok": ok, "msg": "" if ok else f"HTTP {_r.status_code}"}
         except Exception as e:
             results[_name] = {"ok": False, "msg": str(e)[:100]}
-    # 审核行：判卷模型路由复刻 pick_judge_llm（zen: → Zen；"/" → 硅基流动；否则主通道）
-    # RA-S1：follow_main='1' 时审核=主模型——探测按主通道、研究档模型路由短路（与 pick_judge 同款，
-    # 两处只改一处则 GET/探测回显不一致=自检卡说谎）
-    _follow_main = str(getattr(_cfg, "REVIEW_FOLLOW_MAIN", "0")) == "1"
-    _review_model = "" if _follow_main else getattr(_cfg, "REVIEW_MODEL_RESEARCH", "")
-    if _follow_main:
-        _review_base = getattr(_cfg, "DEEPSEEK_BASE_URL", "")
-        _review_key = getattr(_cfg, "DEEPSEEK_API_KEY", "")
-    elif _review_model:
-        if _review_model.startswith("zen:"):
+    # 审核行：RA5-S1 探测改调单一事实源 resolve_review_route——URL/key 按返回的 provider 构造
+    # （手工复刻段删除；key 值仍取自 _cfg，req 上下文不入纯函数。两处只改一处则
+    # GET/探测回显不一致=自检卡说谎的旧漂移根因就此拔除）
+    from engine.review import resolve_review_route
+    _route = resolve_review_route("研究")
+    _review_model = getattr(_cfg, "REVIEW_MODEL_RESEARCH", "")
+    if _route["follow_main"] or _review_model:
+        if _route["provider"] == "zen":
             _review_base = getattr(_cfg, "ZEN_BASE_URL", "")
             _review_key = _zen_key
-        elif "/" in _review_model:
+        elif _route["provider"] == "siliconflow":
             _review_base = getattr(_cfg, "VL_BASE_URL", "https://api.siliconflow.cn/v1")
             _review_key = getattr(_cfg, "VL_API_KEY", "") or _embed_key
         else:
             _review_base = getattr(_cfg, "DEEPSEEK_BASE_URL", "")
             _review_key = getattr(_cfg, "DEEPSEEK_API_KEY", "")
-    else:
-        _review_base, _review_key = "", ""
-    if _follow_main or _review_model:
         if not _review_key or not _review_base:
             results["review"] = {"ok": False, "msg": "未配置 Key"}
         else:

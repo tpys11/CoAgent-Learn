@@ -31,45 +31,64 @@ def review_enabled(template: str, settings: dict | None) -> bool:
     return bool((settings or {}).get("reviewEnabled"))
 
 
+def resolve_review_route(template: str) -> dict:
+    """RA5-S1：判卷路由单一事实源（纯函数，只读 _cfg）——pick_judge_llm、settings /test 探测、
+    GET review 回显三处共用，四分支逻辑自 pick_judge_llm 原样搬迁（行为零变化）。
+    返回 {"model": <实际判卷模型名>, "provider": "zen"|"siliconflow"|"main", "follow_main": bool}；
+    key 值不进本函数：SF 分支用 VL||EMBEDDING、zen 分支用 ZEN、主分支用 req.api_key||DEEPSEEK——
+    req 上下文在调用方，纯函数只判「走哪家」，key 选择副作用（含 zen 缺 key 的 req 兜底）留给 pick_judge。"""
+    from core.config import config as _cfg
+    # RA-S1：审核子开关「关=审核时用主模型」——follow_main='1' 时研究档判卷直接用主模型，
+    # 短路下方 zen:/"/" 路由（关闭语义由独立布尔键承载，T51 禁空串写入）
+    if template == "研究" and str(getattr(_cfg, "REVIEW_FOLLOW_MAIN", "0")) == "1":
+        return {"model": MODEL_MAIN, "provider": "main", "follow_main": True}
+    model = ((_cfg.REVIEW_MODEL_RESEARCH if template == "研究" else _cfg.REVIEW_MODEL_THINK) or "").strip() or MODEL_MAIN
+    if model.startswith("zen:"):
+        # F14-S4e：zen: 前缀=OpenCode Zen 研究通道（同名 MAIN/REVIEW 但归 REVIEW 类）；
+        # 去前缀体即线上模型名，provider=zen（缺 key 的回退判定归调用方）
+        return {"model": model[4:].strip(), "provider": "zen", "follow_main": False}
+    if template == "研究" and "/" in model:
+        # "/"（硅基流动命名风格）=跨厂商路由；思考档不触发（原 pick_judge 语义保留）
+        return {"model": model, "provider": "siliconflow", "follow_main": False}
+    return {"model": model, "provider": "main", "follow_main": False}
+
+
 def pick_judge_llm(template: str, req):
     """审核模型选择（研究档防自我包庇是设计目标）：
+    RA5-S1：路由判定收敛到 resolve_review_route（单一事实源，/test 探测与 GET effective_model 同源）；
+    本函数只保留 key 选择副作用：SF 分支用 VL_API_KEY/EMBEDDING_API_KEY、zen 分支用 ZEN_API_KEY
+    （缺省回退 req key）、主分支用 req.api_key||DEEPSEEK_API_KEY。
     研究档 = config.REVIEW_MODEL_RESEARCH（空=MODEL_MAIN 同源视觉版，走用户 key）；
-      值含"/"（硅基流动命名风格）且配了硅基流动 key（VL_API_KEY/EMBEDDING_API_KEY）
-      → 走硅基流动端点真跨厂商；
+      值含"/"（硅基流动命名风格）且配了硅基流动 key → 走硅基流动端点真跨厂商；
       含"/"但缺 key → WARNING 响亮回退 MODEL_MAIN（旧版静默 400 即本函数事故根因）。
     思考档 = config.REVIEW_MODEL_THINK（空=MODEL_MAIN），走用户 key。
     构造失败回退主模型接缝（原语义保留）。"""
     from core.base_llm import DeepSeekLLM
     from core.config import config as _cfg
     from engine.pipeline_v2 import _cached_llm
-    # RA-S1：审核子开关「关=审核时用主模型」——follow_main='1' 时研究档判卷直接用主模型，
-    # 短路下方 zen:/"/" 路由（关闭语义由独立布尔键承载，T51 禁空串写入）
-    if template == "研究" and str(getattr(_cfg, "REVIEW_FOLLOW_MAIN", "0")) == "1":
-        model = MODEL_MAIN
-    else:
-        model = ((_cfg.REVIEW_MODEL_RESEARCH if template == "研究" else _cfg.REVIEW_MODEL_THINK) or "").strip() or MODEL_MAIN
+    route = resolve_review_route(template)
+    model = route["model"]
     key = req.api_key or _cfg.DEEPSEEK_API_KEY
     base_url = req.base_url
-    if model.startswith("zen:"):
+    if route["provider"] == "zen":
         # F14-S4e：zen: 前缀=OpenCode Zen 研究通道（同名 MAIN/REVIEW 但归 REVIEW 类）
         # 区别于 "/"（硅基流动同源但跨厂商路由，前缀是通配模型名+走自己 key）
         _zen_key = _cfg.ZEN_API_KEY or key
         if _zen_key:
-            _body = model[4:].strip()
             return _cached_llm(
-                _zen_key, _cfg.ZEN_BASE_URL, _body, False, None,
-                lambda: DeepSeekLLM(api_key=_zen_key, model=_body,
+                _zen_key, _cfg.ZEN_BASE_URL, model, False, None,
+                lambda: DeepSeekLLM(api_key=_zen_key, model=model,
                                     base_url=_cfg.ZEN_BASE_URL, thinking=False))
         logger.warning("研究档模型 %s 需要 Zen key（设置→AI服务），未配置——响亮回退 %s",
-                        model, _FALLBACK_JUDGE)
+                        route["model"], _FALLBACK_JUDGE)
         model = _FALLBACK_JUDGE
-    elif template == "研究" and "/" in model:
+    elif route["provider"] == "siliconflow":
         sf_key = _cfg.VL_API_KEY or _cfg.EMBEDDING_API_KEY
         if sf_key:
             key, base_url = sf_key, _cfg.VL_BASE_URL
         else:
             logger.warning("研究档判卷模型 %s 需要硅基流动 key（设置→AI服务），未配置——响亮回退 %s",
-                           model, _FALLBACK_JUDGE)
+                           route["model"], _FALLBACK_JUDGE)
             model = _FALLBACK_JUDGE
     try:
         # thinking=False：v4 系默认开思考，思考文本走 reasoning_content 会被
