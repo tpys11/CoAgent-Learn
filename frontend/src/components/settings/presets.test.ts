@@ -19,14 +19,14 @@ describe('presets', () => {
     const b = testPresetPutBody()
     expect(b.parse_engine).toBe('mineru')
     expect(b.embedding_model).toBe('Qwen/Qwen3-VL-Embedding-8B')
-    expect(b.review_model_research).toBe('zen:Big Pickle')
+    expect(b.review_model_research).toBe('zen:big-pickle')
     expect(b.review_follow_main).toBe(false)
   })
 
   it('testPresetLsWrites 返回 zen 写集三键', () => {
     const w = testPresetLsWrites('https://opencode.ai/zen/v1')
     expect(w.provider).toBe('zen')
-    expect(w.model).toBe('mimo-V2.5 Free')
+    expect(w.model).toBe('mimo-v2.5-free')
     expect(w.zenBaseUrl).toBe('https://opencode.ai/zen/v1')
   })
 

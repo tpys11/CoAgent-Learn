@@ -18,7 +18,7 @@ export function testPresetPutBody(): Record<string, unknown> {
   return {
     parse_engine: 'mineru',
     embedding_model: 'Qwen/Qwen3-VL-Embedding-8B',
-    review_model_research: 'zen:Big Pickle',
+    review_model_research: 'zen:big-pickle',
     review_follow_main: false,
   }
 }
@@ -28,7 +28,7 @@ export function testPresetPutBody(): Record<string, unknown> {
  *  故此函数对空串防御性抛错——调用方必须先用 lsGet(LS.zenBaseUrl, '') 判非空再调用。 */
 export function testPresetLsWrites(zenBaseUrl: string): { provider: string; model: string; zenBaseUrl: string } {
   if (!zenBaseUrl) throw new Error('testPresetLsWrites: zenBaseUrl 为空——调用方禁走（S5 路由约束）')
-  return { provider: 'zen', model: 'mimo-V2.5 Free', zenBaseUrl }
+  return { provider: 'zen', model: 'mimo-v2.5-free', zenBaseUrl }
 }
 
 /** 标准档 PUT body（退出测试档=回主模型审核+本地解析）：
