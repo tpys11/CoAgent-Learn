@@ -70,6 +70,8 @@ class Config:
     ZEN_API_KEY: str = os.getenv("ZEN_API_KEY", "")
     ZEN_MODEL_MAIN: str = os.getenv("ZEN_MODEL_MAIN", "deepseek-v4-flash-free")   # 主对话免费默认（轮换时 UI 下拉改）
     ZEN_MODEL_REVIEW: str = os.getenv("ZEN_MODEL_REVIEW", "")                      # 空=审核不指定 Zen 模型
+    # R-D S1：测试档全局开关（'1'=后台链路走 test 档语义，决策 38）；S4 起设置页 PUT/GET 透传
+    ZEN_TEST_MODE: str = os.getenv("ZEN_TEST_MODE", "0")
 
     # ── 联网代理（可选）：容器访问国外站点（GitHub 等）失败时，配宿主梯子代理 ──
     # 例：PROXY_URL=http://host.docker.internal:7993（宿主梯子监听端口）
