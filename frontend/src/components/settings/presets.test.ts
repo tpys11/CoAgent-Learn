@@ -45,4 +45,12 @@ describe('presets', () => {
     expect('review_model_research' in b).toBe(false)
     expect('embedding_model' in b).toBe(false)
   })
+
+  it('R-D S4: testPresetPutBody 携带 zen_test_mode=true（测试档后台链路总开关）', () => {
+    expect(testPresetPutBody().zen_test_mode).toBe(true)
+  })
+
+  it('R-D S4: standardPresetPutBody 携带 zen_test_mode=false（退出测试档=后台链路回标准档）', () => {
+    expect(standardPresetPutBody().zen_test_mode).toBe(false)
+  })
 })

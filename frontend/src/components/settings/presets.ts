@@ -12,14 +12,16 @@ export const PRESET_LABELS: Record<PresetId, string> = {
   custom: '自定义',
 }
 
-/** 测试档 PUT body：固定模型组四键（owner 指定模型名原样作常量；真实 ID 由 owner 冒烟对照
- *  GET /api/settings/zen/models——不符=常量一行修，不算缺陷）。 */
+/** 测试档 PUT body：固定模型组五键（owner 指定模型名原样作常量；真实 ID 由 owner 冒烟对照
+ *  GET /api/settings/zen/models——不符=常量一行修，不算缺陷）。
+ *  R-D S4：zen_test_mode=true——测试档后台辅助链（压缩/入库增强/大纲/资源生成）随档总开关。 */
 export function testPresetPutBody(): Record<string, unknown> {
   return {
     parse_engine: 'mineru',
     embedding_model: 'Qwen/Qwen3-VL-Embedding-8B',
     review_model_research: 'zen:big-pickle',
     review_follow_main: false,
+    zen_test_mode: true,
   }
 }
 
@@ -31,9 +33,10 @@ export function testPresetLsWrites(zenBaseUrl: string): { provider: string; mode
   return { provider: 'zen', model: 'mimo-v2.5-free', zenBaseUrl }
 }
 
-/** 标准档 PUT body（退出测试档=回主模型审核+本地解析）：
+/** 标准档 PUT body（退出测试档=回主模型审核+本地解析+后台链路回标准档）：
  *  - embedding 不动（qwen3-VL 即默认，零向量空间问题）；
- *  - 绝不写 review_model_research:''（T51 空串不覆写=假恢复），用 follow_main 语义表达「审核回主模型」。 */
+ *  - 绝不写 review_model_research:''（T51 空串不覆写=假恢复），用 follow_main 语义表达「审核回主模型」；
+ *  - R-D S4：zen_test_mode=false——后台辅助链退出测试档（false 必须能落 0，R14 红线）。 */
 export function standardPresetPutBody(): Record<string, unknown> {
-  return { parse_engine: 'pymupdf4llm', review_follow_main: true }
+  return { parse_engine: 'pymupdf4llm', review_follow_main: true, zen_test_mode: false }
 }

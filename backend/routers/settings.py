@@ -67,6 +67,7 @@ class SettingsSave(BaseModel):
     zen_api_key: str = ""               # F14-S4c：OpenCode Zen Bearer key
     review_model_research: str = ""     # F14-S4c：研究档判卷模型（zen: 前缀=Zen 路由，"/"=硅基流动）
     review_follow_main: bool = False    # RA-S1：审核子开关——true=审核时用主模型（关闭独立审核路由）
+    zen_test_mode: bool = False         # R-D S4：测试档全局开关（决策 38 后台辅助链随档总开关）
 
 
 @router.get("/api/settings")
@@ -119,6 +120,7 @@ def get_settings():
             "api_key_hint": _mask_key(getattr(_cfg, "ZEN_API_KEY", "")),
             "model_main": getattr(_cfg, "ZEN_MODEL_MAIN", ""),
             "model_review": getattr(_cfg, "ZEN_MODEL_REVIEW", ""),
+            "test_mode": str(getattr(_cfg, "ZEN_TEST_MODE", "0")) == "1",   # R-D S4：测试档开关回显
         },
         # RA2-S1：chat 节 additive main_model——owner 冒烟反馈①②：自检卡需显主模型实名（deepseek-v4-flash-vision-exp）
         "chat": {"deepseek_key_set": bool(getattr(_cfg, "DEEPSEEK_API_KEY", "")), "main_model": MODEL_MAIN},
@@ -170,6 +172,9 @@ def save_settings(req: SettingsSave):
     # RA-S1：bool 用 in _vals 显式判断（R14 红线：false 必须能落 0，不能被 exclude_unset 吞掉）
     if "review_follow_main" in _vals:
         _s.set_setting("REVIEW_FOLLOW_MAIN", "1" if _vals["review_follow_main"] else "0")
+    # R-D S4：测试档全局开关（同款 bool-in-_vals 显式落库；S1 起 current_tier 读此键）
+    if "zen_test_mode" in _vals:
+        _s.set_setting("ZEN_TEST_MODE", "1" if _vals["zen_test_mode"] else "0")
     _set("REVIEW_MODEL", "review_model")
     _set("PARSE_ENGINE", "parse_engine")
     _set("MINERU_API_TOKEN", "mineru_api_token")
