@@ -1,5 +1,5 @@
 ﻿import { useState, useEffect } from 'react'
-import { Database, Check } from 'lucide-react'
+import { Database, Check, X } from 'lucide-react'
 import { api } from '../../api'
 import type { SettingsData } from '../../types'
 import { LS, lsGet, lsSet, lsRemove, lsGetJSON, lsSetJSON } from '../../storage'
@@ -42,6 +42,18 @@ export function zenSaveUiState(zenKey: string, g: SettingsData): { zenKey: strin
 /** RA2-S2：已保存尾号提示文案（GET zen.api_key_hint 已有，后端 _mask_key 尾号掩码）。 */
 export function zenSavedHintText(hint: string): string {
   return `已保存：${hint}`
+}
+
+/** RA3-S2：Zen key 保存成功 flash（纯函数直调钉逐字）——owner 反馈②「保存反馈弱」：
+ * 成功后引导立即检测验证连通性（key 刚保存→GET 刷新链路 RA2-S2 已保证，检测即验真）。 */
+export function zenSavedFlashText(): string {
+  return 'Zen Key 已保存——点击上方立即检测验证连通性'
+}
+
+/** RA3-S2：Zen key 保存失败 flash——旧 catch 只闪绿色成功样式（text-green-600+✓），
+ * 失败与成功视觉不可辨=「不可见」；文案含原因+怎么办（CONVENTIONS §6，saveService 同款先例）。 */
+export function zenSaveFailFlashText(): string {
+  return '保存失败（后端不可达），请重试'
 }
 
 /** RA2-S3：合并栏双气泡数据模型（纯函数直调钉行为——无 jsdom 先例）。
@@ -95,6 +107,8 @@ export default function ServiceSettings() {
   const [svcSaved, setSvcSaved] = useState(false)
   const [keyEditing, setKeyEditing] = useState(false)
   const [feedback, setFeedback] = useState('')
+  // RA3-S2：反馈双态——失败走红色（旧实现所有反馈一律绿色+✓，失败视觉不可辨）
+  const [feedbackErr, setFeedbackErr] = useState(false)
 
   useEffect(() => {
     api.getSettings().then(d => {
@@ -122,7 +136,8 @@ export default function ServiceSettings() {
     }).catch(() => {})
   }, [])
 
-  const flash = (msg: string) => { setFeedback(msg); setTimeout(() => setFeedback(''), 2000) }
+  const flash = (msg: string) => { setFeedbackErr(false); setFeedback(msg); setTimeout(() => setFeedback(''), 2000) }
+  const flashErr = (msg: string) => { setFeedbackErr(true); setFeedback(msg); setTimeout(() => setFeedback(''), 2000) }
 
   const saveService = async () => {
     try {
@@ -166,9 +181,10 @@ export default function ServiceSettings() {
       const next = zenSaveUiState(zenKey, g)
       setZenKey(next.zenKey)
       setSvc(s => ({ ...s, zen_key_set: next.zenKeySet, zen_key_hint: next.zenKeyHint }))
-      flash('Zen Key 已保存')
+      flash(zenSavedFlashText())
     } catch {
-      flash('保存失败')
+      // RA3-S2：失败红色可见（旧 catch 只闪绿色成功样式，owner 反馈②「保存反馈弱」）
+      flashErr(zenSaveFailFlashText())
     } finally {
       setZenSaving(false)
     }
@@ -364,7 +380,7 @@ export default function ServiceSettings() {
 
         {/* T54：切块/检索参数 UI 节已移除——后端 KB_CHUNK / KB_RRF 系列键契约不动，保存时按 svc 现值原样回传 */}
 
-        {feedback && <span className="text-[11px] text-green-600 flex items-center gap-1"><Check size={11} /> {feedback}</span>}
+        {feedback && <span className={`text-[11px] flex items-center gap-1 ${feedbackErr ? 'text-red-500' : 'text-green-600'}`}>{feedbackErr ? <X size={11} /> : <Check size={11} />} {feedback}</span>}
       </div>
     </Section>
   )

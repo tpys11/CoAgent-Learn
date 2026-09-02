@@ -7,6 +7,13 @@ import { computeSelfCheckRows } from './selfCheck'
 
 const inputCls = 'w-full px-3 py-2 input-surface rounded-lg text-xs outline-none focus:border-[var(--accent)]'
 
+/** RA3-S2：自检探测键的档位感知（纯函数供 vitest）——chat 行在测试档吃后端 chat_zen 探测键
+ * （/test 两键都返回，settings.py:245-248，零后端改动）；review 行不条件化：后端探测已按
+ * review_model_research（zen: 前缀）自路由，重复条件化=双重处理；parse/embedding 键不变。 */
+export function selfCheckProbeKey(rowId: string, isZen: boolean): string {
+  return rowId === 'chat' && isZen ? 'chat_zen' : rowId
+}
+
 interface Props {
   settings: any
   onSaved: (msg: string) => void
@@ -31,6 +38,8 @@ export default function SelfCheckCard({ settings, onSaved }: Props) {
   // RA3-S1：chat 行模型名与 useChatStream 发送路径同源（同函数同取参表达式）——
   // 标准档经 resolveChatModel 钉死 dsv4f，不再直读 LS.model（owner 反馈①根因行）
   const provider = lsGet(LS.provider, 'deepseek')
+  // RA3-S2：档位判据=LS.provider（'zen'=测试档，否则标准档；LS.preset 仅徽章展示不作逻辑判据）
+  const isZen = provider === 'zen'
   const rows = computeSelfCheckRows({
     providerKeySet,
     zenKeySet: !!settings?.zen_key_set,
@@ -78,7 +87,7 @@ export default function SelfCheckCard({ settings, onSaved }: Props) {
         {rows.map(r => {
           const s = STATE_ICON[r.state] || STATE_ICON.missing
           const Icon = s.icon
-          const probe = probeResult?.[r.id]
+          const probe = probeResult?.[selfCheckProbeKey(r.id, isZen)]
           return (
             <div key={r.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--bg-hover)]">
               <Icon size={12} className={s.color} />

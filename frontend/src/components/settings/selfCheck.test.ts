@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import { computeSelfCheckRows, SelfCheckInput } from './selfCheck'
+import { selfCheckProbeKey } from './SelfCheckCard'
+
+/** RA3-S2 源级守卫：repo 无 jsdom（serviceGroups.ts 头注先例），接线文本用 ?raw 钉住——
+ *  isZen 判据与 selfCheckProbeKey 必须被真实消费，防纯函数过测而组件内联回退。 */
+const rawCard = import.meta.glob('./SelfCheckCard.tsx', { query: '?raw', import: 'default', eager: true })
+const CARD_SRC = String(Object.values(rawCard)[0] ?? '')
 
 describe('computeSelfCheckRows', () => {
   const baseInput: SelfCheckInput = {
@@ -154,5 +160,29 @@ describe('computeSelfCheckRows', () => {
   it('embedding row: 模型名=GET embedding.model', () => {
     const input = { ...baseInput, embeddingModel: 'BAAI/bge-m3' }
     expect(computeSelfCheckRows(input).find(r => r.id === 'embedding')?.model).toBe('BAAI/bge-m3')
+  })
+})
+
+// ── RA3-S2：自检档位感知（owner 反馈②：立即检测未按档位选探测源——chat 行恒吃 chat 键，
+//    测试档开着也不看 chat_zen；后端 /test 两键都返回，零后端改动空间）──
+describe('selfCheckProbeKey (RA3-S2)', () => {
+  it('isZen=true：chat 行探测键换 chat_zen', () => {
+    expect(selfCheckProbeKey('chat', true)).toBe('chat_zen')
+  })
+
+  it('isZen=false：chat 行探测键保持 chat（非 zen 不换）', () => {
+    expect(selfCheckProbeKey('chat', false)).toBe('chat')
+  })
+
+  it('review/parse/embedding 行不条件化（后端已按 review_model_research 自路由，重复条件化=双重处理）', () => {
+    expect(selfCheckProbeKey('review', true)).toBe('review')
+    expect(selfCheckProbeKey('parse', true)).toBe('parse')
+    expect(selfCheckProbeKey('embedding', true)).toBe('embedding')
+    expect(selfCheckProbeKey('review', false)).toBe('review')
+  })
+
+  it('源级守卫：isZen 判据与 selfCheckProbeKey 被组件真实消费', () => {
+    expect(CARD_SRC).toContain("const isZen = provider === 'zen'")
+    expect(CARD_SRC).toContain('selfCheckProbeKey(r.id, isZen)')
   })
 })
