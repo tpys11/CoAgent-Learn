@@ -25,6 +25,9 @@ export const TEST_PRESET_ON_NOTE =
 /** RA4-S2：未启用时常驻灰字 */
 export const TEST_PRESET_OFF_NOTE = '标准档'
 
+/** RA4-S3：合并栏独立审核气泡下方小字（owner 指定原文，一字不改） */
+export const REVIEW_BUBBLE_NOTE = '关闭后需要审核时自动采用主模型'
+
 /** RA-S3：审核子开关联动——开(独立审核模型)=review_follow_main=false；关(审核时用主模型)=true。
  *  为什么经 follow_main 表达「关」：T51 空串不覆写，写 review_model_research:'' 会被吞掉=假关闭。
  *  RA4-S3：处理器从测试档卡搬迁至合并栏独立审核气泡（reviewSubSwitchPutBody 写法照旧）。 */

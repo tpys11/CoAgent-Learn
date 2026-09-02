@@ -3,7 +3,7 @@ import { Database, Check, X } from 'lucide-react'
 import { api } from '../../api'
 import type { SettingsData } from '../../types'
 import { LS, lsGet, lsSet, lsRemove, lsGetJSON, lsSetJSON } from '../../storage'
-import { SERVICE_GROUPS, TEST_PRESET_NOTE, KB_MERGE_NOTE, TEST_PRESET_ZEN_GUARD_NOTE, TEST_PRESET_ON_NOTE, TEST_PRESET_OFF_NOTE } from './serviceGroups'
+import { SERVICE_GROUPS, TEST_PRESET_NOTE, KB_MERGE_NOTE, TEST_PRESET_ZEN_GUARD_NOTE, TEST_PRESET_ON_NOTE, TEST_PRESET_OFF_NOTE, REVIEW_BUBBLE_NOTE, reviewSubSwitchPutBody } from './serviceGroups'
 import { buildSvcBody } from './settingsPayload'
 import { testPresetLsWrites, testPresetPutBody, standardPresetPutBody } from './presets'
 import SelfCheckCard from './SelfCheckCard'
@@ -249,6 +249,21 @@ export default function ServiceSettings() {
 
   const onTestPresetToggle = (v: boolean) => { if (v) void enableTestPreset(); else void disableTestPreset() }
 
+  // RA4-S3：审核开关处理器从测试档卡搬迁至合并栏气泡 B——PUT 写法照旧（reviewSubSwitchPutBody），
+  // ON=独立审核模型（follow_main=false）；OFF=主模型审核（follow_main=true）。失败持久红字。
+  const [reviewToggleErr, setReviewToggleErr] = useState(false)
+  const onReviewBubbleToggle = async (v: boolean) => {
+    try {
+      await api.saveSettings(reviewSubSwitchPutBody(v))
+      setSvc(s => ({ ...s, review_follow_main: !v }))
+      setReviewToggleErr(false)
+      flash(v ? '审核使用独立模型' : '审核使用主模型')
+    } catch {
+      setReviewToggleErr(true)
+      flashErr('保存失败（后端不可达），请重试')
+    }
+  }
+
   return (
     <Section icon={Database} title="AI 服务配置" desc="各能力独立配置，保存后即时生效，无需重启">
       <div className="flex flex-col gap-4">
@@ -324,17 +339,27 @@ export default function ServiceSettings() {
                   )}
                 </div>
                 <p className="text-[10px] text-dim">{KB_MERGE_NOTE}</p>
-                {/* RA2-S3：单气泡改双联——A=知识库服务（向量化/重排分开表述，owner 指定文案）、B=独立审核模型（GET review.model 动态值） */}
+                {/* RA2-S3：单气泡改双联——A=知识库服务（向量化/重排分开表述，owner 指定文案）、B=独立审核模型（GET review.model 动态值）
+                    RA4-S3：气泡 B 右端审核开关（S2 自测试档卡搬迁至此）+ 下方小字 owner 原文 */}
                 <div className="flex flex-col sm:flex-row gap-2">
                   {kbServiceBubbles(svc.review_model).map(b => (
                     <div key={b.title} className="flex-1 flex flex-col gap-0.5 px-3 py-2.5 rounded-xl bg-[var(--bg-hover)]">
-                      <span className="text-[12px] font-semibold">{b.title}</span>
+                      <span className="flex items-center justify-between">
+                        <span className="text-[12px] font-semibold">{b.title}</span>
+                        {b.title === '独立审核模型' && (
+                          <Toggle checked={!svc.review_follow_main} onChange={onReviewBubbleToggle} />
+                        )}
+                      </span>
                       {b.lines.map((line, idx) => (
                         <span key={idx} className="text-[10px] text-dim">{line}</span>
                       ))}
+                      {b.title === '独立审核模型' && (
+                        <p className="text-[10px] text-dim">{REVIEW_BUBBLE_NOTE}</p>
+                      )}
                     </div>
                   ))}
                 </div>
+                {reviewToggleErr && <p className="text-[10px] text-red-500">保存失败（后端不可达），请重试</p>}
               </div>
             )}
 
