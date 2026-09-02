@@ -8,7 +8,8 @@ export interface SelfCheckInput {
   embeddingKeySet?: boolean               // GET embedding.api_key_set
   parseEngine?: string                    // GET parse.engine
   mineruKeySet?: boolean                  // GET parse.mineru_key_set
-  reviewResearchModel?: string            // GET review.model_research
+  reviewResearchModel?: string            // GET review.model_research（审核行状态/文案判定用）
+  reviewEffectiveModel?: string           // RA5-S3：GET review.effective_model（后端权威，模型名唯一来源）
   followMain?: boolean                    // RA-S1：GET review.follow_main（true=审核用主模型）
   chatModel?: string                      // RA-S4：LS 当前模型名
   embeddingModel?: string                 // RA-S4：GET embedding.model
@@ -22,8 +23,8 @@ const DEFAULT_MAIN_MODEL = 'deepseek-v4-flash-vision-exp'
 
 export function computeSelfCheckRows(i: SelfCheckInput): SelfCheckRow[] {
   const rows: SelfCheckRow[] = []
-  // RA2-S1：mainModel 是 chat 行与 review 行（follow_main / 空 research 回落）的唯一同源——
-  // 主对话与研究档判卷共用 MODEL_MAIN（pick_judge 同款短路），两行各接各的源会不一致。
+  // RA2-S1：mainModel 是 chat 行模型名（RA5-S3 起 review 行改读后端 effective_model，不再共用此源——
+  // 主模型语义（req 主模型）与判卷路由语义不同，勿合并）
   const mainModel = i.chatModel || DEFAULT_MAIN_MODEL
   // chat: providerKeySet||zenKeySet → ok 否则 missing；模型名=LS 当前模型名（缺省兜底具体名）
   const chatOk = i.providerKeySet || i.zenKeySet
@@ -33,14 +34,16 @@ export function computeSelfCheckRows(i: SelfCheckInput): SelfCheckRow[] {
     text: chatOk ? '主通道已配置' : '未配置对话 Key',
     model: mainModel,
   })
-  // review: follow_main=true → 主模型通道（模型名=同源具体名，owner 反馈②：非「主模型」字面量）；
-  //         否则依 reviewResearchModel 前缀路由：zen:→zenKeySet；"/"→embeddingKeySet；其余主通道
+  // RA5-S3：审核行模型名一律=i.reviewEffectiveModel（GET review.effective_model，resolve_review_route
+  // 权威判定）——前端路由复算删除（T59 前后端漂移根因）；chat 行维持 resolveChatModel（主模型语义不同，
+  // 勿合并）。状态/文案仍按 followMain + research 前缀判定（key 可用性是展示逻辑，非模型名复算）；
+  // reviewEffectiveModel 未喂时 model 缺省，不做前端兜底。
   if (i.followMain) {
     rows.push({
       id: 'review',
       state: i.providerKeySet ? 'ok' : 'warn',
       text: i.providerKeySet ? '审核模型已配置' : '审核模型需要对话 Key',
-      model: mainModel,
+      model: i.reviewEffectiveModel,
     })
   } else if (i.reviewResearchModel) {
     if (i.reviewResearchModel.startsWith('zen:')) {
@@ -49,7 +52,7 @@ export function computeSelfCheckRows(i: SelfCheckInput): SelfCheckRow[] {
         id: 'review',
         state: keyOk ? 'ok' : 'warn',
         text: keyOk ? '审核模型已配置' : '审核模型需要 Zen Key',
-        model: i.reviewResearchModel,
+        model: i.reviewEffectiveModel,
       })
     } else if (i.reviewResearchModel.includes('/')) {
       const keyOk = i.embeddingKeySet
@@ -57,7 +60,7 @@ export function computeSelfCheckRows(i: SelfCheckInput): SelfCheckRow[] {
         id: 'review',
         state: keyOk ? 'ok' : 'warn',
         text: keyOk ? '审核模型已配置' : '审核模型需要硅基流动 Key',
-        model: i.reviewResearchModel,
+        model: i.reviewEffectiveModel,
       })
     } else {
       // 其他前缀或无前缀，假设主通道
@@ -66,7 +69,7 @@ export function computeSelfCheckRows(i: SelfCheckInput): SelfCheckRow[] {
         id: 'review',
         state: keyOk ? 'ok' : 'warn',
         text: keyOk ? '审核模型已配置' : '审核模型需要对话 Key',
-        model: i.reviewResearchModel,
+        model: i.reviewEffectiveModel,
       })
     }
   } else {
@@ -74,7 +77,7 @@ export function computeSelfCheckRows(i: SelfCheckInput): SelfCheckRow[] {
       id: 'review',
       state: 'warn',
       text: '审核模型（研究档判卷走主模型）',  // RA2 补充修复（验收打回）：旧短语「研究档判卷=主模型同源」是 owner 反馈②点名的展示面
-      model: mainModel,  // RA2-S1：空 research 判卷回落主模型，显同源具体名（原「主模型」字面量删除）
+      model: i.reviewEffectiveModel,  // RA5-S3：模型名后端权威（空 research 时后端判 MODEL_MAIN）
     })
   }
   // parse: 模型名=parse_engine 值；mineru 缺 token → warn「本地 pymupdf4llm 兜底可用」

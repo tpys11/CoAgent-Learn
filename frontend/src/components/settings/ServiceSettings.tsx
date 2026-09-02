@@ -92,6 +92,7 @@ export default function ServiceSettings() {
     review_enabled: false, review_follow_main: false,
     review_model: 'Qwen/Qwen2.5-72B-Instruct',
     review_model_research: '',
+    review_effective_model: '',
     parse_engine: 'pymupdf4llm',
     mineru_key_set: false,
     mathpix_key_set: false,
@@ -135,6 +136,7 @@ export default function ServiceSettings() {
         review_follow_main: !!d.review?.follow_main,
         review_model: d.review?.model || 'Qwen/Qwen2.5-72B-Instruct',
         review_model_research: d.review?.model_research || '',
+        review_effective_model: d.review?.effective_model || '',  // RA5-S3：后端权威判卷模型名（自检卡消费）
         chunk_mode: d.chunking?.mode || 'auto',
         parse_engine: d.parse?.engine || 'pymupdf4llm',
         mineru_key_set: !!d.parse?.mineru_key_set,
@@ -252,11 +254,16 @@ export default function ServiceSettings() {
 
   // RA4-S3：审核开关处理器从测试档卡搬迁至合并栏气泡 B——PUT 写法照旧（reviewSubSwitchPutBody），
   // ON=独立审核模型（follow_main=false）；OFF=主模型审核（follow_main=true）。失败持久红字。
+  // RA5-S3：处理器传 GET research 值（ON+空时补写默认判卷模型，条件在纯函数内）；
+  // 保存后 GET 回读 review 节——research/effective_model 是后端权威，前端不复算。
   const [reviewToggleErr, setReviewToggleErr] = useState(false)
   const onReviewBubbleToggle = async (v: boolean) => {
     try {
-      await api.saveSettings(reviewSubSwitchPutBody(v))
-      setSvc(s => ({ ...s, review_follow_main: !v }))
+      await api.saveSettings(reviewSubSwitchPutBody(v, svc.review_model_research))
+      const g = await api.getSettings()
+      setSvc(s => ({ ...s, review_follow_main: !v,
+        review_model_research: g.review?.model_research || '',
+        review_effective_model: g.review?.effective_model || '' }))
       setReviewToggleErr(false)
       flash(v ? '审核使用独立模型' : '审核使用主模型')
     } catch {
@@ -341,8 +348,9 @@ export default function ServiceSettings() {
                 </div>
                 <p className="text-[10px] text-dim">{KB_MERGE_NOTE}</p>
                 {/* RA2-S3：单气泡改双联——A=知识库服务（向量化/重排分开表述，owner 指定文案）、B=独立审核模型（GET review.model 动态值）
-                    RA4-S3：气泡 B 右端审核开关（S2 自测试档卡搬迁至此）+ 下方小字 owner 原文 */}
-                <div className="flex flex-col sm:flex-row gap-2">
+                    RA4-S3：气泡 B 右端审核开关（S2 自测试档卡搬迁至此）+ 下方小字 owner 原文
+                    RA5-S3：恒 flex-col 上下排列（删除宽屏 sm 断点并列——owner 两次点名宽屏也上下） */}
+                <div className="flex flex-col gap-2">
                   {kbServiceBubbles(svc.review_model).map(b => (
                     <div key={b.title} className="flex-1 flex flex-col gap-0.5 px-3 py-2.5 rounded-xl bg-[var(--bg-hover)]">
                       <span className="flex items-center justify-between">

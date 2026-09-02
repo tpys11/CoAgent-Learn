@@ -30,7 +30,13 @@ export const REVIEW_BUBBLE_NOTE = '关闭后需要审核时自动采用主模型
 
 /** RA-S3：审核子开关联动——开(独立审核模型)=review_follow_main=false；关(审核时用主模型)=true。
  *  为什么经 follow_main 表达「关」：T51 空串不覆写，写 review_model_research:'' 会被吞掉=假关闭。
- *  RA4-S3：处理器从测试档卡搬迁至合并栏独立审核气泡（reviewSubSwitchPutBody 写法照旧）。 */
-export function reviewSubSwitchPutBody(subSwitchOn: boolean): { review_follow_main: boolean } {
-  return { review_follow_main: !subSwitchOn }
+ *  RA4-S3：处理器从测试档卡搬迁至合并栏独立审核气泡（reviewSubSwitchPutBody 写法照旧）。
+ *  RA5-S3：ON 且 research 空（''/undefined）时补写默认跨厂商判卷模型——标准档 research 未配置时
+ *  判卷回落主模型，气泡承诺（Qwen2.5-72B）不兑现（T59 实证）。条件是「空才写」：测试档的
+ *  zen:Big Pickle 是测试档资产，标准档开关绝不覆盖；OFF 不写 research（follow_main=true 已是
+ *  完整语义）。 */
+export function reviewSubSwitchPutBody(subSwitchOn: boolean, reviewModelResearch?: string): { review_follow_main: boolean; review_model_research?: string } {
+  const body: { review_follow_main: boolean; review_model_research?: string } = { review_follow_main: !subSwitchOn }
+  if (subSwitchOn && !reviewModelResearch) body.review_model_research = 'Qwen/Qwen2.5-72B-Instruct'
+  return body
 }

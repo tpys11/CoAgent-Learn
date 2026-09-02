@@ -7,9 +7,9 @@ const rawModules = import.meta.glob('./ServiceSettings.tsx', { query: '?raw', im
 const SRC = String(Object.values(rawModules)[0] ?? '')
 
 describe('RA4-S3 合并栏独立审核开关——纯函数直调 + 源级守卫', () => {
-  it('取值矩阵：ON=独立审核（follow_main=false），OFF=主模型审核（follow_main=true）', () => {
-    expect(reviewSubSwitchPutBody(true)).toEqual({ review_follow_main: false })
-    expect(reviewSubSwitchPutBody(false)).toEqual({ review_follow_main: true })
+  it('RA5-S3 取值矩阵：ON+空 research 补写默认判卷模型（T59 兑现气泡承诺），非空绝不覆盖', () => {
+    expect(reviewSubSwitchPutBody(true, '')).toEqual({ review_follow_main: false, review_model_research: 'Qwen/Qwen2.5-72B-Instruct' })
+    expect(reviewSubSwitchPutBody(true, 'zen:Big Pickle')).toEqual({ review_follow_main: false })
   })
 
   it('小字 owner 指定原文一字不改', () => {
@@ -21,8 +21,8 @@ describe('RA4-S3 合并栏独立审核开关——纯函数直调 + 源级守卫
     expect(SRC).toContain('onChange={onReviewBubbleToggle}')
   })
 
-  it('处理器搬迁至此：PUT 写法照旧走 reviewSubSwitchPutBody（review_follow_main 布尔翻转写入不丢）', () => {
-    expect(SRC).toContain('reviewSubSwitchPutBody(v)')
+  it('处理器搬迁至此：PUT 走 reviewSubSwitchPutBody 且 RA5-S3 起传 GET research 值（follow_main 布尔翻转写入不丢）', () => {
+    expect(SRC).toContain('reviewSubSwitchPutBody(v, svc.review_model_research)')
   })
 
   it('小字渲染在气泡 B 下方且被真实消费', () => {
@@ -32,5 +32,13 @@ describe('RA4-S3 合并栏独立审核开关——纯函数直调 + 源级守卫
   it('PUT 失败持久红字（关键状态持久渲染，flash 只做动作回执）', () => {
     expect(SRC).toContain('reviewToggleErr &&')
     expect(SRC).toContain('setReviewToggleErr(true)')
+  })
+
+  it('RA5-S3：气泡容器恒上下排列（删除 sm:flex-row 响应式并列——owner 两次点名宽屏也上下）', () => {
+    expect(SRC).not.toContain('sm:flex-row')
+  })
+
+  it('RA5-S3：处理器传 GET research 值（条件补写收敛在纯函数内，组件不做内联判定）', () => {
+    expect(SRC).toContain('reviewSubSwitchPutBody(v, svc.review_model_research)')
   })
 })

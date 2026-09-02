@@ -47,6 +47,7 @@ export default function SelfCheckCard({ settings, onSaved }: Props) {
     parseEngine: settings?.parse_engine,
     mineruKeySet: !!settings?.mineru_key_set,
     reviewResearchModel: settings?.review_model_research,
+    reviewEffectiveModel: settings?.review_effective_model,  // RA5-S3：后端 effective_model 权威模型名
     followMain: !!settings?.review_follow_main,
     chatModel: resolveChatModel(provider, lsGet(LS.model, 'deepseek-v4-flash-vision-exp')),
     embeddingModel: settings?.embedding_model,

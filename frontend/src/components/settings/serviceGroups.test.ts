@@ -34,8 +34,13 @@ describe('RA-S3 owner 指定文案（逐字断言）', () => {
     expect(KB_MERGE_NOTE).not.toContain('审核时用主模型')
   })
 
-  it('审核子开关联动：开=独立审核(follow_main=false)，关=主模型(true)', () => {
-    expect(reviewSubSwitchPutBody(true)).toEqual({ review_follow_main: false })
-    expect(reviewSubSwitchPutBody(false)).toEqual({ review_follow_main: true })
+  it('RA5-S3：审核子开关 PUT 体——ON 补写条件两态/OFF 不写 research', () => {
+    // ON + research 空 → 补写默认跨厂商判卷模型（"/"→SF，兑现气泡 Qwen2.5-72B 承诺，T59）
+    expect(reviewSubSwitchPutBody(true, '')).toEqual({ review_follow_main: false, review_model_research: 'Qwen/Qwen2.5-72B-Instruct' })
+    // ON + research 非空（测试档 zen:Big Pickle 是测试档资产）→ 绝不覆盖
+    expect(reviewSubSwitchPutBody(true, 'zen:Big Pickle')).toEqual({ review_follow_main: false })
+    // OFF → 不写 research（follow_main=true 已是完整语义，含空/非空两态）
+    expect(reviewSubSwitchPutBody(false, '')).toEqual({ review_follow_main: true })
+    expect(reviewSubSwitchPutBody(false, 'zen:Big Pickle')).toEqual({ review_follow_main: true })
   })
 })
