@@ -7,6 +7,15 @@ import { selfCheckProbeKey } from './SelfCheckCard'
 const rawCard = import.meta.glob('./SelfCheckCard.tsx', { query: '?raw', import: 'default', eager: true })
 const CARD_SRC = String(Object.values(rawCard)[0] ?? '')
 
+describe('RA5 冒烟补充：探测键名映射', () => {
+  it('embedding 行 → text_embedding（后端键名）', () => {
+    expect(selfCheckProbeKey('embedding', false)).toBe('text_embedding')
+  })
+  it('chat 标准档仍为 chat', () => {
+    expect(selfCheckProbeKey('chat', false)).toBe('chat')
+  })
+})
+
 describe('computeSelfCheckRows', () => {
   const baseInput: SelfCheckInput = {
     providerKeySet: true,
@@ -189,10 +198,11 @@ describe('selfCheckProbeKey (RA3-S2)', () => {
     expect(selfCheckProbeKey('chat', false)).toBe('chat')
   })
 
-  it('review/parse/embedding 行不条件化（后端已按 review_model_research 自路由，重复条件化=双重处理）', () => {
+  it('review/parse 行不条件化；embedding 行映射后端键名（RA5 冒烟修复）', () => {
     expect(selfCheckProbeKey('review', true)).toBe('review')
     expect(selfCheckProbeKey('parse', true)).toBe('parse')
-    expect(selfCheckProbeKey('embedding', true)).toBe('embedding')
+    expect(selfCheckProbeKey('embedding', true)).toBe('text_embedding') // RA5 冒烟修复：键名对齐后端
+    expect(selfCheckProbeKey('embedding', false)).toBe('text_embedding')
     expect(selfCheckProbeKey('review', false)).toBe('review')
   })
 

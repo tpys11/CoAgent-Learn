@@ -11,6 +11,7 @@ const inputCls = 'w-full px-3 py-2 input-surface rounded-lg text-xs outline-none
  * （/test 两键都返回，settings.py:245-248，零后端改动）；review 行不条件化：后端探测已按
  * review_model_research（zen: 前缀）自路由，重复条件化=双重处理；parse/embedding 键不变。 */
 export function selfCheckProbeKey(rowId: string, isZen: boolean): string {
+    if (rowId === 'embedding') return 'text_embedding' // RA5 冒烟：后端探测键名错位修复
   return rowId === 'chat' && isZen ? 'chat_zen' : rowId
 }
 
