@@ -1,6 +1,5 @@
-#| **R-C1** | **测试档全链 zen 化**（决策 38 主体：req 外围 LLM 构造点档位感知收敛+前端资源生成/上传大纲路由） | 提示词已交付 | **🔄 docs/dispatch/step-RC1.md（09-02，直发）**——S1 后端工厂/ S2 调用点盘点收敛 / S3 开关键透传 / S4 前端 aux 路由 / S5 变异 push；验收=测试档下日志 zero deepseek 计数 |
-| **R-C2** | **思维链内容化二批**（owner 反馈：①检索视窗内容块+点击展开 ②规划节点流式先行） | 待派发（R-C1 收口后出单） | 中等轮；数据源=search_results/plan_thinking 均已在服务端；与 R-C1 串行 |
- CoAgent-Learn 优化进度看板
+# CoAgent-Learn 优化进度看板
+
 
 > 总领会话唯一状态载体。由总领维护，实现性会话只读不写。
 > 配套：`LEAD_SESSION_PROMPT.md`（流程）、`SINGLE_STEP_EXECUTION.md`（历史步骤定义，**已过时**——当前轮次以 `docs/dispatch/` 单页为准）、`OPTIMIZATION_PLAN.md`（问题证据）
@@ -40,8 +39,9 @@
 | **R-A** | **设置页 v2**（X-2 第二批：测试档+自检四项+合并栏+清理；owner 需求逐条固化） | **✅ 已验收（靶向）** | **5 commit `4aedd86..62969fc`；CI 徽章亲核 success=533/242/0；pipeline_v2/ResourceChatPage 零触碰亲证、review.py 恰为预批分支；变异①亲放恰 2 红→还原 5 绿；小字三串常量化（serviceGroups.ts:13/16/19）+toBe 钉死+挂载亲证（:148/:240/:264）；三处越界申报吻合；交接齐**（`step-RA.md`）。**前提修正认领 ×2**：vl_api_key 空串在 T51 下本不打空（总领派发单前提有误，同值写仍必要）；SelfCheckCard 预置缺陷（嵌套读）顺带修复。**下一步=owner 冒烟测试档（=F14 S6 收口）** |
 | **R-A2** | **R-A 冒烟反馈修复**（owner 4 条：①主模型行应显 dsv4f ②审核行显具体名+短语改名 ③Zen key 输入清空=前端 :136 主动清空（后端无病）④气泡缺模型名+bge 清算+独立审核气泡） | **✅ 已验收（含补充修复）** | **4 commit `a20c159..2a14869`；补充修复=打回单条（selfCheck.ts:76 短语→「审核模型（研究档判卷走主模型）」+反向断言 not.toContain 防回潮），总领亲核：旧短语仅存注释、新短语在位、两行一致；全量 534/255/tsc 0；三红线零触碰；气泡双联+bge 清算全过**。总领认领：派发单根因①误判（SelfCheckCard:38 早直读 LS.model）。**owner 复验=F14 S6 收口** |
 | **R-A3** | **冒烟反馈第二轮**（owner 2 条：①主通道行仍显 Qwen2.5-72B=LS.model 历史杂值回显，且 pipeline_v2:170 证实发送路径真认该值=显示+发送双治 ②测试档 key 保存反馈弱+立即检测未按档位选探测源） | **✅ 已验收（靶向）** | **2 commit `487bbff..70833e1`；CI 徽章亲核 success=534/268/tsc 0；五文件零后端亲证（pipeline_v2/review/settings/embeddings/config）；变异①亲放恰 3 红→还原 10 绿（首放无效自检抓到，按真实行重放）；resolveChatModel 双参化=标准档钉死 dsv4f 无视杂值+zen 取 LS.model；自检探测源档位感知 chat_zen；zhipu 遗留态自裁备案获准（评委 fresh clone 不触达）；交接齐**（`step-RA3.md` 被否 7 条） |
-| **R-C1** | **测试档全链 zen 化**（决策 38 主体：req 外围 LLM 构造点档位感知收敛+前端资源生成/上传大纲路由） | 提示词已交付 | **🔄 `docs/dispatch/step-RC1.md`（09-02，直发）**——S1 后端工厂/S2 调用点盘点收敛/S3 开关键透传/S4 前端 aux 路由/S5 变异 push；验收=测试档下日志 deepseek 计数归零 |
-| **R-C2** | **思维链内容化二批**（owner 反馈：①检索视窗内容块+点击展开 ②规划节点流式先行） | 待派发（R-C1 收口后出单） | 中等轮；数据源=search_results/plan_thinking 均已在服务端；与 R-C1 串行 |
+| **R-C1** | ~~测试档全链 zen 化~~ | **❌ 取消（吸收进 R-D）** | owner 拍板架构层动刀：辅助链 zen 化=R-D 注册表 test 档格子的固有语义，RC1 补丁作废（step-RC1.md 头部标注废止） |
+| **R-C2** | **思维链内容化二批**（①检索视窗内容块+点击展开 ②规划节点流式先行） | 待派发（R-D 收口后出单） | 中等轮；放 R-D 后避免在旧结构上做二遍 |
+| **R-D** | **ModelRegistry 架构轮**（owner 授权动刀：模型供应收敛为角色×档位注册表，OpenCode 设计参照；判卷路由/辅助链/前端三 resolver 全部吸收；决策 38 语义内建；vision 吞没；E-40 强化核对） | 提示词已交付 | **🔄 docs/dispatch/step-RD.md（09-02，架构直发，六子步）**——S1 注册表核心/S2 判卷吸收/S3 辅助链收敛（vision 吞没）/S4 settings 透传/S5 前端镜像/S6 变异×2+E-40 核对；验收含「改一格换模型」现场演示 |
 | **R-A4** | **冒烟反馈第三轮**（owner 3 条：①Zen key 保存无持久反馈 ②测试档开关**取消确认框直接切**（owner 推翻派发单交互）+不亮修复（根因=key 未存时 zenBaseUrl 空守卫只发瞬时 flash 即 return）③删测试档卡审核子开关、合并栏独立审核气泡右端加开关+小字「关闭后需要审核时自动采用主模型」） | **✅ 已验收（靶向）** | **3 commit 20e8f67..d5b1bfe；CI success=534/285/tsc 0 亲核；五后端文件零触碰；变异②亲放恰 1 红→6 绿；交接含三态矩阵/语义边界/被否（flash 态已配置被拒——违反持久渲染原则）**；漂移上报规范（7f063f1≠e736d93 如实报）。**T59 登记见 §4** | **🔄 `docs/dispatch/step-RA4.md`（09-01，微轮直发，零后端）**——S1 Zen 持久已配置徽标/S2 直切+依赖链持久提示+删子开关/S3 合并栏开关（follow_main 反转）+语义边界（标准档 ON 未配 research 时判卷回落主模型=10 月议题）/S4 变异×2 |
 | **R-A5** | **结构收敛+冒烟第三批修复**（owner 授权重构：审核路由三处复刻收敛为 resolve_review_route 单一事实源+GET effective_model；Zen key 专用保存通道；气泡上下排列；开关 ON 补写 research 兑现气泡承诺。**E-40 背景**：反馈①③主因是后端容器陈旧，已当场重建） | **✅ 已验收（靶向）** | **3 commit 5a7665..5ef6fca；CI success=542/293/tsc 0 亲核；六红线零触碰；E-40 首演通过（容器 17548B==宿主字节口径+GET effective_model 活体=Big Pickle）；变异①亲放恰 5 红→还原 13 绿；微偏差两处追认（serviceGroups/types.ts）；交接含收敛对照表+五态矩阵+被否 6 条**（step-RA5.md）。**T60 登记见 §4；owner 复验=F14 S6 收口** |
 | **X-2** | **二次完整体验与综合优化计划**：owner 亲用 dev 栈（F9 完全体）自由记录（建议 X-A~F 分区随手记）→ 总领出综合优化计划（证据基准 commit+定级+归属步骤映射；**9-5 前抢救项 vs 10 月窗口分流**，兼作 10 月窗口工作稿） | 待 owner 体验 | **⏳ 窗口已排**（N5 后、Wave 2 信号前；预计 owner 1-2h + 总领 1h） |
