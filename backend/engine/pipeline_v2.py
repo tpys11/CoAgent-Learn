@@ -337,18 +337,18 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
             working_message = req.message
 
         # --- S1 Plan ---
-        from engine.planning import classify_intent, is_rule_simple
+        # RC2-S2：删 is_rule_simple 规则短路（owner 裁定 09-02）——所有输入统一走
+        # classify_intent LLM 真实分析：规则捷径把 ≤30 字消息打成 simple_direct，
+        # 规划节点因此无思考可显（owner「只是一次简单判断」根因之一）；simple_direct
+        # 判定权交还 LLM，该档仍只有 _plan_pt 一行（简单请求不伪装深度思考）
+        from engine.planning import classify_intent
         token_queue.put(("step", "学习助手·规划"))
-        if is_rule_simple(req.message):
-            plan_thinking = ""
-            plan = {"complexity": "simple_direct"}
-        else:
-            try:
-                plan_thinking, plan = classify_intent(
-                    _make_fast_llm(req), req.message, template)
-            except Exception:
-                logger.exception("[v2] 意图分类失败，回落 standard")
-                plan_thinking, plan = "", {"complexity": "standard"}
+        try:
+            plan_thinking, plan = classify_intent(
+                _make_fast_llm(req), req.message, template)
+        except Exception:
+            logger.exception("[v2] 意图分类失败，回落 standard")
+            plan_thinking, plan = "", {"complexity": "standard"}
         if plan_thinking.strip():
             mindchain_entries.append({"agent": "学习助手·规划",
                                       "content": plan_thinking.strip()})

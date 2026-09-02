@@ -10,11 +10,49 @@
  {
   "type": "thought_token",
   "agent": "学习助手·规划",
-  "chunk": "规划要点：复杂度 simple_direct · 思考档 · 简单直答，不检索"
+  "chunk": "规划要点：复杂度 standard · 思考档 · 需检索知识库"
  },
  {
   "type": "step",
   "agent": "学情与记忆管理"
+ },
+ {
+  "type": "step",
+  "agent": "知识库管理"
+ },
+ {
+  "type": "subagent",
+  "run_id": "<RID>",
+  "agent": "知识库管理",
+  "title": "🛰 检索观察窗",
+  "event": "start"
+ },
+ {
+  "type": "subagent",
+  "run_id": "<RID>",
+  "agent": "知识库管理",
+  "content": "普通消息无括号",
+  "event": "input"
+ },
+ {
+  "type": "subagent",
+  "run_id": "<RID>",
+  "agent": "知识库管理",
+  "text": "终筛留存 0 条（候选共 0）",
+  "event": "delta"
+ },
+ {
+  "type": "subagent",
+  "run_id": "<RID>",
+  "agent": "知识库管理",
+  "status": "ok",
+  "summary": "候选 0 → 留存 0",
+  "event": "end"
+ },
+ {
+  "type": "thought_token",
+  "agent": "知识库管理",
+  "chunk": "**命中预览**：（本轮无命中）"
  },
  {
   "type": "thought_token",
@@ -40,6 +78,11 @@
     "detail": "意图分类完成"
    },
    {
+    "agent": "知识库管理",
+    "status": "done",
+    "detail": "检索0条"
+   },
+   {
     "agent": "学情与记忆管理",
     "status": "done",
     "detail": "水平评估完成"
@@ -53,7 +96,11 @@
   "mindchain": [
    {
     "agent": "学习助手·规划",
-    "content": "规划要点：复杂度 simple_direct · 思考档 · 简单直答，不检索"
+    "content": "规划要点：复杂度 standard · 思考档 · 需检索知识库"
+   },
+   {
+    "agent": "知识库管理",
+    "content": "**命中预览**：（本轮无命中）"
    },
    {
     "agent": "输出策略",

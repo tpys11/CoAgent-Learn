@@ -82,6 +82,11 @@ def _capture(app, body):
             if f.get("type") == "start":
                 f["request_id"] = "<RID>"
             frames.append(f)
+    # RC2-S2：黄金序列现含观察窗帧（规则短路删除后 standard 路径会建档），
+    # run_id 每次运行随机生成——归一为占位符保证逐帧比对确定性（断言本体不变）
+    for f in frames:
+        if f.get("type") == "subagent" and "run_id" in f:
+            f["run_id"] = "<RID>"
     return frames
 
 
