@@ -39,9 +39,17 @@ export function zenSaveUiState(zenKey: string, g: SettingsData): { zenKey: strin
   return { zenKey, zenKeySet: !!g.zen?.api_key_set, zenKeyHint: g.zen?.api_key_hint || '' }
 }
 
-/** RA2-S2：已保存尾号提示文案（GET zen.api_key_hint 已有，后端 _mask_key 尾号掩码）。 */
-export function zenSavedHintText(hint: string): string {
-  return `已保存：${hint}`
+/** RA4-S1：Zen 卡持久配置态徽标——关键状态一律持久渲染，flash 只做动作回执（总领定性①）。
+ *  陷阱：hint 可能空串（GET zen.api_key_hint 缺省）——空时只显「已配置」，
+ *  不让 `set && hint` && 链把整条提示吞掉（现版「没反馈」的候选机理）。 */
+export function zenKeyConfigText(zenKeySet: boolean, hint: string): string {
+  if (!zenKeySet) return '未配置'
+  return hint ? `已配置：${hint}` : '已配置'
+}
+
+/** RA4-S1：保存失败持久红字——不清到下次成功（flash 会消失，失败状态必须常驻可见）。 */
+export function zenSaveFailPersistText(): string {
+  return '保存失败，请检查网络后重试'
 }
 
 /** RA3-S2：Zen key 保存成功 flash（纯函数直调钉逐字）——owner 反馈②「保存反馈弱」：
@@ -102,6 +110,8 @@ export default function ServiceSettings() {
   // Zen key 输入（RA-S3：原 ZenProviderCard 双写逻辑内联至此）
   const [zenKey, setZenKey] = useState('')
   const [zenSaving, setZenSaving] = useState(false)
+  // RA4-S1：保存失败持久红字态——不清到下次成功
+  const [zenSaveErr, setZenSaveErr] = useState(false)
   // 测试档总开关态（LS.preset 单一事实源）
   const [testPresetOn, setTestPresetOn] = useState(() => lsGet(LS.preset, 'standard') === 'test')
   const [svcSaved, setSvcSaved] = useState(false)
@@ -181,9 +191,11 @@ export default function ServiceSettings() {
       const next = zenSaveUiState(zenKey, g)
       setZenKey(next.zenKey)
       setSvc(s => ({ ...s, zen_key_set: next.zenKeySet, zen_key_hint: next.zenKeyHint }))
+      setZenSaveErr(false)
       flash(zenSavedFlashText())
     } catch {
-      // RA3-S2：失败红色可见（旧 catch 只闪绿色成功样式，owner 反馈②「保存反馈弱」）
+      // RA4-S1：失败持久红字（flash 降级为动作回执，状态本体走 zenSaveErr 常驻渲染）
+      setZenSaveErr(true)
       flashErr(zenSaveFailFlashText())
     } finally {
       setZenSaving(false)
@@ -270,8 +282,12 @@ export default function ServiceSettings() {
                       {zenSaving ? '保存中…' : '保存'}
                     </button>
                   </div>
-                  {svc.zen_key_set && svc.zen_key_hint && (
-                    <p className="text-[10px] text-green-700">{zenSavedHintText(svc.zen_key_hint)}</p>
+                  {/* RA4-S1：持久配置态徽标（绿=已配置+尾号，灰=未配置）——不再依赖 flash；hint 空串仍显「已配置」 */}
+                  <p className={`text-[10px] ${svc.zen_key_set ? 'text-green-700' : 'text-dim'}`}>
+                    {zenKeyConfigText(svc.zen_key_set, svc.zen_key_hint)}
+                  </p>
+                  {zenSaveErr && (
+                    <p className="text-[10px] text-red-500">{zenSaveFailPersistText()}</p>
                   )}
                 </div>
                 <div className="flex items-center justify-between">
