@@ -8,7 +8,7 @@ claims 全表交由调用方落 eval_traces 供幻觉率统计（L1）。
 import json
 import logging
 
-from core.model_provider import MODEL_MAIN
+from core.model_provider import MODEL_MAIN, resolve_review_route  # R-D S2：判卷路由入注册表——本文件原 RA5-S1 本体删除，pick_judge/探测/GET 同源转调新入口
 from engine.llm_io import think_then_json
 
 logger = logging.getLogger("coagent.review")
@@ -29,28 +29,6 @@ def review_enabled(template: str, settings: dict | None) -> bool:
     if template == "研究":
         return True
     return bool((settings or {}).get("reviewEnabled"))
-
-
-def resolve_review_route(template: str) -> dict:
-    """RA5-S1：判卷路由单一事实源（纯函数，只读 _cfg）——pick_judge_llm、settings /test 探测、
-    GET review 回显三处共用，四分支逻辑自 pick_judge_llm 原样搬迁（行为零变化）。
-    返回 {"model": <实际判卷模型名>, "provider": "zen"|"siliconflow"|"main", "follow_main": bool}；
-    key 值不进本函数：SF 分支用 VL||EMBEDDING、zen 分支用 ZEN、主分支用 req.api_key||DEEPSEEK——
-    req 上下文在调用方，纯函数只判「走哪家」，key 选择副作用（含 zen 缺 key 的 req 兜底）留给 pick_judge。"""
-    from core.config import config as _cfg
-    # RA-S1：审核子开关「关=审核时用主模型」——follow_main='1' 时研究档判卷直接用主模型，
-    # 短路下方 zen:/"/" 路由（关闭语义由独立布尔键承载，T51 禁空串写入）
-    if template == "研究" and str(getattr(_cfg, "REVIEW_FOLLOW_MAIN", "0")) == "1":
-        return {"model": MODEL_MAIN, "provider": "main", "follow_main": True}
-    model = ((_cfg.REVIEW_MODEL_RESEARCH if template == "研究" else _cfg.REVIEW_MODEL_THINK) or "").strip() or MODEL_MAIN
-    if model.startswith("zen:"):
-        # F14-S4e：zen: 前缀=OpenCode Zen 研究通道（同名 MAIN/REVIEW 但归 REVIEW 类）；
-        # 去前缀体即线上模型名，provider=zen（缺 key 的回退判定归调用方）
-        return {"model": model[4:].strip(), "provider": "zen", "follow_main": False}
-    if template == "研究" and "/" in model:
-        # "/"（硅基流动命名风格）=跨厂商路由；思考档不触发（原 pick_judge 语义保留）
-        return {"model": model, "provider": "siliconflow", "follow_main": False}
-    return {"model": model, "provider": "main", "follow_main": False}
 
 
 def pick_judge_llm(template: str, req):

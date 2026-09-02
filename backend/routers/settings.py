@@ -75,7 +75,7 @@ def get_settings():
     from core.config import config as _cfg
     from core.db import get_settings_repo
     from core.model_provider import MODEL_MAIN  # RA2-S1：函数内延迟导入（CONVENTIONS §1）——主模型实名出接口，自检卡两行同源对照用
-    from engine.review import resolve_review_route  # RA5-S1：判卷路由单一事实源（effective_model 回显）
+    from core.model_provider import resolve_review_route  # R-D S2：判卷路由单一事实源已入注册表（effective_model 回显）
     _embed_key = getattr(_cfg, "EMBEDDING_API_KEY", "")
     _vl_key = getattr(_cfg, "VL_API_KEY", "")
     return {
@@ -262,7 +262,7 @@ def test_settings(req: SettingsSave):
     # 审核行：RA5-S1 探测改调单一事实源 resolve_review_route——URL/key 按返回的 provider 构造
     # （手工复刻段删除；key 值仍取自 _cfg，req 上下文不入纯函数。两处只改一处则
     # GET/探测回显不一致=自检卡说谎的旧漂移根因就此拔除）
-    from engine.review import resolve_review_route
+    from core.model_provider import resolve_review_route
     _route = resolve_review_route("研究")
     _review_model = getattr(_cfg, "REVIEW_MODEL_RESEARCH", "")
     if _route["follow_main"] or _review_model:

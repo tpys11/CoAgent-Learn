@@ -36,7 +36,7 @@ def _fake_cached_llm(key, base_url, model, thinking, effort, factory):
 def test_route_matrix_follow_main_on_short_circuits_main(monkeypatch):
     """矩阵①：follow_main='1' → main 通道 MODEL_MAIN（research 配了 zen: 也短路——原 pick_judge 语义）。"""
     from core.config import config as _cfg
-    from engine.review import resolve_review_route
+    from core.model_provider import resolve_review_route
     monkeypatch.setattr(_cfg, "REVIEW_FOLLOW_MAIN", "1")
     monkeypatch.setattr(_cfg, "REVIEW_MODEL_RESEARCH", "zen:Big Pickle")
     monkeypatch.setattr(_cfg, "ZEN_API_KEY", "sk-zen-test-only-fake")
@@ -47,7 +47,7 @@ def test_route_matrix_follow_main_on_short_circuits_main(monkeypatch):
 def test_route_matrix_zen_prefix_routes_zen(monkeypatch):
     """矩阵②：follow_main='0' + zen: 前缀 → zen 通道，model=去前缀体（原 pick_judge 语义）。"""
     from core.config import config as _cfg
-    from engine.review import resolve_review_route
+    from core.model_provider import resolve_review_route
     monkeypatch.setattr(_cfg, "REVIEW_FOLLOW_MAIN", "0")
     monkeypatch.setattr(_cfg, "REVIEW_MODEL_RESEARCH", "zen:Big Pickle")
     assert resolve_review_route("研究") == {
@@ -57,7 +57,7 @@ def test_route_matrix_zen_prefix_routes_zen(monkeypatch):
 def test_route_matrix_empty_research_falls_back_main(monkeypatch):
     """矩阵③：follow_main='0' + research 空 → main 通道 MODEL_MAIN（原 pick_judge 语义）。"""
     from core.config import config as _cfg
-    from engine.review import resolve_review_route
+    from core.model_provider import resolve_review_route
     monkeypatch.setattr(_cfg, "REVIEW_FOLLOW_MAIN", "0")
     monkeypatch.setattr(_cfg, "REVIEW_MODEL_RESEARCH", "")
     assert resolve_review_route("研究") == {
@@ -67,7 +67,7 @@ def test_route_matrix_empty_research_falls_back_main(monkeypatch):
 def test_route_think_template_reads_think_model(monkeypatch):
     """补充：思考档读 REVIEW_MODEL_THINK（resolve 服务 pick_judge 双模板，不只研究档）。"""
     from core.config import config as _cfg
-    from engine.review import resolve_review_route
+    from core.model_provider import resolve_review_route
     monkeypatch.setattr(_cfg, "REVIEW_MODEL_THINK", "zen:Think Pickle")
     assert resolve_review_route("思考") == {
         "model": "Think Pickle", "provider": "zen", "follow_main": False}
@@ -83,7 +83,8 @@ def test_same_source_follow_main(mock_cll, monkeypatch):
     monkeypatch.setattr(_cfg, "REVIEW_MODEL_RESEARCH", "zen:Big Pickle")
     monkeypatch.setattr(_cfg, "ZEN_API_KEY", "sk-zen-test-only-fake")
 
-    from engine.review import pick_judge_llm, resolve_review_route
+    from engine.review import pick_judge_llm
+    from core.model_provider import resolve_review_route
     route = resolve_review_route("研究")
     req = _make_req()
     llm = pick_judge_llm("研究", req)
@@ -102,7 +103,8 @@ def test_same_source_zen(mock_cll, monkeypatch):
     monkeypatch.setattr(_cfg, "ZEN_API_KEY", "sk-zen-test-only-fake")
     monkeypatch.setattr(_cfg, "ZEN_BASE_URL", "https://opencode.ai/zen/v1")
 
-    from engine.review import pick_judge_llm, resolve_review_route
+    from engine.review import pick_judge_llm
+    from core.model_provider import resolve_review_route
     route = resolve_review_route("研究")
     llm = pick_judge_llm("研究", _make_req())
     assert route["provider"] == "zen"
@@ -121,7 +123,8 @@ def test_same_source_siliconflow(mock_cll, monkeypatch):
     monkeypatch.setattr(_cfg, "EMBEDDING_API_KEY", "")
     monkeypatch.setattr(_cfg, "VL_BASE_URL", "https://api.siliconflow.cn/v1")
 
-    from engine.review import pick_judge_llm, resolve_review_route
+    from engine.review import pick_judge_llm
+    from core.model_provider import resolve_review_route
     route = resolve_review_route("研究")
     llm = pick_judge_llm("研究", _make_req())
     assert route["provider"] == "siliconflow"
