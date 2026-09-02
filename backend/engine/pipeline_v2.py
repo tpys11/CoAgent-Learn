@@ -101,6 +101,40 @@ def _format_search_detail(meta: dict, results: list) -> str:
     return "\n".join(lines)
 
 
+# RC2-S1：检索命中内容块——观察窗 hits 事件与思维链双写共用数据源（截断防爆参数沿 RA5 风格）
+_HIT_BLOCKS_MAX = 5     # top5：载荷上限（5 块 ×240 字 ≈1.2KB/事件，SSE 合批窗口可容纳）
+_HIT_TITLE_LEN = 60     # title/source 同宽 60 字（_format_search_detail source 同款）
+
+
+def _hit_blocks(results: list) -> list:
+    """RC2-S1：终筛留存命中 → 结构化内容块（top5）。纯函数供 pytest 直调。
+    截断防爆是硬约束：检索片段是切块、单块可能很大，content 只取前 240 字
+    （与 _SEARCH_SNIPPET_LEN 同档），title/source 各 60——绝不发全量 chunk 原文。"""
+    blocks: list = []
+    for r in (results or [])[:_HIT_BLOCKS_MAX]:
+        if not isinstance(r, dict):
+            continue
+        rmeta = r.get("metadata") or {}
+        blocks.append({
+            "title": str(r.get("title") or "")[:_HIT_TITLE_LEN],
+            "source": str(rmeta.get("source") or r.get("title") or "未知来源")[:_HIT_TITLE_LEN],
+            "content": str(r.get("content") or "").strip()[:_SEARCH_SNIPPET_LEN],
+        })
+    return blocks
+
+
+def _format_hit_blocks_md(blocks: list) -> str:
+    """RC2-S1：命中块 → 思维链 markdown（与 hits 事件同源；空列表返回空串由调用方跳过）。
+    markdown 方言仅用粗体/编号列表（renderMd 管线原生支持，与 _format_search_detail 同款）。"""
+    if not blocks:
+        return ""
+    lines = ["**命中内容块**："]
+    for i, b in enumerate(blocks, 1):
+        title = b["title"] or b["source"] or "未命名块"
+        lines.append(f"{i}. **{title}**（{b['source']}）：{b['content']}")
+    return "\n".join(lines)
+
+
 def _format_review_conclusion(verdict: dict, attempt: int, template: str) -> str:
     """F11-S2：审核结论文案（流式事件与 mindchain 条目共用，纯函数供 pytest 直调）。
     verdict 兼容 review_once（passed/score/reasons/skipped）与 review_claims 超集
@@ -393,10 +427,15 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
             except Exception:
                 logger.exception("[v2] 检索阶段失败，降级无检索生成")
                 _sa_gate_ok = False
+            _hit_structs = _hit_blocks(search_results)  # RC2-S1：终筛留存命中块（top5 截断防爆）
             if _sa_gate_ok:
                 _kept = len(search_results)
                 _raw = _search_meta.get("raw_count", _kept)
                 _summary = f"候选 {_raw} → 留存 {_kept}"
+                if _hit_structs and _sa_emit:
+                    # RC2-S1：命中内容块先于 end 冻结入观察窗（点击展开可见具体内容）；
+                    # _sa_emit 同步落 subagent_runs 档案，REST 回看通道自动覆盖
+                    _sa_emit("hits", hits=_hit_structs)
                 _sa_finish(_sa_rid, status="ok", summary=_summary)
                 token_queue.put(("subagent", {"type": "end", "run_id": _sa_rid,
                                               "agent": "知识库管理",
@@ -412,6 +451,13 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                         logger.debug("error 路径观察窗收尾失败", exc_info=True)
             ctx_steps.append({"agent": "知识库管理", "status": "done",
                               "detail": f"检索{len(search_results)}条"})
+            # RC2-S1：命中内容块思维链双写（token 事件 + mindchain_entries 同源）——
+            # 只发事件 done 权威替换会打回原形（F11 注释真 bug）；merge_consecutive 只保
+            # agent/content 两字段，故块内容以 markdown 进 content（截断已由 _hit_blocks 保证）
+            if _hit_structs:
+                _hit_md = _format_hit_blocks_md(_hit_structs)
+                token_queue.put(("token", "知识库管理", _hit_md))
+                mindchain_entries.append({"agent": "知识库管理", "content": _hit_md})
             # F11-S1：检索节点内容化——query 与命中预览（source/chunk/融合分，截断防爆）
             # 进思维链，同款「token 事件 + mindchain 双写」；与既有 step/thought_token
             # 词汇表对齐（复用 :378 输出策略 / :511 审核同款通道），零新协议。
