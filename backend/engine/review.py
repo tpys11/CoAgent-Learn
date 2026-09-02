@@ -7,6 +7,7 @@ claims 全表交由调用方落 eval_traces 供幻觉率统计（L1）。
 诊断分类抄 FactEval（证据强度×判定结果）：hallucination/retrieval_gap/no_evidence。"""
 import json
 import logging
+import time
 
 from core.model_provider import MODEL_MAIN, resolve_review_route  # R-D S2：判卷路由入注册表——本文件原 RA5-S1 本体删除，pick_judge/探测/GET 同源转调新入口
 from engine.llm_io import think_then_json
@@ -14,6 +15,41 @@ from engine.llm_io import think_then_json
 logger = logging.getLogger("coagent.review")
 REVIEW_MAX_RETRY = 2
 _FALLBACK_JUDGE = MODEL_MAIN  # 跨厂商名缺 key 时的响亮回退值
+
+_RATE_LIMIT_SLEEP = 20  # RC3-S4：判卷撞 429 的延迟重试等待（秒）；模块级常量供测试注入
+
+# RC3-S4：fail-open 文案诚实化——think_then_json 吞异常返回「执行异常: …」指纹，
+# 该形态=审核器调用失败（免费档 429 重试耗尽为主），并非「输出不可解析」（谎报根因）
+_REASON_RATE_LIMIT_ONCE = "审核器暂不可用（免费档限流），本轮跳过"
+_REASON_UNPARSEABLE_ONCE = "审核器输出不可解析，跳过本轮"
+_REASON_RATE_LIMIT_CLAIMS = "本轮未经完整审核（审核器暂不可用（免费档限流））"
+_REASON_UNPARSEABLE_CLAIMS = "本轮未经完整审核（审核器输出不可解析）"
+
+
+def _failopen_reason(thinking: str, claims_form: bool) -> str:
+    """fail-open reasons 选文案：调用失败指纹（执行异常开头）→ 限流诚实文案；
+    调用成功但输出不合形 → 维持「输出不可解析」原文案。claims_form=断言级审核的前缀形态。"""
+    rate_limited = thinking.startswith("执行异常")
+    if claims_form:
+        return _REASON_RATE_LIMIT_CLAIMS if rate_limited else _REASON_UNPARSEABLE_CLAIMS
+    return _REASON_RATE_LIMIT_ONCE if rate_limited else _REASON_UNPARSEABLE_ONCE
+
+
+def _judge_think(llm_review, prompt: str,
+                 temperature: float | None = None) -> tuple[str, dict]:
+    """RC3-S4：判卷专用 think_then_json 封装——429 单次延迟重试（仅审核角色）。
+    think_then_json 吞异常不抛（返回「执行异常: …」指纹）；base_llm 对 429 链路的
+    RuntimeError 带「免费模型限流」后缀——双重指纹（执行异常+免费模型限流）判定
+    限流才重试，非 429 异常不重试（对 dsv4f/zen 两 provider 均安全）。
+    判卷在主链收尾：20s 上限仅一次，宁快不挂；「按通过处理」的 fail-open 语义由调用方保持。"""
+    thinking, result = think_then_json(llm_review, prompt, "", "审核",
+                                       silent=True, temperature=temperature)
+    if thinking.startswith("执行异常") and "免费模型限流" in thinking:
+        logger.warning("[审核] 判卷撞免费档限流（429），%ds 后单次重试", _RATE_LIMIT_SLEEP)
+        time.sleep(_RATE_LIMIT_SLEEP)
+        thinking, result = think_then_json(llm_review, prompt, "", "审核",
+                                           silent=True, temperature=temperature)
+    return thinking, result
 
 _CLAIMS_MAX = 15        # 声明条数上限（防碎化，FactEval MAX_CLAIMS 同思路）
 _CHUNK_CHARS = 500      # 每块证据截断
@@ -101,10 +137,10 @@ def review_once(llm_review, answer: str, context_digest: str,
     )
     thinking = ""
     try:
-        thinking, result = think_then_json(llm_review, prompt, "", "审核", silent=True)
+        thinking, result = _judge_think(llm_review, prompt)
         if not isinstance(result, dict) or "passed" not in result:
             return {"passed": True, "score": 100,
-                    "reasons": "审核器输出不可解析，跳过本轮",
+                    "reasons": _failopen_reason(thinking, claims_form=False),
                     "thinking": thinking[:600], "skipped": True}
         passed = bool(result.get("passed"))
         try:
@@ -172,11 +208,10 @@ def review_claims(llm_review, answer: str, chunks, strategy_directive: str) -> d
     )
     thinking = ""
     try:
-        thinking, result = think_then_json(llm_review, prompt, "", "审核",
-                                           silent=True, temperature=0)
+        thinking, result = _judge_think(llm_review, prompt, temperature=0)
         if not isinstance(result, dict) or not isinstance(result.get("claims"), list):
             return {"passed": True, "score": 100,
-                    "reasons": "本轮未经完整审核（审核器输出不可解析）",
+                    "reasons": _failopen_reason(thinking, claims_form=True),
                     "issues": [], "claims": [],
                     "thinking": thinking[:600], "skipped": True}
         claims: list[dict] = []
