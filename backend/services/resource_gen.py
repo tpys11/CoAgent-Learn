@@ -60,6 +60,9 @@ def generate_resource(
     """按能力 key 生成资源内容（同步实现；调用方用线程池执行避免阻塞事件循环）。
 
     转调 skills/registry 中对应的 gen_* 技能；响应形状与错误文案与解耦前保持一致。
+    R-D S3④：base_url/model 改由注册表 main 格统一决策（后台无 req→current_tier）——
+    前端仍传但后端不再采信（对外契约微变登记：SpecialOutputPane 硬编码二值降级为无效参数）；
+    standard 格 key 前序「调用方 or DEEPSEEK」保持，zen 格 ZEN||调用方（pick_judge 同序）。
     """
     cap = CAPABILITIES.get(key)
     if not cap:
@@ -68,12 +71,15 @@ def generate_resource(
     if not src:
         return {"status": "error", "msg": "源内容为空"}
     try:
+        from core.model_provider import resolve_model, current_tier
+        spec = resolve_model("main", current_tier())
+        k = (spec.api_key or api_key) if spec.provider == "zen" else (api_key or spec.api_key)
         r = registry.execute(
             cap["skill"],
             content=src[:4000],
-            api_key=api_key,
-            base_url=base_url or "",
-            model=model or "",
+            api_key=k,
+            base_url=spec.base_url,
+            model=spec.model,
         )
         if r.get("error"):
             return {"status": "error", "msg": r["error"]}

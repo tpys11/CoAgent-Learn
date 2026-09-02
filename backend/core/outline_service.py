@@ -264,12 +264,17 @@ def _outline_from_title_lines(text: str) -> list:
 
 def _default_llm_factory(key: str):
     """生产 LLM 构造：走 pipeline_v2._cached_llm（共享 _make_llm 的缓存池）；
-    thinking=False 快速档（大纲提取无需深思）。engine 延迟导入防环（B1 先例）。"""
-    from engine.pipeline_v2 import DEFAULT_MODEL, _cached_llm
+    thinking=False 快速档（大纲提取无需深思）。engine 延迟导入防环（B1 先例）。
+    R-D S3：模型/端点/key 改问注册表 main 格（后台无 req→current_tier，测试档随决策 38 走 zen）；
+    standard 格 key 前序「调用方 or DEEPSEEK」由 _outline_from_llm 入参 or 链保持。"""
+    from engine.pipeline_v2 import _cached_llm
     from core.base_llm import DeepSeekLLM
+    from core.model_provider import resolve_model, current_tier
+    spec = resolve_model("main", current_tier())
+    k = (spec.api_key or key) if spec.provider == "zen" else key
     return _cached_llm(
-        key, None, DEFAULT_MODEL, False, None,
-        lambda: DeepSeekLLM(api_key=key, model=DEFAULT_MODEL, thinking=False))
+        k, spec.base_url, spec.model, False, None,
+        lambda: DeepSeekLLM(api_key=k, model=spec.model, base_url=spec.base_url, thinking=False))
 
 
 def _outline_from_llm(text: str, api_key: str = "", llm_factory=None) -> list:

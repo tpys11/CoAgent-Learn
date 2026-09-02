@@ -103,11 +103,12 @@ class GenQuiz(Skill):
     def execute(self, content="", api_key="", base_url="", model="", **kwargs):
         try:
             from core.base_llm import DeepSeekLLM
-            from core.model_provider import MODEL_MAIN
+            from core.model_provider import resolve_model, current_tier
+            _spec = resolve_model("main", current_tier())  # R-D S3：缺省模型/端点改问注册表（调用方传值优先，test 档随决策 38）
             llm = DeepSeekLLM(
                 api_key=api_key,
-                model=model or MODEL_MAIN,
-                base_url=base_url,
+                model=model or _spec.model,
+                base_url=base_url or _spec.base_url,
                 thinking=False,
             )
             # 交互式测验：要求结构化 JSON 输出（chat_with_json 自带 json_object 模式 + 3 次重试）

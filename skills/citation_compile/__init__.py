@@ -23,11 +23,14 @@ class CitationCompile(Skill):
             kb_chunks = kb_chunks or []
             if not content or not kb_chunks:
                 return {"content": content, "citations": 0, "note": "无知识库片段，跳过引用标注"}
-            from core.config import config
             from core.base_llm import DeepSeekLLM
-            _key = api_key or config.DEEPSEEK_API_KEY
-            _base = base_url or config.DEEPSEEK_BASE_URL
-            _model = model or "deepseek-chat"
+            from core.model_provider import resolve_model, current_tier
+            # R-D S3：缺省模型/端点/key 改问注册表 main 格（标准档 key 前序「调用方 or DEEPSEEK」保持）；
+            # 旧本地默认 "deepseek-chat" 是散落常量，收敛后随注册表（main=dsv4f 视觉实名）
+            _spec = resolve_model("main", current_tier())
+            _key = api_key or _spec.api_key
+            _base = base_url or _spec.base_url
+            _model = model or _spec.model
             if not _key:
                 return {"content": content, "citations": 0, "note": "未配置 API Key，跳过引用标注"}
             _chunks_txt = "\n".join(

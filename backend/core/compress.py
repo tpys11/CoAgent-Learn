@@ -44,7 +44,12 @@ def _est_tokens(text: str) -> int:
 
 def _call_llm(api_key: str, prompt: str, max_tokens: int = 1200) -> str:
     from core.base_llm import DeepSeekLLM
-    llm = DeepSeekLLM(api_key=api_key)
+    from core.model_provider import resolve_model, current_tier
+    # R-D S3：模型/端点改问注册表 main 格（后台无 req→current_tier，测试档随决策 38 走 zen）；
+    # standard 格 key 保持调用方原值（本点原无 or 链，不新增——逐字节等价）
+    spec = resolve_model("main", current_tier())
+    key = (spec.api_key or api_key) if spec.provider == "zen" else api_key
+    llm = DeepSeekLLM(api_key=key, model=spec.model, base_url=spec.base_url)
     try:
         return llm.chat([{"role": "user", "content": prompt}], max_tokens=max_tokens) or ""
     except Exception as e:

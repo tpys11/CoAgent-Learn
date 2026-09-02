@@ -46,9 +46,14 @@ def enhance_questions(project_id: str, chunks: list, doc_ids: list, source: str 
     B1 拆分：db 显式注入（缺省 get_kb_repo 单例）——调用方传门面 _db 保持补丁面一致。
     返回成功写库的块数。"""
     from core.config import config as _cfg
+    from core.model_provider import resolve_model, current_tier
     if not int(getattr(_cfg, "KB_META_ENHANCE", 1) or 0):
         return 0
-    key = api_key or getattr(_cfg, "DEEPSEEK_API_KEY", "")
+    # R-D S3：模型/端点/key 统一注册表决策（后台无 req→current_tier，测试档随决策 38 走 zen）；
+    # standard 格 key 前序「调用方 or DEEPSEEK」逐字节保持；zen 格 ZEN||调用方（pick_judge 同序）
+    spec = resolve_model("main", current_tier())
+    key = (spec.api_key or api_key or getattr(_cfg, "DEEPSEEK_API_KEY", "")) if spec.provider == "zen" \
+        else (api_key or getattr(_cfg, "DEEPSEEK_API_KEY", ""))
     if not key or not chunks or not doc_ids:
         return 0
     if db is None:
@@ -56,9 +61,8 @@ def enhance_questions(project_id: str, chunks: list, doc_ids: list, source: str 
         db = get_kb_repo()
     if llm_factory is None:
         def llm_factory(k):
-            from engine.pipeline_v2 import DEFAULT_MODEL
             from core.base_llm import DeepSeekLLM
-            return DeepSeekLLM(api_key=k, model=DEFAULT_MODEL, thinking=False)
+            return DeepSeekLLM(api_key=k, model=spec.model, base_url=spec.base_url, thinking=False)
     try:
         llm = llm_factory(key)
     except Exception:
@@ -122,9 +126,13 @@ def extract_kg_edges(project_id: str, source: str, tree: list, api_key: str = ""
     llm_factory 注入缝/门控哲学与 B1 enhance_questions 同款。
     B1 拆分：db 显式注入（缺省 get_kb_repo 单例）。返回入库边数。"""
     from core.config import config as _cfg
+    from core.model_provider import resolve_model, current_tier
     if not int(getattr(_cfg, "KB_KG_EDGES", 1) or 0):
         return 0
-    key = api_key or getattr(_cfg, "DEEPSEEK_API_KEY", "")
+    # R-D S3：同 enhance_questions——注册表统一决策；standard 格 key 前序逐字节保持
+    spec = resolve_model("main", current_tier())
+    key = (spec.api_key or api_key or getattr(_cfg, "DEEPSEEK_API_KEY", "")) if spec.provider == "zen" \
+        else (api_key or getattr(_cfg, "DEEPSEEK_API_KEY", ""))
     names = _flatten_tree_names(tree)[:KG_MAX_NAMES]
     if not key or len(names) < 2:
         return 0
@@ -133,9 +141,8 @@ def extract_kg_edges(project_id: str, source: str, tree: list, api_key: str = ""
         db = get_kb_repo()
     if llm_factory is None:
         def llm_factory(k):
-            from engine.pipeline_v2 import DEFAULT_MODEL
             from core.base_llm import DeepSeekLLM
-            return DeepSeekLLM(api_key=k, model=DEFAULT_MODEL, thinking=False)
+            return DeepSeekLLM(api_key=k, model=spec.model, base_url=spec.base_url, thinking=False)
     try:
         llm = llm_factory(key)
     except Exception:

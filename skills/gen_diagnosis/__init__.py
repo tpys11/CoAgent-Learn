@@ -36,11 +36,12 @@ class GenDiagnosis(Skill):
         try:
             from core.base_llm import DeepSeekLLM
             from skills.gen_report import embed_images, sanitize_echarts_blocks
-            from core.model_provider import MODEL_MAIN
+            from core.model_provider import resolve_model, current_tier
+            _spec = resolve_model("main", current_tier())  # R-D S3：缺省模型/端点改问注册表（调用方传值优先，test 档随决策 38）
             llm = DeepSeekLLM(
                 api_key=api_key,
-                model=model or MODEL_MAIN,
-                base_url=base_url,
+                model=model or _spec.model,
+                base_url=base_url or _spec.base_url,
                 thinking=False,
             )
             text = llm.chat([{"role": "user", "content": _DIAGNOSIS_PROMPT + (content or "")[:4000]}], temperature=0.5)

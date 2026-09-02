@@ -144,11 +144,12 @@ class GenImage(Skill):
         """长内容 → LLM 提取 2 个关键词；失败/空回退 text[:40]。"""
         try:
             from core.base_llm import DeepSeekLLM
-            from core.model_provider import MODEL_MAIN
+            from core.model_provider import resolve_model, current_tier
+            _spec = resolve_model("main", current_tier())  # R-D S3：缺省模型/端点改问注册表（调用方传值优先，test 档随决策 38）
             llm = DeepSeekLLM(
                 api_key=api_key,
-                model=model or MODEL_MAIN,
-                base_url=base_url,
+                model=model or _spec.model,
+                base_url=base_url or _spec.base_url,
                 thinking=False,
             )
             out = llm.chat([{"role": "user", "content": _LLM_KEYWORD_PROMPT + text[:4000]}], temperature=0.3)

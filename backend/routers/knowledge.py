@@ -30,18 +30,27 @@ _IMG_MIME = {
 
 def _describe_image_main(image_b64: str, prompt: str, mime: str, api_key: str = "") -> str:
     """用视觉主模型生成图片描述（2026-08-22 移除独立视觉服务，图片理解统一走主模型）。
-    非流式一次调用（thinking=False 秒级返回）；失败抛异常由调用方转为错误响应。"""
-    from core.config import config as _cfg
+    R-D S3：模型/端点/key 改问注册表 vision 格（standard=dsv4f 视觉；test=mimo 无视觉能力）。
+    owner 拍板「无反馈直接吞没」（R-D S3③）：任何失败——test 档无视觉/缺 key/调用异常——
+    log.warning + 返回空描述，上游按无描述入库（图片理解质量降级不阻断入库主流程）。
+    旧契约「失败抛异常由调用方转为错误响应」就此废止（吞没仅限本点，其余收敛点照常上报）。"""
     from core.base_llm import DeepSeekLLM
-    key = api_key or getattr(_cfg, "DEEPSEEK_API_KEY", "")
-    if not key:
-        raise RuntimeError("未配置主模型 API Key（请求未携带且 .env 无 DEEPSEEK_API_KEY）")
-    llm = DeepSeekLLM(api_key=key, model="deepseek-v4-flash-vision-exp", thinking=False)
-    messages = [{"role": "user", "content": [
-        {"type": "text", "text": prompt},
-        {"type": "image_url", "image_url": {"url": f"data:{mime};base64," + image_b64}},
-    ]}]
-    return llm.chat(messages, temperature=0.2)
+    from core.model_provider import resolve_model, current_tier
+    try:
+        spec = resolve_model("vision", current_tier())
+        # standard 格 key 前序「调用方 or DEEPSEEK」保持（原 :36 or 链）；zen 格 ZEN||调用方（pick_judge 同序）
+        key = (spec.api_key or api_key) if spec.provider == "zen" else (api_key or spec.api_key)
+        if not key:
+            raise RuntimeError("未配置主模型 API Key（请求未携带且配置无主模型 Key）")
+        llm = DeepSeekLLM(api_key=key, model=spec.model, base_url=spec.base_url, thinking=False)
+        messages = [{"role": "user", "content": [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": f"data:{mime};base64," + image_b64}},
+        ]}]
+        return llm.chat(messages, temperature=0.2) or ""
+    except Exception:
+        logger.warning("[vision] 图片描述失败（吞没为空描述，不阻断入库）", exc_info=True)
+        return ""
 
 
 def _save_resource_text(project_id: str, source: str, text: str) -> None:
