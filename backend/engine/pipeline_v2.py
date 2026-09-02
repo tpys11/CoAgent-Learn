@@ -130,8 +130,11 @@ def _format_hit_blocks_md(blocks: list) -> str:
         return ""
     lines = ["**命中内容块**："]
     for i, b in enumerate(blocks, 1):
-        title = b["title"] or b["source"] or "未命名块"
-        lines.append(f"{i}. **{title}**（{b['source']}）：{b['content']}")
+        # RC2-S3 消费端契约：块内容/标题折叠为单行（切块常含换行，多行会破坏
+        # 思维链面 splitHitSection 逐行解析）；观察窗 hits 事件仍携原始多行文本
+        title = " ".join((b["title"] or b["source"] or "未命名块").split())
+        content = " ".join(b["content"].split())
+        lines.append(f"{i}. **{title}**（{b['source']}）：{content}")
     return "\n".join(lines)
 
 

@@ -5,7 +5,7 @@ import { streamChatResponse, type ChatEvent } from '../sse'
 import { drainTake, feedThoughtChunk, feedDraftChunk, newFenceState } from '../streaming'
 import { LS, lsGet, lsGetJSON, lsSetJSON } from '../storage'
 import { api } from '../api'
-import { subagentStore } from '../stores/subagentStore'
+import { subagentStore, attachRunIdsToKbEntry } from '../stores/subagentStore'
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
 
@@ -524,8 +524,11 @@ export function useChatStream(args: UseChatStreamArgs) {
             // 后端 mindchain 是权威终稿（只含有真实思考内容的条目）——无条件替换。
             // 旧 guard `mc.length >= 前端长度` 会在"后端条目更少"时拒换，导致 step 帧
             // 创建的空占位标题永久残留（用户见：多个光杆 agent 标题无内容）。
-            mindchainRef.current = mc
-            setFlowMindchain(mc)
+            // RC2-S3：run_ids 生产者——观察窗 run 挂到知识库管理条目（MindchainItem.run_ids
+            // 既有缝自此有生产者）；:550 落盘 think 随之携带，刷新后经 ↗ 按钮+REST 档案回看
+            const withRuns = attachRunIdsToKbEntry(mc, subagentStore.listAll().map(r => r.runId))
+            mindchainRef.current = withRuns
+            setFlowMindchain(withRuns)
           }
           return
         }

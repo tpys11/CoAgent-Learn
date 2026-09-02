@@ -6,7 +6,8 @@
  */
 import { useEffect, useState } from 'react'
 import type { SubAgentRun } from '../../../types'
-import type { RunLive } from '../../../stores/subagentStore'
+import type { RunLive, HitBlock } from '../../../stores/subagentStore'
+import { HitBlocks } from './HitBlocks'
 
 export interface RunRowEvent {
   event: string
@@ -15,6 +16,8 @@ export interface RunRowEvent {
   text?: string
   status?: string
   summary?: string
+  /** RC2-S3：hits 事件载荷（终筛留存命中内容块） */
+  hits?: HitBlock[]
 }
 
 export interface RunRowData {
@@ -27,6 +30,8 @@ export interface RunRowData {
   startedAt: number | null
   tokens: number
   events: RunRowEvent[]
+  /** RC2-S3：终筛留存命中块（观察窗展开区渲染卡片；live/档案双源归一） */
+  hits?: HitBlock[]
 }
 
 export const statusIcon = (s?: 'running' | 'ok' | 'error'): string =>
@@ -47,15 +52,40 @@ export const estimateTokens = (text: string): number => (text || '').length
 const _eventsText = (events: RunRowEvent[]): string =>
   (events || []).map(e => `${e.text || ''}${e.content || ''}${e.summary || ''}`).join('')
 
-/** 档案 events 元素是 Record<string, unknown>（repo 原样 JSON）——字段级显式归一，避免类型断言 */
+/** RC2-S3：档案 events 的 hits 载荷字段级归一（repo 原样 JSON，结构不可信须逐字段窄化） */
+const _normHits = (raw: unknown): HitBlock[] | undefined => {
+  if (!Array.isArray(raw)) return undefined
+  const out: HitBlock[] = []
+  for (const b of raw) {
+    if (typeof b !== 'object' || b === null) continue
+    const o = b as Record<string, unknown>
+    out.push({
+      title: typeof o.title === 'string' ? o.title : '',
+      source: typeof o.source === 'string' ? o.source : '',
+      content: typeof o.content === 'string' ? o.content : '',
+    })
+  }
+  return out
+}
+
+/** 档案 events 元素是 Record<string, unknown>（repo 原样 JSON）——字段级显式归一，避免类型断言。
+ * RC2-S3：事件种类键兼容双形态——live 帧为 event，档案 JSON 为 type（append_event 落库原样），
+ * 兜底读取使档案行展开区标签/命中块归一与 live 同构。 */
 const _normalizeEvent = (e: Record<string, unknown>): RunRowEvent => ({
-  event: String(e.event ?? ''),
+  event: String(e.event ?? e.type ?? ''),
   t: typeof e.t === 'string' ? e.t : undefined,
   content: typeof e.content === 'string' ? e.content : undefined,
   text: typeof e.text === 'string' ? e.text : undefined,
   status: typeof e.status === 'string' ? e.status : undefined,
   summary: typeof e.summary === 'string' ? e.summary : undefined,
+  hits: _normHits(e.hits),
 })
+
+/** RC2-S3：事件列表 → 命中块（首个含载荷的 hits 事件；live/档案共用） */
+const _hitsOf = (events: RunRowEvent[]): HitBlock[] | undefined => {
+  const hitEvent = (events || []).find(e => e.event === 'hits' && Array.isArray(e.hits))
+  return hitEvent?.hits
+}
 
 /** 双数据源归一：live（RunLive）与档案（SubAgentRun）→ 同一行数据。 */
 export const toRowData = (src: RunLive | SubAgentRun): RunRowData => {
@@ -68,12 +98,14 @@ export const toRowData = (src: RunLive | SubAgentRun): RunRowData => {
       startedAt: src.startedAt ?? null,
       tokens: estimateTokens(_eventsText(src.events)),
       events: src.events || [],
+      hits: src.hits?.length ? src.hits : _hitsOf(src.events || []),
     }
   }
   // 档案：SQLite CURRENT_TIMESTAMP 为 UTC 且无时区后缀——两端同源相减，差值与本地偏移无关
   const created = Date.parse((src.created_at || '').replace(' ', 'T'))
   const finished = src.finished_at ? Date.parse(src.finished_at.replace(' ', 'T')) : null
   const elapsedMs = created && finished && finished >= created ? finished - created : null
+  const events = (src.events || []).map(_normalizeEvent)
   return {
     status: src.status,
     agent: src.agent,
@@ -81,11 +113,13 @@ export const toRowData = (src: RunLive | SubAgentRun): RunRowData => {
     elapsedMs,
     startedAt: null,
     tokens: estimateTokens(src.output || ''),
-    events: (src.events || []).map(_normalizeEvent),
+    events,
+    hits: _hitsOf(events),
   }
 }
 
-/** 输出流行化：events → 行文本数组（展开区逐行渲染）。有 t 显示时刻，无则省略。 */
+/** 输出流行化：events → 行文本数组（展开区逐行渲染）。有 t 显示时刻，无则省略。
+ * RC2-S3：hits 事件返回空串（结构化命中块由 HitBlocks 卡片渲染，避免文本重复）。 */
 export const formatEventLines = (events: RunRowEvent[]): string[] =>
   (events || []).map(e => {
     const prefix = e.t ? `[${e.t}] ` : ''
@@ -93,6 +127,7 @@ export const formatEventLines = (events: RunRowEvent[]): string[] =>
     if (e.event === 'delta') return `${prefix}${e.text || ''}`
     if (e.event === 'end') return `${prefix}结束 · ${e.status || ''}${e.summary ? ` · ${e.summary}` : ''}`
     if (e.event === 'start') return `${prefix}启动`
+    if (e.event === 'hits') return ''
     return `${prefix}${e.event}`
   })
 
@@ -132,7 +167,9 @@ export function SubAgentRunRow({ data, onOpen }: { data: RunRowData; onOpen?: ()
       </div>
       {open && (
         <div className="mt-0.5 mb-1 ml-4 pl-2 border-l hairline flex flex-col gap-0.5">
-          {formatEventLines(data.events).map((ln, i) => (
+          {/* RC2-S3：终筛留存命中内容块卡片（title+source+内容，点击展开；与思维链面共用） */}
+          <HitBlocks hits={data.hits} />
+          {formatEventLines(data.events).filter(l => l).map((ln, i) => (
             <div key={i} className="text-[10px] leading-5 text-dim whitespace-pre-wrap break-words">{ln}</div>
           ))}
         </div>

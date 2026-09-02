@@ -3,7 +3,7 @@ import { Image as ImageIcon, PenLine, Lightbulb } from 'lucide-react'
 import type { Message, Project, ReviewResult } from '../../types'
 import { renderMd } from '../../lib/mdRenderer'
 import { LS, lsGetJSON } from '../../storage'
-import { SubAgentLiveStrip } from './subagent'
+import { SubAgentLiveStrip, HitBlocks, splitHitSection } from './subagent'
 
 // ---------- 思维链渲染：统一渲染管线（F8-S5：html:false 防 XSS + KaTeX 公式 + 图表围栏）----------
 /** 导出仅供测试（isFlowNode 同模式）：B3 分片/整文一致性、XSS 守卫 */
@@ -273,8 +273,10 @@ function AssistantMessageImpl({
   const streaming = isLoading && isLast
   return (
     <>
-      {/* 条目4·实时化：流式期间的子agent直播条（start 即现脉冲chip，完成翻✓）；历史消息不显示 */}
-      {streaming && <SubAgentLiveStrip />}
+      {/* 条目4·实时化：流式期间的子agent直播条（start 即现脉冲chip，完成翻✓）。
+          RC2-S3（经批准越界）：isLast 持续渲染——done 后观察窗不再消失（owner「对话输入
+          完后检索视窗持久化展示」），下一轮发送 reset 时自然清空；刷新后走 run_ids 回看 */}
+      {isLast && <SubAgentLiveStrip />}
       {/* 思考过程区块（DeepSeek 式：流式展开逐字 / 完成自动折叠为一行）。
           F11-S2：withReviewEntry——msg.review 兼容注入为思维链审核条目（历史消息回看） */}
       {msg.think && msg.think.length > 0 && (
@@ -579,17 +581,35 @@ const ReasoningBlock = memo(function ReasoningBlock({ items, streaming, activeAg
               {!isFolded && (
               <div ref={streaming && isLastEntry && isDraftBodyNode(it.agent) ? draftBodyRef : undefined}
                 className="text-[11px] leading-relaxed text-dim md-think-body">
-                {streaming ? (
-                  isDraftBodyNode(it.agent) ? (
-                    // RB-S3：草稿即正文形态——复用正文同款 B3 渐进 markdown 管线
-                    //（围栏感知分片，代码块流式期即渲染），完成态仍走整文缓存
-                    <StreamingMd text={it.content} streaming />
-                  ) : (
-                    <div className="whitespace-pre-wrap break-words">{it.content}</div>
-                  )
-                ) : (
-                  <div dangerouslySetInnerHTML={{ __html: renderMdCached(it.content) }} />
-                )}
+                {(() => {
+                  // RC2-S3：命中内容块双写 markdown → 结构化卡片（与观察窗共用 HitBlocks）。
+                  // 无标记内容走既有原渲染路径（字面量保持 RB-S3 结构守卫所钉原样，零行为变化）；
+                  // 命中块只出现在知识库管理节点（非草稿族），命中分支无需 StreamingMd 渐进管线
+                  const sec = splitHitSection(it.content)
+                  if (sec.hits.length === 0) {
+                    return (<>
+                      {streaming ? (
+                        isDraftBodyNode(it.agent) ? (
+                          // RB-S3：草稿即正文形态——复用正文同款 B3 渐进 markdown 管线
+                          //（围栏感知分片，代码块流式期即渲染），完成态仍走整文缓存
+                          <StreamingMd text={it.content} streaming />
+                        ) : (
+                          <div className="whitespace-pre-wrap break-words">{it.content}</div>
+                        )
+                      ) : (
+                        <div dangerouslySetInnerHTML={{ __html: renderMdCached(it.content) }} />
+                      )}
+                    </>)
+                  }
+                  return (<>
+                    {streaming ? (
+                      <div className="whitespace-pre-wrap break-words">{sec.head}</div>
+                    ) : (
+                      <div dangerouslySetInnerHTML={{ __html: renderMdCached(sec.head) }} />
+                    )}
+                    <HitBlocks hits={sec.hits} />
+                  </>)
+                })()}
               </div>
               )}
             </div>
