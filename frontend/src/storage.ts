@@ -34,6 +34,7 @@ export const LS = {
   customTemplates: 'coagent-custom-templates',
   domains: 'coagent-domains',
   customWiki: 'coagent-custom-wiki',
+  syllabus: 'coagent-syllabus',
   rpWindows: 'coagent-rp-windows',
   /** F14-S5b2/RA-S2：预设档标记（standard/test/custom） */
   preset: 'coagent-preset',

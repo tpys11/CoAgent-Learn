@@ -239,6 +239,8 @@ export const api = {
   deleteResource: (rid: string) =>
     apiFetch<any>('/api/resources/' + encodeURIComponent(rid), jsonInit('DELETE')),
   generateDomain: (body: unknown) => apiFetch<any>('/api/generate-domain', jsonInit('POST', body)),
+  generateOutline: (body: unknown) => apiFetch<any>('/api/domain/outline', jsonInit('POST', body)),
+  generateChapter: (body: unknown) => apiFetch<any>('/api/domain/chapter', jsonInit('POST', body)),
   /** F13-S1：预设资源库三级清单（领域→资源→文件，含页数等元数据） */
   getPresetLibrary: () =>
     apiFetch<{ status: string; domains: PresetDomain[] }>('/api/preset-library', { cache: 'no-store' }),

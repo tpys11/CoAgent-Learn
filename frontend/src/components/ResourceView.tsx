@@ -15,6 +15,7 @@ import { ListItem, exportItem } from './resource/commons'
 import { ResourceCardGrid, ResourceEmpty } from './resource/ResourceCardGrid'
 import { ResourceDetailModal } from './resource/ResourceDetailModal'
 import MyUploads from './MyUploads'
+import DomainSyllabus from './DomainSyllabus'
 import { PresetResourceCard } from './resource/PresetResourceCard'
 import { PresetDetailModal } from './resource/PresetDetailModal'
 import KbReaderModal from './KbReaderModal'
@@ -163,13 +164,16 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
     if (domains.includes(name)) { alert('该领域已存在'); return }
     setNewDomainLoading(true)
     try {
-      const d = await api.generateDomain({ domain: name, api_key: lsGet(LS.apiKey, '') })
+      const d = await api.generateOutline({ domain: name, api_key: lsGet(LS.apiKey, '') })
       if (d.status === 'ok') {
-        const nt = (d.tutorials || []).map((t: any) => ({ ...t, id: 'dom-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), domain: name, preset: false }))
+        // 大纲章节存 syllabus（供课程大纲展示+按需生成导读）
+        const chapters = (d.chapters || []).map((ch: any) => ({ title: ch.title || '', goal: ch.goal || '', keywords: Array.isArray(ch.keywords) ? ch.keywords : [] }))
+        const syl = lsGetJSON<Record<string, any>>(LS.syllabus, {})
+        syl[name] = { chapters }
+        lsSetJSON(LS.syllabus, syl)
+        // 百科词条照旧
         const nw = (d.wiki || []).map((w: any) => ({ ...w, domain: name }))
-        const nextT = [...tutorials, ...nt]
         const nextW = [...customWiki, ...nw]
-        saveTutorials(nextT)
         setCustomWiki(nextW)
         lsSetJSON(LS.customWiki, nextW)
         const nextDomains = [...customDomains, name]
@@ -412,6 +416,7 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
         </div>
         <div className="flex-1 overflow-y-auto px-10 py-8">
           <div className="max-w-6xl mx-auto">
+            <DomainSyllabus domain={selectedDomain} />
             {showNewDomain && (
               <div className="border border-[var(--border-color)] rounded-2xl p-4 mb-5 flex flex-col gap-2 bg-[var(--bg-panel)] shadow-soft">
                 <p className="text-sm font-semibold">新建领域</p>
