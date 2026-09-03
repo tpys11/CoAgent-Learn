@@ -1,5 +1,6 @@
 ﻿import { useEffect, useState } from 'react'
-import { Plus, X, FolderOpen, Pencil } from 'lucide-react'
+import { Plus, X, FolderOpen, Pencil, HelpCircle } from 'lucide-react'
+import GuideModal from './GuideModal'
 import TrendCalendar from './TrendCalendar'
 import { api } from '../api'
 
@@ -98,6 +99,8 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
   const [renamingId, setRenamingId] = useState<string | null>(null)
   // 删除确认弹窗：待删除的课程 id
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  // 快速引导弹窗开关
+  const [guideOpen, setGuideOpen] = useState(false)
 
   // 顶部问候：按时间打招呼 + 最近学习时间与连续学习天数
   const hour = new Date().getHours()
@@ -117,28 +120,17 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
   return (
     <div className="flex-1 h-full min-w-0 flex panel rounded-3xl overflow-hidden">
       <div className="flex-1 overflow-y-auto">
-        <div className="px-28 py-8 flex flex-col gap-10">
-          {/* 顶部：时间问候（大字号）+ 最近学习时间与连续天数（小字） */}
-          <div className="flex flex-col gap-1.5">
-            <p className="text-3xl font-bold leading-snug">{greeting}！</p>
-            <p className="text-xs text-dim">{statusTxt}</p>
+        <div className="px-28 py-8 flex flex-col gap-8">
+          {/* 左上角：快速引导按钮（点击弹出项目使用教程） */}
+          <div className="flex justify-start">
+            <button onClick={() => setGuideOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#1a1a1a] text-white text-xs font-semibold shadow-soft hover:bg-[#333333] transition-colors">
+              <HelpCircle size={15} /> 快速引导
+            </button>
           </div>
-          {/* 快速引导 | 专注时长趋势（横排，趋势图挪出右栏空区） */}
-          <div className="flex gap-6 items-stretch">
-            <div className="flex-1 min-w-0 flex flex-col gap-2.5">
-              <h2 className="text-sm font-bold">快速引导</h2>
-              <div className="border hairline rounded-2xl p-4 bg-[var(--bg-panel)] flex flex-col gap-3.5">
-                {tips.map(t => (
-                  <div key={t.title} className="flex flex-col gap-1">
-                    <span className="text-xs font-bold">{t.title}</span>
-                    <p className="text-[10px] leading-relaxed text-[var(--text-muted)]">{t.text}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="w-[420px] flex-shrink-0 border hairline rounded-2xl p-4 bg-[var(--bg-panel)] flex flex-col">
-              <TrendCalendar days={trendDays} />
-            </div>
+          {/* 专注时长趋势（快速引导下方） */}
+          <div className="w-[560px] max-w-full border hairline rounded-2xl p-4 bg-[var(--bg-panel)] flex flex-col">
+            <TrendCalendar days={trendDays} />
           </div>
           {/* 课程区块 */}
           <div className="flex flex-col gap-6">
@@ -248,6 +240,8 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
               </div>
             )
           })()}
+          {/* 快速引导弹窗（静态项目使用教程） */}
+          {guideOpen && <GuideModal onClose={() => setGuideOpen(false)} />}
         </div>
       </div>
     </div>
