@@ -4,7 +4,7 @@
  *  repo 无 jsdom（chatRouting.test 先例）：组件收敛用 ?raw 源级守卫钉住（无硬编码复活）。 */
 import { describe, it, expect } from 'vitest'
 import {
-  MODEL_MAIN, MODEL_PRO, MODEL_ZEN_TEST, MODEL_ZEN_REVIEW,
+  MODEL_MAIN, MODEL_PRO, MODEL_ZEN_TEST, MODEL_ZEN_REVIEW, MODEL_REVIEW_SF,
   DEEPSEEK_BASE_URL, ZEN_BASE_URL, REGISTRY_MIRROR,
   resolveChatModel, resolveAuxCall,
 } from './models'
@@ -17,15 +17,17 @@ const CENTER_SRC = String(Object.values(rawCenter)[0] ?? '')
 const SPECIAL_SRC = String(Object.values(rawSpecial)[0] ?? '')
 
 describe('REGISTRY_MIRROR 双源同值（与 backend tests/test_rd_s1_registry.py 镜像断言）', () => {
-  it('三串实名同值：mimo-v2.5-free / big-pickle / deepseek-v4-flash-vision-exp', () => {
+  it('四串实名同值：mimo-v2.5-free / big-pickle / deepseek-v4-flash-vision-exp / Qwen2.5-72B（RC4④）', () => {
     expect(MODEL_ZEN_TEST).toBe('mimo-v2.5-free')            // 双源同值①
     expect(MODEL_ZEN_REVIEW).toBe('big-pickle')              // 双源同值②
     expect(MODEL_MAIN).toBe('deepseek-v4-flash-vision-exp')  // 双源同值③
+    expect(MODEL_REVIEW_SF).toBe('Qwen/Qwen2.5-72B-Instruct') // 双源同值④（RC4-S1 标准档判卷定值）
   })
 
-  it('矩阵语义：standard=DeepSeek+MODEL_MAIN（pro 供 alias）；test=Zen+mimo（review=big-pickle）', () => {
+  it('矩阵语义（RC4-S1）：review 两档定值——standard=Qwen2.5-72B(SF 跨厂商)、test=big-pickle(zen)', () => {
     expect(REGISTRY_MIRROR.standard).toEqual({
-      main: MODEL_MAIN, fast: MODEL_MAIN, vision: MODEL_MAIN, pro: MODEL_PRO, base_url: DEEPSEEK_BASE_URL,
+      main: MODEL_MAIN, fast: MODEL_MAIN, vision: MODEL_MAIN, pro: MODEL_PRO,
+      review: MODEL_REVIEW_SF, base_url: DEEPSEEK_BASE_URL,
     })
     expect(REGISTRY_MIRROR.test).toEqual({
       main: MODEL_ZEN_TEST, fast: MODEL_ZEN_TEST, vision: MODEL_ZEN_TEST,

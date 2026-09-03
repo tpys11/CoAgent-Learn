@@ -2,16 +2,14 @@
  * 「可用」必须由用户显式触发检测（test 端点）后作为覆盖态传入。
  * RA-S4：行集瘦身为四项——主模型(chat)/审核模型(review)/文档解析(parse)/embedding 模型；
  * vision/kb 行删除（owner 四项之外不展示，rerank 说明随 kb 行删除）；每行带 model 字段显示模型名。 */
-import { MODEL_MAIN as DEFAULT_MAIN_MODEL } from '../../models'   // R-D S5：缺省主模型名入注册表镜像（删除本地字面量）
+import { MODEL_MAIN as DEFAULT_MAIN_MODEL, MODEL_ZEN_REVIEW } from '../../models'   // R-D S5：缺省主模型名入注册表镜像（删除本地字面量）
 export interface SelfCheckInput {
   providerKeySet: boolean                 // 前端主通道 key（LS）
   zenKeySet?: boolean                     // 后端 ZEN_API_KEY（GET zen.api_key_set）
   embeddingKeySet?: boolean               // GET embedding.api_key_set
   parseEngine?: string                    // GET parse.engine
   mineruKeySet?: boolean                  // GET parse.mineru_key_set
-  reviewResearchModel?: string            // GET review.model_research（审核行状态/文案判定用）
   reviewEffectiveModel?: string           // RA5-S3：GET review.effective_model（后端权威，模型名唯一来源）
-  followMain?: boolean                    // RA-S1：GET review.follow_main（true=审核用主模型）
   chatModel?: string                      // RA-S4：LS 当前模型名
   embeddingModel?: string                 // RA-S4：GET embedding.model
 }
@@ -32,51 +30,20 @@ export function computeSelfCheckRows(i: SelfCheckInput): SelfCheckRow[] {
     model: mainModel,
   })
   // RA5-S3：审核行模型名一律=i.reviewEffectiveModel（GET review.effective_model，resolve_review_route
-  // 权威判定）——前端路由复算删除（T59 前后端漂移根因）；chat 行维持 resolveChatModel（主模型语义不同，
-  // 勿合并）。状态/文案仍按 followMain + research 前缀判定（key 可用性是展示逻辑，非模型名复算）；
-  // reviewEffectiveModel 未喂时 model 缺省，不做前端兜底。
-  if (i.followMain) {
-    rows.push({
-      id: 'review',
-      state: i.providerKeySet ? 'ok' : 'warn',
-      text: i.providerKeySet ? '审核模型已配置' : '审核模型需要对话 Key',
-      model: i.reviewEffectiveModel,
-    })
-  } else if (i.reviewResearchModel) {
-    if (i.reviewResearchModel.startsWith('zen:')) {
-      const keyOk = i.zenKeySet
-      rows.push({
-        id: 'review',
-        state: keyOk ? 'ok' : 'warn',
-        text: keyOk ? '审核模型已配置' : '审核模型需要 Zen Key',
-        model: i.reviewEffectiveModel,
-      })
-    } else if (i.reviewResearchModel.includes('/')) {
-      const keyOk = i.embeddingKeySet
-      rows.push({
-        id: 'review',
-        state: keyOk ? 'ok' : 'warn',
-        text: keyOk ? '审核模型已配置' : '审核模型需要硅基流动 Key',
-        model: i.reviewEffectiveModel,
-      })
-    } else {
-      // 其他前缀或无前缀，假设主通道
-      const keyOk = i.providerKeySet
-      rows.push({
-        id: 'review',
-        state: keyOk ? 'ok' : 'warn',
-        text: keyOk ? '审核模型已配置' : '审核模型需要对话 Key',
-        model: i.reviewEffectiveModel,
-      })
-    }
-  } else {
-    rows.push({
-      id: 'review',
-      state: 'warn',
-      text: '审核模型（研究档判卷走主模型）',  // RA2 补充修复（验收打回）：旧短语「研究档判卷=主模型同源」是 owner 反馈②点名的展示面
-      model: i.reviewEffectiveModel,  // RA5-S3：模型名后端权威（空 research 时后端判 MODEL_MAIN）
-    })
-  }
+  // 权威判定）——chat 行维持 resolveChatModel（主模型语义不同，勿合并）。reviewEffectiveModel 未喂时
+  // model 缺省，不做前端兜底。
+  // RC4-S2：判卷=档位定值格（follow_main/research 前缀分叉随动态格退役）——通道判定改由
+  // effective 实名驱动（后端权威）：big-pickle=zen 通道看 zenKeySet；其余（Qwen2.5-72B 等）
+  // =SF 通道看 embeddingKeySet。
+  const isZenReview = (i.reviewEffectiveModel || '') === MODEL_ZEN_REVIEW
+  const reviewKeyOk = isZenReview ? i.zenKeySet : i.embeddingKeySet
+  rows.push({
+    id: 'review',
+    state: reviewKeyOk ? 'ok' : 'warn',
+    text: reviewKeyOk ? '审核模型已配置'
+      : (isZenReview ? '审核模型需要 Zen Key' : '审核模型需要硅基流动 Key'),
+    model: i.reviewEffectiveModel,
+  })
   // parse: 模型名=parse_engine 值；mineru 缺 token → warn「本地 pymupdf4llm 兜底可用」
   if (i.parseEngine === 'mineru' && !i.mineruKeySet) {
     rows.push({

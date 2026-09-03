@@ -3,7 +3,7 @@ import { Database, Check, X } from 'lucide-react'
 import { api } from '../../api'
 import type { SettingsData } from '../../types'
 import { LS, lsGet, lsSet, lsRemove, lsGetJSON, lsSetJSON } from '../../storage'
-import { SERVICE_GROUPS, TEST_PRESET_NOTE, KB_MERGE_NOTE, TEST_PRESET_ZEN_GUARD_NOTE, TEST_PRESET_ON_NOTE, TEST_PRESET_OFF_NOTE, REVIEW_BUBBLE_NOTE, reviewSubSwitchPutBody } from './serviceGroups'
+import { SERVICE_GROUPS, TEST_PRESET_NOTE, KB_MERGE_NOTE, TEST_PRESET_ZEN_GUARD_NOTE, TEST_PRESET_ON_NOTE, TEST_PRESET_OFF_NOTE, REVIEW_BUBBLE_NOTE } from './serviceGroups'
 import { buildSvcBody } from './settingsPayload'
 import { testPresetLsWrites, testPresetPutBody, standardPresetPutBody } from './presets'
 import SelfCheckCard from './SelfCheckCard'
@@ -67,8 +67,8 @@ export function zenSaveFailFlashText(): string {
 /** RA2-S3：合并栏双气泡数据模型（纯函数直调钉行为——无 jsdom 先例）。
  *  气泡 A「知识库服务」= owner 指定文案：向量化侧带全名 Qwen/Qwen3-VL-Embedding-8B（1024 维，文字与图片同一
  *  向量空间）、重排侧 BAAI/bge-reranker-v2-m3——重排器不是向量化模型，必须分开表述（owner 质疑原委）；
- *  模型组固定且所在文件禁改，故 A 写死。气泡 B「独立审核模型」= GET review.model 动态值——写死会在改
- *  REVIEW_MODEL 时再次说谎（派发单陷阱），故经入参透传。 */
+ *  模型组固定且所在文件禁改，故 A 写死。气泡 B「独立审核模型」= RC4-S1 起传 GET review.effective_model
+ *  （档位定值格权威值）——写死会在改判卷格时再次说谎（派发单陷阱），故经入参透传。 */
 export function kbServiceBubbles(reviewModel: string): Array<{ title: string; lines: string[] }> {
   return [
     {
@@ -89,9 +89,8 @@ export default function ServiceSettings() {
   const [svc, setSvc] = useState({
     embedding_base_url: '', embedding_model: 'Qwen/Qwen3-VL-Embedding-8B',
     embedding_key_set: false, embedding_key_hint: '',
-    review_enabled: false, review_follow_main: false,
+    review_enabled: false,
     review_model: 'Qwen/Qwen2.5-72B-Instruct',
-    review_model_research: '',
     review_effective_model: '',
     parse_engine: 'pymupdf4llm',
     mineru_key_set: false,
@@ -133,10 +132,8 @@ export default function ServiceSettings() {
         embedding_key_set: !!d.embedding?.api_key_set,
         embedding_key_hint: d.embedding?.api_key_hint || '',
         review_enabled: !!d.review?.enabled,
-        review_follow_main: !!d.review?.follow_main,
         review_model: d.review?.model || 'Qwen/Qwen2.5-72B-Instruct',
-        review_model_research: d.review?.model_research || '',
-        review_effective_model: d.review?.effective_model || '',  // RA5-S3：后端权威判卷模型名（自检卡消费）
+        review_effective_model: d.review?.effective_model || '',  // RA5-S3：后端权威判卷模型名（自检卡/合并栏气泡消费）
         chunk_mode: d.chunking?.mode || 'auto',
         parse_engine: d.parse?.engine || 'pymupdf4llm',
         mineru_key_set: !!d.parse?.mineru_key_set,
@@ -162,7 +159,7 @@ export default function ServiceSettings() {
         embedding_key_set: !!g.embedding?.api_key_set,
         embedding_key_hint: g.embedding?.api_key_hint || '',
         review_enabled: !!g.review?.enabled,
-        review_follow_main: !!g.review?.follow_main,
+        review_effective_model: g.review?.effective_model || '',
         chunk_mode: g.chunking?.mode || s.chunk_mode,
         parse_engine: g.parse?.engine || s.parse_engine,
         mineru_key_set: !!g.parse?.mineru_key_set,
@@ -252,25 +249,9 @@ export default function ServiceSettings() {
 
   const onTestPresetToggle = (v: boolean) => { if (v) void enableTestPreset(); else void disableTestPreset() }
 
-  // RA4-S3：审核开关处理器从测试档卡搬迁至合并栏气泡 B——PUT 写法照旧（reviewSubSwitchPutBody），
-  // ON=独立审核模型（follow_main=false）；OFF=主模型审核（follow_main=true）。失败持久红字。
-  // RA5-S3：处理器传 GET research 值（ON+空时补写默认判卷模型，条件在纯函数内）；
-  // 保存后 GET 回读 review 节——research/effective_model 是后端权威，前端不复算。
-  const [reviewToggleErr, setReviewToggleErr] = useState(false)
-  const onReviewBubbleToggle = async (v: boolean) => {
-    try {
-      await api.saveSettings(reviewSubSwitchPutBody(v, svc.review_model_research))
-      const g = await api.getSettings()
-      setSvc(s => ({ ...s, review_follow_main: !v,
-        review_model_research: g.review?.model_research || '',
-        review_effective_model: g.review?.effective_model || '' }))
-      setReviewToggleErr(false)
-      flash(v ? '审核使用独立模型' : '审核使用主模型')
-    } catch {
-      setReviewToggleErr(true)
-      flashErr('保存失败（后端不可达），请重试')
-    }
-  }
+  // RC4-S2：合并栏「独立审核」开关退役（owner 09-03 终版：判卷路由=档位定值格，
+  // 无用户开关语义）——原开关处理器/PUT 体构造函数/失败红字态全部删除，
+  // 气泡 B 下方改为一行档位定值说明（REVIEW_BUBBLE_NOTE）。
 
   return (
     <Section icon={Database} title="AI 服务配置" desc="各能力独立配置，保存后即时生效，无需重启">
@@ -347,18 +328,13 @@ export default function ServiceSettings() {
                   )}
                 </div>
                 <p className="text-[10px] text-dim">{KB_MERGE_NOTE}</p>
-                {/* RA2-S3：单气泡改双联——A=知识库服务（向量化/重排分开表述，owner 指定文案）、B=独立审核模型（GET review.model 动态值）
-                    RA4-S3：气泡 B 右端审核开关（S2 自测试档卡搬迁至此）+ 下方小字 owner 原文
+                {/* RA2-S3：单气泡改双联——A=知识库服务（向量化/重排分开表述，owner 指定文案）、B=独立审核模型（GET review.effective_model 档位定值）
+                    RA4-S3：气泡 B 右端开关已于 RC4-S2 退役（判卷档位定死无开关语义），下方改一行档位定值说明
                     RA5-S3：恒 flex-col 上下排列（删除宽屏 sm 断点并列——owner 两次点名宽屏也上下） */}
                 <div className="flex flex-col gap-2">
-                  {kbServiceBubbles(svc.review_model).map(b => (
+                  {kbServiceBubbles(svc.review_effective_model).map(b => (
                     <div key={b.title} className="flex-1 flex flex-col gap-0.5 px-3 py-2.5 rounded-xl bg-[var(--bg-hover)]">
-                      <span className="flex items-center justify-between">
-                        <span className="text-[12px] font-semibold">{b.title}</span>
-                        {b.title === '独立审核模型' && (
-                          <Toggle checked={!svc.review_follow_main} onChange={onReviewBubbleToggle} />
-                        )}
-                      </span>
+                      <span className="text-[12px] font-semibold">{b.title}</span>
                       {b.lines.map((line, idx) => (
                         <span key={idx} className="text-[10px] text-dim">{line}</span>
                       ))}
@@ -368,7 +344,6 @@ export default function ServiceSettings() {
                     </div>
                   ))}
                 </div>
-                {reviewToggleErr && <p className="text-[10px] text-red-500">保存失败（后端不可达），请重试</p>}
               </div>
             )}
 

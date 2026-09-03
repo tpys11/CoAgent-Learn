@@ -175,7 +175,7 @@ export interface StatsData {
 export interface SettingsData {
   kb_mode?: string
   embedding?: { api_key_set?: boolean; api_key_hint?: string; model?: string; base_url?: string }
-  review?: { enabled?: boolean; model?: string; model_research?: string; effective_model?: string; follow_main?: boolean }
+  review?: { enabled?: boolean; model?: string; effective_model?: string }   // RC4-S1：model_research/follow_main 退役键删除
   [key: string]: any
 }
 

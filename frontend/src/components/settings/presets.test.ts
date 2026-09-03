@@ -15,12 +15,12 @@ describe('presets', () => {
     expect(PRESET_LABELS.custom).toContain('自定义')
   })
 
-  it('testPresetPutBody 四键逐键断言（owner 指定固定模型组）', () => {
+  it('testPresetPutBody 三键逐键断言（RC4-S1：判卷随档位定死，退役键不再出现）', () => {
     const b = testPresetPutBody()
     expect(b.parse_engine).toBe('mineru')
     expect(b.embedding_model).toBe('Qwen/Qwen3-VL-Embedding-8B')
-    expect(b.review_model_research).toBe('zen:big-pickle')
-    expect(b.review_follow_main).toBe(false)
+    expect('review_model_research' in b).toBe(false)
+    expect('review_follow_main' in b).toBe(false)
   })
 
   it('testPresetLsWrites 返回 zen 写集三键', () => {
@@ -34,10 +34,10 @@ describe('presets', () => {
     expect(() => testPresetLsWrites('')).toThrow()
   })
 
-  it('standardPresetPutBody 恢复本地解析+审核回主模型（follow_main）', () => {
+  it('standardPresetPutBody 恢复本地解析（RC4-S1：判卷随档位自动回 standard，无 PUT 键）', () => {
     const b = standardPresetPutBody()
     expect(b.parse_engine).toBe('pymupdf4llm')
-    expect(b.review_follow_main).toBe(true)
+    expect('review_follow_main' in b).toBe(false)
   })
 
   it('standardPresetPutBody 不含 review_model_research 与 embedding_model 键（T51 假恢复/embedding 不动）', () => {

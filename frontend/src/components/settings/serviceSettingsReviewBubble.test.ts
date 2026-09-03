@@ -1,44 +1,36 @@
 import { describe, it, expect } from 'vitest'
-import { REVIEW_BUBBLE_NOTE, reviewSubSwitchPutBody } from './serviceGroups'
+import { REVIEW_BUBBLE_NOTE } from './serviceGroups'
 
-/** RA4-S3 源级守卫：合并栏独立审核气泡右端开关（S2 从测试档卡删除后在新位置重建——紧邻防丢）。
+/** RC4-S2 源级守卫：合并栏「独立审核 follow_main」开关退役（owner 09-03 终版：判卷路由=
+ *  档位定值格，无用户开关语义）——原 RA4-S3 开关接线断言按退役语义改写：开关及其处理器
+ *  不得在组件源码残留（防回潮），气泡 B 下方保留一行档位定值说明。
  *  repo 无 jsdom，组件测试不可行——serviceSettingsTestPreset.test.ts 先例。 */
 const rawModules = import.meta.glob('./ServiceSettings.tsx', { query: '?raw', import: 'default', eager: true })
 const SRC = String(Object.values(rawModules)[0] ?? '')
 
-describe('RA4-S3 合并栏独立审核开关——纯函数直调 + 源级守卫', () => {
-  it('RA5-S3 取值矩阵：ON+空 research 补写默认判卷模型（T59 兑现气泡承诺），非空绝不覆盖', () => {
-    expect(reviewSubSwitchPutBody(true, '')).toEqual({ review_follow_main: false, review_model_research: 'Qwen/Qwen2.5-72B-Instruct' })
-    expect(reviewSubSwitchPutBody(true, 'zen:Big Pickle')).toEqual({ review_follow_main: false })
+describe('RC4-S2 合并栏审核开关退役——退役守卫 + 说明文案接线', () => {
+  it('退役守卫：follow_main 开关及其处理器不再出现在组件源码（not.toContain 防回潮）', () => {
+    expect(SRC).not.toContain('review_follow_main')
+    expect(SRC).not.toContain('reviewSubSwitchPutBody')
+    expect(SRC).not.toContain('onReviewBubbleToggle')
+    expect(SRC).not.toContain('review_model_research')
   })
 
-  it('小字 owner 指定原文一字不改', () => {
-    expect(REVIEW_BUBBLE_NOTE).toBe('关闭后需要审核时自动采用主模型')
+  it('说明文案=owner 终版档位定值（一字不改），旧开关小字退役', () => {
+    expect(REVIEW_BUBBLE_NOTE).toBe('标准档判卷=Qwen2.5-72B（独立厂商），测试档=big-pickle')
+    expect(REVIEW_BUBBLE_NOTE).not.toBe('关闭后需要审核时自动采用主模型')
   })
 
-  it('开关渲染在气泡 B 行：checked 绑定取反（!review_follow_main=独立审核在开）', () => {
-    expect(SRC).toContain('checked={!svc.review_follow_main}')
-    expect(SRC).toContain('onChange={onReviewBubbleToggle}')
-  })
-
-  it('处理器搬迁至此：PUT 走 reviewSubSwitchPutBody 且 RA5-S3 起传 GET research 值（follow_main 布尔翻转写入不丢）', () => {
-    expect(SRC).toContain('reviewSubSwitchPutBody(v, svc.review_model_research)')
-  })
-
-  it('小字渲染在气泡 B 下方且被真实消费', () => {
+  it('说明文案渲染在气泡 B 下方且被真实消费', () => {
     expect(SRC).toContain('REVIEW_BUBBLE_NOTE')
   })
 
-  it('PUT 失败持久红字（关键状态持久渲染，flash 只做动作回执）', () => {
-    expect(SRC).toContain('reviewToggleErr &&')
-    expect(SRC).toContain('setReviewToggleErr(true)')
+  it('气泡 B 显示值改传 effective_model（档位定值格权威，退役 review_model 直传）', () => {
+    expect(SRC).toContain('kbServiceBubbles(svc.review_effective_model)')
+    expect(SRC).not.toContain('kbServiceBubbles(svc.review_model)')
   })
 
-  it('RA5-S3：气泡容器恒上下排列（删除 sm:flex-row 响应式并列——owner 两次点名宽屏也上下）', () => {
+  it('RA5-S3 布局遗产保留：气泡容器恒上下排列（owner 两次点名宽屏也上下）', () => {
     expect(SRC).not.toContain('sm:flex-row')
-  })
-
-  it('RA5-S3：处理器传 GET research 值（条件补写收敛在纯函数内，组件不做内联判定）', () => {
-    expect(SRC).toContain('reviewSubSwitchPutBody(v, svc.review_model_research)')
   })
 })

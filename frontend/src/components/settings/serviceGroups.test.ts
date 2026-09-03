@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { SERVICE_GROUPS, TEST_PRESET_NOTE, KB_MERGE_NOTE, reviewSubSwitchPutBody } from './serviceGroups'
+import { SERVICE_GROUPS, TEST_PRESET_NOTE, KB_MERGE_NOTE, REVIEW_BUBBLE_NOTE } from './serviceGroups'
 
 describe('SERVICE_GROUPS', () => {
   it('has correct order of group ids', () => {
@@ -34,13 +34,9 @@ describe('RA-S3 owner 指定文案（逐字断言）', () => {
     expect(KB_MERGE_NOTE).not.toContain('审核时用主模型')
   })
 
-  it('RA5-S3：审核子开关 PUT 体——ON 补写条件两态/OFF 不写 research', () => {
-    // ON + research 空 → 补写默认跨厂商判卷模型（"/"→SF，兑现气泡 Qwen2.5-72B 承诺，T59）
-    expect(reviewSubSwitchPutBody(true, '')).toEqual({ review_follow_main: false, review_model_research: 'Qwen/Qwen2.5-72B-Instruct' })
-    // ON + research 非空（测试档 zen:Big Pickle 是测试档资产）→ 绝不覆盖
-    expect(reviewSubSwitchPutBody(true, 'zen:Big Pickle')).toEqual({ review_follow_main: false })
-    // OFF → 不写 research（follow_main=true 已是完整语义，含空/非空两态）
-    expect(reviewSubSwitchPutBody(false, '')).toEqual({ review_follow_main: true })
-    expect(reviewSubSwitchPutBody(false, 'zen:Big Pickle')).toEqual({ review_follow_main: true })
+  it('RC4-S1：合并栏审核说明=owner 终版档位定值文案（替代退役的 follow_main 开关小字）', () => {
+    expect(REVIEW_BUBBLE_NOTE).toBe('标准档判卷=Qwen2.5-72B（独立厂商），测试档=big-pickle')
+    // 防回潮：退役开关语义的旧短语不再出现在任何常量文案
+    expect(REVIEW_BUBBLE_NOTE).not.toContain('主模型')
   })
 })

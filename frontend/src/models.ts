@@ -9,15 +9,17 @@
 export const MODEL_MAIN = 'deepseek-v4-flash-vision-exp'   // 双源同值③ = backend MODEL_MAIN（主对话/生成/审核默认，视觉版）
 export const MODEL_PRO = 'deepseek-v4-pro'                 // legacy alias 目标 = backend MODEL_PRO
 export const MODEL_ZEN_TEST = 'mimo-v2.5-free'             // 双源同值① = backend MODEL_ZEN_TEST（决策 38 测试档对话/辅助实名）
-export const MODEL_ZEN_REVIEW = 'big-pickle'               // 双源同值②（决策 38 测试档审核实名；预设以 zen: 前缀承载）
+export const MODEL_ZEN_REVIEW = 'big-pickle'               // 双源同值②（RC4 测试档判卷实名 = backend MODEL_ZEN_REVIEW）
+export const MODEL_REVIEW_SF = 'Qwen/Qwen2.5-72B-Instruct' // 双源同值④（RC4 标准档判卷实名 = backend MODEL_REVIEW_SF，SF 跨厂商）
 export const DEEPSEEK_BASE_URL = 'https://api.deepseek.com/v1'
 export const ZEN_BASE_URL = 'https://opencode.ai/zen/v1'
 
-/** 注册表镜像矩阵（角色×档位 → 模型实名/端点）。review 标准档无静态值——后端路由函数权威，
- *  前端读 GET review.effective_model（RA5-S3 契约）；embedding/rerank 专有能力留 SF（决策 38），
+/** 注册表镜像矩阵（角色×档位 → 模型实名/端点）。RC4-S1：review 两档均定值格（owner 09-03 终版
+ *  「档位定死」）——standard=SF Qwen2.5-72B（跨厂商独立判卷）、test=zen big-pickle；
+ *  运行时权威仍是后端 GET review.effective_model；embedding/rerank 专有能力留 SF（决策 38），
  *  前端无决策点故不入镜像。 */
 export const REGISTRY_MIRROR = {
-  standard: { main: MODEL_MAIN, fast: MODEL_MAIN, vision: MODEL_MAIN, pro: MODEL_PRO, base_url: DEEPSEEK_BASE_URL },
+  standard: { main: MODEL_MAIN, fast: MODEL_MAIN, vision: MODEL_MAIN, pro: MODEL_PRO, review: MODEL_REVIEW_SF, base_url: DEEPSEEK_BASE_URL },
   test: { main: MODEL_ZEN_TEST, fast: MODEL_ZEN_TEST, vision: MODEL_ZEN_TEST, review: MODEL_ZEN_REVIEW, base_url: ZEN_BASE_URL },
 } as const
 

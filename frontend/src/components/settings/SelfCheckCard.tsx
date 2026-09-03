@@ -8,8 +8,8 @@ import { computeSelfCheckRows } from './selfCheck'
 const inputCls = 'w-full px-3 py-2 input-surface rounded-lg text-xs outline-none focus:border-[var(--accent)]'
 
 /** RA3-S2：自检探测键的档位感知（纯函数供 vitest）——chat 行在测试档吃后端 chat_zen 探测键
- * （/test 两键都返回，settings.py:245-248，零后端改动）；review 行不条件化：后端探测已按
- * review_model_research（zen: 前缀）自路由，重复条件化=双重处理；parse/embedding 键不变。 */
+ *  （/test 两键都返回，零后端改动）；review 行不条件化：后端探测已按档位定值格（RC4-S1）
+ *  自路由，重复条件化=双重处理；parse/embedding 键不变。 */
 export function selfCheckProbeKey(rowId: string, isZen: boolean): string {
     if (rowId === 'embedding') return 'text_embedding' // RA5 冒烟：后端探测键名错位修复
   return rowId === 'chat' && isZen ? 'chat_zen' : rowId
@@ -47,9 +47,7 @@ export default function SelfCheckCard({ settings, onSaved }: Props) {
     embeddingKeySet: !!settings?.embedding_key_set,
     parseEngine: settings?.parse_engine,
     mineruKeySet: !!settings?.mineru_key_set,
-    reviewResearchModel: settings?.review_model_research,
-    reviewEffectiveModel: settings?.review_effective_model,  // RA5-S3：后端 effective_model 权威模型名
-    followMain: !!settings?.review_follow_main,
+    reviewEffectiveModel: settings?.review_effective_model,  // RA5-S3：后端 effective_model 权威模型名（RC4-S2：通道判定同源此值）
     chatModel: resolveChatModel(provider, lsGet(LS.model, 'deepseek-v4-flash-vision-exp')),
     embeddingModel: settings?.embedding_model,
   })

@@ -23,9 +23,7 @@ describe('computeSelfCheckRows', () => {
     embeddingKeySet: true,
     parseEngine: 'pymupdf4llm',
     mineruKeySet: false,
-    reviewResearchModel: '',
-    reviewEffectiveModel: 'deepseek-v4-flash-vision-exp',
-    followMain: false,
+    reviewEffectiveModel: 'Qwen/Qwen2.5-72B-Instruct',
     chatModel: 'deepseek-v4-flash-vision-exp',
     embeddingModel: 'Qwen/Qwen3-VL-Embedding-8B',
   }
@@ -64,64 +62,47 @@ describe('computeSelfCheckRows', () => {
     expect(computeSelfCheckRows(input).find(r => r.id === 'chat')?.model).toBe('mimo-V2.5 Free')
   })
 
-  // ── review ──
-  it('review row: follow_main=true -> 主模型通道（RA5-S3：模型名=后端 effective_model 权威值，非前端同源复算）', () => {
-    const input = { ...baseInput, followMain: true, reviewResearchModel: 'zen:Big Pickle', providerKeySet: true }
-    const review = computeSelfCheckRows(input).find(r => r.id === 'review')
-    expect(review?.state).toBe('ok')
-    expect(review?.model).toBe('deepseek-v4-flash-vision-exp')
-    expect(review?.model).not.toBe('主模型')
-  })
-
-  it('review row: follow_main=true 但无对话 key -> warn', () => {
-    const input = { ...baseInput, followMain: true, providerKeySet: false }
-    expect(computeSelfCheckRows(input).find(r => r.id === 'review')?.state).toBe('warn')
-  })
-
-  it('review row: zen: 前缀 -> 状态按 zenKeySet 判定，模型名=后端 effective_model（已去前缀实名）', () => {
-    const input = { ...baseInput, reviewResearchModel: 'zen:Big Pickle', zenKeySet: true, reviewEffectiveModel: 'Big Pickle' }
-    const review = computeSelfCheckRows(input).find(r => r.id === 'review')
-    expect(review?.state).toBe('ok')
-    expect(review?.model).toBe('Big Pickle')
-  })
-
-  it('review row: zen: 前缀缺 zen key -> warn', () => {
-    const input = { ...baseInput, reviewResearchModel: 'zen:Big Pickle', zenKeySet: false }
-    expect(computeSelfCheckRows(input).find(r => r.id === 'review')?.state).toBe('warn')
-  })
-
-  it('review row: "/" 模型缺硅基流动 key -> warn', () => {
-    const input = { ...baseInput, reviewResearchModel: 'Qwen/Qwen2.5-72B-Instruct', embeddingKeySet: false }
-    expect(computeSelfCheckRows(input).find(r => r.id === 'review')?.state).toBe('warn')
-  })
-
-  it('review row: 空 research 模型 -> warn「审核模型（研究档判卷走主模型）」', () => {
-    const review = computeSelfCheckRows(baseInput).find(r => r.id === 'review')
-    expect(review?.state).toBe('warn')
-    // RA2 补充修复（验收打回）：text 也是 owner 反馈②点名的展示面，禁旧短语「研究档判卷=主模型同源」
-    expect(review?.text).toBe('审核模型（研究档判卷走主模型）')
-    expect(review?.text).not.toContain('主模型同源')
-    // RA5-S3：模型名=reviewEffectiveModel（后端 effective_model 权威；空 research 时后端判 MODEL_MAIN）
-    expect(review?.model).toBe('deepseek-v4-flash-vision-exp')
-  })
-
-  // ── RA5-S3：审核行模型名一律改读后端 effective_model（T59 前后端漂移根因拔除）──
-  it('RA5-S3: follow_main=true 时 model=effective（短路主模型由后端判定），不再读 chatModel', () => {
-    const input = { ...baseInput, followMain: true, reviewResearchModel: 'zen:Big Pickle',
-      chatModel: 'mimo-V2.5 Free', reviewEffectiveModel: 'deepseek-v4-flash-vision-exp' }
-    const review = computeSelfCheckRows(input).find(r => r.id === 'review')
-    expect(review?.model).toBe('deepseek-v4-flash-vision-exp')
-  })
-
-  it('RA5-S3: "/" 档 model=effective（后端权威），状态判定仍看 embeddingKeySet', () => {
-    const input = { ...baseInput, reviewResearchModel: 'Qwen/Qwen2.5-72B-Instruct',
-      reviewEffectiveModel: 'Qwen/Qwen2.5-72B-Instruct', embeddingKeySet: true }
+  // ── review（RC4-S2 改写：判卷=档位定值格，通道判定由 effective 实名驱动）──
+  it('review row: standard 档（effective=Qwen72B）-> SF 通道，embeddingKeySet=true -> ok', () => {
+    const input = { ...baseInput, providerKeySet: false }
     const review = computeSelfCheckRows(input).find(r => r.id === 'review')
     expect(review?.state).toBe('ok')
     expect(review?.model).toBe('Qwen/Qwen2.5-72B-Instruct')
+    expect(review?.text).toBe('审核模型已配置')
   })
 
-  // ── RA2-S1：模型名同源与缺省兜底（owner 反馈①②——chat 行与 review 行 follow_main 同一具体名）──
+  it('review row: standard 档缺硅基流动 key -> warn「审核模型需要硅基流动 Key」', () => {
+    const input = { ...baseInput, embeddingKeySet: false }
+    const review = computeSelfCheckRows(input).find(r => r.id === 'review')
+    expect(review?.state).toBe('warn')
+    expect(review?.text).toBe('审核模型需要硅基流动 Key')
+  })
+
+  it('review row: test 档（effective=big-pickle）-> zen 通道，状态按 zenKeySet 判定', () => {
+    const input = { ...baseInput, reviewEffectiveModel: 'big-pickle', zenKeySet: true }
+    const review = computeSelfCheckRows(input).find(r => r.id === 'review')
+    expect(review?.state).toBe('ok')
+    expect(review?.model).toBe('big-pickle')
+    const noKey = computeSelfCheckRows({ ...input, zenKeySet: false }).find(r => r.id === 'review')
+    expect(noKey?.state).toBe('warn')
+    expect(noKey?.text).toBe('审核模型需要 Zen Key')
+  })
+
+  it('review row: effective 未喂 -> 不做前端兜底，model 缺省且按 SF 通道判定', () => {
+    const review = computeSelfCheckRows({ ...baseInput, reviewEffectiveModel: undefined }).find(r => r.id === 'review')
+    expect(review?.model).toBeUndefined()
+    expect(review?.state).toBe('ok')   // embeddingKeySet=true → SF 通道可用
+  })
+
+  // ── RA5-S3：审核行模型名一律改读后端 effective_model（T59 前后端漂移根因拔除）──
+  it('RA5-S3: review 行 model=effective 与 chatModel 无关（两行语义分离不合并）', () => {
+    const input = { ...baseInput, chatModel: 'mimo-V2.5 Free', reviewEffectiveModel: 'big-pickle', zenKeySet: true }
+    const rows = computeSelfCheckRows(input)
+    expect(rows.find(r => r.id === 'chat')?.model).toBe('mimo-V2.5 Free')
+    expect(rows.find(r => r.id === 'review')?.model).toBe('big-pickle')
+  })
+
+  // ── RA2-S1：chat 行模型名同源与缺省兜底（owner 反馈①②）──
   it('RA2-S1: chatModel 缺省 -> chat 行兜底 deepseek-v4-flash-vision-exp（与 backend MODEL_MAIN 同值）', () => {
     // 完整字面量构造（不写 chatModel 键），模拟消费端未喂
     const input: SelfCheckInput = {
@@ -130,32 +111,9 @@ describe('computeSelfCheckRows', () => {
       embeddingKeySet: true,
       parseEngine: 'pymupdf4llm',
       mineruKeySet: false,
-      reviewResearchModel: '',
-      followMain: false,
       embeddingModel: 'Qwen/Qwen3-VL-Embedding-8B',
     }
     expect(computeSelfCheckRows(input).find(r => r.id === 'chat')?.model).toBe('deepseek-v4-flash-vision-exp')
-  })
-
-  it('RA5-S3: review 行不做前端兜底——reviewEffectiveModel 未喂时 model 缺省（前端路由复算已删，后端权威）', () => {
-    const input: SelfCheckInput = {
-      providerKeySet: true,
-      zenKeySet: false,
-      embeddingKeySet: true,
-      parseEngine: 'pymupdf4llm',
-      mineruKeySet: false,
-      reviewResearchModel: '',
-      followMain: true,
-      embeddingModel: 'Qwen/Qwen3-VL-Embedding-8B',
-    }
-    expect(computeSelfCheckRows(input).find(r => r.id === 'review')?.model).toBeUndefined()
-  })
-
-  it('RA5-S3: 测试档 follow_main -> chat 行=mimo（resolveChatModel 语义不变），review 行=effective（两行语义分离不合并）', () => {
-    const input = { ...baseInput, chatModel: 'mimo-V2.5 Free', followMain: true }
-    const rows = computeSelfCheckRows(input)
-    expect(rows.find(r => r.id === 'chat')?.model).toBe('mimo-V2.5 Free')
-    expect(rows.find(r => r.id === 'review')?.model).toBe('deepseek-v4-flash-vision-exp')
   })
 
   // ── parse ──
