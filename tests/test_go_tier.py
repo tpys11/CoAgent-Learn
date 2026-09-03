@@ -138,3 +138,49 @@ def test_pick_judge_go_missing_key_fallback(monkeypatch, caplog):
 
     assert rv.pick_judge_llm(None, Req()) == "LLM"
     assert captured["model"] == MODEL_MAIN
+
+
+# ---------- S2：settings GET/PUT go 节（同款隔离先例 test_f14_zen_settings；T49 真实库零触碰） ----------
+import fastapi.testclient
+
+
+@pytest.fixture()
+def settings_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("SQLITE_DIR", str(tmp_path))
+    from core.db.base import SQLiteClient
+    client = SQLiteClient(str(tmp_path / "iso.db"))
+    client.init_tables()
+    import core.db.base as base_mod
+    import core.db.settings_repo as srmod
+    monkeypatch.setattr(base_mod.get_db, "_instance", client, raising=False)
+    monkeypatch.setattr(srmod, "_settings_repo", None, raising=False)
+    import main as _main
+    return fastapi.testclient.TestClient(_main.app), client
+
+
+def test_settings_put_go_keys_get_shows(settings_env):
+    tc, _client = settings_env
+    tc.put("/api/settings", json={"go_api_key": "sk-go-test-only-fake",
+                                  "go_base_url": "https://gw.example.com/v1"})
+    data = tc.get("/api/settings").json()
+    assert data["go"]["api_key_set"] is True
+    assert data["go"]["base_url"] == "https://gw.example.com/v1"
+    assert data["go"]["api_key_hint"]  # 掩码非空
+
+
+def test_settings_put_empty_go_keys_keeps_existing(settings_env):
+    # T51 语义：空串不覆写
+    tc, _client = settings_env
+    tc.put("/api/settings", json={"go_api_key": "sk-go-test-only-fake"})
+    tc.put("/api/settings", json={"go_api_key": "", "go_base_url": ""})
+    data = tc.get("/api/settings").json()
+    assert data["go"]["api_key_set"] is True
+
+
+def test_settings_test_channel_whitelist(settings_env):
+    # 白名单：'go' 生效，其余杂值一律落 'zen'（防杂值进 current_tier）
+    tc, _client = settings_env
+    tc.put("/api/settings", json={"test_channel": "go"})
+    assert tc.get("/api/settings").json()["test_channel"] == "go"
+    tc.put("/api/settings", json={"test_channel": "bogus"})
+    assert tc.get("/api/settings").json()["test_channel"] == "zen"

@@ -66,6 +66,9 @@ class SettingsSave(BaseModel):
     fetch_mult: int = 3
     zen_api_key: str = ""               # F14-S4c：OpenCode Zen Bearer key
     zen_test_mode: bool = False         # R-D S4：测试档全局开关（决策 38 后台辅助链随档总开关）
+    go_api_key: str = ""                # S2：go 网关 Bearer key（owner 09-04 拍板，第二测试通道）
+    go_base_url: str = ""               # S2：go 网关端点（无默认值，设置页填；空串不覆写）
+    test_channel: str = ""              # S2：测试态通道定向（'go'|'zen'，ZEN_TEST_MODE='1' 时生效）
     # RC4-S1：review_model_research/review_follow_main 字段退役（owner 09-03 终版：
     # 判卷路由=档位定值格，无用户可配判卷模型）——前端 PUT 旧字段被 pydantic 默认忽略
 
@@ -108,7 +111,7 @@ def get_settings():
         "review": {
             "model": getattr(_cfg, "REVIEW_MODEL", "Qwen/Qwen2.5-72B-Instruct"),
             "enabled": str(getattr(_cfg, "REVIEW_ENABLED", "0")) == "1",
-            # RC4-S1：effective_model=档位定值格权威回显（standard=Qwen2.5-72B/test=big-pickle）——
+            # RC4-S1：effective_model=档位定值格权威回显（standard=Qwen2.5-72B/test=big-pickle/go=Qwen3.8 Flash）——
             # 前端自检卡审核行读此值；follow_main/model_research 退役键已同步清（T61）
             "effective_model": resolve_review_route("研究")["model"],
         },
@@ -120,6 +123,13 @@ def get_settings():
             "model_review": getattr(_cfg, "ZEN_MODEL_REVIEW", ""),
             "test_mode": str(getattr(_cfg, "ZEN_TEST_MODE", "0")) == "1",   # R-D S4：测试档开关回显
         },
+        # S2：go 第二测试通道回显——base_url 原文回显（detect_tier 精确相等判定靠它对齐）；key 只回显 set/hint
+        "go": {
+            "base_url": getattr(_cfg, "GO_BASE_URL", ""),
+            "api_key_set": bool(getattr(_cfg, "GO_API_KEY", "")),
+            "api_key_hint": _mask_key(getattr(_cfg, "GO_API_KEY", "")),
+        },
+        "test_channel": getattr(_cfg, "TEST_CHANNEL", "zen"),   # S2：测试态通道定向回显（'go'|'zen'）
         # RA2-S1：chat 节 additive main_model——owner 冒烟反馈①②：自检卡需显主模型实名（deepseek-v4-flash-vision-exp）
         "chat": {"deepseek_key_set": bool(getattr(_cfg, "DEEPSEEK_API_KEY", "")), "main_model": MODEL_MAIN},
         "parse": {
@@ -187,6 +197,11 @@ def save_settings(req: SettingsSave):
     if "fetch_mult" in _vals:
         _s.set_setting("KB_FETCH_MULT", str(max(1, min(10, int(_vals["fetch_mult"] or 3)))))
     _set("ZEN_API_KEY", "zen_api_key")
+    _set("GO_API_KEY", "go_api_key")
+    _set("GO_BASE_URL", "go_base_url")
+    # S2：测试态通道定向——白名单 'go'，其余一律落 'zen'（防杂值进 current_tier）
+    if "test_channel" in _vals:
+        _s.set_setting("TEST_CHANNEL", "go" if _vals["test_channel"] == "go" else "zen")
     _apply_dynamic_settings()
     return {"status": "ok", "msg": "配置已保存并即时生效"}
 
@@ -249,6 +264,8 @@ def test_settings(req: SettingsSave):
     _chat_targets = [("chat", getattr(_cfg, "DEEPSEEK_BASE_URL", ""), getattr(_cfg, "DEEPSEEK_API_KEY", ""))]
     if getattr(_cfg, "ZEN_BASE_URL", ""):
         _chat_targets.append(("chat_zen", getattr(_cfg, "ZEN_BASE_URL", ""), _zen_key))
+    if getattr(_cfg, "GO_BASE_URL", ""):   # S2：go 通道探测（同款 GET /models 原语，零 token 计费）
+        _chat_targets.append(("chat_go", getattr(_cfg, "GO_BASE_URL", ""), getattr(_cfg, "GO_API_KEY", "")))
     for _name, _base, _key in _chat_targets:
         if not _key or not _base:
             results[_name] = {"ok": False, "msg": "未配置 Key"}
