@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   PRESET_IDS, PRESET_LABELS,
-  testPresetPutBody, testPresetLsWrites, standardPresetPutBody,
+  testPresetPutBody, testPresetLsWrites, standardPresetPutBody, goTestPresetLsWrites,
 } from './presets'
 
 describe('presets', () => {
@@ -52,5 +52,22 @@ describe('presets', () => {
 
   it('R-D S4: standardPresetPutBody 携带 zen_test_mode=false（退出测试档=后台链路回标准档）', () => {
     expect(standardPresetPutBody().zen_test_mode).toBe(false)
+  })
+
+  it('S4: testPresetPutBody 通道定向——默认 zen 兼容旧调用，显式 go 落 test_channel', () => {
+    expect(testPresetPutBody().test_channel).toBe('zen')
+    expect(testPresetPutBody('go').test_channel).toBe('go')
+    expect(testPresetPutBody('zen').test_channel).toBe('zen')
+  })
+
+  it('S4: goTestPresetLsWrites 返回 go 写集三键（model=双源同值⑤字面）', () => {
+    const w = goTestPresetLsWrites('https://gw.example.com/v1')
+    expect(w.provider).toBe('go')
+    expect(w.model).toBe('GLM-5.3-Flash')
+    expect(w.goBaseUrl).toBe('https://gw.example.com/v1')
+  })
+
+  it('S4: goTestPresetLsWrites 空 goBaseUrl 拒绝（调用方禁走约束，对称 zen 版）', () => {
+    expect(() => goTestPresetLsWrites('')).toThrow()
   })
 })

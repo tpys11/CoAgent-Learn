@@ -28,3 +28,18 @@ export const TEST_PRESET_OFF_NOTE = '标准档'
 /** RA4-S3：合并栏独立审核气泡下方说明（RC4-S1 改写：owner 09-03 终版指定文案——
  *  原「关闭后需要审核时自动采用主模型」随 follow_main 开关退役，改为一行档位定值说明） */
 export const REVIEW_BUBBLE_NOTE = '标准档判卷=Qwen2.5-72B（独立厂商），测试档=big-pickle'
+
+/** S4（owner 09-04 拍板）：go 通道小字——与 zen 上下并列的第二测试通道（独立网关，URL+Key 设置页填）。
+ *  与 TEST_PRESET_NOTE 同构：模型 ID 为字面占位，owner 提供网关确切 API ID 后改 presets/models 一行 */
+export const GO_CHANNEL_NOTE =
+  '文档解析用mineru、embedding模型用qwen3-VL-embedding-8B，主模型用GLM-5.3-Flash、审核模型用Qwen3.8 Flash（go 独立网关）'
+
+/** S4：go 通道 URL/Key 空守卫持久内联文案（TEST_PRESET_ZEN_GUARD_NOTE 同款机理） */
+export const TEST_PRESET_GO_GUARD_NOTE = '请先填写并保存 GO URL 与 GO Key，测试档走 Go 通道'
+
+/** S4：go 通道启用后常驻绿字（TEST_PRESET_ON_NOTE 同构） */
+export const GO_ON_NOTE =
+  '测试档已启用（解析 mineru · embedding qwen3-VL · 主模型 GLM-5.3-Flash · 审核 Qwen3.8 Flash）'
+
+/** S4：互斥说明（owner 语义：两通道各一开关，只能开一个；开 A 自动关 B，关 A 则 B 不动；全关=标准档） */
+export const CHANNEL_EXCLUDE_NOTE = 'Zen 与 Go 两个通道互斥：开启一个会自动关闭另一个；两者都关即回到标准档'

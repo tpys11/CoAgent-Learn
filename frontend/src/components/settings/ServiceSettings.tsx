@@ -3,9 +3,9 @@ import { Database, Check, X } from 'lucide-react'
 import { api } from '../../api'
 import type { SettingsData } from '../../types'
 import { LS, lsGet, lsSet, lsRemove, lsGetJSON, lsSetJSON } from '../../storage'
-import { SERVICE_GROUPS, TEST_PRESET_NOTE, KB_MERGE_NOTE, TEST_PRESET_ZEN_GUARD_NOTE, TEST_PRESET_ON_NOTE, TEST_PRESET_OFF_NOTE, REVIEW_BUBBLE_NOTE } from './serviceGroups'
+import { SERVICE_GROUPS, TEST_PRESET_NOTE, KB_MERGE_NOTE, TEST_PRESET_ZEN_GUARD_NOTE, TEST_PRESET_ON_NOTE, TEST_PRESET_OFF_NOTE, REVIEW_BUBBLE_NOTE, GO_CHANNEL_NOTE, TEST_PRESET_GO_GUARD_NOTE, GO_ON_NOTE, CHANNEL_EXCLUDE_NOTE } from './serviceGroups'
 import { buildSvcBody } from './settingsPayload'
-import { testPresetLsWrites, testPresetPutBody, standardPresetPutBody } from './presets'
+import { testPresetLsWrites, goTestPresetLsWrites, testPresetPutBody, standardPresetPutBody } from './presets'
 import SelfCheckCard from './SelfCheckCard'
 
 function Section({ icon: Icon, title, desc, children }: { icon: any; title: string; desc?: string; children: React.ReactNode }) {
@@ -96,6 +96,7 @@ export default function ServiceSettings() {
     mineru_key_set: false,
     mathpix_key_set: false,
     zen_key_set: false, zen_key_hint: '',
+    go_key_set: false, go_key_hint: '', go_base_url: '',
     chunk_mode: 'auto',
     chunk_size: 512,
     chunk_overlap: 50,
@@ -112,10 +113,22 @@ export default function ServiceSettings() {
   const [zenSaving, setZenSaving] = useState(false)
   // RA4-S1：保存失败持久红字态——不清到下次成功
   const [zenSaveErr, setZenSaveErr] = useState(false)
-  // 测试档总开关态（LS.preset 单一事实源）
-  const [testPresetOn, setTestPresetOn] = useState(() => lsGet(LS.preset, 'standard') === 'test')
+  // S4：go 通道输入（URL+Key）与保存态——与 zen 输入同构
+  const [goUrl, setGoUrl] = useState(() => lsGet(LS.goBaseUrl, ''))
+  const [goKey, setGoKey] = useState('')
+  const [goSaving, setGoSaving] = useState(false)
+  const [goSaveErr, setGoSaveErr] = useState(false)
+  // S4：测试通道态（互斥开关单一事实源=LS.preset+LS.provider）——'zen'|'go'=测试档对应通道，''=标准档。
+  // 互斥语义由单字段覆盖实现：开 A→provider 覆写为 A（B 的开关渲染自然关闭）；关 A→回标准档（B 本就关着，不动）
+  const [testChannel, setTestChannel] = useState<'zen' | 'go' | ''>(() => {
+    if (lsGet(LS.preset, 'standard') !== 'test') return ''
+    return lsGet(LS.provider, 'deepseek') === 'go' ? 'go' : 'zen'
+  })
+  const testPresetOn = testChannel !== ''
   // RA4-S2：依赖链持久反馈——zenBaseUrl 空守卫 amber 常驻 + PUT 失败红字常驻（flash 只做动作回执）
   const [presetGuardHint, setPresetGuardHint] = useState(false)
+  // S4：守卫归属通道（zen/go 触发的空守卫文案不同）
+  const [guardKind, setGuardKind] = useState<'zen' | 'go'>('zen')
   const [presetFailMsg, setPresetFailMsg] = useState('')
   const [svcSaved, setSvcSaved] = useState(false)
   const [keyEditing, setKeyEditing] = useState(false)
@@ -140,6 +153,9 @@ export default function ServiceSettings() {
         mathpix_key_set: !!d.parse?.mathpix_key_set,
         zen_key_set: !!d.zen?.api_key_set,
         zen_key_hint: d.zen?.api_key_hint || '',
+        go_key_set: !!d.go?.api_key_set,
+        go_key_hint: d.go?.api_key_hint || '',
+        go_base_url: d.go?.base_url || '',
         chunk_size: d.chunking?.chunk_size ?? 512,
         chunk_overlap: d.chunking?.chunk_overlap ?? 50,
         rrf_k: d.chunking?.rrf_k ?? 60,
@@ -207,22 +223,33 @@ export default function ServiceSettings() {
 
   /** RA4-S2：进入测试档——owner 拍板取消确认框，点击直接转换；
    *  先 PUT（失败回弹不写 LS，防 DB/LS 两端漂移）→ 再写 LS 写集。
-   *  zenBaseUrl 空串禁走（S5：zen 路由 base_url 取 LS.zenBaseUrl，空=回落 DeepSeek 端点）——
-   *  守卫从瞬时 flash 改为持久内联 amber（旧版只闪一下即 return=开关不亮无反馈根因）。 */
-  const enableTestPreset = async () => {
+   *  通道 base_url 空串禁走（S5/S3：路由 base_url 取对应 LS 键，空=回落 DeepSeek 端点）——
+   *  守卫从瞬时 flash 改为持久内联 amber（旧版只闪一下即 return=开关不亮无反馈根因）。
+   *  S4：参数化通道——zen/go 两开关互斥由单字段覆盖实现（开 go 直接覆写 provider，zen 渲染自然关闭）。 */
+  const enableTestPreset = async (channel: 'zen' | 'go') => {
     const zenBaseUrl = lsGet(LS.zenBaseUrl, '')
-    if (!zenBaseUrl) { setPresetGuardHint(true); return }
+    const goBaseUrl = lsGet(LS.goBaseUrl, '')
+    if (channel === 'zen' && !zenBaseUrl) { setGuardKind('zen'); setPresetGuardHint(true); return }
+    if (channel === 'go' && !goBaseUrl) { setGuardKind('go'); setPresetGuardHint(true); return }
     try {
-      await api.saveSettings(testPresetPutBody())
-      const ls = testPresetLsWrites(zenBaseUrl)
-      lsSet(LS.preset, 'test')
-      lsSet(LS.provider, ls.provider)
-      lsSet(LS.model, ls.model)
-      lsSet(LS.zenBaseUrl, ls.zenBaseUrl)
+      await api.saveSettings(testPresetPutBody(channel))
+      if (channel === 'zen') {
+        const ls = testPresetLsWrites(zenBaseUrl)
+        lsSet(LS.preset, 'test')
+        lsSet(LS.provider, ls.provider)
+        lsSet(LS.model, ls.model)
+        lsSet(LS.zenBaseUrl, ls.zenBaseUrl)
+      } else {
+        const gls = goTestPresetLsWrites(goBaseUrl)
+        lsSet(LS.preset, 'test')
+        lsSet(LS.provider, gls.provider)
+        lsSet(LS.model, gls.model)
+        lsSet(LS.goBaseUrl, gls.goBaseUrl)
+      }
       setPresetGuardHint(false)
       setPresetFailMsg('')
-      setTestPresetOn(true)
-      flash('已进入测试档')
+      setTestChannel(channel)
+      flash(channel === 'zen' ? '已进入测试档（Zen 通道）' : '已进入测试档（Go 通道）')
     } catch {
       // owner 语义「点击直接转换」含失败情形——开关回弹+持久红字，不做半开状态
       setPresetFailMsg('切换失败（后端不可达），请重试')
@@ -231,7 +258,8 @@ export default function ServiceSettings() {
   }
 
   /** RA-S3：退出测试档——PUT 标准档 body（审核回主模型 follow_main + 本地解析）→
-   *  LS 回默认：provider=deepseek、model 移除（唯一读点 useChatStream 回落默认值）。 */
+   *  LS 回默认：provider=deepseek、model 移除（唯一读点 useChatStream 回落默认值）。
+   *  S4：两通道共用同一退出路径（互斥单字段下「关闭当前开启的通道」=退出测试档）。 */
   const disableTestPreset = async () => {
     try {
       await api.saveSettings(standardPresetPutBody())
@@ -239,7 +267,7 @@ export default function ServiceSettings() {
       lsSet(LS.provider, 'deepseek')
       lsRemove(LS.model)
       setPresetFailMsg('')
-      setTestPresetOn(false)
+      setTestChannel('')
       flash('已退出测试档')
     } catch {
       setPresetFailMsg('退出失败（后端不可达），请重试')
@@ -247,7 +275,33 @@ export default function ServiceSettings() {
     }
   }
 
-  const onTestPresetToggle = (v: boolean) => { if (v) void enableTestPreset(); else void disableTestPreset() }
+  // S4：两通道开关处理器——开 A=enableTestPreset(A)（另一通道自动关闭）；关 A=退出测试档（另一通道本就关闭，不动）
+  const onZenToggle = (v: boolean) => { if (v) void enableTestPreset('zen'); else void disableTestPreset() }
+  const onGoToggle = (v: boolean) => { if (v) void enableTestPreset('go'); else void disableTestPreset() }
+
+  /** S4：保存 go 通道 URL+Key（对称 saveZenKey：专用通道 saveGoKey 防 E-40 类字段静默丢失；
+   *  URL 必须落库——后端 detect_tier 靠「req.base_url==GO_BASE_URL」精确判定；LS 双写
+   *  providerKeys.go（对话发送 apiKey=provKeys[provider]）+LS.goBaseUrl（主链路 go 路由读）。 */
+  const saveGoKey = async () => {
+    if (!goKey.trim() || !goUrl.trim()) return
+    setGoSaving(true)
+    try {
+      await api.saveGoKey(goKey.trim(), goUrl.trim())
+      const keys = lsGetJSON(LS.providerKeys, {} as Record<string, string>)
+      lsSetJSON(LS.providerKeys, { ...keys, go: goKey.trim() })
+      const g = await api.getSettings()
+      lsSet(LS.goBaseUrl, g.go?.base_url || goUrl.trim())
+      // RA2-S2 同款语义：输入保留（不清空），set/hint 落 svc 持久渲染
+      setSvc(s => ({ ...s, go_key_set: !!g.go?.api_key_set, go_key_hint: g.go?.api_key_hint || '', go_base_url: g.go?.base_url || goUrl.trim() }))
+      setGoSaveErr(false)
+      flash(zenSavedFlashText())
+    } catch {
+      setGoSaveErr(true)
+      flashErr(zenSaveFailFlashText())
+    } finally {
+      setGoSaving(false)
+    }
+  }
 
   // RC4-S2：合并栏「独立审核」开关退役（owner 09-03 终版：判卷路由=档位定值格，
   // 无用户开关语义）——原开关处理器/PUT 体构造函数/失败红字态全部删除，
@@ -267,22 +321,31 @@ export default function ServiceSettings() {
             </div>
 
             {grp.id === 'chat' && (
-              /* RA-S3：测试档卡（原预设档卡） */
+              /* RA-S3：测试档卡（原预设档卡）；S4 重排——Zen/Go 两通道上下并列，通道级开关互斥
+                 （owner 09-04：开 A 自动关 B，关 A 则 B 不动，全关=标准档；单一 provider 字段天然实现） */
               <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2.5">
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold">测试档</p>
-                  <Toggle checked={testPresetOn} onChange={onTestPresetToggle} />
+                  <p className={`text-[10px] ${testChannel ? 'text-green-700' : 'text-dim'}`}>
+                    {testChannel ? `当前：${testChannel === 'zen' ? 'Zen' : 'Go'} 通道` : TEST_PRESET_OFF_NOTE}
+                  </p>
                 </div>
                 {/* RA4-S2：三态持久指示——启用绿字/未启用灰字/守卫 amber/失败红字（flash 只做动作回执） */}
-                {testPresetOn ? (
-                  <p className="text-[10px] text-green-700">{TEST_PRESET_ON_NOTE}</p>
+                {testChannel ? (
+                  <p className="text-[10px] text-green-700">{testChannel === 'zen' ? TEST_PRESET_ON_NOTE : GO_ON_NOTE}</p>
                 ) : (
                   <p className="text-[10px] text-dim">{TEST_PRESET_OFF_NOTE}</p>
                 )}
-                {presetGuardHint && !testPresetOn && (
-                  <p className="text-[10px] text-amber-600">{TEST_PRESET_ZEN_GUARD_NOTE}</p>
+                {presetGuardHint && !testChannel && (
+                  <p className="text-[10px] text-amber-600">{guardKind === 'zen' ? TEST_PRESET_ZEN_GUARD_NOTE : TEST_PRESET_GO_GUARD_NOTE}</p>
                 )}
                 {presetFailMsg && <p className="text-[10px] text-red-500">{presetFailMsg}</p>}
+
+                {/* ── Zen 通道行 ── */}
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-semibold text-dim">Zen 通道（opencode zen 免费档）</p>
+                  <Toggle checked={testChannel === 'zen'} onChange={onZenToggle} />
+                </div>
                 <div className="flex flex-col gap-1.5">
                   <p className="text-[11px] font-medium text-dim">Zen API Key</p>
                   {/* RA2-S2：输入框常驻不再被「已配置」分支替换——保存后输入保留，尾号提示在其下方（不依赖清空触发） */}
@@ -304,6 +367,36 @@ export default function ServiceSettings() {
                   )}
                 </div>
                 <p className="text-[10px] text-dim">{TEST_PRESET_NOTE}</p>
+
+                {/* ── Go 通道行（与 Zen 上下并列；S4 owner 拍板） ── */}
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-semibold text-dim">Go 通道（独立网关）</p>
+                  <Toggle checked={testChannel === 'go'} onChange={onGoToggle} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-[11px] font-medium text-dim">GO Base URL</p>
+                  <input type="text" value={goUrl}
+                    placeholder="https://...（go 网关地址，OpenAI 兼容 /v1）"
+                    onChange={e => setGoUrl(e.target.value)} className={inputCls} />
+                  <p className="text-[11px] font-medium text-dim">GO API Key</p>
+                  <div className="flex items-center gap-2">
+                    <input type="password" autoComplete="new-password" value={goKey}
+                      placeholder="sk-...（GO Key）"
+                      onChange={e => setGoKey(e.target.value)} className={inputCls} />
+                    <button onClick={saveGoKey} disabled={goSaving || !goKey.trim() || !goUrl.trim()}
+                      className={`px-4 py-1.5 text-[11px] rounded-lg font-semibold flex-shrink-0 ${goSaving ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#1a1a1a] text-white'}`}>
+                      {goSaving ? '保存中…' : '保存'}
+                    </button>
+                  </div>
+                  <p className={`text-[10px] ${svc.go_key_set ? 'text-green-700' : 'text-dim'}`}>
+                    {zenKeyConfigText(svc.go_key_set, svc.go_key_hint)}
+                  </p>
+                  {goSaveErr && (
+                    <p className="text-[10px] text-red-500">{zenSaveFailPersistText()}</p>
+                  )}
+                </div>
+                <p className="text-[10px] text-dim">{GO_CHANNEL_NOTE}</p>
+                <p className="text-[10px] text-dim">{CHANNEL_EXCLUDE_NOTE}</p>
               </div>
             )}
 

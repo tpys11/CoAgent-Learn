@@ -15,12 +15,14 @@ export const PRESET_LABELS: Record<PresetId, string> = {
 /** 测试档 PUT body：固定模型组（owner 指定模型名原样作常量；真实 ID 由 owner 冒烟对照
  *  GET /api/settings/zen/models——不符=常量一行修，不算缺陷）。
  *  R-D S4：zen_test_mode=true——测试档后台辅助链（压缩/入库增强/大纲/资源生成）随档总开关。
- *  RC4-S1：判卷随档位自动切换（standard=Qwen2.5-72B/test=big-pickle），无 PUT 键。 */
-export function testPresetPutBody(): Record<string, unknown> {
+ *  RC4-S1：判卷随档位自动切换（standard=Qwen2.5-72B/test=big-pickle/go=Qwen3.8 Flash），无 PUT 键。
+ *  S4（owner 09-04）：test_channel 通道定向（'go'→go 档；默认 'zen' 兼容旧语义）——current_tier 读此键。 */
+export function testPresetPutBody(channel: 'zen' | 'go' = 'zen'): Record<string, unknown> {
   return {
     parse_engine: 'mineru',
     embedding_model: 'Qwen/Qwen3-VL-Embedding-8B',
     zen_test_mode: true,
+    test_channel: channel,
   }
 }
 
@@ -30,6 +32,13 @@ export function testPresetPutBody(): Record<string, unknown> {
 export function testPresetLsWrites(zenBaseUrl: string): { provider: string; model: string; zenBaseUrl: string } {
   if (!zenBaseUrl) throw new Error('testPresetLsWrites: zenBaseUrl 为空——调用方禁走（S5 路由约束）')
   return { provider: 'zen', model: 'mimo-v2.5-free', zenBaseUrl }
+}
+
+/** S4：go 通道 LS 写集（对称 zen 版）——model 字面与 backend MODEL_GO_MAIN / models.ts
+ *  双源同值⑤一致；goBaseUrl 空串同款防御性抛错（S3：go 路由 base_url 取此值）。 */
+export function goTestPresetLsWrites(goBaseUrl: string): { provider: string; model: string; goBaseUrl: string } {
+  if (!goBaseUrl) throw new Error('goTestPresetLsWrites: goBaseUrl 为空——调用方禁走（S3 路由约束）')
+  return { provider: 'go', model: 'GLM-5.3-Flash', goBaseUrl }
 }
 
 /** 标准档 PUT body（退出测试档=本地解析+后台链路回标准档）：
