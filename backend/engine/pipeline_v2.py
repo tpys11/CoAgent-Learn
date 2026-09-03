@@ -364,8 +364,9 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         ctx_steps.append({"agent": "学习助手·规划", "status": "done", "detail": "意图分类完成"})
         # F11-S1：规划节点内容化——要点进思维链（token 事件流式 + mindchain_entries 持久双写；
         # done 帧无条件替换前端流式内容，只发事件会「闪现后消失」，故必须双写）
-        _plan_pt = (f"规划要点：复杂度 {plan['complexity']} · {template}档 · "
-                    + ("需检索知识库" if plan["complexity"] != "simple_direct" else "简单直答，不检索"))
+        # RC5-S1：KB 检索无条件化——所有档位默认检索知识库（owner 09-03），要点文案不再
+        # 宣称「不检索」；上网与否由 retrieve 阶段规划器按 need_search 判定，此处不预设
+        _plan_pt = f"规划要点：复杂度 {plan['complexity']} · {template}档 · 需检索知识库"
         token_queue.put(("token", "学习助手·规划", _plan_pt))
         mindchain_entries.append({"agent": "学习助手·规划", "content": _plan_pt})
 
@@ -385,95 +386,96 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                 assess_and_store, _make_fast_llm(req), did, req.message,
                 recent_digest, prev_score)
 
-        # --- S2 Retrieve（模式权威：思考/研究必检索，极速不检索；simple_direct 已在上方短路） ---
+        # --- S2 Retrieve（RC5-S1 owner 09-03 终版语义：KB 检索无条件化——所有档位/模板
+        # 必跑 KB 链（改写→向量召回→终筛，向量化近零成本）；need_search 只在 retrieve 阶段
+        # 门控 web 搜索，不再短路本块；原 simple_direct/极速 跳过门控废除） ---
         search_results: list = []
         # 研究档进 B2-lite 分解链（契约替代 D-新1：旧"强制两轮 angle 递归"已退役，见 retrieve.py）；
         # rounds≥2 即研究链，research_deep 分类同享
         _rounds = 2 if (template == "研究" or plan["complexity"] == "research_deep") else 1
         _search_meta: dict = {}
-        if plan["complexity"] != "simple_direct" and template != "极速":
-            token_queue.put(("step", "知识库管理"))
-            # 🛰 检索观察窗（1.5 复活）：SSE subagent 帧 + subagent_runs 档案双写。
-            # 观测任何失败只降级日志，绝不打断主检索链路（与 v1 语义对齐）。
-            try:
-                from services.subagent_runs import (
-                    create_run as _sa_create,
-                    emit as _sa_record,
-                    finish_run as _sa_finish,
-                )
-                _sa_rid = _sa_create(project_id=pid, dialogue_id=did, agent="知识库管理",
-                                     title="🛰 检索观察窗", input_text=working_message[:300])
+        token_queue.put(("step", "知识库管理"))
+        # 🛰 检索观察窗（1.5 复活）：SSE subagent 帧 + subagent_runs 档案双写。
+        # 观测任何失败只降级日志，绝不打断主检索链路（与 v1 语义对齐）。
+        try:
+            from services.subagent_runs import (
+                create_run as _sa_create,
+                emit as _sa_record,
+                finish_run as _sa_finish,
+            )
+            _sa_rid = _sa_create(project_id=pid, dialogue_id=did, agent="知识库管理",
+                                 title="🛰 检索观察窗", input_text=working_message[:300])
 
-                def _sa_emit(type_: str, **payload):
-                    try:
-                        _sa_record(_sa_rid, type_, **payload)
-                    except Exception:
-                        logger.debug("观察窗档案写入失败（SSE 通道不受扰）", exc_info=True)
-                    token_queue.put(("subagent", {"type": type_, "run_id": _sa_rid,
-                                                  "agent": "知识库管理", **payload}))
+            def _sa_emit(type_: str, **payload):
+                try:
+                    _sa_record(_sa_rid, type_, **payload)
+                except Exception:
+                    logger.debug("观察窗档案写入失败（SSE 通道不受扰）", exc_info=True)
+                token_queue.put(("subagent", {"type": type_, "run_id": _sa_rid,
+                                              "agent": "知识库管理", **payload}))
 
-                _sa_emit("start", title="🛰 检索观察窗")
-                _sa_emit("input", content=working_message[:200])
-                _sa_gate_ok = True
-            except Exception:
-                logger.exception("[v2] 检索观察窗建档失败（降级为无观测）")
-                _sa_emit = None
-                _sa_rid = None
-                _sa_gate_ok = False
-            try:
-                from engine.retrieve import retrieve_stage
-                _rr = retrieve_stage(_make_fast_llm(req), req.message, template, pid,
-                                     rounds=_rounds,
-                                     emit=_sa_emit if _sa_gate_ok else None)
-                search_results = _rr["search_results"]
-                _search_meta = _rr.get("search_meta") or {}
-            except Exception:
-                logger.exception("[v2] 检索阶段失败，降级无检索生成")
-                _sa_gate_ok = False
-            _hit_structs = _hit_blocks(search_results)  # RC2-S1：终筛留存命中块（top5 截断防爆）
-            if _sa_gate_ok:
-                _kept = len(search_results)
-                _raw = _search_meta.get("raw_count", _kept)
-                _summary = f"候选 {_raw} → 留存 {_kept}"
-                if _hit_structs and _sa_emit:
-                    # RC2-S1：命中内容块先于 end 冻结入观察窗（点击展开可见具体内容）；
-                    # _sa_emit 同步落 subagent_runs 档案，REST 回看通道自动覆盖
-                    _sa_emit("hits", hits=_hit_structs)
-                _sa_finish(_sa_rid, status="ok", summary=_summary)
-                token_queue.put(("subagent", {"type": "end", "run_id": _sa_rid,
-                                              "agent": "知识库管理",
-                                              "status": "ok", "summary": _summary}))
-            else:
-                if _sa_rid:
-                    try:
-                        _sa_finish(_sa_rid, status="error", summary="检索降级或观测中断")
-                        token_queue.put(("subagent", {"type": "end", "run_id": _sa_rid,
-                                                      "agent": "知识库管理", "status": "error",
-                                                      "summary": "检索降级或观测中断"}))
-                    except Exception:
-                        logger.debug("error 路径观察窗收尾失败", exc_info=True)
-            ctx_steps.append({"agent": "知识库管理", "status": "done",
-                              "detail": f"检索{len(search_results)}条"})
-            # RC2-S1：命中内容块思维链双写（token 事件 + mindchain_entries 同源）——
-            # 只发事件 done 权威替换会打回原形（F11 注释真 bug）；merge_consecutive 只保
-            # agent/content 两字段，故块内容以 markdown 进 content（截断已由 _hit_blocks 保证）
-            if _hit_structs:
-                _hit_md = _format_hit_blocks_md(_hit_structs)
-                token_queue.put(("token", "知识库管理", _hit_md))
-                mindchain_entries.append({"agent": "知识库管理", "content": _hit_md})
-            # F11-S1：检索节点内容化——query 与命中预览（source/chunk/融合分，截断防爆）
-            # 进思维链，同款「token 事件 + mindchain 双写」；与既有 step/thought_token
-            # 词汇表对齐（复用 :378 输出策略 / :511 审核同款通道），零新协议。
-            _search_detail = _format_search_detail(_search_meta, search_results)
-            token_queue.put(("token", "知识库管理", _search_detail))
-            mindchain_entries.append({"agent": "知识库管理", "content": _search_detail})
-            _trace("retrieve", input_digest=req.message[:200],
-                   output_digest=json.dumps(
-                       {"kept": len(search_results),
-                        "queries": (_search_meta.get("queries") or [])[:8],
-                        "raw_count": _search_meta.get("raw_count", len(search_results)),
-                        "rounds": _search_meta.get("rounds", 0)},
-                       ensure_ascii=False))
+            _sa_emit("start", title="🛰 检索观察窗")
+            _sa_emit("input", content=working_message[:200])
+            _sa_gate_ok = True
+        except Exception:
+            logger.exception("[v2] 检索观察窗建档失败（降级为无观测）")
+            _sa_emit = None
+            _sa_rid = None
+            _sa_gate_ok = False
+        try:
+            from engine.retrieve import retrieve_stage
+            _rr = retrieve_stage(_make_fast_llm(req), req.message, template, pid,
+                                 rounds=_rounds,
+                                 emit=_sa_emit if _sa_gate_ok else None)
+            search_results = _rr["search_results"]
+            _search_meta = _rr.get("search_meta") or {}
+        except Exception:
+            logger.exception("[v2] 检索阶段失败，降级无检索生成")
+            _sa_gate_ok = False
+        _hit_structs = _hit_blocks(search_results)  # RC2-S1：终筛留存命中块（top5 截断防爆）
+        if _sa_gate_ok:
+            _kept = len(search_results)
+            _raw = _search_meta.get("raw_count", _kept)
+            _summary = f"候选 {_raw} → 留存 {_kept}"
+            if _hit_structs and _sa_emit:
+                # RC2-S1：命中内容块先于 end 冻结入观察窗（点击展开可见具体内容）；
+                # _sa_emit 同步落 subagent_runs 档案，REST 回看通道自动覆盖
+                _sa_emit("hits", hits=_hit_structs)
+            _sa_finish(_sa_rid, status="ok", summary=_summary)
+            token_queue.put(("subagent", {"type": "end", "run_id": _sa_rid,
+                                          "agent": "知识库管理",
+                                          "status": "ok", "summary": _summary}))
+        else:
+            if _sa_rid:
+                try:
+                    _sa_finish(_sa_rid, status="error", summary="检索降级或观测中断")
+                    token_queue.put(("subagent", {"type": "end", "run_id": _sa_rid,
+                                                  "agent": "知识库管理", "status": "error",
+                                                  "summary": "检索降级或观测中断"}))
+                except Exception:
+                    logger.debug("error 路径观察窗收尾失败", exc_info=True)
+        ctx_steps.append({"agent": "知识库管理", "status": "done",
+                          "detail": f"检索{len(search_results)}条"})
+        # RC2-S1：命中内容块思维链双写（token 事件 + mindchain_entries 同源）——
+        # 只发事件 done 权威替换会打回原形（F11 注释真 bug）；merge_consecutive 只保
+        # agent/content 两字段，故块内容以 markdown 进 content（截断已由 _hit_blocks 保证）
+        if _hit_structs:
+            _hit_md = _format_hit_blocks_md(_hit_structs)
+            token_queue.put(("token", "知识库管理", _hit_md))
+            mindchain_entries.append({"agent": "知识库管理", "content": _hit_md})
+        # F11-S1：检索节点内容化——query 与命中预览（source/chunk/融合分，截断防爆）
+        # 进思维链，同款「token 事件 + mindchain 双写」；与既有 step/thought_token
+        # 词汇表对齐（复用 :378 输出策略 / :511 审核同款通道），零新协议。
+        _search_detail = _format_search_detail(_search_meta, search_results)
+        token_queue.put(("token", "知识库管理", _search_detail))
+        mindchain_entries.append({"agent": "知识库管理", "content": _search_detail})
+        _trace("retrieve", input_digest=req.message[:200],
+               output_digest=json.dumps(
+                   {"kept": len(search_results),
+                    "queries": (_search_meta.get("queries") or [])[:8],
+                    "raw_count": _search_meta.get("raw_count", len(search_results)),
+                    "rounds": _search_meta.get("rounds", 0)},
+                   ensure_ascii=False))
 
         # --- S3 Assess 回收（与 S2 重叠执行完毕） ---
         assess_score = None

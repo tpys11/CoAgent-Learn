@@ -17,7 +17,7 @@ _SOFT_KEYS = ["你好", "您好", "hi", "hello", "嗨", "哈喽", "在吗", "谢
 # 理由限 3 句（简单请求不伪装深度思考）；模型仍只回 JSON 时 thinking 为空=现状兜底。
 _CLASSIFY_PROMPT = (
     "你是学习助手的意图分类器。先用不超过3句话说明本次判断的理由"
-    "（复杂度依据/是否需要检索/研究重点），理由直接写文字、不要放进代码围栏；"
+    "（复杂度依据/是否需要上网搜索/研究重点），理由直接写文字、不要放进代码围栏；"
     "然后另起一行用 ```json 围栏输出：\n"
     '{"complexity": "simple_direct|standard|research_deep"}\n'
     "规则：寒暄闲聊或极短问答=simple_direct；常规学习问答=standard；"
@@ -60,7 +60,8 @@ def resolve_plan_targets(tpl: str, plan: list) -> list[str]:
 
 def classify_intent(llm_fast, message: str, template: str) -> tuple[str, dict]:
     """flash 意图分类：返回 (思考原文, {complexity})。
-    thinking 供思维链持久化；检索与否由模式决定，分类器不越权。"""
+    thinking 供思维链持久化；RC5-S1 起 KB 检索全档无条件（不归分类器管），
+    complexity 只决定 rounds（research_deep 进研究档分解链），分类器不越权。"""
     from engine.llm_io import think_then_json
     thinking, result = think_then_json(
         llm_fast, _CLASSIFY_PROMPT, message[:1500], "学习助手·规划", silent=True)

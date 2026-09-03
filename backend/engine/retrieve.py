@@ -8,7 +8,10 @@ P1 增补：多路排名 RRF 融合（公式照抄 llama-index QueryFusionRetrie
 RC4-S3：0 候选短路修复——queries 非空无视 need_search=false（T55 误判实锤：数学课程
 知识题被「数学计算类」规则误杀 → 0 候选）；prompt 收紧「课程知识题≠纯计算」；
 规划器失败路径 warning 可观测（原静默吞异常）。
-测试接缝：_web_search / _kb_search / _fetch_all 可被 monkeypatch 替换。"""
+RC5-S1：KB 检索无条件化（owner 09-03 终版语义）——「检索」=检索知识库，所有档位/
+模板 always-run（向量化近零成本）；need_search 只门控 web 搜索（queries 为空即不上网）；
+规划器无检索词时 KB 用原问题召回。测试接缝：_web_search / _kb_search / _fetch_all
+可被 monkeypatch 替换。"""
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FTimeout
@@ -25,7 +28,8 @@ logger = logging.getLogger("coagent.retrieve")
 # RC4-S3：补「学科知识题≠纯计算」判定规则——owner 实证「正定与半正定…二次型」被
 # flash 归入数学计算类误杀（need_search=false → 0 候选短路）。
 _RESEARCH_DECOMPOSE_PROMPT = (
-    "你是检索查询规划器，负责研究档的子问题分解：把多面问题拆成可独立检索的信息需求。\n"
+    "你是检索查询规划器，负责研究档的子问题分解：把多面问题拆成可独立检索的信息需求"
+    "（need_search=是否需要上网搜索；知识库向量检索始终进行，无需检索词时用原问题召回）。\n"
     '只输出 JSON：{"need_search": true|false, "queries": ["子问题1", "子问题2", ...], '
     '"decomposed": true|false}\n'
     "对照示例：问题「对比 Uber 与 Lyft 的营收增长」按实体拆为独立需求：\n"
@@ -41,11 +45,16 @@ _RESEARCH_DECOMPOSE_PROMPT = (
 def rewrite_queries(llm_fast, message: str, angle_hint: str = "",
                     research: bool = False) -> dict:
     """R1 改写：flash 单次调用合并 need_search 判定与 queries 产出。
+    need_search 语义（RC5-S1 收窄）=是否需要上网搜索，只门控 web 路；
+    queries 非空仍翻案为 need=true（RC4-S3 修复保持——自相矛盾输出以检索意图为准）。
     research=True 切 B2-lite 分解契约：多面问题拆独立信息需求（≤4 条），
     单面问题返回原问题单元素（decomposed=false，防碎片化）。
     失败软着陆：任何异常 → {need_search: False, queries: [], decomposed: False}。"""
     prompt = _RESEARCH_DECOMPOSE_PROMPT if research else (
-        "你是检索查询规划器。判断该消息是否需要外部检索，并产出搜索词。\n"
+        # RC5-S1：need_search 判定语义收窄为「是否需要上网搜索」（owner 09-03）——
+        # 「检索」一词只指知识库，KB 链全档 always-run 不受本判定影响
+        "你是检索查询规划器。判断该消息是否需要上网搜索（web 搜索），并产出检索词；"
+        "知识库向量检索始终进行，无需检索词时用原问题召回。\n"
         '只输出 JSON：{"need_search": true|false, "queries": ["搜索词1", "搜索词2", ...]}\n'
         "规则：闲聊/纯创作/纯算术运算（无需任何知识内容）类 need_search=false；"
         "数学、物理等学科的知识概念题（定义、性质、区别、判定）是知识问题，需要检索；"
@@ -88,12 +97,17 @@ def _kb_search(query: str, project_id: str) -> list:
 
 
 def _fetch_all(queries: list[str], project_id: str, use_kb: bool,
-               per_call_timeout: int = 15) -> tuple[list, list]:
+               per_call_timeout: int = 15,
+               kb_query: str | None = None) -> tuple[list, list]:
     """R2 并行取回。返回 (web_groups, kb_out)：
     web_groups 与 queries 等长，每组保持该查询的引擎排名序——这是 RRF 融合的输入契约；
-    kb_out 为单列召回序。单路异常静默兜底为空列表（不冒泡）。"""
+    kb_out 为单列召回序。单路异常静默兜底为空列表（不冒泡）。
+    RC5-S1：kb_query 显式指定 KB 向量召回查询（缺省仍取 queries[0] 兼容旧契约，
+    研究档补搜路径不改签名）；queries 为空时仅 KB 单路取回——web 严格按 queries
+    逐条（need_search=false 时调用方传空 queries → 零上网，成本门控）。"""
     web_groups: list[list] = [[] for _ in queries]
     kb_out: list = []
+    _kb_q = kb_query if kb_query is not None else (queries[0] if queries else None)
 
     def _safe(fn, *a):
         try:
@@ -105,8 +119,8 @@ def _fetch_all(queries: list[str], project_id: str, use_kb: bool,
         futs = {}
         for qi, q in enumerate(queries):
             futs[ex.submit(_safe, _web_search, q)] = ("web", qi)
-        if use_kb and project_id:
-            futs[ex.submit(_safe, _kb_search, queries[0], project_id)] = ("kb", 0)
+        if use_kb and project_id and _kb_q:
+            futs[ex.submit(_safe, _kb_search, _kb_q, project_id)] = ("kb", 0)
         for fut, (kind, qi) in futs.items():
             try:
                 rows = fut.result(timeout=per_call_timeout)
@@ -260,33 +274,40 @@ def retrieve_stage(llm_fast, message: str, template: str, project_id: str,
     """阶段入口。rounds≥2 走 B2-lite 研究档（新契约，替代旧"强制两轮 angle 递归"）：
     子问题分解 → 首轮全并行取回（每子问一列）→ 覆盖度判据（列贡献独特键<2 记缺失，
     首见归属口径）→ 定向补搜至多一轮（重试集=未达标子问原句；总轮次≤3封顶）→ 统一终筛。
-    rounds==1 保持原单轮路径（极速/思考档零改动）。
+    rounds==1 保持原单轮路径。
+    RC5-S1：本阶段全档必进（KB 无条件化）——need_search 只门控 web 路，
+    规划器无检索词时 KB 用原问题召回。
     emit：可选观测回调 emit(type_, **payload)——里程碑（分解/取回/补搜/终筛）实时上报，
     供管线接 🛰 检索观察窗（subagent 帧 + 档案双写）；None 时零开销静默。
-    返回 ctx.search_results 结构；极速档由调用方决定是否进入本阶段。"""
+    返回 ctx.search_results 结构。"""
     queries_log: list = []
     ranked_lists: list = []  # RRF 输入：kb 一列 + 每 query 的 web 一列（同键自动折叠去重）
     actual_rounds = 0
     meta_extra: dict = {}
     if max(1, rounds) >= 2:
         # --- B2-lite 研究档：分解 → 全并行 → 覆盖度 → 定向补搜（契约替代 D-新1） ---
+        # RC5-S1：KB 无条件化——need_search 只门控 web 路（覆盖度补搜属 web 机制，
+        # 未上网时随之关闭）；规划器不产检索词时 KB 用原问题召回
         rw = rewrite_queries(llm_fast, message, research=True)
-        if rw["need_search"] and rw["queries"]:
-            subqs = rw["queries"]
-            queries_log.extend(subqs)
-            actual_rounds = 1
-            if emit:
-                emit("delta", text=f"子问题分解 {len(subqs)} 个：" + "、".join(subqs))
-            web_groups, kb_rows = _fetch_all(subqs, project_id, use_kb=use_kb)
-            if emit:
-                _wn = sum(len(g) for g in web_groups)
-                emit("delta", text=f"第1轮取回：web {_wn} 条 / kb {len(kb_rows)} 条")
-            ranked_lists.extend(
-                ([kb_rows] if kb_rows else []) + [g for g in web_groups if g])
+        subqs = rw["queries"]
+        web_on = bool(rw["need_search"]) and bool(subqs)
+        queries_log.extend(subqs)
+        actual_rounds = 1
+        if emit and subqs:
+            emit("delta", text=f"子问题分解 {len(subqs)} 个：" + "、".join(subqs))
+        web_groups, kb_rows = _fetch_all(subqs if web_on else [], project_id,
+                                         use_kb=use_kb,
+                                         kb_query=subqs[0] if subqs else message)
+        if emit:
+            _wn = sum(len(g) for g in web_groups)
+            emit("delta", text=f"第1轮取回：web {_wn} 条 / kb {len(kb_rows)} 条")
+        ranked_lists.extend(
+            ([kb_rows] if kb_rows else []) + [g for g in web_groups if g])
+        extra_rounds = 0
+        if web_on:
             # 覆盖度判据：每子问一列（kb 为辅助通道不参与判据），
             # 列贡献独特键 <2 记缺失；跨面重复文档计入先见面（v1 近似，见 docstring）
             missing_idx = _coverage_missing(web_groups, threshold=2)
-            extra_rounds = 0
             if missing_idx:
                 missing_qs = [subqs[i] for i in missing_idx]
                 extra_web, extra_kb = _fetch_all(missing_qs, project_id, use_kb=use_kb)
@@ -299,29 +320,29 @@ def retrieve_stage(llm_fast, message: str, template: str, project_id: str,
                     emit("delta", text=f"第2轮取回：web {_wn2} 条 / kb {len(extra_kb)} 条")
                 ranked_lists.extend(
                     ([extra_kb] if extra_kb else []) + [g for g in extra_web if g])
-            meta_extra = {"decomposed": bool(rw.get("decomposed")),
-                          "sub_questions": subqs,
-                          "adaptive_extra_rounds": extra_rounds}
-        else:
-            # 分解判无需检索：空契约与有检索时键形一致（消费方免 isinstance 探测）
-            meta_extra = {"decomposed": bool(rw.get("decomposed")),
-                          "sub_questions": [], "adaptive_extra_rounds": 0}
+        meta_extra = {"decomposed": bool(rw.get("decomposed")),
+                      "sub_questions": subqs,
+                      "adaptive_extra_rounds": extra_rounds}
     else:
         angle = ""
         for rnd in range(1, max(1, rounds) + 1):
+            # RC5-S1：KB 无条件化——need_search 只门控 web 路；无检索词时用原问题召回
             rw = rewrite_queries(llm_fast, message, angle_hint=angle)
-            if not rw["need_search"] or not rw["queries"]:
-                break
+            web_on = bool(rw["need_search"]) and bool(rw["queries"])
             actual_rounds = rnd
             queries_log.extend(rw["queries"])
-            if emit:
+            if emit and rw["queries"]:
                 emit("delta", text="改写查询：" + "、".join(rw["queries"]))
-            web_groups, kb_rows = _fetch_all(rw["queries"], project_id, use_kb=use_kb)
+            web_groups, kb_rows = _fetch_all(
+                rw["queries"] if web_on else [], project_id, use_kb=use_kb,
+                kb_query=rw["queries"][0] if rw["queries"] else message)
             if emit:
                 _wn = sum(len(g) for g in web_groups)
                 emit("delta", text=f"第{rnd}轮取回：web {_wn} 条 / kb {len(kb_rows)} 条")
             for lst in ([kb_rows] if kb_rows else []) + [g for g in web_groups if g]:
                 ranked_lists.append(lst)
+            if not web_on:
+                break  # web 门控关闭（或无检索词）→ 单轮 KB 召回即止（多面补搜走 rounds≥2 链）
             angle = (f"首轮已完成基础检索（关键词：{'、'.join(queries_log[-5:])}）。"
                      "请从补充角度给出与首轮不同的新查询。")
 

@@ -81,10 +81,11 @@ def _row(t: str) -> dict:
 
 
 def _patch_fetch(monkeypatch, script: list):
-    """脚本化 _fetch_all 假件：按调用次序回放 (web_groups, kb_out)，记录每次入参。"""
+    """脚本化 _fetch_all 假件：按调用次序回放 (web_groups, kb_out)，记录每次入参。
+    RC5-S1：_fetch_all 新增 kb_query 关键字参数——假件签名同步接收（记录仍为 web queries 列表）。"""
     calls = []
 
-    def fake_fetch(queries, pid, use_kb=True, per_call_timeout=15):
+    def fake_fetch(queries, pid, use_kb=True, per_call_timeout=15, kb_query=None):
         calls.append(list(queries))
         return script[min(len(calls), len(script)) - 1]
 
@@ -132,13 +133,21 @@ def test_adaptive_no_extra_when_all_covered(monkeypatch):
 
 
 def test_adaptive_no_search_short_circuits(monkeypatch):
-    """分解判无需检索 → 零取回零补搜，空契约软着陆同旧路径。"""
-    calls = _patch_fetch(monkeypatch, [])
+    """RC5-S1 语义更新：need=false（queries 空）→ web 零取回零补搜（覆盖度补搜是
+    web 机制，随之关闭），KB 用原问题单路召回照跑（无条件化）；空命中软着陆同旧路径。
+    修复前此路径连 KB 取回也短路（零取回空契约）。"""
+    calls = []
+
+    def fake_fetch(queries, pid, use_kb=True, per_call_timeout=15, kb_query=None):
+        calls.append((list(queries), kb_query))
+        return ([], [])
+
+    monkeypatch.setattr(rt, "_fetch_all", fake_fetch)
     llm = ScriptedLLM(['{"need_search": false, "queries": [], "decomposed": false}'])
     out = rt.retrieve_stage(llm, "闲聊一句", "研究", "p1", rounds=2)
-    assert calls == []
+    assert calls == [([], "闲聊一句")], "KB 用原问题无条件召回，web 列为空"
     assert out["search_results"] == []
     m = out["search_meta"]
-    assert m["rounds"] == 0 and m["adaptive_extra_rounds"] == 0
+    assert m["rounds"] == 1 and m["adaptive_extra_rounds"] == 0
     assert m["sub_questions"] == [] and m["decomposed"] is False
     assert m["raw_count"] == 0

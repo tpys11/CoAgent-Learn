@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Loop4.5 补强 · 三模式矩阵端到端验证（CHAT_ENGINE=v2）：
 T1 多轮上下文注入（画像/偏好/早期摘要/近期原文 全段落进 generate 的 user 内容）
-T2 极速档矩阵（跳过学情/检索/审核 + 字数指令回归）
+T2 极速档矩阵（跳过学情/审核 + 字数指令回归；RC5-S1 起 KB 检索全档无条件）
 T3 研究档全链（B2-lite 分解式检索 + 审核未通过携因重生成一次后通过）
 隔离策略与 test_chat_golden 相同；检索源定值化防真实网络。"""
 import json
@@ -145,11 +145,13 @@ def test_multi_turn_context_injection(v2_env):
 
 
 def test_extreme_mode_matrix(v2_env):
+    """RC5-S1 语义更新（owner 09-03「所有档位都默认检索知识库」）：极速档跳过
+    学情/审核不变，但 KB 检索无条件化——知识库管理步必在（向量化近零成本）。"""
     app, eng, client, _rt = v2_env
     frames = _run(app, {"message": "你好呀今天感觉怎么样", "api_key": "d",
                         "project_id": "pX", "dialogue_id": "dE",
                         "session_id": "sX", "settings": {"template": "极速"}})
-    assert _steps(frames) == ["学习助手·规划", "学习助手·生成"], _steps(frames)
+    assert _steps(frames) == ["学习助手·规划", "知识库管理", "学习助手·生成"], _steps(frames)
     main_llm = ModeProbeLLM.last
     sys_text = main_llm.messages[0]["content"]
     assert "500-800" in sys_text and "1000" in sys_text

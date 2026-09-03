@@ -125,7 +125,10 @@ def test_short_message_still_gets_llm_thinking(v2_env):
 
 @pytest.mark.parametrize("v2_env", [SimpleDirectFastLLM], indirect=True)
 def test_llm_simple_direct_no_fake_thinking(v2_env):
-    """R2（worker 级）：LLM 判 simple_direct 且无思考 → 规划节点只有要点一行，不虚发。"""
+    """R2（worker 级）：LLM 判 simple_direct 且无思考 → 规划节点只有要点一行，不虚发。
+    RC5-S1 语义更新（owner 09-03「所有档位都默认检索知识库」）：simple_direct 的
+    检索断言反转为「必检索」（观察窗事件 + mindchain 检索条目）；「不伪装思考」
+    断言保持不变。"""
     app, _eng = v2_env
     frames = _run(app, {"message": "请讲解RAG的原理与应用", "api_key": "d",
                         "project_id": "pX", "dialogue_id": "dRC22b",
@@ -135,12 +138,13 @@ def test_llm_simple_direct_no_fake_thinking(v2_env):
     joined = "".join(f.get("chunk") or "" for f in plan)
     assert "规划要点" in joined, "要点摘要照旧"
     assert "需判断检索与深度" not in joined, "无思考不得编造（simple 路径不虚发）"
-    assert not any(f.get("event") for f in frames if f.get("type") == "subagent"), (
-        "simple_direct 不检索（无观察窗事件）")
+    sa = [f for f in frames if f.get("type") == "subagent"]
+    assert sa and sa[0].get("event") == "start", (
+        "simple_direct 也必跑 KB 检索（RC5-S1 无条件化，观察窗事件必须在）")
     done = frames[-1]
     kb_items = [it for it in (done.get("mindchain") or [])
                 if it.get("agent") == "知识库管理"]
-    assert not kb_items, "simple_direct 无检索条目"
+    assert kb_items, "simple_direct 也有检索条目（RC5-S1）"
 
 
 @pytest.mark.parametrize("v2_env", [ThinkingFastLLM], indirect=True)

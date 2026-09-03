@@ -38,6 +38,13 @@
   "type": "subagent",
   "run_id": "<RID>",
   "agent": "知识库管理",
+  "text": "第1轮取回：web 0 条 / kb 0 条",
+  "event": "delta"
+ },
+ {
+  "type": "subagent",
+  "run_id": "<RID>",
+  "agent": "知识库管理",
   "text": "终筛留存 0 条（候选共 0）",
   "event": "delta"
  },
