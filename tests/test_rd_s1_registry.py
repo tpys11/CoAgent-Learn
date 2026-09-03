@@ -12,12 +12,12 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'backend'))
 
 
-# ---------- 矩阵形状：6 角色 × 2 档位（review 每档内含 research/think 双模板分支，14 格口径） ----------
+# ---------- 矩阵形状：6 角色 × 3 档位（S1 09-04：go 第二测试通道入表，18 格口径） ----------
 
-def test_matrix_shape_6_roles_x_2_tiers():
+def test_matrix_shape_6_roles_x_3_tiers():
     from core.model_provider import REGISTRY
-    assert set(REGISTRY) == {"standard", "test"}
-    for tier in ("standard", "test"):
+    assert set(REGISTRY) == {"standard", "test", "go"}
+    for tier in ("standard", "test", "go"):
         assert set(REGISTRY[tier]) == {"main", "fast", "review", "embedding", "rerank", "vision"}
 
 

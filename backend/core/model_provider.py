@@ -124,12 +124,22 @@ MODEL_ZEN_TEST = "mimo-v2.5-free"
 # RC4-S1（owner 09-03 终版）：判卷两格实名定值——换判卷模型=改这两行（改一格机制）
 MODEL_REVIEW_SF = "Qwen/Qwen2.5-72B-Instruct"   # 标准档：SF 跨厂商独立判卷
 MODEL_ZEN_REVIEW = "big-pickle"                 # 测试档：zen 免费档判卷（与前端 models.ts 双源同值）
+# S1（owner 09-04 拍板）：go 第二测试通道（独立网关，与 zen 上下并列）——主 GLM-5.3-Flash / 审核 Qwen3.8 Flash。
+# 两串为字面占位：owner 将提供网关控制台确切 API ID（zen smoke2 先例：显示名≠API ID 会 401），
+# 401 时改这两行常量即校正，前端镜像 models.ts 同步一行
+MODEL_GO_MAIN = "GLM-5.3-Flash"
+MODEL_GO_REVIEW = "Qwen3.8 Flash"
 
-# review 定值格 key=单键（VL_API_KEY / ZEN_API_KEY）；调用方 pick_judge 持有 or 兜底链
+# review 定值格 key=单键（VL_API_KEY / ZEN_API_KEY / GO_API_KEY）；调用方 pick_judge 持有 or 兜底链
 _REVIEW_SF_CELL = {"provider": "siliconflow", "model": MODEL_REVIEW_SF,
                    "base_url_key": "VL_BASE_URL", "api_key_key": "VL_API_KEY"}
 _REVIEW_ZEN_CELL = {"provider": "zen", "model": MODEL_ZEN_REVIEW,
                     "base_url_key": "ZEN_BASE_URL", "api_key_key": "ZEN_API_KEY"}
+# go 格 base_url_key=GO_BASE_URL（设置页填，无默认值）——detect_tier 按「req.base_url==GO_BASE_URL」判定
+_GO_CELL_MAIN = {"provider": "go", "model": MODEL_GO_MAIN,
+                 "base_url_key": "GO_BASE_URL", "api_key_key": "GO_API_KEY"}
+_GO_CELL_REVIEW = {"provider": "go", "model": MODEL_GO_REVIEW,
+                   "base_url_key": "GO_BASE_URL", "api_key_key": "GO_API_KEY"}
 
 REGISTRY: dict = {
     "standard": {
@@ -154,15 +164,24 @@ REGISTRY: dict = {
         "vision":    {"provider": "zen", "model": MODEL_ZEN_TEST,
                       "base_url_key": "ZEN_BASE_URL", "api_key_key": "ZEN_API_KEY"},
     },
+    # S1：go 测试通道——决策 38 同构（专有能力 embedding/rerank 留 SF），对话/审核全链 go 网关定值
+    "go": {
+        "main":      _GO_CELL_MAIN,
+        "fast":      _GO_CELL_MAIN,
+        "review":    _GO_CELL_REVIEW,
+        "embedding": _EMBEDDING_CELL,
+        "rerank":    _RERANK_CELL,
+        "vision":    _GO_CELL_MAIN,
+    },
 }
 
-_TIERS = ("standard", "test")
+_TIERS = ("standard", "test", "go")
 _ZEN_URL_MARK = "opencode.ai/zen"   # RC1 先例：req 端点含 Zen 网关标记 → 测试档
 
 
 def resolve_model(role: str, tier: str, template: str | None = None) -> ModelSpec:
     """注册表唯一解析入口：role=干什么（main/fast/review/embedding/rerank/vision），
-    tier=什么环境（standard/test——有 req 用 detect_tier(req.base_url)，后台无 req 用 current_tier()）。
+    tier=什么环境（standard/test/go——有 req 用 detect_tier(req.base_url)，后台无 req 用 current_tier()）。
     template 参数已退役（RC4-S1 删 _review_dynamic 后无消费者；保留签名防调用点连锁改动）。
     未知 role/tier 直接 raise ValueError——错误配置应响亮失败，防静默错路由。"""
     tier_cell = REGISTRY.get(tier)
@@ -189,12 +208,22 @@ def resolve_review_route(template: str | None = None) -> dict:
 
 
 def detect_tier(req_base_url: str | None) -> str:
-    """请求级档位判定：req.base_url 指向 Zen 网关（含 opencode.ai/zen）→ test；其余含 None → standard。"""
-    return "test" if (req_base_url and _ZEN_URL_MARK in req_base_url) else "standard"
+    """请求级档位判定：req.base_url 指向 Zen 网关（含 opencode.ai/zen）→ test；
+    与已配置 GO_BASE_URL 精确相等（尾斜杠容忍）→ go（go 端点由设置页动态填写，无固定标记子串）；
+    其余含 None → standard。"""
+    if req_base_url and _ZEN_URL_MARK in req_base_url:
+        return "test"
+    from core.config import config as _cfg
+    _go_base = str(getattr(_cfg, "GO_BASE_URL", "") or "")
+    if req_base_url and _go_base and req_base_url.rstrip("/") == _go_base.rstrip("/"):
+        return "go"
+    return "standard"
 
 
 def current_tier() -> str:
-    """全局档位判定（无 req 的后台调用）：ZEN_TEST_MODE=='1' → test，否则 standard。
-    S4 起该键由设置页 PUT/GET 透传。"""
+    """全局档位判定（无 req 的后台调用）：ZEN_TEST_MODE=='1' → TEST_CHANNEL 定向
+    （'go'→go 档，其余→test 兼容旧语义），否则 standard。S4 起该键由设置页 PUT/GET 透传。"""
     from core.config import config as _cfg
-    return "test" if str(getattr(_cfg, "ZEN_TEST_MODE", "0")) == "1" else "standard"
+    if str(getattr(_cfg, "ZEN_TEST_MODE", "0")) != "1":
+        return "standard"
+    return "go" if str(getattr(_cfg, "TEST_CHANNEL", "zen")) == "go" else "test"

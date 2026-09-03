@@ -84,8 +84,9 @@ def pick_judge_llm(template: str, req):
     """审核模型选择（研究档防自我包庇是设计目标）：
     RA5-S1：路由判定收敛到 resolve_review_route（单一事实源，/test 探测与 GET effective_model 同源）；
     RC4-S1：路由=档位定值格（standard→siliconflow Qwen2.5-72B、test→zen big-pickle），template 参数退役。
+    S1（09-04）：新增 go 通道档（独立网关，owner 拍板）——go 分支用 GO_API_KEY+GO_BASE_URL。
     本函数只保留 key 选择副作用：SF 分支用 VL_API_KEY/EMBEDDING_API_KEY、zen 分支用 ZEN_API_KEY
-    （缺省回退 req key）、主分支用 req.api_key||DEEPSEEK_API_KEY。
+    （缺省回退 req key）、go 分支用 GO_API_KEY、主分支用 req.api_key||DEEPSEEK_API_KEY。
     缺 key → WARNING 响亮回退 MODEL_MAIN（fail-open 前置；运行时 401 同样跳过审核，owner 换 key 恢复）。
     构造失败回退主模型接缝（原语义保留）。"""
     from core.base_llm import DeepSeekLLM
@@ -107,6 +108,15 @@ def pick_judge_llm(template: str, req):
         logger.warning("研究档模型 %s 需要 Zen key（设置→AI服务），未配置——响亮回退 %s",
                         route["model"], _FALLBACK_JUDGE)
         model = _FALLBACK_JUDGE
+    elif route["provider"] == "go":
+        # S1：go 通道判卷——对称 zen 定值格语义；URL+Key 任一缺省即响亮回退（fail-open 先例）
+        _go_key = _cfg.GO_API_KEY or key
+        if _go_key and getattr(_cfg, "GO_BASE_URL", ""):
+            key, base_url = _go_key, _cfg.GO_BASE_URL
+        else:
+            logger.warning("go 档判卷模型 %s 需要 GO key 与 GO Base URL（设置→AI服务），未配置——响亮回退 %s",
+                           route["model"], _FALLBACK_JUDGE)
+            model = _FALLBACK_JUDGE
     elif route["provider"] == "siliconflow":
         sf_key = _cfg.VL_API_KEY or _cfg.EMBEDDING_API_KEY
         if sf_key:
