@@ -12,6 +12,7 @@ import MatchReport from './matchReport/MatchReport'
 /** 个人全局性记忆：基础信息字段（固定，纵向表单） */
 const BASIC_FIELDS = [
   { key: '身份', label: '身份', placeholder: '如：大学生 / 工程师' },
+  { key: '年龄', label: '年龄', placeholder: '如：22' },
   { key: '学习目标', label: '学习目标', placeholder: '如：掌握多智能体开发' },
   { key: '擅长领域', label: '擅长领域', placeholder: '如：Python、AI 基础' },
   { key: '学习方式', label: '学习方式', placeholder: '如：动手实践、官方文档' },
