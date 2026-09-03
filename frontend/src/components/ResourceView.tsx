@@ -88,6 +88,17 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
     return lsGetJSON<string[]>(LS.domains, [])
   })
   const [selectedDomain, setSelectedDomain] = useState(DEFAULT_DOMAINS[0])
+  // 删除已生成的领域（自定义）：移出领域 + 清 syllabus + 清该领域词条
+  const removeDomain = (name: string) => {
+    if (!window.confirm('删除领域「' + name + '」？将同时移除其生成的大纲与百科词条。')) return
+    const nextDomains = customDomains.filter(x => x !== name)
+    setCustomDomains(nextDomains); lsSetJSON(LS.domains, nextDomains)
+    const syl = lsGetJSON<Record<string, any>>(LS.syllabus, {})
+    if (syl[name]) { delete syl[name]; lsSetJSON(LS.syllabus, syl) }
+    const nw = customWiki.filter(w => w.domain !== name)
+    setCustomWiki(nw); lsSetJSON(LS.customWiki, nw)
+    if (selectedDomain === name) setSelectedDomain(domains.find(d => d !== name && !customDomains.includes(d) || d !== name) || domains[0] || '')
+  }
   // 自定义百科词条（新建领域 AI 生成后存 localStorage）
   const [customWiki, setCustomWiki] = useState<WikiEntry[]>(() => {
     return lsGetJSON<WikiEntry[]>(LS.customWiki, [])
@@ -167,7 +178,8 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
       const d = await api.generateOutline({ domain: name, api_key: lsGet(LS.apiKey, '') })
       if (d.status === 'ok') {
         // 大纲章节存 syllabus（供课程大纲展示+按需生成导读）
-        const chapters = (d.chapters || []).map((ch: any) => ({ title: ch.title || '', goal: ch.goal || '', keywords: Array.isArray(ch.keywords) ? ch.keywords : [] }))
+        const chapters = (d.chapters || []).map((ch: any) => ({ title: ch.title || '', goal: ch.goal || '', keywords: Array.isArray(ch.keywords) ? ch.keywords : [] })).filter((ch: any) => ch.title)
+        if (chapters.length < 3) { alert('大纲生成不完整（仅 ' + chapters.length + ' 章），可在领域卡片「重新生成」。词条仍已保存。') }
         const syl = lsGetJSON<Record<string, any>>(LS.syllabus, {})
         syl[name] = { chapters }
         lsSetJSON(LS.syllabus, syl)
@@ -400,12 +412,18 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
               <button
                 key={d}
                 onClick={() => { setSelectedDomain(d); setSelectedCat(CATEGORIES[0].key); setDetail(null) }}
-                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-colors ${
+                className={`group/dom flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-colors ${
                   active ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
                 }`}
               >
                 <span className={`w-2 h-2 rounded-full flex-shrink-0 ${c.active}`} />
-                <span className="font-semibold truncate">{d}</span>
+                <span className="font-semibold truncate flex-1">{d}</span>
+                {customDomains.includes(d) && (
+                  <span onClick={(e) => { e.stopPropagation(); removeDomain(d) }}
+                    className="opacity-0 group-hover/dom:opacity-100 p-0.5 rounded-md text-dim hover:text-red-500 hover:bg-red-50 transition-all flex-shrink-0" title="删除该领域">
+                    <X size={12} />
+                  </span>
+                )}
               </button>
             )
           })}
