@@ -62,10 +62,11 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
     if (!initialEdit || !activeProject) return
     const data = projData[activeProject]
     setEditFields({
-      '抽象目的': data?.fields?.['抽象目的'] || '',
-      '起点': data?.fields?.['起点'] || '',
-      '课程结束时间': data?.fields?.['课程结束时间'] || data?.fields?.['时间限制'] || '',
-      '平均每日投入时间': data?.fields?.['平均每日投入时间'] || '',
+      '领域': data?.fields?.['领域'] || '',
+      '学历背景': data?.fields?.['学历背景'] || '',
+      '当前水平': data?.fields?.['当前水平'] || '',
+      '目标': data?.fields?.['目标'] || '',
+      '偏好': data?.fields?.['偏好'] || '',
       '其他': data?.fields?.['其他'] || '',
     })
   }, [initialEdit, activeProject, projData])
@@ -441,7 +442,7 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                                           onChange={(e) => { const v = e.target.value; setEditFields(prev => ({ ...prev, '项目名': v })); onEditChange?.({ ...editFields, '项目名': v }) }}
                                           className="flex-1 min-w-0 border hairline rounded-lg px-2.5 py-1.5 bg-[var(--bg-input)] text-xs outline-none focus:border-[var(--accent)]" />
                                       </div>
-                                      {[['课程结束时间', '什么日期验收，如：8 月 30 日完成验收'], ['平均每日投入时间', '如：每天 2 小时']].map(([label, ph]) => (
+                                      {[['领域', '如：人工智能 / 智能制造 / PLC 编程…'], ['学历背景', '如：在校本科生 / 研究生 / 在职工程师…']].map(([label, ph]) => (
                                         <div key={label} className="flex items-center gap-2">
                                           <span className="text-xs font-semibold flex-shrink-0">{label}：</span>
                                           <input value={editFields[label] || ''} placeholder={ph}
@@ -463,19 +464,12 @@ export default function MemoryView({ projectId, onRequestModify, onRequestAnalyz
                                 <section>
                                   <div className="border hairline rounded-xl p-5 bg-[var(--bg-input)]">
                                     <div className="grid grid-cols-3 gap-4">
-                                      {[['目的', '抽象目的'], ['初始情况', '起点'], ['当前情况', '当前水平']].map(([title, k]) => (
+                                      {[['先验水平自评', '当前水平', '如：零基础 / 有一点点了解 / 学过基础 / 熟练…'], ['学习目标', '目标', '如：掌握基本原理，能独立完成一个实操项目'], ['偏好学习方式', '偏好', '如：多讲例子少推导 / 边学边实操 / 讲义+刷题…']].map(([title, k, ph]) => (
                                         <div key={k} className="rounded-xl border hairline bg-[var(--bg-panel)] px-4 py-3.5 flex flex-col gap-2 min-h-[110px]">
                                           <span className="text-[10px] font-semibold uppercase tracking-wider text-dim">{title}</span>
-                                          {k !== '当前水平' ? (
-                                            <textarea value={editFields[k] || ''} rows={4}
-                                              placeholder={k === '抽象目的' ? '学习目的（求职 / 兴趣 / 考试…）' : '开始学习前的水平'}
-                                              onChange={(e) => { const v = e.target.value; setEditFields(prev => ({ ...prev, [k]: v })); onEditChange?.({ ...editFields, [k]: v }) }}
-                                              className="w-full border hairline rounded-lg px-2 py-1.5 bg-[var(--bg-input)] text-xs leading-relaxed outline-none resize-y focus:border-[var(--accent)]" />
-                                          ) : (
-                                            <div className="text-xs leading-relaxed text-[var(--text)] line-clamp-5">
-                                              {(data?.fields[k] || '').trim() ? <MiniMD text={data?.fields[k] || ''} /> : null}
-                                            </div>
-                                          )}
+                                          <textarea value={editFields[k] || ''} rows={4} placeholder={ph}
+                                            onChange={(e) => { const v = e.target.value; setEditFields(prev => ({ ...prev, [k]: v })); onEditChange?.({ ...editFields, [k]: v }) }}
+                                            className="w-full border hairline rounded-lg px-2 py-1.5 bg-[var(--bg-input)] text-xs leading-relaxed outline-none resize-y focus:border-[var(--accent)]" />
                                         </div>
                                       ))}
                                     </div>
