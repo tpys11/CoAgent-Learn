@@ -520,7 +520,13 @@ function App() {
           projectName={(projectKBId ? projects.find(x => x.id === projectKBId) : currentProject)?.name || ''}
           initialTab={projectConfigTab}
           initialOnly={manualSetupOnly}
-          onSaved={() => setManualSetupOnly(false)}
+          onSaved={(renamed) => {
+            setManualSetupOnly(false)
+            if (renamed) {
+              const pid = projectKBId ?? currentProjectId
+              setProjects(prev => prev.map(x => x.id === pid ? { ...x, name: renamed } : x))
+            }
+          }}
           onRequestModify={handleRequestModify}
           onRequestAnalyze={handleRequestAnalyze}
           onClose={() => { setShowProjectConfig(false); setManualSetupOnly(false) }}
