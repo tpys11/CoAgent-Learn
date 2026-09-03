@@ -7,14 +7,14 @@ export function getThemePref(): ThemePref {
   return (lsGet(LS.theme, 'warm') as ThemePref) || 'warm'
 }
 
-export function resolveTheme(pref: ThemePref): 'light' | 'dark' | 'warm' {
+function resolveTheme(pref: ThemePref): 'light' | 'dark' | 'warm' {
   if (pref === 'system') {
     return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
   }
   return pref
 }
 
-export function applyTheme(pref: ThemePref) {
+function applyTheme(pref: ThemePref) {
   document.documentElement.setAttribute('data-theme', resolveTheme(pref))
 }
 

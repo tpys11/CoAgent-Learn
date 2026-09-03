@@ -1,0 +1,310 @@
+﻿# -*- coding: utf-8 -*-
+"""闭环六：资源编辑会话守卫（独立分支三态 / 隔离四断言 / dialogues.kind 迁移与过滤）。"""
+import asyncio
+import json
+
+import pytest
+
+from core.db.base import SQLiteClient
+from core.db import project_repo as pr_mod
+from core.db.project_repo import ProjectRepo
+from tests._engine_helpers import ScriptedLLM
+
+
+class FakeLLM:
+    """主模型假件：模拟 chat_stream 双通道契约——on_content=正文（分支消费），on_token=思考流（分支丢弃）。"""
+    last = None
+
+    def __init__(self, text="修订后的全文内容"):
+        self.text = text
+        self.messages = None
+        FakeLLM.last = self
+
+    def chat_stream(self, messages, on_token, **kw):
+        self.messages = messages
+        on_content = kw.get("on_content")
+        for ch in self.text:
+            on_token(ch)              # 思考流（分支应丢弃）
+            if on_content:
+                on_content(ch)        # 正文流（分支消费）
+
+
+def _mk_req(rid, did="dRE", message="把内容改得更口语化"):
+    from types import SimpleNamespace
+    return SimpleNamespace(
+        message=message, session_id="sX", dialogue_id=did,
+        project_id="pX", api_key="k", model=None, base_url=None,
+        edit_resource_id=rid, gen_resource=None)
+
+
+@pytest.fixture()
+def env(tmp_path, monkeypatch):
+    monkeypatch.setenv("SQLITE_DIR", str(tmp_path))
+    client = SQLiteClient(str(tmp_path / "re.db"))
+    client.init_tables()
+    import core.db.base as base_mod
+    import core.postgres_client as pgmod
+    monkeypatch.setattr(base_mod.get_db, "_instance", client, raising=False)
+    monkeypatch.setattr(pgmod, "pg_client", client)
+    monkeypatch.setattr(pr_mod, "_project_repo", ProjectRepo(db=client), raising=False)
+    return client
+
+
+def _seed_resource(client, rid="r1", name="生成·讲义", content="原版讲义内容"):
+    client.execute(
+        "INSERT INTO resources(id, name, content, project_id, type) VALUES (%s,%s,%s,%s,%s)",
+        (rid, name, content, "pX", "gen:guide"))
+
+
+async def _collect(coro):
+    """拉取 SSE 帧序列。"""
+    resp = await coro
+    frames = []
+    async for chunk in resp.body_iterator:
+        text = chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk)
+        for line in text.split("\n"):
+            if line.startswith("data: "):
+                frames.append(json.loads(line[6:]))
+    return frames
+
+
+def test_resource_edit_happy_path(env, monkeypatch):
+    """正常改写：资源+1 新行、消息成对、done 帧带 reply、user prompt 注入全文、真流式（answer 在 LLM 完成前陆续到达）。"""
+    import engine.pipeline_v2 as eng
+    _seed_resource(env)
+
+    class SlowFakeLLM:
+        """慢速假件：逐 token 吐，token 间隔触发队列泵轮转——验证真流式时序。"""
+        def __init__(self):
+            FakeLLM.last = self
+            self.messages = None
+
+        def chat_stream(self, messages, on_token, **kw):
+            self.messages = messages
+            import time as _t
+            on_content = kw.get("on_content")
+            for ch in "新版讲义内容":
+                on_token(ch)
+                if on_content:
+                    on_content(ch)
+                _t.sleep(0.06)  # > 泵轮询 0.05s：若先囤后吐，帧时间戳会挤在一起
+
+    monkeypatch.setattr(eng, "_make_llm", lambda req, model_override=None: SlowFakeLLM())
+    import time as _t0
+    t_start = _t0.monotonic()
+    answer_times: list = []
+
+    async def _collect_timed(coro):
+        resp = await coro
+        frames = []
+        async for chunk in resp.body_iterator:
+            text = chunk.decode("utf-8") if isinstance(chunk, bytes) else str(chunk)
+            for line in text.split("\n"):
+                if line.startswith("data: "):
+                    f = json.loads(line[6:])
+                    if f.get("type") == "answer_token":
+                        answer_times.append(_t0.monotonic() - t_start)
+                    frames.append(f)
+        return frames
+
+    frames = asyncio.run(_collect_timed(eng.stream_response(_mk_req("r1"))))
+    assert frames[0]["type"] == "start" and frames[-1]["type"] == "done"
+    assert frames[-1]["reply"] == "新版讲义内容"
+    # flush 节流契约：6 字符攒批（≥24字或≥80ms）→ 帧数远少于字符数（字符级帧雨=回退信号）
+    assert 0 < len(answer_times) <= 3, f"answer 帧数异常 {len(answer_times)}——疑似回退到逐字符帧"
+    # 时序展开仍在：慢速 LLM 下帧间隔应被 80ms flush 闸拉开（全囤到底=一次性批发也是回退）
+    assert answer_times[-1] - answer_times[0] > 0.08, "answer 帧间隔无展开——疑似先囤后吐"
+    # 写回：同名同 type 新行（版本历史 +1）
+    rows = env.execute("SELECT name, type, content FROM resources WHERE project_id='pX' ORDER BY rowid")
+    assert len(rows) == 2 and rows[1]["content"] == "新版讲义内容"
+    assert rows[1]["name"] == "生成·讲义" and rows[1]["type"] == "gen:guide"
+    # 消息成对 + 全文注入 user prompt（system 为角色契约；【当前资源全文】标记在 user 侧）
+    msgs = env.execute("SELECT role, content FROM messages WHERE dialogue_id='dRE' ORDER BY rowid")
+    assert [m["role"] for m in msgs] == ["user", "assistant"]
+    assert FakeLLM.last.messages[1]["content"].find("原版讲义内容") > 0
+    assert "【当前资源全文（在此版本上修订）】" in FakeLLM.last.messages[1]["content"]
+    # 执行契约：system 声明"输出自动保存为新版本"（模型知道自己能执行）
+    assert "自动保存" in FakeLLM.last.messages[0]["content"]
+    # kind 隔离标记在案
+    dlg = env.execute("SELECT kind, name FROM dialogues WHERE id='dRE'")
+    assert dlg[0]["kind"] == "resource" and "编辑·" in dlg[0]["name"]
+
+
+def test_resource_edit_missing_resource(env):
+    """资源缺 → error 帧软着陆，零写库。"""
+    import engine.pipeline_v2 as eng
+    frames = asyncio.run(_collect(eng.stream_response(_mk_req("ghost"))))
+    assert frames[-1]["type"] == "error" and "不存在" in frames[-1]["message"]
+    assert env.execute("SELECT * FROM messages WHERE dialogue_id='dRE'") == []
+    assert env.execute("SELECT * FROM dialogues WHERE id='dRE'") == []
+
+
+def test_resource_edit_second_round_continues(env, monkeypatch):
+    """二轮续聊：同 dialogue 不重建行，历史累计（user/assistant 交替 4 条）；
+    且第二轮 prompt 基于最新版本（第一版内容在场）+ 历史注入（首轮指令可见）。"""
+    import engine.pipeline_v2 as eng
+    _seed_resource(env)
+    monkeypatch.setattr(eng, "_make_llm", lambda req, model_override=None: FakeLLM("第一版"))
+    asyncio.run(_collect(eng.stream_response(_mk_req("r1"))))
+    monkeypatch.setattr(eng, "_make_llm", lambda req, model_override=None: FakeLLM("第二版"))
+    asyncio.run(_collect(eng.stream_response(_mk_req("r1"))))
+    msgs = env.execute("SELECT role FROM messages WHERE dialogue_id='dRE' ORDER BY rowid")
+    assert [m["role"] for m in msgs] == ["user", "assistant", "user", "assistant"]
+    assert env.execute("SELECT COUNT(*) c FROM dialogues WHERE id='dRE'")[0]["c"] == 1
+    assert env.execute("SELECT COUNT(*) c FROM resources WHERE project_id='pX'")[0]["c"] == 3
+    # 根因修复断言：第二轮的【当前资源全文】必须是最新版（第一版），而非原始行
+    assert "【当前资源全文（在此版本上修订）】" in FakeLLM.last.messages[-1]["content"]
+    assert "第一版" in FakeLLM.last.messages[-1]["content"]
+    assert "原版讲义内容" not in FakeLLM.last.messages[-1]["content"].split("【修改要求】")[0]
+    # 历史注入：首轮指令在对白序列中
+    assert any(m["role"] == "user" and m["content"] == "把内容改得更口语化"
+               for m in FakeLLM.last.messages[1:-1])
+
+
+def test_edit_loads_latest_version_not_original(env, monkeypatch):
+    """根因修复守卫：同源多版本在场时，编辑必须基于最新版而非 id 指向的原始行。"""
+    import engine.pipeline_v2 as eng
+    _seed_resource(env, rid="r1", name="生成·讲义", content="V1 原始内容")
+    env.execute(
+        "INSERT INTO resources(id, name, content, project_id, type) VALUES (%s,%s,%s,%s,%s)",
+        ("r1-v2", "生成·讲义", "V2 最新内容", "pX", "gen:guide"))
+    monkeypatch.setattr(eng, "_make_llm", lambda req, model_override=None: FakeLLM("V3"))
+    asyncio.run(_collect(eng.stream_response(_mk_req("r1"))))
+    prompt = FakeLLM.last.messages[-1]["content"]
+    assert "V2 最新内容" in prompt and "V1 原始内容" not in prompt
+
+
+def test_chat_turn_no_version(env, monkeypatch):
+    """💬 问答协议：提问轮只留消息不产版本；修改轮照常产版本。"""
+    import engine.pipeline_v2 as eng
+    _seed_resource(env)
+    monkeypatch.setattr(eng, "_make_llm",
+                        lambda req, model_override=None: FakeLLM("💬 这份资料讲的是修订流程。"))
+    frames = asyncio.run(_collect(eng.stream_response(_mk_req("r1"))))
+    assert frames[-1]["type"] == "done" and frames[-1]["reply"].startswith("💬")
+    # 问答轮不产版本：资源行数不变
+    assert env.execute("SELECT COUNT(*) c FROM resources WHERE project_id='pX'")[0]["c"] == 1
+    # 消息仍留档（可回看）
+    assert env.execute("SELECT COUNT(*) c FROM messages WHERE dialogue_id='dRE'")[0]["c"] == 2
+
+
+# ---------- 切片②：隔离与 kind 过滤 ----------
+
+def test_kind_isolation_and_dialogue_list(env):
+    """隔离四断言之列表面：resource 会话不进 list_dialogues；主对话与旧行（kind 默认 ''）不受扰。"""
+    env.execute("INSERT INTO dialogues(id,project_id,session_id,name,kind) VALUES('dMain','pX','sX','主对话','')")
+    env.execute("INSERT INTO dialogues(id,project_id,session_id,name,kind) VALUES('dRes','pX','sX','编辑·x','resource')")
+    env.execute("INSERT INTO dialogues(id,project_id,session_id,name) VALUES('dLegacy','pX','sX','旧行')")
+    names = [d["name"] for d in pr_mod._project_repo.list_dialogues("pX")]
+    assert "主对话" in names and "旧行" in names and "编辑·x" not in names
+
+
+def test_missing_branch_dispatch_off(env):
+    """分流谓词：edit_resource_id 不在场 → stream_response 走主管线（不触资源分支）。"""
+    import engine.pipeline_v2 as eng
+    from types import SimpleNamespace
+    req = SimpleNamespace(edit_resource_id=None)
+    # 谓词语义直接断言：getattr 默认 None → 不分流
+    assert not getattr(req, "edit_resource_id", None)
+    req2 = _mk_req("r1")
+    assert getattr(req2, "edit_resource_id", None) == "r1"
+
+
+# ---------- 单步4：修改/生成模式分类路由 ----------
+
+def test_routing_nondirected_goes_gen_regen(env, monkeypatch):
+    """资源对话跟进 + 非指向修正（无替换文本）→ 生成管线 regen 形态：
+    有审核、直连主模型（不走技能生成）、同 name/type 版本续接、done 绑定原 rid。"""
+    import engine.pipeline_v2 as eng
+    import engine.retrieve as rt_mod
+    import engine.review as rv_mod
+
+    _seed_resource(env, rid="r1", name="生成·讲义", content="V1 原始内容")
+
+    class FastFake:
+        def __init__(self):
+            self.calls = []
+
+        def chat_stream(self, messages, on_token, **kw):
+            s = messages[0]["content"]
+            self.calls.append(s)
+            if "学情评估器" in s:
+                raw = '{"level_score": 0.6, "evidence": "ok"}'
+            elif "查询规划器" in s:
+                raw = '{"need_search": true, "queries": ["qA"], "decomposed": true}'
+            elif "检索候选" in s:
+                raw = '{"keep": [1]}'
+            else:
+                raw = ""
+            for ch in raw:
+                on_token(ch)
+
+        def chat(self, messages, temperature=0.7, max_tokens=None):
+            self.calls.append(messages[0]["content"])
+            return "- 要点甲"
+
+    fast = FastFake()
+    monkeypatch.setattr(eng, "_make_fast_llm", lambda req: fast)
+    monkeypatch.setattr(rt_mod, "_kb_search",
+                        lambda q, pid: [{"title": "kb-修正", "content": "正确内容 45 天"}])
+    monkeypatch.setattr(rt_mod, "_web_search", lambda q: [])
+
+    class ChatFake:
+        last = None
+
+        def __init__(self, *a, **k):
+            self.messages = None
+            ChatFake.last = self
+
+        def chat(self, messages, temperature=0.7, max_tokens=None):
+            self.messages = messages
+            return "# 修订稿\n45 天 <!--difficulty:0.6-->"
+
+    monkeypatch.setattr(eng, "_make_llm", lambda req, model_override=None: ChatFake())
+
+    def _boom(*a, **k):
+        raise AssertionError("regen 形态不应走技能生成（直连主模型）")
+
+    monkeypatch.setattr("services.resource_gen.generate_resource", _boom)
+    judge = ScriptedLLM(['{"claims": [{"claim": "c", "label": "supported", "confidence": 0.9, '
+                         '"reason": "r", "diag": ""}], "instruction_ok": true, "instruction_note": ""}'])
+    monkeypatch.setattr(rv_mod, "pick_judge_llm", lambda template, req: judge)
+
+    frames = asyncio.run(_collect(eng.stream_response(
+        _mk_req("r1", message="这部分讲错了，帮我修正"))))
+    done = frames[-1]
+    assert done["type"] == "done" and done["review"]["passed"] is True
+    assert done["resource_id"] == "r1"                       # 前端绑定不变（原 rid）
+    assert done["difficulty"] == 0.6
+    rows = env.execute(
+        "SELECT name, type, content, difficulty FROM resources WHERE project_id='pX' ORDER BY rowid")
+    assert len(rows) == 2                                    # 版本续接：同 name/type 新行
+    assert rows[1]["name"] == "生成·讲义" and rows[1]["type"] == "gen:guide"
+    assert rows[1]["content"] == "# 修订稿\n45 天" and rows[1]["difficulty"] == 0.6
+    # 直连 prompt 携带当前全文 + KB 要点；审核参照系含原始检索块
+    assert "【当前资源全文（在此版本上修订）】" in ChatFake.last.messages[1]["content"]
+    assert "V1 原始内容" in ChatFake.last.messages[1]["content"]
+    assert "要点甲" in ChatFake.last.messages[1]["content"]
+    assert "正确内容 45 天" in judge.calls[0]["messages"][0]["content"]
+    # 问答历史留档（重开可续聊）
+    msgs = env.execute("SELECT role FROM messages WHERE dialogue_id='dRE' ORDER BY rowid")
+    assert [m["role"] for m in msgs] == ["user", "assistant"]
+
+
+def test_routing_directed_stays_edit(env, monkeypatch):
+    """定向替换指令 → 编辑分支（直连修订、无审核帧）；误入生成管线会被判卷炸弹引爆。"""
+    import engine.pipeline_v2 as eng
+    import engine.review as rv_mod
+    _seed_resource(env)
+    monkeypatch.setattr(eng, "_make_llm", lambda req, model_override=None: FakeLLM("V2 定向修订"))
+
+    def _boom(*a, **k):
+        raise AssertionError("定向修改不应触发断言审核")
+
+    monkeypatch.setattr(rv_mod, "pick_judge_llm", _boom)
+    frames = asyncio.run(_collect(eng.stream_response(
+        _mk_req("r1", message="把'30天'改成'45天'"))))
+    done = frames[-1]
+    assert done["type"] == "done" and done["reply"] == "V2 定向修订"
+    assert "review" not in done                              # 编辑分支无审核负载
+    assert env.execute("SELECT COUNT(*) c FROM resources WHERE project_id='pX'")[0]["c"] == 2

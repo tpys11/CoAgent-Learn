@@ -120,6 +120,47 @@ def color_tree(nodes: list, kp_map: dict, weak: set, strong: set) -> list:
     return [one(n) for n in nodes or [] if isinstance(n, dict)]
 
 
+def _attach_prereq(tree: list, prereq_map: dict) -> list:
+    """闭环五：递归给命中节点名挂 prereq 数组（仅先修边）；未命中不挂键。纯函数。"""
+    def one(n):
+        node = {"name": n.get("name"), "status": n.get("status", "untouched"),
+                "children": [one(c) for c in (n.get("children") or [])]}
+        pre = prereq_map.get(str(n.get("name") or ""))
+        if pre:
+            node["prereq"] = list(pre)
+        return node
+    return [one(n) for n in tree or [] if isinstance(n, dict)]
+
+
+def _prereq_annotation(db, project_id: str, tree_nodes: list) -> list:
+    """kg_edges 先修边 → 挂 prereq；kg 端点不在树中时合成顶层节点（纯 KG 项目可见）。"""
+    prereq_map: dict[str, list[str]] = {}
+    endpoints: dict[str, None] = {}
+    try:
+        rows = db.execute(
+            "SELECT src, dst FROM kg_edges WHERE project_id=? AND rel='先修'", (project_id,))
+    except Exception:
+        return tree_nodes
+    for r in rows or []:
+        src, dst = str(r.get("src") or ""), str(r.get("dst") or "")
+        if not src or not dst or src == dst:
+            continue
+        prereq_map.setdefault(src, [])
+        if dst not in prereq_map[src]:
+            prereq_map[src].append(dst)
+        endpoints.setdefault(src)
+        endpoints.setdefault(dst)
+    if not prereq_map:
+        return tree_nodes
+    tree = _attach_prereq(tree_nodes, prereq_map)
+    named = {str(n.get("name") or "") for n in tree}
+    for name in endpoints:                       # 无树项目：kg 端点合成顶层节点
+        if name and name not in named:
+            tree.append({"name": name, "status": "untouched", "children": [],
+                         **({"prereq": prereq_map[name]} if name in prereq_map else {})})
+    return tree
+
+
 def build_match_report(project_id: str, dialogue_id: str | None = None,
                        db=None, kb_repo=None) -> dict:
     """聚合入口。db/kb_repo 参数仅供测试注入，生产走单例。"""
@@ -184,6 +225,7 @@ def build_match_report(project_id: str, dialogue_id: str | None = None,
         "kp_accuracy": kps,
         "weak_points": blind,
         "strong_points": mastered,
-        "path_tree": color_tree(tree_nodes, kp_map, set(blind), set(mastered)),
+        "path_tree": _prereq_annotation(
+            database, project_id, color_tree(tree_nodes, kp_map, set(blind), set(mastered))),
         "thresholds": {"blind": KP_BLIND, "master": KP_MASTER},
     }

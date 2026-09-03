@@ -129,7 +129,8 @@ useEffect(() => { lsSetJSON(LS.postActions, postActions) }, [postActions])
   const resetSettings = () => {
     if (!window.confirm('确定恢复默认设置？字体、主题、默认参数等将还原（API Key、对话与记忆数据不受影响）。')) return
     ;[LS.fontSize, LS.postActions, LS.contextSettings, LS.timeout, LS.debug, LS.provider,
-      LS.mcpServers, LS.dialogueLimit, LS.lastSettings, LS.tutorialCats, LS.tutorials].forEach(lsRemove)
+      LS.mcpServers, LS.dialogueLimit, LS.lastSettings, LS.tutorialCats, LS.tutorials,
+      LS.preset].forEach(lsRemove)
     window.location.reload()
   }
 

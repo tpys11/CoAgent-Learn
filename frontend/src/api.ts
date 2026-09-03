@@ -4,11 +4,11 @@
  */
 import type { ProjectList, DialogueList, MessagesData, ProfileData, ResourceList, StatsData, SettingsData, CapabilityList, SkillList, SubAgentRun, MatchReportData } from './types'
 
-export interface ApiError extends Error {
+interface ApiError extends Error {
   status?: number
 }
 
-export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
+async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init)
   if (!res.ok) {
     let msg = 'HTTP ' + res.status
@@ -40,7 +40,7 @@ function jsonInit(method: string, body?: unknown, init?: RequestInit): RequestIn
 /* ---------- URL 摄取预检（probe）契约 ---------- */
 
 /** 可勾选的摄取分区（GitHub 目录前缀 / 文档站路径前缀）。 */
-export interface UrlProbeGroup {
+interface UrlProbeGroup {
   key: string
   label: string
   count: number
@@ -48,14 +48,14 @@ export interface UrlProbeGroup {
 }
 
 /** 语言类分区的便捷镜像（其内容同样出现在 groups 中）。 */
-export interface UrlProbeLanguage {
+interface UrlProbeLanguage {
   code: string
   label: string
   count: number
   key: string
 }
 
-export interface UrlProbeOk {
+interface UrlProbeOk {
   status: 'ok'
   kind: 'github' | 'docs'
   title_hint: string
@@ -68,9 +68,8 @@ export interface UrlProbeOk {
   warnings?: string[]
 }
 
-export interface UrlProbeError {
+interface UrlProbeError {
   status: 'error'
-  msg?: string
 }
 
 export type UrlProbeResult = UrlProbeOk | UrlProbeError
@@ -89,10 +88,30 @@ function urlScopeBody(scope: UrlIngestScope): Record<string, string[]> {
   return out
 }
 
+/* ---------- F13-S1 预设资源库契约 ---------- */
+
+export interface PresetFile {
+  name: string; rel_path: string; ext: string; size: number
+  pages: number | null
+  url: string
+}
+export interface PresetResource {
+  id: string; name: string; files: PresetFile[]
+  publisher: string; pub_year: string; cover: string
+}
+export interface PresetDomain { name: string; resources: PresetResource[] }
+
 export const api = {
   getSettings: () => apiFetch<SettingsData>('/api/settings', { cache: 'no-store' }),
   saveSettings: (body: unknown) => apiFetch<any>('/api/settings', jsonInit('PUT', body)),
+  /** RA5-S2：Zen key 专用保存通道（不经通用 saveSettings）——E-40 教训：字段存活不靠约定靠通道。
+   *  通用入口 body 是 unknown 黑盒，未来表单保存路径改动时 zen_api_key 会被静默丢字段；
+   *  专用函数把「该通道只发 zen_api_key」钉在类型签名上（api.test.ts PUT 体契约守卫）。 */
+  saveZenKey: (key: string) => apiFetch<any>('/api/settings', jsonInit('PUT', { zen_api_key: key })),
   testSettings: (body: unknown) => apiFetch<any>('/api/settings/test', jsonInit('POST', body)),
+  /** F14-S4f：拉取 Zen /models 名单（服务端代理+TTL 缓存；失败由前端 FALLBACK 兜底） */
+  zenModels: () => apiFetch<{ status: string; cached?: boolean; models?: string[]; msg?: string }>(
+    '/api/settings/zen/models', { cache: 'no-store' }),
 
   /** 答题反馈上报（闭环D）：后端落 quiz_answers 并合流 level_score，下轮策略指令随之变化 */
   submitQuizAnswers: (body: {
@@ -124,6 +143,10 @@ export const api = {
     apiFetch<{ status: string }>('/api/dialogues/' + encodeURIComponent(did) + '/profile_status', { cache: 'no-store' }),
   getDialogueMessages: (did: string) =>
     apiFetch<MessagesData>('/api/dialogues/' + encodeURIComponent(did) + '/messages', { cache: 'no-store' }),
+
+  /** 闭环六：编辑会话历史轻量版（后端跳过 think 解析，长会话挂载提速） */
+  getDialogueMessagesLight: (did: string) =>
+    apiFetch<MessagesData>('/api/dialogues/' + encodeURIComponent(did) + '/messages?light=true', { cache: 'no-store' }),
   /** 条目4：子agent运行档案事后拉档（回看通道） */
   getSubAgentRun: (runId: string) =>
     apiFetch<{ run: SubAgentRun }>('/api/chat/subagent/' + encodeURIComponent(runId), { cache: 'no-store' }),
@@ -153,6 +176,9 @@ export const api = {
       jsonInit('POST', scope ? { ...(body as Record<string, unknown>), ...urlScopeBody(scope) } : body)),
   uploadKnowledgeFile: (form: FormData) =>
     apiFetch<any>('/api/knowledge/upload-file', { method: 'POST', body: form }),
+  uploadProgress: (projectId: string, source: string) =>
+    apiFetch<{ status: string; done?: number; total?: number; stage?: string; msg?: string }>(
+      `/api/knowledge/upload-progress?project_id=${encodeURIComponent(projectId)}&source=${encodeURIComponent(source)}`),
   getUploadConstraints: () =>
     apiFetch<any>('/api/knowledge/upload-constraints', { cache: 'no-store' }),
   getUploadProgress: (projectId: string, source: string) =>
@@ -167,6 +193,10 @@ export const api = {
     apiFetch<any>('/api/kb/' + encodeURIComponent(pid) + '/chunk-node?source=' + encodeURIComponent(source) + '&chunk=' + chunk, { cache: 'no-store' }),
   getKbDoc: (pid: string, source: string) =>
     apiFetch<any>('/api/kb/' + encodeURIComponent(pid) + '/doc?source=' + encodeURIComponent(source), { cache: 'no-store' }),
+  // F9-S2：留存范围选择——按勾选章节路径（子树语义）重入库；进度复用 upload-progress 轮询
+  applyKbScope: (pid: string, source: string, include: string[], apiKey: string) =>
+    apiFetch<any>('/api/kb/' + encodeURIComponent(pid) + '/apply-scope',
+      jsonInit('POST', { source, include, api_key: apiKey })),
   getKb: (projectId: string) =>
     apiFetch<any>('/api/kb/' + encodeURIComponent(projectId), { cache: 'no-store' }),
   queryKnowledge: (projectId: string, q: string, topK = 3) =>
@@ -180,6 +210,10 @@ export const api = {
     apiFetch<ProfileData>('/api/project-memory/' + encodeURIComponent(pid), { cache: 'no-store' }),
   saveProjectMemory: (pid: string, profile: unknown) =>
     apiFetch<any>('/api/project-memory/' + encodeURIComponent(pid), jsonInit('POST', { profile })),
+  // F12-S4：课程各对话的压缩滚动摘要（五段式）只读聚合——记忆单框展示素材
+  getCompressedSummaries: (pid: string) =>
+    apiFetch<{ summaries: Array<{ dialogue_id: string; name: string; summary: string }> }>(
+      '/api/projects/' + encodeURIComponent(pid) + '/compressed-summaries', { cache: 'no-store' }),
   getDialogueProfile: (did: string) =>
     apiFetch<ProfileData>('/api/dialogues/' + encodeURIComponent(did) + '/profile'),
   getDialogueFollowups: (did: string) =>
@@ -199,6 +233,12 @@ export const api = {
   deleteResource: (rid: string) =>
     apiFetch<any>('/api/resources/' + encodeURIComponent(rid), jsonInit('DELETE')),
   generateDomain: (body: unknown) => apiFetch<any>('/api/generate-domain', jsonInit('POST', body)),
+  /** F13-S1：预设资源库三级清单（领域→资源→文件，含页数等元数据） */
+  getPresetLibrary: () =>
+    apiFetch<{ status: string; domains: PresetDomain[] }>('/api/preset-library', { cache: 'no-store' }),
+  /** F13-S1：占位元数据编辑（出版社/初版时间/封面），资源级 */
+  updatePresetMeta: (body: { rel_path: string; publisher: string; pub_year: string; cover: string }) =>
+    apiFetch<any>('/api/preset-library/meta', jsonInit('PUT', body)),
   listCapabilities: () =>
     apiFetch<CapabilityList>('/api/resources/capabilities', { cache: 'no-store' }),
   generateResource: (body: unknown) =>

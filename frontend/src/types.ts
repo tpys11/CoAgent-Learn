@@ -13,7 +13,7 @@ export interface Dialogue {
   archived: boolean
 }
 
-export interface AgentMode {
+interface AgentMode {
   label: string
   promptOverride: string
 }
@@ -85,9 +85,18 @@ export interface SubAgentRun {
   finished_at: string | null
 }
 
-export interface ReviewIssue {
+interface ReviewIssue {
   problem: string
   fix?: string
+}
+
+/** 断言级核查单条（研究档）：issues 即其中 unsupported 子集的映射视图 */
+interface ReviewClaim {
+  claim: string
+  label: 'supported' | 'unsupported'
+  confidence?: number
+  reason?: string
+  diag?: 'hallucination' | 'retrieval_gap' | 'no_evidence'
 }
 
 export interface ReviewResult {
@@ -96,6 +105,10 @@ export interface ReviewResult {
   issues?: ReviewIssue[]
   suggestion?: string
   verdict?: string
+  /** 断言级核查全表（研究档审核），随 done.review 透传 */
+  claims?: ReviewClaim[]
+  /** fail-open 跳过标记：审核器异常/不可解析时 true（当轮视为通过） */
+  skipped?: boolean
 }
 
 export interface Message {
@@ -134,7 +147,7 @@ export interface MessagesData {
 /** 画像类接口（个人全局 / 项目记忆 / 对话画像）返回的松散结构。 */
 export type ProfileData = Record<string, any>
 
-export interface ResourceItem {
+interface ResourceItem {
   id: string
   name: string
   content?: string
@@ -161,8 +174,8 @@ export interface StatsData {
 
 export interface SettingsData {
   kb_mode?: string
-  embedding?: { api_key_set?: boolean; api_key_hint?: string }
-  review?: { enabled?: boolean; model?: string }
+  embedding?: { api_key_set?: boolean; api_key_hint?: string; model?: string; base_url?: string }
+  review?: { enabled?: boolean; model?: string; model_research?: string; effective_model?: string; follow_main?: boolean }
   [key: string]: any
 }
 
@@ -269,6 +282,6 @@ export interface MatchReportData {
   kp_accuracy: Array<{ kp: string; total: number; correct: number; accuracy: number }>
   weak_points: string[]
   strong_points: string[]
-  path_tree: Array<{ name: string; status: 'blind' | 'learning' | 'mastered' | 'untouched'; children: MatchReportData['path_tree'] }>
+  path_tree: Array<{ name: string; status: 'blind' | 'learning' | 'mastered' | 'untouched'; prereq?: string[]; children: MatchReportData['path_tree'] }>
   thresholds: { blind: number; master: number }
 }

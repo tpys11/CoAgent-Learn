@@ -1,30 +1,23 @@
 /**
- * 条目4·实时化：直播条——子agent start 事件到达即出脉冲 chip（不等 done），
- * 完成翻 ✓ / 异常翻 ⚠；点击开只读窗口看指令与实时过程。
- * 挂载点：AssistantMessage 流式区一行 <SubAgentLiveStrip />（历史消息不显示）。
+ * 条目4·实时化 → F11-S3 改造：直播条换用共用行组件 SubAgentRunRow
+ * （行式五要素：状态图标/agent 类型/标题/耗时/token 估算；点击行展开实时输出流，
+ * ↗ 打开只读窗口——原 chip 行为升级，open-subagent 机制不变）。
+ * 挂载点：AssistantMessage 流式区一行（历史消息不显示）。
  */
 import { useSyncExternalStore } from 'react'
 import { subagentStore } from '../../../stores/subagentStore'
+import { SubAgentRunRow, toRowData } from './RunRow'
 
 export function SubAgentLiveStrip() {
   useSyncExternalStore(subagentStore.subscribe, subagentStore.getVersion)
   const lives = subagentStore.listAll()
   if (lives.length === 0) return null
   return (
-    <>
-      <div className="flex flex-wrap gap-1 mb-1">
-        {lives.map(r => (
-          <button
-            key={r.runId}
-            onClick={() => window.dispatchEvent(new CustomEvent('open-subagent', { detail: { runIds: [r.runId] } }))}
-            title="查看子 Agent 实时运行"
-            className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border transition-colors border-[var(--accent)]/30 text-[var(--accent)] hover:bg-[var(--accent)]/10${r.status === 'running' ? ' animate-pulse' : ''}`}
-          >
-            🛰 {r.title || r.agent || '子agent'}
-            {r.status === 'running' ? ' …' : r.status === 'error' ? ' ⚠' : ' ✓'}
-          </button>
-        ))}
-      </div>
-    </>
+    <div className="flex flex-col gap-0.5 mb-1">
+      {lives.map(r => (
+        <SubAgentRunRow key={r.runId} data={toRowData(r)}
+          onOpen={() => window.dispatchEvent(new CustomEvent('open-subagent', { detail: { runIds: [r.runId] } }))} />
+      ))}
+    </div>
   )
 }

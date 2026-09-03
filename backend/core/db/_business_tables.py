@@ -1,0 +1,220 @@
+# -*- coding: utf-8 -*-
+"""SQLiteClient 业务表 mixin：init_tables（原 Postgres 12 张表 + 幂等列迁移 + 索引）。
+B2 拆分（2026-08-27）：方法自 base.py 逐字迁入。"""
+import sqlite3
+
+
+class BusinessTablesMixin:
+    """业务表 DDL。"""
+
+    def _ensure_column(self, table: str, col: str, ddl: str):
+        """幂等加列：先查 pragma_table_info 再决定是否 ALTER。
+        P1 提速：原实现 9 条「注定失败」的幂等 ALTER（新库的列已由 CREATE TABLE 建出）
+        每次都触发 execute 的通用 sqlite3.Error 重试（sleep(0.1) + 换连接二次尝试），
+        每次 init_tables 固定支付 ≈0.94s 纯睡眠——全量回归里约几十个新库 fixture 都在付，
+        生产启动（get_db 单例 → init_tables）同样受累。列存在时不发 ALTER（语义与原
+        「失败即忽略」一致）；ALTER 仍保留 try/except 兜底并发等极端时序（吞错语义不变）。"""
+        rows = self.execute(
+            "SELECT name FROM pragma_table_info(?) WHERE name = ?", (table, col))
+        if rows:
+            return
+        try:
+            self.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
+        except sqlite3.OperationalError:
+            pass  # 幂等迁移兜底：并发 init 等极端时序（与原实现同款）
+
+    def init_tables(self):
+        """建表：兼容原 Postgres 12 张表（SQLite 语法）"""
+        self.execute("""
+            CREATE TABLE IF NOT EXISTS projects (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL DEFAULT '新项目',
+                is_default INTEGER DEFAULT 0,
+                simple INTEGER DEFAULT 0,
+                domain TEXT DEFAULT '',
+                created_at TEXT DEFAULT (datetime('now')),
+                archived INTEGER DEFAULT 0
+            )
+        """)
+        self._ensure_column("projects", "simple", "INTEGER DEFAULT 0")
+        self.execute("""
+            CREATE TABLE IF NOT EXISTS dialogue_memories (
+                dialogue_id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL DEFAULT 'default',
+                profile_data TEXT DEFAULT '{}',
+                updated_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        self.execute("""
+            CREATE TABLE IF NOT EXISTS feedback (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                dialogue_id TEXT NOT NULL DEFAULT '',
+                project_id TEXT NOT NULL DEFAULT 'default',
+                resource_type TEXT DEFAULT '',
+                feedback TEXT DEFAULT '',
+                note TEXT DEFAULT '',
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        self.execute("""
+            CREATE TABLE IF NOT EXISTS stats (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id TEXT NOT NULL DEFAULT 'default',
+                tokens INTEGER DEFAULT 0,
+                duration_seconds INTEGER DEFAULT 0,
+                metrics TEXT DEFAULT '{}',
+                updated_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        self.execute("""
+            CREATE TABLE IF NOT EXISTS task_stats (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id TEXT NOT NULL DEFAULT 'default',
+                dialogue_id TEXT DEFAULT 'default',
+                data TEXT DEFAULT '{}',
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        self.execute("""
+            CREATE TABLE IF NOT EXISTS focus_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id TEXT NOT NULL DEFAULT 'default',
+                dialogue_id TEXT DEFAULT '',
+                duration_seconds INTEGER DEFAULT 0,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        self.execute("""
+            CREATE TABLE IF NOT EXISTS resources (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                content TEXT DEFAULT '',
+                project_id TEXT NOT NULL DEFAULT 'default',
+                type TEXT DEFAULT 'text',
+                file_ext TEXT DEFAULT '',
+                file_size INTEGER DEFAULT 0,
+                file_path TEXT DEFAULT '',
+                difficulty REAL,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        # 兼容旧表：补充新增列（已存在则忽略）
+        for _col, _ddl in [
+            ("type", "TEXT DEFAULT 'text'"),
+            ("file_ext", "TEXT DEFAULT ''"),
+            ("file_size", "INTEGER DEFAULT 0"),
+            ("file_path", "TEXT DEFAULT ''"),
+            ("difficulty", "REAL"),
+        ]:
+            self._ensure_column("resources", _col, _ddl)
+        self.execute("""
+            CREATE TABLE IF NOT EXISTS dialogues (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL DEFAULT 'default',
+                session_id TEXT NOT NULL DEFAULT 'default',
+                name TEXT NOT NULL DEFAULT '新对话',
+                created_at TEXT DEFAULT (datetime('now')),
+                archived INTEGER DEFAULT 0,
+                summary TEXT DEFAULT '',
+                compressed_upto INTEGER DEFAULT 0
+            )
+        """)
+        # 兼容旧库：会话压缩字段
+        for _col, _ddl in [("summary", "TEXT DEFAULT ''"), ("compressed_upto", "INTEGER DEFAULT 0")]:
+            self._ensure_column("dialogues", _col, _ddl)
+        # 兼容旧库：对话级学情画像缓存（合成后注入，未完成禁发）
+        for _col, _ddl in [("profile", "TEXT DEFAULT ''"), ("profile_status", "TEXT DEFAULT 'ready'")]:
+            self._ensure_column("dialogues", _col, _ddl)
+        # 闭环六：会话种类标记（''=主对话 / 'resource'=资源编辑会话——不进列表不进学情管线）
+        self._ensure_column("dialogues", "kind", "TEXT DEFAULT ''")
+        self.execute("CREATE INDEX IF NOT EXISTS idx_dialogues_project ON dialogues (project_id, created_at)")
+        self.execute("""
+            CREATE TABLE IF NOT EXISTS messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                dialogue_id TEXT NOT NULL REFERENCES dialogues(id),
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                think TEXT DEFAULT '',
+                client_msg_id TEXT,
+                created_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        # 兼容旧库：思维链列（{agent, content}[] 的 JSON）
+        self._ensure_column("messages", "think", "TEXT DEFAULT ''")
+        # D4 重试幂等：客户端生成、重试复用的去重 ID。可空列——历史数据与未升级客户端
+        # 恒为 NULL，部分唯一索引让旧数据零迁移（NULL 不参与唯一性约束）。
+        self._ensure_column("messages", "client_msg_id", "TEXT")
+        self.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_messages_client_msg_id "
+            "ON messages(client_msg_id) WHERE client_msg_id IS NOT NULL")
+        self.execute("CREATE INDEX IF NOT EXISTS idx_messages_dialogue ON messages (dialogue_id, created_at)")
+        # 资源列表按项目查询的主索引：缺它时全表 SCAN 会路过巨型 content 溢出页
+        # （实测单行 4MB 测试残留拖慢每次 /api/resources 200-780ms，2026-08-26 性能回归）
+        self.execute("CREATE INDEX IF NOT EXISTS idx_resources_project ON resources (project_id, created_at)")
+        self.execute("""
+            CREATE TABLE IF NOT EXISTS global_profile (
+                id INTEGER PRIMARY KEY DEFAULT 1,
+                session_id TEXT NOT NULL DEFAULT 'default',
+                data TEXT NOT NULL DEFAULT '{}',
+                updated_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        self.execute("""
+            CREATE TABLE IF NOT EXISTS project_memories (
+                project_id TEXT NOT NULL,
+                session_id TEXT NOT NULL DEFAULT 'default',
+                data TEXT NOT NULL DEFAULT '{}',
+                updated_at TEXT DEFAULT (datetime('now')),
+                PRIMARY KEY (project_id, session_id)
+            )
+        """)
+        self.execute("""
+            CREATE TABLE IF NOT EXISTS user_profiles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id TEXT UNIQUE NOT NULL DEFAULT 'default',
+                profile_data TEXT DEFAULT '{}',
+                updated_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        self.execute("""
+            CREATE TABLE IF NOT EXISTS entities (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                project_id TEXT NOT NULL DEFAULT 'default',
+                type TEXT DEFAULT '',
+                properties TEXT DEFAULT '{}'
+            )
+        """)
+        self.execute("""
+            CREATE TABLE IF NOT EXISTS followups (
+                dialogue_id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL DEFAULT 'default',
+                questions TEXT DEFAULT '[]',
+                updated_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        self.execute("""
+            CREATE TABLE IF NOT EXISTS relations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id TEXT NOT NULL DEFAULT 'default',
+                source TEXT NOT NULL,
+                target TEXT NOT NULL,
+                relation TEXT DEFAULT '',
+                properties TEXT DEFAULT '{}'
+            )
+        """)
+        # F13-S1 预设资源库元数据旁表：rel_path 主键（preset_library 下 posix 相对路径）。
+        # 独立于 resources 旁路建表——预设资源不属于任何课程，resources.project_id NOT NULL
+        # 的语义不匹配，旁表可避开 T57 类孤儿形态域。pages=扫描时 pypdf 补算的缓存；
+        # publisher/pub_year/cover = owner 明示的可编辑占位字段（占位即可，不做必填）。
+        self.execute("""
+            CREATE TABLE IF NOT EXISTS preset_meta (
+                rel_path TEXT PRIMARY KEY,
+                pages INTEGER,
+                publisher TEXT DEFAULT '',
+                pub_year TEXT DEFAULT '',
+                cover TEXT DEFAULT '',
+                updated_at TEXT DEFAULT (datetime('now'))
+            )
+        """)
+        self.create_vector_tables()

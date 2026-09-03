@@ -8,7 +8,6 @@ import os
 
 from core.db import base
 
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # 导入本模块瞬间抓拍（此时若被 dotenv 提前污染也如实反映 base 的实际解析输入）
 _SQLITE_DIR_AT_IMPORT = os.environ.get("SQLITE_DIR")
 
@@ -26,12 +25,17 @@ def test_db_dir_matches_resolution_rule():
 
 
 def test_default_anchor_is_absolute_repo_data():
-    """默认锚点本身必须绝对且指向 <仓库根>/data——三分叉事故的根因守卫。"""
-    anchor = _expected_db_dir() if not _SQLITE_DIR_AT_IMPORT else os.path.normpath(
-        os.path.join(os.path.dirname(os.path.abspath(base.__file__)), "..", "..", "..", "data"))
+    """默认锚点本身必须绝对且指向 <包根父目录>/data——三分叉事故的根因守卫。
+    布局说明：本地嵌套（backend/core/db）下包根父目录即仓库根（<repo>/data）；
+    容器扁平（/app/core/db）下 3 级上溯落在 /（运行时由 SQLITE_DIR 覆盖，本测试
+    仅防公式回退成 CWD 相对路径或层级漂移——直接镜像生产公式来源，杜绝私设算式）。"""
+    from core.db import _sqlite_core
+    pkg_root = os.path.dirname(os.path.dirname(os.path.dirname(
+        os.path.abspath(_sqlite_core.__file__))))
+    anchor = _sqlite_core._DEFAULT_DB_DIR
     assert os.path.isabs(anchor), f"默认锚点是相对路径: {anchor}"
-    assert anchor == os.path.normpath(os.path.join(_REPO_ROOT, "data")), (
-        f"默认锚点偏离仓库根 data/: {anchor}")
+    assert anchor == os.path.normpath(os.path.join(os.path.dirname(pkg_root), "data")), (
+        f"默认锚点偏离包根父目录 data/: {anchor}")
 
 
 def test_data_dir_export_consistent():

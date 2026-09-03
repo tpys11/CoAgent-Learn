@@ -12,6 +12,7 @@ import logging
 
 from core.db.memory_repo import get_memory_repo
 from core.db.project_repo import get_project_repo
+from core.model_provider import MODEL_FAST
 from core.helpers import _as_dict
 
 logger = logging.getLogger("coagent.memory_service")
@@ -182,7 +183,6 @@ def init_course_profile(pid, name="", domain=""):
 
 def _synthesize_profile(api_key, gp, mem):
     """flash 合成对话学情画像（个人画像 + 课程画像 → 对话画像 JSON）。"""
-    import sys as _s
     import requests as _req
     from core.config import config as _cfg
     NL = chr(10)
@@ -196,7 +196,7 @@ def _synthesize_profile(api_key, gp, mem):
     )
     h = {"Authorization": "Bearer " + (api_key or _cfg.DEEPSEEK_API_KEY), "Content-Type": "application/json"}
     resp = _req.post(_cfg.DEEPSEEK_BASE_URL + "/chat/completions",
-                     json={"model": "deepseek-v4-flash", "thinking": {"type": "disabled"},
+                     json={"model": MODEL_FAST, "thinking": {"type": "disabled"},
                            "messages": [{"role": "user", "content": prompt}]},
                      headers=h, timeout=60)
     if resp.status_code != 200:
@@ -228,6 +228,6 @@ def generate_dialogue_profile(did, api_key=""):
             from core.db.base import get_db
             get_db().execute("UPDATE dialogues SET profile_status='failed' WHERE id=%s", (did,))
         except Exception:
-            pass
+            logger.debug("profile_status 失败标记亦失败", exc_info=True)
         logger.exception("画像合成失败 did=%s err=%s", did, str(e)[:120])
         return False

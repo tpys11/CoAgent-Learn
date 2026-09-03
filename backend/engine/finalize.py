@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """S6 Finalize 后台副作用（Loop4 自旧引擎逐字平移；触发口径按定稿统一）。
 由 core.background.submit 调度执行，绝不阻塞台前流。"""
-import datetime
 import json
 import logging
 

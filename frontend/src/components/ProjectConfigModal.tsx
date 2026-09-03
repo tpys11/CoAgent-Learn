@@ -6,11 +6,12 @@ import { UploadPanel } from './resource/UploadPanel'
 import { LS, lsGet, lsGetJSON, lsSetJSON } from '../storage'
 import { api } from '../api'
 import { watchIngestProgress } from './resource/ingestProgress'
+import type { ScopeTarget } from '../lib/kbScopeBus'
 
 /** 课程记忆与资源窗口：两个页签（记忆与进程 / 资源）可切换；initialTab 决定打开时默认页签。
  * 新建课程引导消息的「手动填写」按钮也复用此弹窗（initialOnly=true：仅初次创建可手动填写，
  * 记忆页顶部显示基本信息填写区，右上角「保存」→ 确认弹窗提示后续只能通过对话间接填写） */
-export default function ProjectConfigModal({ projectId, projectName, onRequestModify, onRequestAnalyze, onClose, initialTab = 'memory', initialOnly = false, onSaved, onUploaded }: {
+export default function ProjectConfigModal({ projectId, projectName, onRequestModify, onRequestAnalyze, onClose, initialTab = 'memory', initialOnly = false, onSaved, onUploaded, scopeTargets = [] }: {
   projectId: string | null
   projectName?: string
   onRequestModify?: (label: string, pid?: string) => void
@@ -20,6 +21,8 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
   initialOnly?: boolean
   onSaved?: () => void
   onUploaded?: () => void
+  /** F10-S1：留存选择目标由 App 裁决下发（呈现面=内联面板的 pending 子集），透传 UploadPanel */
+  scopeTargets?: ScopeTarget[]
 }) {
   const [tab, setTab] = useState<'memory' | 'resource'>(initialTab)
   useEffect(() => { setTab(initialTab) }, [initialTab])
@@ -88,7 +91,7 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
               <MemoryView projectId={projectId} projectOnly initialEdit onEditChange={setCollected}
                 onRequestModify={onRequestModify} onRequestAnalyze={onRequestAnalyze} />
               <div className="border-t hairline">
-                <ProjectResources projectId={projectId} naturalHeight onUploaded={onUploaded} />
+                <ProjectResources projectId={projectId} naturalHeight onUploaded={onUploaded} scopeTargets={scopeTargets} />
               </div>
             </div>
           ) : tab === 'memory' ? (
@@ -98,7 +101,7 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
                   onRequestModify={onRequestModify} onRequestAnalyze={onRequestAnalyze} />
               </div>
             </div>
-          ) : <ProjectResources projectId={projectId} onUploaded={onUploaded} />}
+          ) : <ProjectResources projectId={projectId} onUploaded={onUploaded} scopeTargets={scopeTargets} />}
         </div>
       </div>
       {/* 保存确认弹窗：仅初次创建支持手动填写，后续只能通过对话间接填写 */}
@@ -125,7 +128,12 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
 }
 
 /** 项目资源：栏目一为项目资源（可上传文件、拖入文件或系统资源），栏目二为系统内置资源（可拖入/加入） */
-function ProjectResources({ projectId, naturalHeight, onUploaded }: { projectId: string | null; naturalHeight?: boolean; onUploaded?: () => void }) {
+function ProjectResources({ projectId, naturalHeight, onUploaded, scopeTargets = [] }: {
+  projectId: string | null
+  naturalHeight?: boolean
+  onUploaded?: () => void
+  scopeTargets?: ScopeTarget[]
+}) {
   const [docs, setDocs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState('')
@@ -283,7 +291,7 @@ const d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, 
     <div className={`p-6 flex flex-col gap-5 ${naturalHeight ? '' : 'h-full overflow-hidden'}`}>
       {/* 上传面板：虚线框/空态点击展开，提供 文本 / 文件 两种来源（系统资源卡在下方点选） */}
       {showUpload && (
-        <UploadPanel projectId={projectId} onUploaded={() => { load(); onUploaded?.() }} />
+        <UploadPanel projectId={projectId} onUploaded={() => { load(); onUploaded?.() }} scopeTargets={scopeTargets} />
       )}
       {/*
       {/* 上：项目资源（可上传 / 拖入） */}
@@ -299,12 +307,16 @@ const d = await api.uploadKnowledgeText({ project_id: projectId, text: it.body, 
                 <CheckCircle2 size={12} /> {doneMsg}
               </span>
             )}
-            <button onClick={confirmUpload}
-              disabled={!!uploading}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors disabled:opacity-50">
-              {uploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-              {uploading ? '上传中…' : pendingCount ? `确认上传（${pendingCount}）` : '确认上传'}
-            </button>
+            {/* D4 双确认修复：外层确认按钮仅在有待上传项/上传中时渲染——
+                此前 UploadPanel 展开时内外两颗「确认上传」并存，外层无队列时点了只弹提示，易误点 */}
+            {(uploading || pendingCount > 0) && (
+              <button onClick={confirmUpload}
+                disabled={!!uploading}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 bg-[#1a1a1a] text-white text-xs font-semibold rounded-xl hover:bg-[#333333] transition-colors disabled:opacity-50">
+                {uploading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                {uploading ? '上传中…' : pendingCount ? `确认上传（${pendingCount}）` : '确认上传'}
+              </button>
+            )}
           </div>
         </div>
         <div className={`border rounded-2xl p-3 grid grid-cols-2 md:grid-cols-3 gap-2 max-h-[26vh] overflow-y-auto transition-colors ${dragOver ? 'border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_6%,var(--bg-panel))]' : 'border-dashed hairline'}`}>

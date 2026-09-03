@@ -8,13 +8,56 @@
   "agent": "学习助手·规划"
  },
  {
+  "type": "thought_token",
+  "agent": "学习助手·规划",
+  "chunk": "规划要点：复杂度 standard · 思考档 · 需检索知识库"
+ },
+ {
   "type": "step",
   "agent": "学情与记忆管理"
  },
  {
+  "type": "step",
+  "agent": "知识库管理"
+ },
+ {
+  "type": "subagent",
+  "run_id": "<RID>",
+  "agent": "知识库管理",
+  "title": "🛰 检索观察窗",
+  "event": "start"
+ },
+ {
+  "type": "subagent",
+  "run_id": "<RID>",
+  "agent": "知识库管理",
+  "content": "普通消息无括号",
+  "event": "input"
+ },
+ {
+  "type": "subagent",
+  "run_id": "<RID>",
+  "agent": "知识库管理",
+  "text": "终筛留存 0 条（候选共 0）",
+  "event": "delta"
+ },
+ {
+  "type": "subagent",
+  "run_id": "<RID>",
+  "agent": "知识库管理",
+  "status": "ok",
+  "summary": "候选 0 → 留存 0",
+  "event": "end"
+ },
+ {
+  "type": "thought_token",
+  "agent": "知识库管理",
+  "chunk": "**命中预览**：（本轮无命中）"
+ },
+ {
   "type": "thought_token",
   "agent": "输出策略",
-  "chunk": "②用户语域 T=0.74（level=0.80）"
+  "chunk": "②用户语域 T=0.74（level=0.80）\n【输出策略指令·T=0.74】语言组织贴合用户当前的语言风格与表达习惯：可延续其用词框架与提问视角；在准确性前提下保持其语域，不做教科书式重写。"
  },
  {
   "type": "step",
@@ -22,7 +65,8 @@
  },
  {
   "type": "answer_token",
-  "chunk": "黄金回答内容"
+  "chunk": "黄金回答内容",
+  "attempt": 0
  },
  {
   "type": "done",
@@ -32,6 +76,11 @@
     "agent": "学习助手·规划",
     "status": "done",
     "detail": "意图分类完成"
+   },
+   {
+    "agent": "知识库管理",
+    "status": "done",
+    "detail": "检索0条"
    },
    {
     "agent": "学情与记忆管理",
@@ -44,9 +93,25 @@
     "detail": "生成输出"
    }
   ],
-  "mindchain": [],
+  "mindchain": [
+   {
+    "agent": "学习助手·规划",
+    "content": "规划要点：复杂度 standard · 思考档 · 需检索知识库"
+   },
+   {
+    "agent": "知识库管理",
+    "content": "**命中预览**：（本轮无命中）"
+   },
+   {
+    "agent": "输出策略",
+    "content": "②用户语域 T=0.74（level=0.80）\n【输出策略指令·T=0.74】语言组织贴合用户当前的语言风格与表达习惯：可延续其用词框架与提问视角；在准确性前提下保持其语域，不做教科书式重写。"
+   },
+   {
+    "agent": "学习助手·生成",
+    "content": "黄金回答内容"
+   }
+  ],
   "task_stats": {},
-  "special_suggestions": [],
   "retrieved_images": [],
   "review": null
  }

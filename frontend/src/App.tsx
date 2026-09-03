@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, useCallback, useRef, useEffect } from 'react'
+import { lazy, Suspense, useState, useCallback, useRef, useEffect, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
 import { PanelLeftOpen, PanelRightOpen } from 'lucide-react'
 
@@ -12,7 +12,6 @@ import ProjectSidebar from './components/ProjectSidebar'
 import CenterPanel from './components/CenterPanel'
 import RightPanel from './components/RightPanel'
 import ActivityBar, { type ViewKey } from './components/ActivityBar'
-import IntroPanel from './components/IntroPanel'
 
 // 首屏瘦身（perf）：重组件视图按需懒加载——主包 2.5MB→亚 MB，刷新秒开。
 // 全部为条件挂载视图，Suspense fallback=null 保证布局零抖动。
@@ -20,7 +19,6 @@ const SubAgentPage = lazy(() => import('./components/chat/subagent').then(m => (
 const ObsidianView = lazy(() => import('./components/ObsidianView'))
 const HomeView = lazy(() => import('./components/HomeView'))
 const ProfileWizard = lazy(() => import('./components/ProfileWizard'))
-const TutorialView = lazy(() => import('./components/TutorialView'))
 const ResourceView = lazy(() => import('./components/ResourceView'))
 const MemoryView = lazy(() => import('./components/MemoryView'))
 const KnowledgeView = lazy(() => import('./components/KnowledgeView'))
@@ -40,6 +38,7 @@ import { DEFAULT_AGENTS } from './types'
 import { LS, lsGet, lsSet, lsGetJSON, lsSetJSON } from './storage'
 import { api } from './api'
 import { useChatStream } from './hooks/useChatStream'
+import { addPendingScopeTargets, getPendingScopeTargets, resolveScopeSurface, subscribeIngestDone, subscribePending, wizardScopeTargets, type ScopeTarget } from './lib/kbScopeBus'
 
 function generateId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6) }
 // 项目 ID 固定：首次生成后存 localStorage，刷新复用（保证知识库/图谱数据不因刷新丢失）
@@ -73,7 +72,7 @@ function App() {
 从第 1 项开始回复我即可，我会一步步帮你完善这门课程。`
   const [isLoading, setIsLoading] = useState(false)
   const [agents, setAgents] = useState<AgentConfig[]>(() => {
-    // 项目介绍 Agent 设定持久化：用户编辑后刷新保留（缺省用内置 DEFAULT_AGENTS）
+    // Agent 设定持久化：AgentsView（对话设定）与 Agent 团队编辑共用，刷新保留（缺省用内置 DEFAULT_AGENTS）
     try {
       const s = lsGet(LS.agents, '')
       if (s) {
@@ -93,7 +92,8 @@ function App() {
   // 弹窗默认页签（记忆与进程 / 资源）
   const [projectConfigTab, setProjectConfigTab] = useState<'memory' | 'resource'>('memory')
   const [projectKBId, setProjectKBId] = useState<string | null>(null)
-  const [wizard, setWizard] = useState<{mode: 'project'|'dialogue'; id: string; name?: string} | null>(null)
+  // F10-S1：projectId 供向导内「补传教材」直传课程知识库（dialogue 模式必带）
+  const [wizard, setWizard] = useState<{mode: 'project'|'dialogue'; id: string; name?: string; projectId?: string} | null>(null)
   // 新对话学情画像合成状态：pending 期间禁发（后端 409 + 前端禁用发送按钮）
   const [profilePendingDialogue, setProfilePendingDialogue] = useState<string | null>(null)
   const profilePollTimer = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -144,8 +144,6 @@ function App() {
   }, [currentProjectId])
   // 项目记忆分析持久提示：从记忆界面跳转对话时显示（label 区分分析/修改基本情况）
   const [analyzeHint, setAnalyzeHint] = useState<{ label: string; project: string } | null>(null)
-  // 首次进入：弹出项目介绍面板（localStorage 标记，只弹一次）
-  const [showIntro, setShowIntro] = useState(() => !lsGet(LS.introSeen, ''))
   // 启动时应用保存的字体大小与主题（system 模式自动解析亮暗）
   useEffect(() => {
     const saved = lsGet(LS.fontSize, '')
@@ -281,6 +279,31 @@ function App() {
     if (first) setCurrentDialogueId(first.id)
   }, [dialogues])
 
+  // F10-S1 推进器：上传完成事件（kbScopeBus.ingestDone）→ 拉章节树 → 有树资源进待选择目标（pending）。
+  // 与上传发起点解耦：无论从 UploadPanel 还是向导补传发起、发起点是否已卸载，完成事件都到这里；
+  // 树拉取失败不阻断完成态（面板仅增强非必经，对齐 F9 容错口径）。
+  useEffect(() => subscribeIngestDone((pid, sources) => {
+    api.getKb(pid).then(d => {
+      const docs: any[] = Array.isArray(d) ? d : (d && d.docs) || []
+      const targets = sources
+        .map(src => docs.find((x: any) => (x.source || '') === src))
+        .filter((x: any) => x && Array.isArray(x.tree) && x.tree.length > 0)
+        .map((x: any): ScopeTarget => ({ projectId: pid, source: x.source, tree: x.tree }))
+      addPendingScopeTargets(targets)
+    }).catch(() => { /* 树拉取失败：无树资源不弹选择面板（默认全量语义不受影响） */ })
+  }), [])
+  // F10-S1 待选择目标快照 + 呈现面裁决：向导开着 → 'wizard'（S2 渲染向导步；S1 挂起不喂内联）；
+  // 没开 → 'inline'（当前课程的 pending 下发 UploadPanel 内联面板，F9 行为保持）。
+  // 只喂当前项目：pending 全局持有，跨课程互不串扰。
+  const scopePending = useSyncExternalStore(subscribePending, getPendingScopeTargets)
+  // 配置弹窗可能开的是非当前课程（projectKBId）——内联呈现按弹窗实际课程过滤
+  const configProjectId = projectKBId ?? currentProjectId
+  const inlineScopeTargets: ScopeTarget[] = resolveScopeSurface(!!wizard) === 'inline'
+    ? scopePending.filter(x => x.projectId === configProjectId) : []
+  // F10-S2：向导开着 → 向导呈现面（打断步）——按向导所属课程过滤后下发 ProfileWizard；
+  // 消费（选择/跳过）经 bus 撤销，内联面同步消失（防双呈现契约②）。
+  const wizardSurfaceTargets: ScopeTarget[] = wizardScopeTargets(scopePending, wizard?.projectId)
+
   const handleProjectKB = useCallback((id: string) => {
     setProjectKBId(id)
     setShowProjectConfig(true)
@@ -298,7 +321,7 @@ function App() {
     // 无画像（[简]）项目：不弹对话画像向导
     const proj = projects.find(p => p.id === projectId)
     if (!(proj && proj.simple)) {
-      setWizard({ mode: 'dialogue', id: d.id, name: d.name })
+      setWizard({ mode: 'dialogue', id: d.id, name: d.name, projectId })
     }
   }, [dialogues, projects])
   const loadDialogueMessages = useCallback((id: string) => {
@@ -376,7 +399,7 @@ function App() {
   const handleSaveAgent = useCallback((updated: AgentConfig) => {
     setAgents(prev => {
       const next = prev.map(a => a.id === updated.id ? updated : a)
-      // 持久化：用户对项目介绍 Agent 设定的编辑刷新后保留
+      // 持久化：用户对 Agent 设定（AgentsView 对话设定）的编辑刷新后保留
       lsSetJSON(LS.agents, next)
       return next
     })
@@ -399,7 +422,6 @@ function App() {
           <PanelLeftOpen size={15} />
         </button>
       )}
-      {view === 'tutorial' && <LSusp><TutorialView agents={agents} onSave={handleSaveAgent} onReplace={handleReplaceAgents} projectId={currentProjectId} /></LSusp>}
       {view === 'resources' && <LSusp><ResourceView projectId={currentProjectId} /></LSusp>}
       {view === 'memory' && <LSusp><MemoryView projectId={currentProjectId} onRequestModify={handleRequestModify} onRequestAnalyze={handleRequestAnalyze} /></LSusp>}
       {view === 'knowledge' && <LSusp><KnowledgeView projectId={projectKBId ?? currentProjectId} onClose={() => { setView('chat'); setChatOpen(true) }} /></LSusp>}
@@ -437,7 +459,7 @@ function App() {
       <CenterPanel
         messages={currentMessages} isLoading={isLoading} currentProject={currentProject}
         dialogueId={currentDialogueId}
-        profilePending={profilePendingDialogue === currentDialogueId}
+        profilePending={profilePendingDialogue != null && profilePendingDialogue === currentDialogueId}
         onSendMessage={sendMessage}
         onStop={stop}
         onRequestKey={() => setShowApiKeyPrompt(true)}
@@ -503,9 +525,10 @@ function App() {
           onRequestAnalyze={handleRequestAnalyze}
           onClose={() => { setShowProjectConfig(false); setManualSetupOnly(false) }}
           onUploaded={() => setKbRefreshKey(k => k + 1)}
+          scopeTargets={inlineScopeTargets}
         /></LSusp>
       )}
-      {wizard && <LSusp><ProfileWizard mode={wizard.mode} projectName={wizard.name} onClose={() => {
+      {wizard && <LSusp><ProfileWizard mode={wizard.mode} projectName={wizard.name} projectId={wizard.projectId} scopeTargets={wizardSurfaceTargets} onClose={() => {
         // 跳过：项目标记为无画像（simple），名字加 [简]，后续对话不弹向导
         if (wizard.mode === 'project') {
           api.saveProjectProfile(wizard.id, {})
@@ -520,7 +543,6 @@ function App() {
           setWizard(null)
         }} /></LSusp>}
       {showApiKeyPrompt && <LSusp><ApiKeyPrompt provider={lsGet(LS.provider, 'deepseek')} onClose={() => { setShowApiKeyPrompt(false); lsSet(LS.apiKeySkipped, '1') }} /></LSusp>}
-      {showIntro && <IntroPanel onClose={() => { setShowIntro(false); lsSet(LS.introSeen, '1') }} />}
       {/* 知识库阅读器弹窗（5.1）：左栏资源条目点击 / 引用跳转共用 */}
       {reader && (
         <LSusp><KbReaderModal

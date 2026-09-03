@@ -1,5 +1,7 @@
 import json
 
+from core.model_provider import MODEL_FAST
+
 
 def _extract_questions(text):
     """从 AI 返回文本中提取问题数组（容错：去代码块围栏 + 取 [...] 部分）"""
@@ -96,7 +98,7 @@ def generate_followups(api_key, project_id, dialogue_id, db, focus="purpose"):
         h = {"Authorization": "Bearer " + (api_key or _cfg.DEEPSEEK_API_KEY), "Content-Type": "application/json"}
         resp = _req.post(
             _cfg.DEEPSEEK_BASE_URL + "/chat/completions",
-            json={"model": "deepseek-v4-flash", "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]},
+            json={"model": MODEL_FAST, "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]},
             headers=h, timeout=60,
         )
         if resp.status_code != 200:

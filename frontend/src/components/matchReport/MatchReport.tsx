@@ -29,6 +29,12 @@ function TreeList({ nodes, depth = 0 }: {
           <span className="inline-block h-2 w-2 flex-shrink-0 rounded-full"
                 style={{ background: STATUS_COLOR[n.status] || 'var(--dim)' }} />
           <span style={{ color: n.status === 'untouched' ? 'var(--dim)' : 'var(--text)' }}>{n.name}</span>
+          {n.prereq && n.prereq.length > 0 && (
+            <span className="rounded px-1 text-[10px]"
+                  style={{ border: '1px dashed var(--dim)', color: 'var(--dim)' }}>
+              先修: {n.prereq.map(p => `《${p}》`).join('')}
+            </span>
+          )}
           <span className="text-[10px]" style={{ color: 'var(--dim)' }}>{STATUS_LABEL[n.status]}</span>
           {n.children.length > 0 && <TreeList nodes={n.children} depth={depth + 1} />}
         </li>

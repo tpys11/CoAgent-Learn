@@ -1,4 +1,9 @@
 import json
+import logging
+
+from core.model_provider import MODEL_FAST
+
+logger = logging.getLogger("coagent.memory_analysis")
 
 
 def _as_dict(data):
@@ -44,7 +49,7 @@ def update_memories(api_key, project_id, dialogue_id, db, session_id="default"):
         h = {"Authorization": "Bearer " + (api_key or _cfg.DEEPSEEK_API_KEY), "Content-Type": "application/json"}
         try:
             resp = _req.post(_cfg.DEEPSEEK_BASE_URL + "/chat/completions",
-                json={"model": "deepseek-v4-flash", "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]},
+                json={"model": MODEL_FAST, "thinking": {"type": "disabled"}, "messages": [{"role": "user", "content": prompt}]},
                 headers=h, timeout=60)
             if resp.status_code == 200:
                 return resp.json()["choices"][0]["message"]["content"] or ""
@@ -192,7 +197,7 @@ def update_memories(api_key, project_id, dialogue_id, db, session_id="default"):
                     if _courses:
                         old["学习情况"] = {"总体概述": "", "课程": _courses}
                 except Exception:
-                    pass
+                    logger.debug("画像项目摘要→课程迁移跳过", exc_info=True)
             has = db.execute("SELECT session_id FROM global_profile WHERE session_id=%s", (session_id,))
             if has:
                 db.execute("UPDATE global_profile SET data=%s,updated_at=CURRENT_TIMESTAMP WHERE session_id=%s", (json.dumps(old, ensure_ascii=False), session_id))

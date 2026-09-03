@@ -1,17 +1,17 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
-import { CheckCircle2, Image as ImageIcon, PenLine, Lightbulb } from 'lucide-react'
-import type { Message, Project } from '../../types'
-import MarkdownIt from 'markdown-it'
+import { useState, useEffect, useRef, useMemo, memo } from 'react'
+import { Image as ImageIcon, PenLine, Lightbulb } from 'lucide-react'
+import type { Message, Project, ReviewResult } from '../../types'
+import { renderMd } from '../../lib/mdRenderer'
 import { LS, lsGetJSON } from '../../storage'
-import { SubAgentLiveStrip } from './subagent'
+import { SubAgentLiveStrip, splitHitSection, hitGuideLabel } from './subagent'
 
-// ---------- 思维链渲染：markdown-it 轻量渲染（html:false 防 XSS，换行生效）----------
-const mdThink = new MarkdownIt({ html: false, linkify: true, breaks: true })
-const renderMd = (text: string) => mdThink.render(text || '')
-
+// ---------- 思维链渲染：统一渲染管线（F8-S5：html:false 防 XSS + KaTeX 公式 + 图表围栏）----------
+/** 导出仅供测试（isFlowNode 同模式）：B3 分片/整文一致性、XSS 守卫 */
+export { renderMd }
 // 审核引用标注（5.2）：`[来源:xxx#chunk-N]` 渲染为可点击元素（data-src/data-chunk 供事件委托跳知识库）
 const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
-const annotateCitations = (html: string) => html.replace(
+/** 导出仅供测试（isFlowNode 同模式） */
+export const annotateCitations = (html: string) => html.replace(
   /\[来源:([^\]\n]+?)#chunk-(\d+)\]/g,
   (_m, src: string, ch: string) => {
     const safe = escapeHtml(src.trim())
@@ -19,20 +19,159 @@ const annotateCitations = (html: string) => html.replace(
   },
 )
 
-// markdown 渲染结果缓存：历史消息 content 不变，命中即跳过 markdown-it 全量解析
-const _mdCache = new Map<string, string>()
-const renderMdCached = (text: string) => {
+// markdown 渲染结果缓存：B3 改造——
+// 旧实现 key=完整文本 + 300 条条目数 FIFO：流式期 stable 前缀每帧变长必 miss，
+// 每帧对越来越长的文本全量解析（O(n²)），且中间态挤掉历史消息缓存。
+// 新实现：
+//  - 缓存粒度 = 「已闭合块」（块文本永不变化 → 命中后该块永不再解析）；
+//  - 淘汰按累计字符数（≤2MB，FIFO），与条目数解耦；
+//  - 整文渲染（历史消息/思维链条目）继续走本缓存（key=完整文本，语义不变）。
+const _MD_CACHE_MAX_CHARS = 2 * 1024 * 1024
+/** 导出仅供测试：缓存本体（淘汰/命中率守卫用） */
+export const _mdCache = new Map<string, string>()
+let _mdCacheChars = 0
+/** 导出仅供测试：解析/命中/字符量计数（B3 验收：命中率与淘汰策略） */
+export const _mdStats = { parses: 0, hits: 0, chars: 0 }
+
+const renderMdCached = (text: string): string => {
   const key = text || ''
-  let h = _mdCache.get(key)
-  if (h === undefined) {
-    h = annotateCitations(renderMd(key))
-    if (_mdCache.size > 300) {
-      const first = _mdCache.keys().next().value
-      if (first !== undefined) _mdCache.delete(first)
-    }
-    _mdCache.set(key, h)
+  const hit = _mdCache.get(key)
+  if (hit !== undefined) {
+    _mdStats.hits++
+    return hit
   }
-  return h
+  const html = annotateCitations(renderMd(key))
+  _mdStats.parses++
+  _mdCacheChars += key.length
+  _mdStats.chars = _mdCacheChars
+  _mdCache.set(key, html)
+  while (_mdCacheChars > _MD_CACHE_MAX_CHARS && _mdCache.size > 1) {
+    const oldest = _mdCache.keys().next().value
+    if (oldest === undefined) break
+    _mdCacheChars -= oldest.length
+    _mdCache.delete(oldest)
+  }
+  return html
+}
+/** 导出仅供测试（isFlowNode 同模式） */
+export { renderMdCached }
+
+// ---------- B3：Markdown 分片渐进渲染（流式路径专用） ----------
+// 分片渲染 ≠ 整文渲染的结构性陷阱（逐字节相等必须成立，测试钉住）：
+//  - 围栏跨块：``` 在块 A 打开块 B 关闭 → 各自渲染必错 → 围栏打开期间不分块；
+//  - 松列表延续：`- a\n\n- b` 整文是一个 <ul>，分片成两个 → 列表后的边界不切；
+//    列表项后缩进 1-3 空格的续行同理（缩进 ≥4 由下一条规则覆盖）；
+//  - 链接引用定义与使用可跨块 → 一旦出现引用定义，整篇回退整文渲染；
+//  - 缩进 ≥1 的围栏 opener 处于列表项内容语境，静态不可判定 → 整篇回退。
+// 因此：块扫描（围栏感知）→ 安全边界处才允许分片；尾段（最后一组，仍在增长）
+// 整文渲染且不缓存（中间态进缓存只会污染）。安全边界两侧各自整文渲染再拼接
+// 与整文渲染逐字节相等——这是「已闭合块永不重解析」收益的结构前提。
+
+const _FENCE_OPEN = /^ {0,3}(`{3,}|~{3,})/
+const _LIST_LINE = /^ {0,3}(?:[-*+]|\d{1,9}[.)])(?:\s|$)/
+const _REF_DEF = /^ {0,3}\[[^\]\n]+\]:\s*\S/
+
+interface _MdBlock {
+  start: number      // 块首偏移
+  first: string      // 首行原文（边界安全判定用）
+  indent: number     // 首行前导空格数（tab 记 4）
+  inList: boolean    // 该块处于列表游程内：列表标记块 / 游程内的缩进续行块 / 含围栏块（保守）
+}
+
+function _scanMdBlocks(text: string): _MdBlock[] | null {
+  const lines = text.split('\n')
+  type Raw = { start: number; first: string; indent: number; hasMarker: boolean; hasFence: boolean }
+  const raws: Raw[] = []
+  let inFence = false
+  let fenceCh = ''
+  let fenceLen = 0
+  let off = 0
+  let prevBlank = true
+  for (const line of lines) {
+    if (_REF_DEF.test(line)) return null            // 引用定义跨块风险 → 整文回退
+    if (inFence) {
+      const m = /^ {0,3}(`{3,}|~{3,})\s*$/.exec(line)
+      if (m && m[1][0] === fenceCh && m[1].length >= fenceLen) inFence = false
+      off += line.length + 1
+      continue
+    }
+    if (_FENCE_OPEN.test(line)) {
+      if (line[0] === ' ' || line[0] === '\t') return null  // 缩进围栏（列表项内容语境）→ 整文回退
+      const m = _FENCE_OPEN.exec(line)!
+      inFence = true
+      fenceCh = m[1][0]
+      fenceLen = m[1].length
+      if (prevBlank) raws.push({ start: off, first: line, indent: 0, hasMarker: false, hasFence: true })
+      else if (raws.length) raws[raws.length - 1].hasFence = true   // 块中段开围栏 → 该块保守标记
+      prevBlank = false
+      off += line.length + 1
+      continue
+    }
+    if (/^[ \t]*$/.test(line)) {
+      prevBlank = true
+      off += line.length + 1
+      continue
+    }
+    if (prevBlank) {
+      const sp = (/^ */.exec(line) || [''])[0].length
+      raws.push({ start: off, first: line, indent: line[0] === '\t' ? 4 : sp, hasMarker: false, hasFence: false })
+      prevBlank = false
+    }
+    const curRaw = raws[raws.length - 1]
+    if (curRaw && _LIST_LINE.test(line)) curRaw.hasMarker = true
+    off += line.length + 1
+  }
+  // 列表游程：标记块开启；游程内的缩进续行块延续；缩进 0 非标记块结束；
+  // 含围栏的块保守视为游程内（围栏与列表的相对缩进关系静态不可判定）。
+  let runActive = false
+  return raws.map(r => {
+    const inList = r.hasMarker || r.hasFence || (r.indent > 0 && runActive)
+    runActive = inList
+    return { start: r.start, first: r.first, indent: r.indent, inList }
+  })
+}
+
+/** 边界安全判定：prev/next 两块之间能否作为渲染可分解点。 */
+function _boundarySafe(prev: _MdBlock, next: _MdBlock): boolean {
+  if (next.indent >= 4) return false                  // 缩进码块或列表续行，不可静态判定
+  if (_LIST_LINE.test(next.first)) return !prev.inList // 列表后接标记=松列表延续；非列表后=新列表开始
+  if (next.indent > 0) return !prev.inList             // 缩进续行只可能延续列表游程
+  return true                                          // 缩进 0 非标记行必然结束列表 → 安全
+}
+
+/** 导出仅供测试：把 stable 前缀切成 [缓存分片..., 尾段]；null = 整文回退。 */
+export function _splitMdChunks(text: string): { chunks: string[]; tail: string } | null {
+  const blocks = _scanMdBlocks(text)
+  if (blocks === null) return null                      // 引用定义/缩进围栏 → 整文回退
+  if (blocks.length === 0) return { chunks: [], tail: text }
+  // 尾段组 = 以「连续不安全边界」与最后一块相连的组：从末块向前，边界不安全
+  // 则并入尾段组，遇到首个安全边界即停（该安全边界处可以冻结分片）。
+  let tailGroupFirst = blocks.length - 1
+  for (let i = blocks.length - 2; i >= 0; i--) {
+    if (!_boundarySafe(blocks[i], blocks[i + 1])) tailGroupFirst = i
+    else break
+  }
+  // 分片 = 尾段组之前的块，按「安全边界」切组（不安全边界两侧同组合并）
+  const chunks: string[] = []
+  let gs = 0
+  for (let i = 0; i < tailGroupFirst; i++) {
+    if (!_boundarySafe(blocks[i], blocks[i + 1])) continue
+    chunks.push(text.slice(blocks[gs].start, blocks[i + 1].start))
+    gs = i + 1
+  }
+  return { chunks, tail: text.slice(blocks[tailGroupFirst].start) }
+}
+
+/** B3：流式 stable 前缀渐进渲染——已闭合块走分片缓存（永不重解析），
+ *  尾段整文渲染（不缓存）。与 annotateCitations(renderMd(stable)) 逐字节相等。 */
+export const renderMdProgressive = (stable: string): string => {
+  if (!stable) return ''
+  const split = _splitMdChunks(stable)
+  if (!split) return renderMdCached(stable)
+  let html = ''
+  for (const c of split.chunks) html += renderMdCached(c)
+  if (split.tail) html += annotateCitations(renderMd(split.tail))
+  return html
 }
 
 /** 思维链标题净化：只显示 agent 名称，去掉内部阶段后缀与伪标题。 */
@@ -45,8 +184,87 @@ const displayAgent = (name: string) => {
   return base
 }
 
-interface AssistantMessageProps {
+/** 闭环六规范·两级标题：L1 流程节点（弱化灰字）映射表——帧名 → 节点名。
+ *  RC3-S2 废节点治理：仅保留 displayAgent 会截掉真实阶段信息的「·规划/·生成」
+ *  后缀名（映射后仍比裸名多信息）；「知识库管理/学情与记忆管理/审核」等有内容
+ *  链目一律按真实 agent 名独立显示（L2），不再改名归并成「反思」「检索」壳节点
+ *  （owner 反馈①：节点名=真实发生的事）。映射表外任何未知名返回 null = L2 展示。 */
+const FLOW_NODE_MAP: Record<string, string> = {
+  '学习助手·规划': '规划',
+  '学习助手·生成': '生成',
+}
+/** 导出仅供测试（streaming.test 同模式）；运行时组件内使用 */
+export const isFlowNode = (name: string): string | null => FLOW_NODE_MAP[name] ?? null
+
+/** RC3-S2 导出纯函数（原 ReasoningBlock useMemo 内联逻辑逐字提升，供测试直调）：
+ *  思维链条目归并管线——string 归一 → 「运行统计」剔除 → 完成态空内容剔除
+ *  （无内容节点不渲染；流式期保留 step 帧空占位=进行中标记）→ 相邻同名归并+run_ids 去重。 */
+export const mergeThinkItems = (items: Array<{ agent: string; content: string; run_ids?: string[] }> | string[], streaming?: boolean) => {
+  const list = (items || []).map(it => typeof it === 'string' ? { agent: '', content: it, run_ids: [] as string[] } : { ...it, run_ids: Array.from(new Set(it.run_ids || [])) })
+    .filter(it => it.agent !== '运行统计')
+    .filter(it => streaming || (it.content || '').trim().length > 0)
+  return list.reduce<Array<{ agent: string; content: string; run_ids: string[] }>>((acc, it) => {
+    const dn = displayAgent(it.agent)
+    const last = acc[acc.length - 1]
+    if (last && dn && displayAgent(last.agent) === dn) {
+      if (it.content) last.content = (last.content ? last.content + '\n' : '') + it.content
+      for (const rid of it.run_ids) if (!last.run_ids.includes(rid)) last.run_ids.push(rid)
+      return acc
+    }
+    acc.push({ agent: it.agent, content: it.content, run_ids: [...it.run_ids] })
+    return acc
+  }, [])
+}
+
+// ---------- RB-S3：草稿节点渲染（草稿即正文形态） ----------
+/** 重写段识别（导出供测试直调；live 链与落库链同一判定口径，防流式→完成样式跳变）：
+ *  agent=学习助手·生成（重写 #N）→ 返回 N，其余 null。 */
+export const rewriteAttemptOf = (agent: string): number | null => {
+  const m = /^学习助手·生成（重写 #(\d+)）$/.exec(agent || '')
+  return m ? Number(m[1]) : null
+}
+
+/** 重写段分隔小标题——「审核未通过 · 第 N 稿」。N=被拒稿的人类序号（重写段序号+1），
+ *  与后端 _format_review_conclusion 的（第 attempt+1 稿）同口径。 */
+export const rewriteDividerLabel = (attempt: number): string => `审核未通过 · 第 ${attempt + 1} 稿`
+
+/** 生成族节点判定（导出供测试直调）：草稿即正文形态 → 流式期启用 markdown 渲染管线
+ *  （StreamingMd/B3 渐进分片，围栏感知）；其余节点维持纯文本流式渲染。 */
+export const isDraftBodyNode = (agent: string): boolean =>
+  agent === '学习助手·生成' || rewriteAttemptOf(agent) !== null
+
+// ---------- F11-S2：审核全程入思维链 ----------
+/** 审核结论的 markdown 文案（历史消息 msg.review → 思维链条目用，导出供测试直调）。
+ *  与后端 _format_review_conclusion 同语义（新消息由后端 mindchain 携带审核条目，
+ *  此函数只服务「旧消息 think 无审核条目但有 msg.review」的兼容期注入）。 */
+export const formatReviewMd = (review: ReviewResult): string => {
+  const lines: string[] = []
+  if (review.skipped) lines.push(`⏭ 审核跳过（${(review.suggestion || '').slice(0, 60)}），按通过处理`)
+  else lines.push(`${review.passed ? '✅ 审核通过' : '❌ 审核未通过'} · ${review.score}分`)
+  for (const it of (review.issues || []).slice(0, 5)) {
+    lines.push(`- ✗ ${it.problem}${it.fix ? ` → ${it.fix}` : ''}`)
+  }
+  if (!review.skipped && review.suggestion) lines.push(`💡 ${review.suggestion}`)
+  return lines.join('\n')
+}
+
+/** 历史消息兼容注入（导出供测试直调）：think 无「审核」条目且 msg.review 存在时
+ *  合成审核条目 append 到思维链——正文后的审核独立块已删除（S2），旧消息回看
+ *  的审核结论改由思维链区呈现，数据不丢。新消息 think 已含审核条目 → 不重复。 */
+export const withReviewEntry = (
+  think: Message['think'], review?: ReviewResult,
+): Array<{ agent: string; content: string }> => {
+  const items = (think || []).map(it => typeof it === 'string' ? { agent: '', content: it } : it)
+  if (!review) return items
+  if (items.some(it => it.agent === '审核')) return items
+  return [...items, { agent: '审核', content: formatReviewMd(review) }]
+}
+
+export interface AssistantMessageProps {
   msg: Message
+  /** B1：该消息在全量 messages 数组中的下标——回调经 idx 定位目标消息，
+   *  回调引用才能做成全局稳定（memo 生效前提）；同时保证 idx 始终是全量下标。 */
+  msgIndex: number
   isLoading: boolean
   isLast: boolean
   flowActiveAgent?: string | null
@@ -54,9 +272,9 @@ interface AssistantMessageProps {
   /** 本次流式已参与的 agent 序列（step/thought_token 事件收集），标题行展示链条 */
   flowAgents?: string[]
   specialSelectedKeys: string[]
-  onToggleSpecial: (key: string) => void
+  onToggleSpecial: (msgIndex: number, key: string) => void
   specialDismissed: boolean
-  onDismissSpecial: () => void
+  onDismissSpecial: (msgIndex: number) => void
   followups: string[]
   onSendFollowup: (q: string) => void
   onManualSetup?: () => void
@@ -64,21 +282,27 @@ interface AssistantMessageProps {
   onGenerateSpecial?: (keys: string[], content: string) => void
 }
 
-/** AI 回复消息气泡：思考过程 + 回答正文 + 运行统计 + 资源生成建议 + 图片命中 + 审核报告 + 追问。 */
-export default function AssistantMessage({
-  msg, isLoading, isLast, flowActiveAgent, flowStatus, flowAgents,
+/** AI 回复消息气泡：思考过程（含审核结论，S2 起全程在思维链区） + 回答正文 + 运行统计 + 资源生成建议 + 图片命中 + 追问。
+ *  B1：memo 包裹——CenterPanel 侧 16 个 props 全部引用稳定（buildMessageProps 统一推导），
+ *  流式期重渲染被浅比较精确限制在最后一条（msg 引用随帧变化的只有它）。 */
+function AssistantMessageImpl({
+  msg, msgIndex, isLoading, isLast, flowActiveAgent, flowStatus, flowAgents,
   specialSelectedKeys, onToggleSpecial, specialDismissed, onDismissSpecial,
   followups, onSendFollowup, onManualSetup, currentProject, onGenerateSpecial,
 }: AssistantMessageProps) {
   const streaming = isLoading && isLast
   return (
     <>
-      {/* 条目4·实时化：流式期间的子agent直播条（start 即现脉冲chip，完成翻✓）；历史消息不显示 */}
-      {streaming && <SubAgentLiveStrip />}
-      {/* 思考过程区块（DeepSeek 式：流式展开逐字 / 完成自动折叠为一行） */}
+      {/* 条目4·实时化：流式期间的子agent直播条（start 即现脉冲chip，完成翻✓）。
+          RC2-S3（经批准越界）：isLast 持续渲染——done 后观察窗不再消失（owner「对话输入
+          完后检索视窗持久化展示」），下一轮发送 reset 时自然清空；刷新后走 run_ids 回看 */}
+      {isLast && <SubAgentLiveStrip />}
+      {/* 思考过程区块（DeepSeek 式：流式展开逐字 / 完成自动折叠为一行）。
+          F11-S2：withReviewEntry——msg.review 兼容注入为思维链审核条目（历史消息回看） */}
       {msg.think && msg.think.length > 0 && (
         <div className="mb-3">
-          <ReasoningBlock items={msg.think} streaming={streaming} activeAgent={flowActiveAgent} activeStatus={flowStatus} flowAgents={flowAgents} />
+          <ReasoningBlock items={withReviewEntry(msg.think, msg.review)} streaming={streaming} activeAgent={flowActiveAgent} activeStatus={flowStatus} flowAgents={flowAgents}
+            hasAnswer={streaming && !!msg.content} />
         </div>
       )}
       {/* 回答正文：流式逐字纯文本（绝不 markdown）/ 完成一次性 markdown 渲染 */}
@@ -116,7 +340,7 @@ export default function AssistantMessage({
                   const sel = specialSelectedKeys.includes(s.key)
                   return (
                     <button key={s.key}
-                      onClick={() => onToggleSpecial(s.key)}
+                      onClick={() => onToggleSpecial(msgIndex, s.key)}
                       className={"chip text-left text-[11px] px-2.5 py-1 transition-all" + (sel ? '' : ' opacity-40')}>
                       {s.label}
                     </button>
@@ -126,10 +350,10 @@ export default function AssistantMessage({
               <div className="flex items-center justify-end gap-3">
                 <button onClick={() => {
                   if (specialSelectedKeys.length) onGenerateSpecial?.(specialSelectedKeys, msg.content)
-                  onDismissSpecial()
+                  onDismissSpecial(msgIndex)
                 }}
                   className="text-[10px] font-semibold text-[var(--accent)] hover:underline">生成所选</button>
-                <button onClick={onDismissSpecial}
+                <button onClick={() => onDismissSpecial(msgIndex)}
                   className="text-[10px] text-dim hover:text-[var(--text)]">忽略</button>
               </div>
             </div>
@@ -165,30 +389,10 @@ export default function AssistantMessage({
               </div>
             </div>
           )}
-          {/* 审核报告（三维度审查结果） */}
-          {msg.review && (
-            <div className="mt-2.5 border hairline rounded-xl px-3 py-2.5 bg-[var(--bg-panel)]">
-              <div className="flex items-center gap-2 mb-1.5">
-                <p className="text-[10px] font-semibold text-dim flex items-center gap-1">
-                  <CheckCircle2 size={11} /> 审核报告
-                </p>
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${msg.review.passed ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
-                  {msg.review.passed ? '通过' : '未通过'} · {msg.review.score} 分
-                </span>
-              </div>
-              {msg.review.issues && msg.review.issues.length > 0 && (
-                <div className="flex flex-col gap-1 mb-1">
-                  {msg.review.issues.map((it, i) => (
-                    <p key={i} className="text-[10px] text-dim">
-                      <span className="text-red-500">✗</span> {it.problem}
-                      {it.fix ? <span className="text-green-600"> → {it.fix}</span> : ''}
-                    </p>
-                  ))}
-                </div>
-              )}
-              {msg.review.suggestion && <p className="text-[10px] text-dim">💡 {msg.review.suggestion}</p>}
-            </div>
-          )}
+          {/* F11-S2：正文后审核独立块已删除——审核结论全程在思维链区呈现
+              （新消息由后端 mindchain 携带、旧消息经 withReviewEntry 兼容注入），
+              正文输出完成后追加块 = 0。msg.review 字段保留注入（useChatStream done
+              处理不变），仅不再渲染为完成态独立块。 */}
           {/* 新建课程引导消息：右下角「手动初始化」按钮（仅初次创建、未完成手动填写时显示） */}
           {msg.content.includes('课程创建成功') && onManualSetup && !(currentProject && (() => {
             return lsGetJSON<string[]>(LS.manualSetupDone, []).includes(currentProject.id)
@@ -220,8 +424,12 @@ export default function AssistantMessage({
   )
 }
 
-/** 流式 markdown 渐进渲染（reasonix 同款方案）。 */
-function StreamingMd({ text, streaming }: { text: string; streaming?: boolean }) {
+const AssistantMessage = memo(AssistantMessageImpl)
+export default AssistantMessage
+
+/** 流式 markdown 渐进渲染（reasonix 同款方案）。B1：memo 包裹（内部 props 中
+ *  仅 text/streaming 参与浅比较；流式期只有 text 变化的那一条会重渲染）。 */
+const StreamingMd = memo(function StreamingMd({ text, streaming }: { text: string; streaming?: boolean }) {
   const stableEnd = useMemo(() => {
     if (!streaming) return -1
     let e = text.lastIndexOf('\n\n')
@@ -233,7 +441,7 @@ function StreamingMd({ text, streaming }: { text: string; streaming?: boolean })
   const stable = stableEnd > 0 ? text.slice(0, stableEnd) : ''
   const tail = stableEnd > 0 ? text.slice(stableEnd) : text
   const html = useMemo(() => {
-    if (streaming) return stable ? renderMdCached(stable) : ''
+    if (streaming) return stable ? renderMdProgressive(stable) : ''
     return text ? renderMdCached(text) : ''
   }, [streaming, stable, text])
   if (!streaming) {
@@ -246,28 +454,33 @@ function StreamingMd({ text, streaming }: { text: string; streaming?: boolean })
       {tail ? <div className="whitespace-pre-wrap break-words">{tail}</div> : null}
     </div>
   )
-}
+})
 
-/** 思考过程区块（DeepSeek 式独立区块）。条目4：run_ids 并集保留——前端合并与后端 _merge_mindchain 同款陷阱，重建时不得剥字段。 */
-function ReasoningBlock({ items, streaming, activeAgent, activeStatus, flowAgents }: { items: Array<{ agent: string; content: string; run_ids?: string[] }> | string[]; streaming?: boolean; activeAgent?: string | null; activeStatus?: string; flowAgents?: string[] }) {
-  const merged = useMemo(() => {
-    const list = (items || []).map(it => typeof it === 'string' ? { agent: '', content: it, run_ids: [] as string[] } : { ...it, run_ids: Array.from(new Set(it.run_ids || [])) })
-      .filter(it => it.agent !== '运行统计')
-    return list.reduce<Array<{ agent: string; content: string; run_ids: string[] }>>((acc, it) => {
-      const dn = displayAgent(it.agent)
-      const last = acc[acc.length - 1]
-      if (last && dn && displayAgent(last.agent) === dn) {
-        if (it.content) last.content = (last.content ? last.content + '\n' : '') + it.content
-        for (const rid of it.run_ids) if (!last.run_ids.includes(rid)) last.run_ids.push(rid)
-        return acc
-      }
-      acc.push({ agent: it.agent, content: it.content, run_ids: [...it.run_ids] })
-      return acc
-    }, [])
-  }, [items])
+/** 思考过程区块（DeepSeek 式独立区块）。条目4：run_ids 并集保留——前端合并与后端 _merge_mindchain 同款陷阱，重建时不得剥字段。
+ *  闭环六规范·生命周期：首个正文 token 到达 → 整块收为「思考 Xs」（计时自首个思考条目出现起）；完成态保持折叠可重展。
+ *  B1：memo 包裹——流式纯 answer 排水期 think/flow 引用不变 → 本块跳过重渲染；
+ *  折叠/展开是内部 state，不受 memo 影响（外部 props 不变时按原样保留）。 */
+const ReasoningBlock = memo(function ReasoningBlock({ items, streaming, activeAgent, activeStatus, flowAgents, hasAnswer }: { items: Array<{ agent: string; content: string; run_ids?: string[] }> | string[]; streaming?: boolean; activeAgent?: string | null; activeStatus?: string; flowAgents?: string[]; hasAnswer?: boolean }) {
+  // RC3-S2：归并逻辑提升为导出纯函数 mergeThinkItems（逻辑逐字不变，deps 补 streaming——
+  // 流式翻 false 时空占位即可被过滤，不等下一帧）
+  const merged = useMemo(() => mergeThinkItems(items, streaming), [items, streaming])
   const [open, setOpen] = useState(true)
   // 块级折叠（5.2）：流式中非当前输出的 agent 块折叠为小标题行；完成后整块折叠
   const [folded, setFolded] = useState<Record<number, boolean>>({})
+  // 闭环六规范·思考计时：首个思考条目出现起表；首个正文 token 到达收拢并停表（拍板②「思考 Xs」）
+  const [thinkStart, setThinkStart] = useState<number | null>(null)
+  const [thinkSeconds, setThinkSeconds] = useState<number | null>(null)
+  const [answerArrived, setAnswerArrived] = useState(false)
+  // 切片④：节点数量上限的「展开全部」开关
+  const [expandAll, setExpandAll] = useState(false)
+  // RB-S3：草稿流式滚动跟随——增长面在链体内滚容器（md-think-body max-height 320
+  // 自带 overflow-y，外层 stick-to-bottom 跟不到内滚），最后一个生成族条目的
+  // 内滚容器流式期间钉底，草稿逐字可见
+  const draftBodyRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const el = draftBodyRef.current
+    if (el && streaming) el.scrollTop = el.scrollHeight
+  })
   const prevStreaming = useRef(streaming)
   useEffect(() => {
     if (streaming) {
@@ -275,7 +488,12 @@ function ReasoningBlock({ items, streaming, activeAgent, activeStatus, flowAgent
       setFolded(prev => {
         const next: Record<number, boolean> = {}
         merged.forEach((it, i) => {
-          next[i] = !(activeAgent && displayAgent(it.agent) === displayAgent(activeAgent))
+          // RB-S3：生成族节点（草稿即正文形态）流式期保持展开——owner 跟看草稿与
+          // 被拒旧稿（重写段 agent 名≠activeAgent，原逻辑会把流式中的重写段误折）；
+          // 其余节点维持「activeAgent 展开」逻辑
+          next[i] = isDraftBodyNode(it.agent)
+            ? false
+            : !(activeAgent && displayAgent(it.agent) === displayAgent(activeAgent))
         })
         return next
       })
@@ -284,8 +502,32 @@ function ReasoningBlock({ items, streaming, activeAgent, activeStatus, flowAgent
     if (prevStreaming.current && !streaming) setOpen(false)
     prevStreaming.current = streaming
   }, [streaming, activeAgent, merged.length])
+  // 计时起表：首个思考内容到达（流式中且 merged 非空且未起表）
+  useEffect(() => {
+    if (streaming && merged.length > 0 && thinkStart === null) {
+      setThinkStart(Date.now())
+    }
+  }, [streaming, merged.length, thinkStart])
+  // 生命周期锚点：首个正文 token 到达（hasAnswer 翻转 true）→ 收拢 + 停表。完成态不做此转换（保持折叠逻辑）
+  useEffect(() => {
+    if (streaming && hasAnswer && !answerArrived) {
+      setAnswerArrived(true)
+      setOpen(false)
+      setThinkSeconds(ts => (thinkStart && ts === null) ? Math.max(1, Math.round((Date.now() - thinkStart) / 1000)) : ts)
+    }
+    if (!streaming) setAnswerArrived(false)
+  }, [streaming, hasAnswer, answerArrived, thinkStart])
   if (merged.length === 0) return null
   const toggle = () => { if (!streaming) setOpen(o => !o) }
+  const collapsedLabel = thinkSeconds !== null ? `思考 ${thinkSeconds}s` : '思考中…'
+  // 切片④·节点数量上限（拍板确认）：>8 条收中段，首 2 + 尾 6，「+N 早期步骤」展开全部
+  const NODE_CAP = 8
+  const overflow = !expandAll && merged.length > NODE_CAP
+  const visible = overflow
+    ? [...merged.slice(0, 2).map((it, i) => ({ ...it, _i: i })),
+       ...merged.slice(-(NODE_CAP - 2)).map((it, i) => ({ ...it, _i: merged.length - (NODE_CAP - 2) + i }))]
+    : merged.map((it, i) => ({ ...it, _i: i }))
+  const hiddenCount = merged.length - visible.length
   return (
     <div className="reasoning-block">
       <button onClick={toggle} className="flex items-center gap-1 reasoning-title hover:opacity-80 transition-opacity text-left w-full">
@@ -294,27 +536,41 @@ function ReasoningBlock({ items, streaming, activeAgent, activeStatus, flowAgent
         {streaming
           ? (flowAgents && flowAgents.length > 0
               ? <span className="ml-1 font-normal text-[10px] flex items-center gap-0.5">
-                  {flowAgents.map((a, i) => (
-                    <span key={i} className="flex items-center gap-0.5">
-                      {i > 0 && <span className="text-dim">→</span>}
-                      <span className={activeAgent && displayAgent(a) === displayAgent(activeAgent) ? 'text-[var(--accent)]' : ''}>{displayAgent(a)}</span>
-                    </span>
-                  ))}
+                  {flowAgents.map((a, i) => {
+                    const node = isFlowNode(a)
+                    const label = node ?? displayAgent(a)
+                    return (
+                      <span key={i} className="flex items-center gap-0.5">
+                        {i > 0 && <span className="text-dim">→</span>}
+                        <span className={activeAgent && displayAgent(a) === displayAgent(activeAgent)
+                          ? (node ? 'text-[var(--accent)]' : 'text-[var(--accent)] font-semibold')
+                          : 'text-dim'}>{label}</span>
+                      </span>
+                    )
+                  })}
                 </span>
               : <span className="ml-1 font-normal text-[10px]">{activeStatus || '思考中…'}</span>)
-          : <span className="ml-1 font-normal text-[10px] text-dim">已完成</span>}
+          : <span className="ml-1 font-normal text-[10px] text-dim">{collapsedLabel !== '思考中…' ? collapsedLabel : '已完成'}</span>}
       </button>
       {open && (
         <div className="mt-1.5 flex flex-col gap-2">
-          {merged.map((it, i) => {
+          {visible.map((it, idx) => {
+            const i = it._i            // 原始索引（folded/展开态 keyed by 全量序列）
             const isFolded = !!folded[i]
+            const node = isFlowNode(it.agent)          // L1：流程节点名（null = L2 agent 名）
+            const l2name = displayAgent(it.agent)
+            const rwa = rewriteAttemptOf(it.agent)     // RB-S3：重写段（分隔标注+视觉分隔）
+            const isLastEntry = i === merged.length - 1
             return (
-            <div key={i} className="animate-[fadeIn_0.15s_ease]">
+            <div key={i} className={"animate-[fadeIn_0.15s_ease]" + (rwa !== null ? " border-t hairline pt-1.5 mt-0.5" : "")}>
               {it.agent && merged.length > 1 && (
                 <button onClick={() => setFolded(f => ({ ...f, [i]: !f[i] }))}
-                  className="flex items-center gap-1 text-[11px] font-semibold mb-0.5 text-[var(--text)] hover:opacity-80 text-left">
-                  <span className="text-[9px] text-dim flex-shrink-0">{isFolded ? '▸' : '▾'}</span>
-                  {displayAgent(it.agent)}
+                  className={"flex items-center gap-1 mb-0.5 text-left hover:opacity-80 " +
+                    (node
+                      ? 'text-[11px] text-dim'                       // L1 流程节点：弱化灰字
+                      : 'text-[11px] font-semibold text-[var(--text)]')}>  {/* L2 agent 名：当前样式 */}
+                  <span className="text-[9px] flex-shrink-0">{isFolded ? '▸' : '▾'}</span>
+                  {rwa !== null ? rewriteDividerLabel(rwa) : (node ?? l2name)}
                   {isFolded && <span className="text-[9px] font-normal text-dim">（已折叠）</span>}
                 </button>
               )}
@@ -329,19 +585,52 @@ function ReasoningBlock({ items, streaming, activeAgent, activeStatus, flowAgent
                 </button>
               )}
               {!isFolded && (
-              <div className="text-[11px] leading-relaxed text-dim">
-                {streaming ? (
-                  <div className="whitespace-pre-wrap break-words">{it.content}</div>
-                ) : (
-                  <div className="md-think-body" dangerouslySetInnerHTML={{ __html: renderMdCached(it.content) }} />
-                )}
+              <div ref={streaming && isLastEntry && isDraftBodyNode(it.agent) ? draftBodyRef : undefined}
+                className="text-[11px] leading-relaxed text-dim md-think-body">
+                {(() => {
+                  // RC3-S3：命中内容块卡片迁移进检索观察窗（🛰 按钮/↗ 点开即见，可展开全文，
+                  // 刷新经 run_ids→REST 档案回看仍在）——思维链面只留一行定长短指引
+                  // （owner 反馈②「不是出现在这个地方，而是点开检索视窗里面」）。
+                  // splitHitSection 的 md 解析契约保持（后端双写不变，只改渲染位置）；
+                  // 无标记内容走既有原渲染路径（字面量保持 RB-S3 结构守卫所钉原样，零行为变化）
+                  const sec = splitHitSection(it.content)
+                  if (sec.hits.length === 0) {
+                    return (<>
+                      {streaming ? (
+                        isDraftBodyNode(it.agent) ? (
+                          // RB-S3：草稿即正文形态——复用正文同款 B3 渐进 markdown 管线
+                          //（围栏感知分片，代码块流式期即渲染），完成态仍走整文缓存
+                          <StreamingMd text={it.content} streaming />
+                        ) : (
+                          <div className="whitespace-pre-wrap break-words">{it.content}</div>
+                        )
+                      ) : (
+                        <div dangerouslySetInnerHTML={{ __html: renderMdCached(it.content) }} />
+                      )}
+                    </>)
+                  }
+                  return (<>
+                    {streaming ? (
+                      <div className="whitespace-pre-wrap break-words">{sec.head}</div>
+                    ) : (
+                      <div dangerouslySetInnerHTML={{ __html: renderMdCached(sec.head) }} />
+                    )}
+                    <div className="text-[10px] text-dim my-1">{hitGuideLabel(sec.hits.length)}</div>
+                  </>)
+                })()}
               </div>
               )}
             </div>
             )
           })}
+          {overflow && (
+            <button onClick={() => setExpandAll(true)}
+              className="self-center text-[10px] text-dim hover:text-[var(--text)] px-2 py-0.5 rounded-lg border hairline row-hover transition-colors">
+              +{hiddenCount} 个早期步骤
+            </button>
+          )}
         </div>
       )}
     </div>
   )
-}
+})

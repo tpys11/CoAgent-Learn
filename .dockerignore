@@ -1,0 +1,11 @@
+# N3 子步骤 1（方案 A）配套：构建上下文改为仓库根后的防爆配置。
+# 任何一条漏配都会把垃圾吸进镜像或拖慢上下文上传（决策 19：镜像 = 已验证的确切制品）。
+.git/
+.venv/
+docs/
+data/*.db*
+# F13-S1：预设资源库（入库 3 文件 ~7MB；owner 全量 108MB 只进数据卷）不进镜像与构建上下文
+data/preset_library/
+frontend/node_modules/
+frontend/dist/
+**/__pycache__/

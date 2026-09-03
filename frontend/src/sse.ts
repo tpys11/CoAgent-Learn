@@ -1,12 +1,13 @@
 import type { ChatStep, MindchainItem, ReviewResult, SubAgentSse } from './types'
 
-/** 后端 /api/chat SSE 事件的完整类型（8 类 + start/heartbeat）。 */
+/** 后端 /api/chat SSE 事件的完整类型（8 类 + start/heartbeat + A2 answer_reset）。 */
 export type ChatEvent =
   | { type: 'start'; request_id: string }
   | { type: 'heartbeat' }
   | { type: 'step'; agent: string }
   | { type: 'thought_token'; agent: string; chunk: string }
-  | { type: 'answer_token'; chunk: string }
+  | { type: 'answer_token'; chunk: string; /** A2：所属稿号（重试递增），旧 2 元组帧为 0 */ attempt?: number }
+  | { type: 'answer_reset'; /** A2：被作废的稿号 */ attempt: number; reason: string }
   | SubAgentSse
   | {
       type: 'done'
@@ -17,6 +18,10 @@ export type ChatEvent =
       special_suggestions?: Array<{ key: string; label: string }>
       retrieved_images?: Array<{ source: string; content: string; file_path: string; mime: string }>
       review?: ReviewResult
+      /** 闭环七（资源生成分支）：资源收养三件套——前端据此绑定 dialogue→resource 转编辑模式 */
+      resource_id?: string
+      name?: string
+      difficulty?: number | null
     }
   | { type: 'error'; message: string }
 

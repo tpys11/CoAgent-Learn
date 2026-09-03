@@ -12,24 +12,25 @@
 import json
 import logging
 import queue
+import sqlite3
 import threading
 
 from fastapi.responses import StreamingResponse
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "deepseek-v4-flash-vision-exp"
+from core.model_provider import MODEL_MAIN  # noqa: E402  # 模型名单一事实源
+
+DEFAULT_MODEL = MODEL_MAIN
 
 # 极速档字数约束（自旧引擎常量平移，语义不变）
 FAST_WORD_MIN, FAST_WORD_MAX, FAST_WORD_HARD = 500, 800, 1000
-# 思考/研究档字数约束（对话模式.md 定稿；Loop4.5 仅重建了极速档，此处补齐另两档）
-THINK_WORD_MIN, THINK_WORD_MAX, THINK_WORD_HARD = 800, 1200, 1500
-RESEARCH_WORD_MIN, RESEARCH_WORD_MAX, RESEARCH_WORD_HARD = 1500, 2000, 3000
-# 思考/研究档字数约束（对话模式.md 定稿；Loop4.5 仅重建了极速档，此处补齐另两档）
+# 思考/研究档字数约束（对话模式.md 定稿）
 THINK_WORD_MIN, THINK_WORD_MAX, THINK_WORD_HARD = 800, 1200, 1500
 RESEARCH_WORD_MIN, RESEARCH_WORD_MAX, RESEARCH_WORD_HARD = 1500, 2000, 3000
 
 from engine.mindchain import merge_consecutive  # noqa: E402
+from engine.sse_pump import SSEBatcher  # noqa: E402  # A1：answer 合批 + 空闲心跳收敛（纯逻辑，无循环依赖）
 
 
 def engine_mode() -> str:
@@ -38,28 +39,187 @@ def engine_mode() -> str:
     return os.environ.get("CHAT_ENGINE", "v2")
 
 
+# 修复⑤（F4′，owner 拍板改对）：前端 CenterPanel 存的是裸 base64（不带 mime），
+# 生成侧 data URL 此前恒拼 image/png——传 JPEG/GIF/WebP 时声明是 png、字节却是
+# 别的格式（今天能工作只因 DeepSeek vision 忽略声明 mime，依赖上游宽容度不是
+# 正确实现；F6 已让 jpg/jpeg/gif/webp 成为官方可选路径，硬编码会被真实触发）。
+# 从 base64 前缀魔数推断真实格式（各自首字节不同，前缀互斥）：
+# PNG iVBORw0KGgo(\x89PNG) / JPEG /9j/(\xff\xd8\xff) / GIF R0lGOD(GIF8) / WebP UklGRg(RIFF)
+_IMG_B64_MAGIC = (
+    ("/9j/", "image/jpeg"),
+    ("R0lGOD", "image/gif"),
+    ("UklGRg", "image/webp"),
+    ("iVBORw0KGgo", "image/png"),
+)
+
+
+def _sniff_image_mime(b64: str) -> str:
+    """从 base64 前缀魔数推断图片真实 mime；无法识别时回退 image/png（保持旧行为）并记日志。"""
+    b64 = (b64 or "").lstrip()
+    for prefix, mime in _IMG_B64_MAGIC:
+        if b64.startswith(prefix):
+            return mime
+    logger.warning("图片附件 base64 魔数无法识别（前 8 字符：%r），mime 回退 image/png",
+                   b64[:8])
+    return "image/png"
+
+
+# RB-S4：检索命中预览 snippet 长度（80→240 增厚；payload 权衡：top3×240 字可控）
+_SEARCH_SNIPPET_LEN = 240
+
+
+def _format_search_detail(meta: dict, results: list) -> str:
+    """F11-S1：检索节点内容事件文案——改写 query + top 命中预览（source/chunk/融合分）。
+    纯函数供 pytest 直调；截断防爆：query ≤6 个各 40 字、命中 top3、
+    snippet 240 字（RB-S4 增厚 80→240，常量参数化）、source 60 字——产出长度有界
+    （tests/test_f11_s1_events.py R4 与 tests/test_rb_s4_thickening.py 钉住）。
+    markdown 方言仅用粗体/行内码/编号列表（F8 renderMd 管线原生支持）。"""
+    m = meta or {}
+    qs = [str(q).strip()[:40] for q in (m.get("queries") or [])[:6] if str(q).strip()]
+    lines: list[str] = []
+    if qs:
+        lines.append("**检索查询**：" + "、".join("`" + q + "`" for q in qs))
+    hits: list[str] = []
+    for r in (results or [])[:3]:
+        if not isinstance(r, dict):
+            continue
+        rmeta = r.get("metadata") or {}
+        src = str(rmeta.get("source") or r.get("title") or "未知来源")[:60]
+        seg = f"{len(hits) + 1}. {src}"
+        ch = rmeta.get("chunk")
+        if ch is not None:
+            seg += f" #chunk-{ch}"
+        sc = r.get("rrf_score")
+        if isinstance(sc, (int, float)):
+            seg += f"（融合分 {sc}）"
+        snippet = str(r.get("content") or "").strip()[:_SEARCH_SNIPPET_LEN]
+        if snippet:
+            seg += f"：{snippet}"
+        hits.append(seg)
+    lines.append("**命中预览**：" + ("（本轮无命中）" if not hits else ""))
+    lines.extend(hits)
+    return "\n".join(lines)
+
+
+# RC2-S1：检索命中内容块——观察窗 hits 事件与思维链双写共用数据源（截断防爆参数沿 RA5 风格）
+_HIT_BLOCKS_MAX = 5     # top5：载荷上限（5 块 ×240 字 ≈1.2KB/事件，SSE 合批窗口可容纳）
+_HIT_TITLE_LEN = 60     # title/source 同宽 60 字（_format_search_detail source 同款）
+
+
+def _hit_blocks(results: list) -> list:
+    """RC2-S1：终筛留存命中 → 结构化内容块（top5）。纯函数供 pytest 直调。
+    截断防爆是硬约束：检索片段是切块、单块可能很大，content 只取前 240 字
+    （与 _SEARCH_SNIPPET_LEN 同档），title/source 各 60——绝不发全量 chunk 原文。"""
+    blocks: list = []
+    for r in (results or [])[:_HIT_BLOCKS_MAX]:
+        if not isinstance(r, dict):
+            continue
+        rmeta = r.get("metadata") or {}
+        blocks.append({
+            "title": str(r.get("title") or "")[:_HIT_TITLE_LEN],
+            "source": str(rmeta.get("source") or r.get("title") or "未知来源")[:_HIT_TITLE_LEN],
+            "content": str(r.get("content") or "").strip()[:_SEARCH_SNIPPET_LEN],
+        })
+    return blocks
+
+
+def _format_hit_blocks_md(blocks: list) -> str:
+    """RC2-S1：命中块 → 思维链 markdown（与 hits 事件同源；空列表返回空串由调用方跳过）。
+    markdown 方言仅用粗体/编号列表（renderMd 管线原生支持，与 _format_search_detail 同款）。"""
+    if not blocks:
+        return ""
+    lines = ["**命中内容块**："]
+    for i, b in enumerate(blocks, 1):
+        # RC2-S3 消费端契约：块内容/标题折叠为单行（切块常含换行，多行会破坏
+        # 思维链面 splitHitSection 逐行解析）；观察窗 hits 事件仍携原始多行文本
+        title = " ".join((b["title"] or b["source"] or "未命名块").split())
+        content = " ".join(b["content"].split())
+        lines.append(f"{i}. **{title}**（{b['source']}）：{content}")
+    return "\n".join(lines)
+
+
+def _format_review_conclusion(verdict: dict, attempt: int, template: str) -> str:
+    """F11-S2：审核结论文案（流式事件与 mindchain 条目共用，纯函数供 pytest 直调）。
+    verdict 兼容 review_once（passed/score/reasons/skipped）与 review_claims 超集
+    （issues/claims）；截断防爆：problem/fix 各 100 字、issues top5。"""
+    score = verdict.get("score")
+    if verdict.get("skipped"):
+        head = f"⏭ 审核跳过（{str(verdict.get('reasons') or '')[:60]}），按通过处理"
+    elif verdict.get("passed"):
+        head = f"✅ 审核通过 · {score}分"
+    else:
+        head = f"❌ 审核未通过 · {score}分"
+    lines = [head]
+    claims = verdict.get("claims") or []
+    if template == "研究" and claims:
+        sup = sum(1 for c in claims if isinstance(c, dict) and c.get("label") == "supported")
+        lines.append(f"断言支撑 {sup}/{len(claims)}")
+    for it in (verdict.get("issues") or [])[:5]:
+        if not isinstance(it, dict):
+            continue
+        problem = str(it.get("problem") or "")[:100]
+        fix = str(it.get("fix") or "")[:100]
+        lines.append(f"- ✗ {problem}" + (f" → {fix}" if fix else ""))
+    if attempt > 0:
+        lines.append(f"（第 {attempt + 1} 稿）")
+    return "\n".join(lines)
+
+
 # --- 模型接缝（测试在此打补丁注入 FakeLLM） ---
+
+# D2：LLM client 进程级缓存——浪费点在 OpenAI() 每次新建 HTTP 连接池（TCP/TLS 握手+内存），
+# 同 (api_key, base_url, model, thinking, effort) 组合全程复用同一 DeepSeekLLM 实例
+# （实测基线：思考档单轮 OpenAI 构造 4 次 → 缓存后 2 次，见 docs/progress/step-D.md）。
+# 安全红线：缓存 key 用 sha256(api_key) 前 16 位摘要——Key 明文不进 key/日志/落盘（有守卫测试）。
+# 双检锁：S3 Assess 在独立线程与 S2 Retrieve 并发取快模型，防竞态双建。
+# 测试语义：76 处用例经 monkeypatch 整体替换本函数打桩（缓存不参与）；重试环复用同一
+# llm_gen 实例的语义不变（llm_gen 单轮内仍只取一次）。
+import hashlib as _hashlib
+import threading as _threading
+
+_LLM_CACHE: dict = {}
+_LLM_CACHE_LOCK = _threading.Lock()
+
+
+def _llm_cache_key(api_key, base_url, model, thinking, effort):
+    """缓存 key：sha256(api_key) 前 16 位摘要 + 其余组合参数——Key 明文绝不入 key（安全红线）。"""
+    digest = _hashlib.sha256((api_key or "").encode("utf-8")).hexdigest()[:16]
+    return (digest, base_url or "", model or "", thinking, effort)
+
+
+def _cached_llm(api_key, base_url, model, thinking, effort, build):
+    key = _llm_cache_key(api_key, base_url, model, thinking, effort)
+    llm = _LLM_CACHE.get(key)
+    if llm is not None:
+        return llm
+    with _LLM_CACHE_LOCK:
+        llm = _LLM_CACHE.get(key)  # 双检：并发线程只建一次
+        if llm is None:
+            llm = build()
+            _LLM_CACHE[key] = llm
+    return llm
+
 
 def _make_llm(req, model_override=None):
     from core.base_llm import DeepSeekLLM
     from core.config import config as _cfg
-    return DeepSeekLLM(
-        api_key=req.api_key or _cfg.DEEPSEEK_API_KEY,
-        model=model_override or req.model or DEFAULT_MODEL,
-        base_url=req.base_url,
-    )
+    api_key = req.api_key or _cfg.DEEPSEEK_API_KEY
+    model = model_override or req.model or DEFAULT_MODEL
+    return _cached_llm(
+        api_key, req.base_url, model, None, None,
+        lambda: DeepSeekLLM(api_key=api_key, model=model, base_url=req.base_url))
 
 
 def _make_fast_llm(req):
     """快模型：同通道关思考（现版规则：未配置独立快模型时=主模型关thinking）。"""
     from core.base_llm import DeepSeekLLM
     from core.config import config as _cfg
-    return DeepSeekLLM(
-        api_key=req.api_key or _cfg.DEEPSEEK_API_KEY,
-        model=req.model or DEFAULT_MODEL,
-        base_url=req.base_url,
-        thinking=False,
-    )
+    api_key = req.api_key or _cfg.DEEPSEEK_API_KEY
+    model = req.model or DEFAULT_MODEL
+    return _cached_llm(
+        api_key, req.base_url, model, False, None,
+        lambda: DeepSeekLLM(api_key=api_key, model=model, base_url=req.base_url,
+                            thinking=False))
 
 
 def _persist_user_message(req, pid: str, did: str) -> None:
@@ -69,9 +229,24 @@ def _persist_user_message(req, pid: str, did: str) -> None:
         pg_client.execute(
             "INSERT INTO dialogues(id,project_id,session_id,name) VALUES(%s,%s,%s,%s)",
             (did, pid, req.session_id or "default", "新对话"))
-    pg_client.execute(
-        "INSERT INTO messages(dialogue_id,role,content) VALUES(%s,%s,%s)",
-        (did, "user", req.message))
+    # D4 重试幂等：带 client_msg_id 时先查后插——查到即视为上次重试已入库，跳过；
+    # 先查后插的并发窗口由部分唯一索引 uq_messages_client_msg_id 兜底
+    # （唯一冲突=已存在 → 跳过插入，不是报错）。空串（旧客户端/手工请求）存 NULL，
+    # 不参与去重，行为与改动前完全一致。
+    cmid = (getattr(req, "client_msg_id", "") or "").strip()
+    if cmid:
+        dup = pg_client.execute(
+            "SELECT 1 FROM messages WHERE role=%s AND client_msg_id=%s LIMIT 1",
+            ("user", cmid))
+        if dup:
+            return
+    try:
+        pg_client.execute(
+            "INSERT INTO messages(dialogue_id,role,content,client_msg_id) "
+            "VALUES(%s,%s,%s,%s)",
+            (did, "user", req.message, cmid or None))
+    except sqlite3.IntegrityError:
+        logger.info("[v2] 用户消息幂等命中（client_msg_id=%s…），跳过重复入库", cmid[:12])
 
 
 def _persist_assistant_message(did: str, reply: str) -> None:
@@ -121,7 +296,7 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         effective_model = req.model
         try:
             if raw_settings.get("modelAuto") or raw_settings.get("auto"):
-                from main import _auto_settings
+                from services.chat_context import _auto_settings
                 tpl0 = raw_settings.get("template") or "思考"
                 _auto = _auto_settings(req.api_key, req.message, tpl0,
                                        infer_model=bool(raw_settings.get("modelAuto")))
@@ -135,7 +310,7 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         # --- 会话上下文快照：画像缓存 + 历史预算块（复用主模块已验证的预取逻辑） ---
         template = raw_settings.get("template") or "思考"
         try:
-            from main import _build_preloaded
+            from services.chat_context import _build_preloaded
             preloaded = _build_preloaded(pid, did, req.message)
         except Exception:
             logger.exception("[v2] 预取会话上下文失败")
@@ -158,31 +333,41 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
 
         # 特殊输入解析（消息内URL并行抓取并入文；无URL原样返回）
         try:
-            from main import _parse_special_inputs
+            from services.chat_context import _parse_special_inputs
             working_message = _parse_special_inputs(req.message)
         except Exception:
             logger.exception("[v2] 特殊输入解析失败")
             working_message = req.message
 
         # --- S1 Plan ---
-        from engine.planning import classify_intent, is_rule_simple
+        # RC2-S2：删 is_rule_simple 规则短路（owner 裁定 09-02）——所有输入统一走
+        # classify_intent LLM 真实分析：规则捷径把 ≤30 字消息打成 simple_direct，
+        # 规划节点因此无思考可显（owner「只是一次简单判断」根因之一）；simple_direct
+        # 判定权交还 LLM，该档仍只有 _plan_pt 一行（简单请求不伪装深度思考）
+        from engine.planning import classify_intent
         token_queue.put(("step", "学习助手·规划"))
-        if is_rule_simple(req.message):
-            plan_thinking = ""
-            plan = {"complexity": "simple_direct"}
-        else:
-            try:
-                plan_thinking, plan = classify_intent(
-                    _make_fast_llm(req), req.message, template)
-            except Exception:
-                logger.exception("[v2] 意图分类失败，回落 standard")
-                plan_thinking, plan = "", {"complexity": "standard"}
+        try:
+            plan_thinking, plan = classify_intent(
+                _make_fast_llm(req), req.message, template)
+        except Exception:
+            logger.exception("[v2] 意图分类失败，回落 standard")
+            plan_thinking, plan = "", {"complexity": "standard"}
         if plan_thinking.strip():
             mindchain_entries.append({"agent": "学习助手·规划",
-                                      "content": plan_thinking.strip()[:800]})
+                                      "content": plan_thinking.strip()})
+            # RB-S4：规划思考流式化——plan_thinking 原先只进 mindchain_entries，
+            # 流式期规划节点只有一行要点；补发 token 事件让 LLM 规划分析流内可见
+            # （双写已由上方 append 承担，符合 F11「事件+持久」双写纪律）
+            token_queue.put(("token", "学习助手·规划", plan_thinking.strip()))
         _trace("plan", input_digest=req.message[:200],
                output_digest=json.dumps({"complexity": plan["complexity"]}, ensure_ascii=False))
         ctx_steps.append({"agent": "学习助手·规划", "status": "done", "detail": "意图分类完成"})
+        # F11-S1：规划节点内容化——要点进思维链（token 事件流式 + mindchain_entries 持久双写；
+        # done 帧无条件替换前端流式内容，只发事件会「闪现后消失」，故必须双写）
+        _plan_pt = (f"规划要点：复杂度 {plan['complexity']} · {template}档 · "
+                    + ("需检索知识库" if plan["complexity"] != "simple_direct" else "简单直答，不检索"))
+        token_queue.put(("token", "学习助手·规划", _plan_pt))
+        mindchain_entries.append({"agent": "学习助手·规划", "content": _plan_pt})
 
         recent_digest = "\n".join(
             f"{m.get('role')}: {str(m.get('content'))[:120]}"
@@ -202,7 +387,8 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
 
         # --- S2 Retrieve（模式权威：思考/研究必检索，极速不检索；simple_direct 已在上方短路） ---
         search_results: list = []
-        # 研究档强制两轮递归（模式契约"必开两轮"，设计稿S2/矩阵）；research_deep 分类同样两轮
+        # 研究档进 B2-lite 分解链（契约替代 D-新1：旧"强制两轮 angle 递归"已退役，见 retrieve.py）；
+        # rounds≥2 即研究链，research_deep 分类同享
         _rounds = 2 if (template == "研究" or plan["complexity"] == "research_deep") else 1
         _search_meta: dict = {}
         if plan["complexity"] != "simple_direct" and template != "极速":
@@ -222,7 +408,7 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                     try:
                         _sa_record(_sa_rid, type_, **payload)
                     except Exception:
-                        pass
+                        logger.debug("观察窗档案写入失败（SSE 通道不受扰）", exc_info=True)
                     token_queue.put(("subagent", {"type": type_, "run_id": _sa_rid,
                                                   "agent": "知识库管理", **payload}))
 
@@ -244,10 +430,15 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
             except Exception:
                 logger.exception("[v2] 检索阶段失败，降级无检索生成")
                 _sa_gate_ok = False
+            _hit_structs = _hit_blocks(search_results)  # RC2-S1：终筛留存命中块（top5 截断防爆）
             if _sa_gate_ok:
                 _kept = len(search_results)
                 _raw = _search_meta.get("raw_count", _kept)
                 _summary = f"候选 {_raw} → 留存 {_kept}"
+                if _hit_structs and _sa_emit:
+                    # RC2-S1：命中内容块先于 end 冻结入观察窗（点击展开可见具体内容）；
+                    # _sa_emit 同步落 subagent_runs 档案，REST 回看通道自动覆盖
+                    _sa_emit("hits", hits=_hit_structs)
                 _sa_finish(_sa_rid, status="ok", summary=_summary)
                 token_queue.put(("subagent", {"type": "end", "run_id": _sa_rid,
                                               "agent": "知识库管理",
@@ -260,9 +451,22 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                                                       "agent": "知识库管理", "status": "error",
                                                       "summary": "检索降级或观测中断"}))
                     except Exception:
-                        pass
+                        logger.debug("error 路径观察窗收尾失败", exc_info=True)
             ctx_steps.append({"agent": "知识库管理", "status": "done",
                               "detail": f"检索{len(search_results)}条"})
+            # RC2-S1：命中内容块思维链双写（token 事件 + mindchain_entries 同源）——
+            # 只发事件 done 权威替换会打回原形（F11 注释真 bug）；merge_consecutive 只保
+            # agent/content 两字段，故块内容以 markdown 进 content（截断已由 _hit_blocks 保证）
+            if _hit_structs:
+                _hit_md = _format_hit_blocks_md(_hit_structs)
+                token_queue.put(("token", "知识库管理", _hit_md))
+                mindchain_entries.append({"agent": "知识库管理", "content": _hit_md})
+            # F11-S1：检索节点内容化——query 与命中预览（source/chunk/融合分，截断防爆）
+            # 进思维链，同款「token 事件 + mindchain 双写」；与既有 step/thought_token
+            # 词汇表对齐（复用 :378 输出策略 / :511 审核同款通道），零新协议。
+            _search_detail = _format_search_detail(_search_meta, search_results)
+            token_queue.put(("token", "知识库管理", _search_detail))
+            mindchain_entries.append({"agent": "知识库管理", "content": _search_detail})
             _trace("retrieve", input_digest=req.message[:200],
                    output_digest=json.dumps(
                        {"kept": len(search_results),
@@ -286,7 +490,7 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                 assess_exec.shutdown(wait=False)
         if assess_thinking:
             mindchain_entries.append({"agent": "学情与记忆管理",
-                                      "content": assess_thinking[:800]})
+                                      "content": assess_thinking})
         ctx_steps.append({"agent": "学情与记忆管理", "status": "done",
                           "detail": ("水平评估完成" if assess_score is not None else "规则地板")})
         _trace("assess", input_digest=req.message[:200],
@@ -300,18 +504,29 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         strategy_id = _os.route(template, t_val)
         strategy_text = _os.directive(strategy_id, t_val)
         _basis = (f"level={assess_score:.2f}" if assess_score is not None else "规则地板")
-        token_queue.put(("token", "输出策略",
-                         f"{_os.strategy_name(strategy_id)} T={t_val:.2f}（{_basis}）"))
+        # RB-S4：策略增厚——一行摘要头 + directive 全文。策略全文挂在本 token 上：
+        # directive 在 :447 才可算，晚于规划事件，不得把计算前移（会改变 T 路由
+        # 依赖的 profile_cache 时序）
+        _strategy_head = f"{_os.strategy_name(strategy_id)} T={t_val:.2f}（{_basis}）"
+        token_queue.put(("token", "输出策略", _strategy_head + "\n" + strategy_text))
+        # RB-S4：策略全文双写 mindchain_entries（F11 双写纪律：只发事件会「闪现后
+        # 消失」——done 权威替换把流式内容打回原形；此前输出策略只有 token 无条目
+        # 正是该坑的存量实例，本笔一并补齐）
+        mindchain_entries.append({"agent": "输出策略",
+                                  "content": _strategy_head + "\n" + strategy_text})
 
         # --- S4 Generate × S5 ReviewGate（研究必开/思考可配/极速关） ---
-        from engine.review import REVIEW_MAX_RETRY, pick_judge_llm, review_enabled, review_once
+        from engine.review import (REVIEW_MAX_RETRY, pick_judge_llm, review_claims,
+                                   review_enabled, review_once)
         gate_on = review_enabled(template, raw_settings)
         token_queue.put(("step", "学习助手·生成"))
         collected: list[str] = []
 
         def _on_content(piece):
             collected.append(piece)
-            token_queue.put(("answer", piece))
+            # A2：attempt 随帧透传——前端可区分旧稿/新稿 token（attempt 在
+            # 下方重试环中递增，闭包按调用时绑定取当前值）
+            token_queue.put(("answer", piece, attempt))
 
         # 强模型思考流内实时可见（v1 对齐），同时累积供思维链持久化
         gen_reasoning: list[str] = []
@@ -333,6 +548,9 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         else:
             base_system += (f"\n【输出要求】回答控制在 {THINK_WORD_MIN}-{THINK_WORD_MAX} 字"
                             f"（硬上限 {THINK_WORD_HARD} 字）。")
+        # T56：前端 KaTeX 渲染管线只认 $ / $$ 定界，模型惯用的 \( \) 定界会渲染为纯文本——生成侧声明统一
+        base_system += ("\n【公式格式】数学公式一律用 $...$（行内）或 $$...$$（独立成块）定界，"
+                        "禁止使用 \\( \\) 或 \\[ \\] 定界。")
         # 画像/历史上下文注入（v1 对齐）：用户背景、偏好、早期摘要、近期原文
         context_blocks = ""
         if profile_cache.get("用户背景"):
@@ -349,29 +567,55 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         if recent:
             context_blocks += "【近期对话】\n" + "\n".join(
                 f"{m.get('role')}: {str(m.get('content'))[:200]}" for m in recent[-6:]) + "\n"
-        user_content = context_blocks + working_message
-        if search_results:
-            user_content = ("【检索结果】\n" + json.dumps(search_results, ensure_ascii=False)
-                            + "\n\n（优先基于以上检索结果回答；凡取自检索内容的论断，"
-                            "须在句末标注来源，格式：[来源: 文档标题]；未覆盖部分用通识作答，"
-                            "并注明为模型自有知识。）\n\n" + user_content)
-        elif template != "极速" and plan["complexity"] != "simple_direct":
-            # 诚实边界（主Agent文档定稿）：知识型问题检索零留存 → 第一句强制申明，通识标注自有
-            user_content = ("⚠️ 本轮检索未获得相关内容。你的回答第一句话必须是："
-                            "\"⚠️ 未在知识库中检索到相关内容\"；随后以模型通识作答，"
-                            "并明确注明哪些内容属于模型自有知识、未经知识库验证。\n\n"
-                            + user_content)
-        user_msg = {"role": "user", "content": user_content}
-        if req.image:
-            user_msg = {"role": "user", "content": [
-                {"type": "text", "text": working_message},
-                {"type": "image_url",
-                 "image_url": {"url": "data:image/png;base64," + (req.image or "")}},
-            ]}
+        def _build_user_msg(results):
+            """组装生成侧 user 消息——证据块构建独立成函数：召回审核拿到新证据后
+            重建 user_msg，修复"重试环证据不更新"（旧实现重试仅换 system 反馈文本）。"""
+            user_content = context_blocks + working_message
+            if results:
+                # A1 父子块：兄弟聚合出的章节全文单独成块（引用粒度仍指子块）
+                sections = []
+                seen_sec: set = set()
+                for r in results:
+                    pc = (r or {}).get("parent_context") or {}
+                    p = pc.get("path")
+                    if p and p not in seen_sec and pc.get("text"):
+                        seen_sec.add(p)
+                        sections.append((p, pc["text"]))
+                    if len(sections) >= 2:
+                        break
+                blocks = "【检索结果】\n" + json.dumps(results, ensure_ascii=False) \
+                         + "\n\n（优先基于以上检索结果回答；凡取自检索内容的论断，" \
+                           "须在句末标注来源，格式：[来源: 文档标题]；未覆盖部分用通识作答，" \
+                           "并注明为模型自有知识。）"
+                if sections:
+                    sec_text = "\n\n".join(f"◇ {p}\n{t}" for p, t in sections)
+                    blocks += "\n\n【相关章节全文】\n" + sec_text \
+                              + "\n（上列为命中片段所在章节的完整上下文，供你通读定位，不必逐条引用。）"
+                user_content = blocks + "\n\n" + user_content
+            elif template != "极速" and plan["complexity"] != "simple_direct":
+                # 诚实边界（主Agent文档定稿）：知识型问题检索零留存 → 第一句强制申明，通识标注自有
+                user_content = ("⚠️ 本轮检索未获得相关内容。你的回答第一句话必须是："
+                                "\"⚠️ 未在知识库中检索到相关内容\"；随后以模型通识作答，"
+                                "并明确注明哪些内容属于模型自有知识、未经知识库验证。\n\n"
+                                + user_content)
+            user_msg = {"role": "user", "content": user_content}
+            if req.image:
+                # 修复⑤（F4′）：mime 从 base64 魔数推断，不再恒拼 image/png
+                user_msg = {"role": "user", "content": [
+                    {"type": "text", "text": working_message},
+                    {"type": "image_url",
+                     "image_url": {"url": "data:" + _sniff_image_mime(req.image) + ";base64," + (req.image or "")}},
+                ]}
+            return user_msg
+
+        user_msg = _build_user_msg(search_results)
 
         attempt_reasons = ""
         attempt = 0
+        recalled = False   # 召回审核：每轮至多一次（计入同一重试预算，防循环）
         reviewed_info = None
+        _review_notes: list = []   # F11-S2：各轮审核结论文本（mindchain 权威终稿汇总用）
+        drafts: list = []          # RB-S4（经批准越界）：各稿正文留存，供思维链重写段补齐
         while True:
             sys_extra = (f"\n【审核反馈·上一稿未通过】{attempt_reasons}。请据此修正后重新完整输出。"
                          if attempt else "")
@@ -384,24 +628,89 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                 cancel_event=cancel_evt,
             )
             reply = "".join(collected)
+            drafts.append(reply)   # RB-S4（经批准越界）：留存本稿正文供重写段补齐
             if cancel_evt.is_set():
                 break
             if not gate_on:
                 break
-            verdict = review_once(pick_judge_llm(template, req), reply,
-                                  json.dumps(search_results[:3], ensure_ascii=False),
-                                  strategy_text)
-            # reviewed 形状对齐前端 ReviewResult {passed,score,suggestion}
+            # 研究档走断言级忠实度审核（参照系=全量留存块，非 top3）；
+            # 思考档保持整体两维度评审（review_once 原样）
+            # F11-S2：审核发起过程进思维链（维度声明+证据规模）——gate 关闭时不发（语义：无审核）
+            _rv_mode = ("断言级忠实度审核（逐断言对照证据）" if template == "研究"
+                        else "双维度审核（知识正确性/指令遵从）")
+            token_queue.put(("token", "审核",
+                             f"发起审核：{_rv_mode}，对照 {len(search_results)} 块检索证据"))
+            verdict = (review_claims if template == "研究" else review_once)(
+                pick_judge_llm(template, req), reply,
+                search_results if template == "研究"
+                else json.dumps(search_results[:3], ensure_ascii=False),
+                strategy_text)
+            # reviewed 形状对齐前端 ReviewResult {passed,score,suggestion}；
+            # 研究档附加 issues（unsupported 断言映射，前端既有样式直接渲染）、
+            # claims 全表（幻觉率统计源）、skipped（fail-open 可见性）
             reviewed_info = {"passed": verdict["passed"], "score": verdict["score"],
                              "suggestion": verdict["reasons"][:200]}
+            if template == "研究":
+                reviewed_info.update(issues=verdict.get("issues") or [],
+                                     claims=verdict.get("claims") or [],
+                                     skipped=bool(verdict.get("skipped")))
+            # F11-S2：审核结论流式进思维链——通过与未通过都必须有（现状通过时零痕迹，
+            # 全靠正文后 msg.review 独立块）；事件先于 done 帧，done 是终止帧故
+            # 消息完成后（正文后）不再产生审核事件。
+            _concl = _format_review_conclusion(verdict, attempt, template)
+            token_queue.put(("token", "审核", _concl))
+            _review_notes.append(_concl)
             if verdict["passed"]:
                 break
             token_queue.put(("token", "审核",
                              f"未通过({verdict['reasons'][:60]})，重新生成…"))
+            # ---- 召回审核（研究档条件触发）：retrieval_gap 断言 → 发散输入二次检索 ----
+            # 触发：审核未过 + 存在检索缺口 claim + 本轮未召回过 + 仍有重试预算；
+            # 宽网实现 = 缺口文本作发散输入再调 retrieve_stage(rounds=2)（其内部查询规划器
+            # 自行多查询分解），不改 retrieve.py 参数；新证据去重合并后重建 user_msg。
+            gap_claims = [c for c in (verdict.get("claims") or [])
+                          if isinstance(c, dict) and c.get("diag") == "retrieval_gap"] \
+                if template == "研究" else []
+            if gap_claims and not recalled and attempt < REVIEW_MAX_RETRY:
+                recalled = True
+                gap_text = "；".join(str(c.get("claim") or "") for c in gap_claims[:5])
+                token_queue.put(("token", "召回审核",
+                                 f"检索缺口 {len(gap_claims)} 条，按缺口二次检索…"))
+                added = 0
+                try:
+                    from engine.retrieve import retrieve_stage as _rs
+                    wide = _rs(_make_fast_llm(req),
+                               f"补充检索以下缺口信息：{gap_text}", "研究", pid, rounds=2)
+                    seen_keys = {str((c or {}).get("title") or "") + "|"
+                                 + str((c or {}).get("content") or "")[:120]
+                                 for c in search_results}
+                    for c in (wide or {}).get("search_results") or []:
+                        h = str((c or {}).get("title") or "") + "|" \
+                            + str((c or {}).get("content") or "")[:120]
+                        if h and h not in seen_keys:
+                            search_results.append(c)
+                            seen_keys.add(h)
+                            added += 1
+                except Exception:
+                    logger.exception("[v2] 召回审核失败，按原证据重试")
+                _trace("recall_audit", input_digest=gap_text[:200],
+                       output_digest=json.dumps({"gap_count": len(gap_claims), "added": added},
+                                                ensure_ascii=False))
+                token_queue.put(("token", "召回审核",
+                                 f"二次检索新增 {added} 条证据"
+                                 + ("" if added else "（无新增，按原证据修正）")))
+                if added:
+                    user_msg = _build_user_msg(search_results)   # 新证据到达生成 prompt
             attempt += 1
             if attempt > REVIEW_MAX_RETRY:
                 reviewed_info["note"] = "达重试上限，保留当前稿并附审核意见"
                 break
+            # A2：作废旧稿信号——只在确定还有下一稿时推（达上限保留当前稿则不推，
+            # 否则气泡先被清空再靠 done 恢复会闪一下）。必须先于下一稿任何 answer
+            # token 入队（FIFO 天然保证 reset 先达前端）；泵侧收到后先 drop_pending
+            # 丢弃合批窗内未发旧稿块，前端再清空气泡——缺这帧则旧稿 token 永不消失、
+            # 新稿继续追加 = 两稿拼接（本步要修的用户可见 bug）
+            token_queue.put(("answer_reset", attempt - 1, "审核未通过"))
             attempt_reasons = verdict["reasons"]
 
         if cancel_evt.is_set():
@@ -412,7 +721,28 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         gen_reasoning_text = "".join(gen_reasoning).strip()
         if gen_reasoning_text:
             mindchain_entries.append({"agent": "学习助手·生成",
-                                      "content": gen_reasoning_text[:1500]})
+                                      "content": gen_reasoning_text})
+        # RB-S4（经批准越界，owner/总领 2026-09-02 批准）：草稿/重写段补齐思维链
+        # 权威终稿——done 帧 mindchain 无条件替换前端链（useChatStream :401-408），
+        # 无此块则流式期可见的全部草稿段在完成瞬间消失（owner 底线「被拒旧稿保留
+        # 可见」被打破）。草稿文本只存在于重试环内（collected 每稿清空），S4 三处
+        # 允许区域拿不到，故按派发单 S1 安全设计的授权路径在此最小插入：不触碰
+        # answer/answer_reset 发射行（:463/:645）与重试控制流（attempt 递增/reset
+        # 条件原样）。命名与前端 genRewriteAgent 同款（live↔终态同口径）；首稿并入
+        # 生成条目（merge_consecutive 相邻同名合并）；全部草稿段位于审核条目之前
+        # （owner 时序要求：草稿只准出现在思维链审核节点之前）。
+        for _di, _draft in enumerate(drafts):
+            if not _draft.strip():
+                continue
+            if _di == 0:
+                mindchain_entries.append({"agent": "学习助手·生成", "content": _draft})
+            else:
+                mindchain_entries.append({"agent": f"学习助手·生成（重写 #{_di - 1}）",
+                                          "content": _draft})
+        # F11-S2：审核结论入思维链权威终稿（历史回看持久；多轮结论合并一条，时序=生成之后）
+        if _review_notes:
+            mindchain_entries.append({"agent": "审核",
+                                      "content": "\n".join(_review_notes)})
         _trace("generate", input_digest=working_message[:200],
                output_digest=json.dumps({"reply_len": len(reply), "attempts": attempt + 1},
                                         ensure_ascii=False),
@@ -424,17 +754,17 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                               "status": "done",
                               "detail": ("审核通过" if reviewed_info["passed"]
                                          else "未通过：" + reviewed_info["suggestion"])})
-        _trace("review", output_digest=json.dumps(
-            {"passed": reviewed_info["passed"] if reviewed_info else None,
-             "score": reviewed_info["score"] if reviewed_info else None},
-            ensure_ascii=False))
-        special_suggestions = []
-        if plan["complexity"] != "simple_direct":
-            try:
-                from services.special_forms import suggest_special_forms
-                special_suggestions = suggest_special_forms(req.api_key, reply, req.base_url)
-            except Exception:
-                logger.exception("[v2] 特殊形式建议失败")
+        _review_digest = {"passed": reviewed_info["passed"] if reviewed_info else None,
+                          "score": reviewed_info["score"] if reviewed_info else None}
+        if template == "研究" and reviewed_info:
+            _by_diag = {"hallucination": 0, "retrieval_gap": 0, "no_evidence": 0}
+            for _c in reviewed_info["claims"]:
+                if _c.get("diag") in _by_diag:
+                    _by_diag[_c["diag"]] += 1
+            _review_digest.update(claims_total=len(reviewed_info["claims"]),
+                                  unsupported=len(reviewed_info["issues"]),
+                                  by_diag=_by_diag, skipped=reviewed_info["skipped"])
+        _trace("review", output_digest=json.dumps(_review_digest, ensure_ascii=False))
 
         # --- Trace 批量落库（旁路，失败不影响主流程） ---
         try:
@@ -493,9 +823,23 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
 
 
 async def stream_response(req):
-    """v2 引擎入口：返回与 v1 同构的 StreamingResponse。"""
+    """v2 引擎入口：返回与 v1 同构的 StreamingResponse。
+    闭环七：gen_resource 在场 → 资源生成管线分支；闭环六：edit_resource_id 在场
+    → 资源编辑独立分支（结构性隔离，不进主管线）。两者同在时编辑优先。"""
+    if getattr(req, "gen_resource", None):
+        from engine.resource_branches import stream_resource_gen
+        return await stream_resource_gen(req)
+    if getattr(req, "edit_resource_id", None):
+        from engine.resource_branches import stream_resource_edit, stream_resource_gen
+        from engine.resource_mode import classify_resource_mode
+        # 单步4：定向修改指令/纯提问 → 编辑分支（💬协议承接）；非指向修正 → 生成管线（检索供证+断言审核）
+        if classify_resource_mode(req.message) == "edit":
+            return await stream_resource_edit(req)
+        return await stream_resource_gen(req, regen_id=req.edit_resource_id)
+
     async def stream():
         import asyncio as _asyncio
+        import time as _time
         request_id = __import__("uuid").uuid4().hex[:16]
         cancel_evt = threading.Event()
         from engine.cancel import ACTIVE_CANCELS
@@ -506,16 +850,50 @@ async def stream_response(req):
                          args=(req, token_queue, cancel_evt, request_id),
                          daemon=True).start()
         yield f"data: {json.dumps({'type': 'start', 'request_id': request_id})}\n\n"
+        # A1：泵改事件驱动 + answer 合批 + 心跳收敛（SSEBatcher，帧格式不变只改节奏）。
+        # 旧泵 50ms 固定轮询（get(timeout=0.05)+sleep(0.05)）：空闲 ~10 帧/秒心跳、
+        # 事件循环 ~20 次/秒空转唤醒；新泵阻塞等队列，只在「合批窗到期/心跳到期」
+        # 被唤醒（空闲 2s 一次），等待时长恒有界（≤2s）保证断开时能及时取消。
+        batcher = SSEBatcher()
+        batcher.mark_emitted()   # start 帧即最近一次发射，空闲心跳从现在起算
         while True:
+            timeout = batcher.wait_timeout()
             try:
-                msg = token_queue.get(timeout=0.05)
+                msg = await _asyncio.to_thread(token_queue.get, True, timeout)
             except queue.Empty:
-                await _asyncio.sleep(0.05)
-                yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
+                now = _time.monotonic()
+                if batcher.due(now):
+                    frame = batcher.flush(now)
+                    if frame:
+                        yield frame
+                elif batcher.heartbeat_due(now):
+                    batcher.mark_emitted(now)
+                    yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
                 continue
+            if msg[0] == "answer":
+                # answer token 进合批器：首 token 直发，其余按 40ms/256chars 窗发
+                frame = batcher.add(msg[1], msg[2] if len(msg) > 2 else 0)
+                if frame:
+                    yield frame
+                continue
+            if msg[0] == "answer_reset":
+                # A2：必须先丢弃合批窗内未发的旧稿块、再发 reset——顺序反了，
+                # 旧稿合批块会在 reset 之后到达前端，两稿拼接以更隐蔽形式复发
+                batcher.drop_pending()
+                text, stop = _frame(msg)
+                if text:
+                    yield text
+                batcher.mark_emitted()
+                continue
+            # 非 answer 帧前必须先排空合批缓冲——保持 answer 与其他帧的
+            # 队列 FIFO 相对顺序（done/error 前的 answer 不能被缓冲吞掉）
+            pre = batcher.flush()
+            if pre:
+                yield pre
             text, stop = _frame(msg)
             if text:
                 yield text
+            batcher.mark_emitted()
             if stop:
                 break
     return StreamingResponse(stream(), media_type="text/event-stream")
@@ -531,7 +909,11 @@ def _frame(msg) -> tuple[str, bool]:
         _, agent, chunk = msg
         return f"data: {json.dumps({'type': 'thought_token', 'agent': agent, 'chunk': chunk})}\n\n", False
     if kind == "answer":
-        return f"data: {json.dumps({'type': 'answer_token', 'chunk': msg[1]})}\n\n", False
+        attempt = msg[2] if len(msg) > 2 else 0   # A2：旧 2 元组 → attempt=0（A1 帧格式兼容）
+        return f"data: {json.dumps({'type': 'answer_token', 'chunk': msg[1], 'attempt': attempt})}\n\n", False
+    if kind == "answer_reset":
+        _, attempt, reason = msg                  # A2：作废旧稿帧（先 drop_pending 再发，见泵）
+        return f"data: {json.dumps({'type': 'answer_reset', 'attempt': attempt, 'reason': reason})}\n\n", False
     if kind == "subagent":
         _sp = dict(msg[1] or {})
         _sp["event"] = _sp.pop("type", "")
@@ -552,7 +934,6 @@ def _frame(msg) -> tuple[str, bool]:
             "type": "done", "reply": result.get("final_reply", "处理完成"),
             "steps": result.get("steps", []), "mindchain": result.get("mindchain", []),
             "task_stats": result.get("task_stats", {}),
-            "special_suggestions": result.get("special_suggestions", []),
             "retrieved_images": retrieved_images, "review": result.get("reviewed"),
         }
         if result.get("internals"):

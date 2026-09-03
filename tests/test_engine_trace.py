@@ -3,7 +3,7 @@
 T1 retrieve trace 记录真实候选数/改写查询/轮次（search_meta 不再被丢弃，raw_count≠kept 可证源）
 T2 assess trace 携带 evidence；generate trace metrics 带 t_value/strategy_id
 T3 error 路径冲刷已积累 Trace + error 条目（失败轮次可回放）
-T4 研究档强制两轮（模式契约"必开两轮"，即使分类器判 standard）
+T4 研究档 B2-lite 契约：分解式单次规划 + 覆盖度自适应补搜（分类判 standard 仍进研究链）
 隔离策略与 test_engine_modes 相同；另重置 eval_repo 模块单例绑定隔离库。"""
 import json
 
@@ -152,15 +152,40 @@ def test_trace_error_path_persisted(v2_env, monkeypatch):
     assert tr["error"]["stage"] == "error" and "boom" in tr["error"]["output_digest"]
 
 
-def test_research_mode_forces_two_rounds(v2_env):
-    """T4：研究模板 + 分类器判 standard → 仍强制两轮递归检索（模式契约）。"""
+def test_research_decompose_single_planner_call(v2_env):
+    """T4（B2-lite 新契约）：研究模板 + 分类器判 standard → 仍进研究链；
+    分解式规划恰一次，各子问召回充足时零补搜（trace rounds==1）。"""
     app, eng, client, _rt, _er = v2_env
     body = dict(_BODY, dialogue_id="dR", settings={"template": "研究"})
     frames = _run(app, body)
     assert frames[-1]["type"] == "done"
     fast = eng._last_fast
     planner_calls = [c for c in fast.calls if "查询规划器" in c]
-    assert len(planner_calls) == 2, f"研究档必须两轮改写，实际{len(planner_calls)}次"
+    assert len(planner_calls) == 1, f"新契约分解只规划一次，实际{len(planner_calls)}次"
+    rid = frames[0]["request_id"]
+    ret = json.loads(_trace_by_stage(client, rid)["retrieve"]["output_digest"])
+    assert ret["rounds"] == 1
+    assert ret["raw_count"] == 9  # 2子问×4web + 1kb
+
+
+def test_research_adaptive_extra_round_trace(v2_env, monkeypatch):
+    """T4b：某子问召回不足（<2条独特文档）→ 定向补搜一轮；trace rounds==2、
+    queries 追加重试原句，规划器仍只调用一次。"""
+    app, eng, client, rt, _er = v2_env
+
+    def sparse_web(q):
+        n = 4 if q == "qA" else 1
+        return [{"title": f"w{i}-" + q, "url": f"u{i}-" + q, "content": "wc"}
+                for i in range(n)]
+
+    monkeypatch.setattr(rt, "_web_search", sparse_web)
+    body = dict(_BODY, dialogue_id="dR2", settings={"template": "研究"})
+    frames = _run(app, body)
+    assert frames[-1]["type"] == "done"
+    fast = eng._last_fast
+    assert len([c for c in fast.calls if "查询规划器" in c]) == 1
     rid = frames[0]["request_id"]
     ret = json.loads(_trace_by_stage(client, rid)["retrieve"]["output_digest"])
     assert ret["rounds"] == 2
+    assert ret["queries"] == ["qA", "qB", "qB"]
+    assert ret["raw_count"] == 7  # qA列4 + qB列1 + kb1；补搜同键折叠不增

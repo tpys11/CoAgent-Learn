@@ -1,6 +1,7 @@
-import { MessageSquare, Library, Brain, Bot, FolderOpen, Settings, GraduationCap, Github } from 'lucide-react'
+import { MessageSquare, Library, Brain, Bot, FolderOpen, Settings, Github } from 'lucide-react'
 
-export type ViewKey = 'chat' | 'tutorial' | 'resources' | 'memory' | 'knowledge' | 'agents' | 'obsidian'
+// T53 移除教程入口：ViewKey 不再含 tutorial 视图键（类型层钉死入口不可达，残留分支 tsc 直接报错）
+export type ViewKey = 'chat' | 'resources' | 'memory' | 'knowledge' | 'agents' | 'obsidian'
 
 interface Props {
   view: ViewKey
@@ -63,14 +64,9 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
       )}
       {ITEMS.map(({ key, icon, label }) => renderBtn(key, icon, label, view === key))}
       <div className="flex-1" />
-      {/* 底部：使用引导（原教程界面，仅改名）挨着 设置（竖向并列） */}
+      {/* 底部：设置（T53 起原教程入口按钮已移除） */}
       {expanded ? (
         <div className="flex flex-col gap-1.5">
-          <button onClick={() => onChange('tutorial')} title="项目介绍"
-            className={`w-full h-9 flex items-center gap-3 px-3 rounded-md text-sm font-medium transition-colors ${view === 'tutorial' ? 'bg-[#1a1a1a] text-white' : 'text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)]'}`}>
-            <GraduationCap size={16} strokeWidth={1.6} />
-            <span className="leading-none">项目介绍</span>
-          </button>
           <button onClick={onSettings} title="设置"
             className="w-full h-9 flex items-center gap-3 px-3 rounded-md text-sm font-medium text-dim transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text)]">
             <Settings size={16} strokeWidth={1.6} />
@@ -79,11 +75,6 @@ export default function ActivityBar({ view, onChange, expanded, onSettings }: Pr
         </div>
       ) : (
         <>
-          <button onClick={() => onChange('tutorial')} title="项目介绍"
-            aria-label="项目介绍"
-            className={`w-10 h-10 mb-2 flex items-center justify-center rounded-xl transition-colors ${view === 'tutorial' ? 'panel text-[#1a1a1a] shadow-soft' : 'icon-btn'}`}>
-            <GraduationCap size={18} strokeWidth={1.6} />
-          </button>
           <button onClick={onSettings} title="设置" aria-label="设置"
             className="w-10 h-10 flex items-center justify-center rounded-xl icon-btn transition-colors">
             <Settings size={18} strokeWidth={1.6} />

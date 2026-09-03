@@ -5,7 +5,7 @@
 export const LS = {
   apiKey: 'coagent-apikey',
   apiKeySkipped: 'coagent-apikey-skipped',
-  introSeen: 'coagent-intro-seen',
+  // T53：首弹标记键已随「项目介绍」移除；introGlobal/introTiers 仍被 AgentsView 对话设定使用，保留
   introGlobal: 'coagent-intro-global',
   introTiers: 'coagent-intro-tiers',
   agents: 'coagent-agents',
@@ -35,6 +35,10 @@ export const LS = {
   domains: 'coagent-domains',
   customWiki: 'coagent-custom-wiki',
   rpWindows: 'coagent-rp-windows',
+  /** F14-S5b2/RA-S2：预设档标记（standard/test/custom） */
+  preset: 'coagent-preset',
+  /** RA-S2：OpenCode Zen 网关地址（测试档 LS 写集之一；S5 主链路 zen 路由读此键） */
+  zenBaseUrl: 'coagent-zen-base-url',
 } as const
 
 export function lsGet(key: string, fallback = ''): string {

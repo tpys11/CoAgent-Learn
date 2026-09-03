@@ -26,6 +26,17 @@ def get_project_memory(project_id: str, session_id: str = "default"):
     return {"memory": _as_dict(data) if data else {}}
 
 
+@router.get("/api/projects/{pid}/compressed-summaries")
+def compressed_summaries(pid: str):
+    """F12-S4：课程各对话的压缩滚动摘要（compress.py 五段式）只读聚合，供记忆单框展示素材。
+    只读：不触发压缩、不动 compressed_upto 游标、不触碰预算机制。"""
+    rows = get_project_repo().list_dialogue_summaries(pid)
+    return {"summaries": [
+        {"dialogue_id": r.get("id"), "name": r.get("name") or "", "summary": r.get("summary") or ""}
+        for r in rows or []
+    ]}
+
+
 @router.get("/api/dialogues/{did}/followups")
 def get_followups(did: str):
     rows = get_memory_repo().get_followups(did)
@@ -228,7 +239,7 @@ def get_learning_log(project_id: str = ""):
                         pd = {}
                 topic = pd.get("topic", "") if isinstance(pd, dict) else ""
         except Exception:
-            pass
+            logger.debug("对话画像 topic 读取失败（置空继续）", exc_info=True)
         arts: list = []
         try:
             msgs = prepo.get_dialogue_plain_messages(d["id"])
@@ -239,7 +250,7 @@ def get_learning_log(project_id: str = ""):
                 if len(c) >= 100 and not any(a["type"] == "讲义" for a in arts):
                     arts.append({"type": "讲义", "title": "讲义"})
         except Exception:
-            pass
+            logger.debug("对话产物扫描失败（置空继续）", exc_info=True)
         item = {
             "project_id": d.get("project_id"), "project_name": pname.get(d.get("project_id"), d.get("project_id")),
             "dialogue_id": d["id"], "dialogue_name": d.get("name") or "对话",

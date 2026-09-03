@@ -1,10 +1,11 @@
 ﻿import { useEffect, useState } from 'react'
-import { ArrowLeft, MessageSquare, FileText, X, SlidersHorizontal, Pencil, PanelLeftClose } from 'lucide-react'
+import { ArrowLeft, MessageSquare, FileText, X, SlidersHorizontal, Pencil, PanelLeftClose, Download, ChevronRight, ChevronDown } from 'lucide-react'
 import { LS, lsGetJSON, lsSetJSON } from '../storage'
 import { api } from '../api'
+import { OutlineTree } from './OutlineTree'
 
 interface Dialogue { id: string; name: string; archived?: boolean }
-interface KbDoc { source: string; chunks: number; preview: string; vectorized?: boolean }
+interface KbDoc { source: string; chunks: number; preview: string; vectorized?: boolean; tree?: any[] }
 export default function ProjectSidebar({ project, dialogues, currentDialogueId, kbRefreshKey = 0, onHome, onSelectDialogue, onCreateDialogue, onRenameDialogue, onDeleteDialogue, onOpenMemory, onOpenResource, onCollapse, onOpenKbDoc }: {
   project: { id: string; name: string } | null
   dialogues: Dialogue[]
@@ -22,6 +23,8 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
 }) {
   const [memSummary, setMemSummary] = useState<Record<string, any>>({})
   const [kbDocs, setKbDocs] = useState<KbDoc[]>([])
+  // F9-S4：对话左栏资源条目展开章节大纲（同右栏/阅读器统一组件与事实源）
+  const [expandedDocs, setExpandedDocs] = useState<Set<string>>(new Set())
   // 栏目展示开关（与右侧栏一致，持久化）
   const [visible, setVisible] = useState<Record<'memory' | 'resource' | 'chat', boolean>>(() => {
     return { memory: true, resource: true, chat: true, ...lsGetJSON<Record<string, boolean>>(LS.projectSidebarV, {}) }
@@ -29,6 +32,23 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
   const [showSettings, setShowSettings] = useState(false)
   // 正在行内重命名的对话 id
   const [editingId, setEditingId] = useState<string | null>(null)
+  // F11-S5：协同中间数据导出——GET trace-export（纯只读聚合端点）→ blob 触发浏览器下载。
+  // 失败不走静默吞：结构化文案进 alert（原因 + 怎么办）。
+  const onExportTrace = (did: string) => {
+    fetch(`/api/chat/${did}/trace-export`)
+      .then(r => {
+        if (!r.ok) throw new Error('HTTP ' + r.status)
+        return r.blob()
+      })
+      .then(b => {
+        const a = document.createElement('a')
+        a.href = URL.createObjectURL(b)
+        a.download = `trace-${did}.json`
+        a.click()
+        URL.revokeObjectURL(a.href)
+      })
+      .catch(e => alert('导出失败（' + (e?.message || e) + '）：请确认后端服务可用后重试'))
+  }
   const toggleVisible = (k: 'memory' | 'resource' | 'chat') => {
     setVisible(prev => {
       const next = { ...prev, [k]: !prev[k] }
@@ -127,16 +147,34 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
               ) : (
                 <>
                   <div className="flex flex-col max-h-[30vh] overflow-y-auto">
-                    {kbDocs.map(d => (
-                      <div key={d.source} onClick={() => onOpenKbDoc && onOpenKbDoc(d.source)}
-                        className="flex items-center gap-1.5 px-1.5 py-1 rounded-lg text-[11px] font-medium hover:bg-[var(--bg-hover)] transition-colors cursor-pointer" title={d.source}>
-                        <FileText size={12} className="text-dim flex-shrink-0" />
-                        <span className="truncate flex-1">{d.source}</span>
-                        {d.vectorized === false
-                          ? <span className="text-[9px] text-amber-500/80 flex-shrink-0">未向量化</span>
-                          : <span className="text-[9px] text-dim flex-shrink-0">{d.chunks}</span>}
-                      </div>
-                    ))}
+                    {kbDocs.map(d => {
+                      const hasOutline = Array.isArray(d.tree) && d.tree.length > 0
+                      const open = expandedDocs.has(d.source)
+                      return (
+                        <div key={d.source} className="flex flex-col">
+                          <div onClick={() => onOpenKbDoc && onOpenKbDoc(d.source)}
+                            className="flex items-center gap-1.5 px-1.5 py-1 rounded-lg text-[11px] font-medium hover:bg-[var(--bg-hover)] transition-colors cursor-pointer" title={d.source}>
+                            {hasOutline ? (
+                              <button onClick={(e) => { e.stopPropagation(); setExpandedDocs(prev => { const nx = new Set(prev); if (nx.has(d.source)) nx.delete(d.source); else nx.add(d.source); return nx }) }}
+                                className="flex-shrink-0 text-dim hover:text-[var(--text)]" title={open ? '收起大纲' : '展开大纲'}>
+                                {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                              </button>
+                            ) : <span className="w-[12px] flex-shrink-0" />}
+                            <FileText size={12} className="text-dim flex-shrink-0" />
+                            <span className="truncate flex-1">{d.source}</span>
+                            {d.vectorized === false
+                              ? <span className="text-[9px] text-amber-500/80 flex-shrink-0">未向量化</span>
+                              : <span className="text-[9px] text-dim flex-shrink-0">{d.chunks}</span>}
+                          </div>
+                          {hasOutline && open && (
+                            <div className="pl-4 pb-1 max-h-48 overflow-y-auto">
+                              <OutlineTree tree={d.tree || []} compact showBadges
+                                onSelect={() => onOpenKbDoc && onOpenKbDoc(d.source)} />
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                   <p className="text-[9px] text-dim px-1.5 pt-1">共 {kbDocs.length} 份文档</p>
                 </>
@@ -182,10 +220,13 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
                     <MessageSquare size={11} className="flex-shrink-0 opacity-70" />
                     <span className="truncate flex-1">{d.name}</span>
                   </button>
-                  {/* 重命名/删除：持久化显示（不依赖 hover） */}
+                  {/* 重命名/导出/删除：持久化显示（不依赖 hover） */}
                   <div className="absolute right-1 top-1/2 -translate-y-1/2 flex items-center gap-1">
                     <button onClick={() => setEditingId(d.id)} className="p-1.5 rounded-md text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors" title="重命名">
                       <Pencil size={13} />
+                    </button>
+                    <button onClick={() => onExportTrace(d.id)} className="p-1.5 rounded-md text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors" title="导出协同中间数据 JSON（消息/步骤事件/检索/审核/子agent/资源）">
+                      <Download size={13} />
                     </button>
                     <button onClick={() => onDeleteDialogue(d.id)} className="p-1.5 rounded-md text-dim hover:bg-red-50 hover:text-red-500 transition-colors" title="删除对话">
                       <X size={14} />

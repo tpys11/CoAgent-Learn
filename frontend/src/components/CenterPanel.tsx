@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Send, Bot, MessagesSquare, Coins, CheckCircle2, Check, ChevronDown, Upload, SlidersHorizontal, AlertTriangle, Search, FileText, LayoutTemplate, Image as ImageIcon, Square, ArrowDownToLine, Timer } from 'lucide-react'
 import type { Message, Project } from '../types'
 import { LS, lsGet, lsSet, lsGetJSON } from '../storage'
 import { api } from '../api'
-import AssistantMessage from './chat/AssistantMessage'
+import { resolveAuxCall } from '../models'
+import { renderMd } from '../lib/mdRenderer'
+import AssistantMessage, { type AssistantMessageProps } from './chat/AssistantMessage'
 
 
 
@@ -24,13 +26,110 @@ const getApiKey = () => {
   return keys[prov] || lsGet(LS.apiKey, '')
 }
 
-/** 消息渲染：文件标记段转成卡片，其余文本正常显示 */
+/** 消息渲染（F8-S5 统一管线）：文件标记段先转占位符，markdown 渲染后回填卡片——
+ *  其余文本走统一 markdown 管线（用户粘贴的公式/代码亦可正确显示；html:false 防 XSS）。 */
+const _FILE_MARKER_RE = /【用户上传文件: ([^】]+)】[\s\S]*?(?=【用户上传文件:|$)/g
+const _escapeHtml = (s: string) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+const _fileCardHtml = (marker: string) => {
+  const name = /【用户上传文件: ([^】]+)】/.exec(marker)?.[1] || ''
+  return `<span style="display:inline-flex;align-items:center;gap:4px;background:var(--bg-hover);border-radius:8px;padding:2px 8px;font-size:12px;color:var(--text-muted);margin:2px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> ${_escapeHtml(name)}</span>`
+}
 const renderContent = function(content: string) {
-  const html = content
-    .replace(/【用户上传文件: ([^】]+)】[\s\S]*?(?=【用户上传文件:|$)/g,
-      '<span style="display:inline-flex;align-items:center;gap:4px;background:var(--bg-hover);border-radius:8px;padding:2px 8px;font-size:12px;color:var(--text-muted);margin:2px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> $1</span>')
-    .replace(/\n/g, '<br/>')
-  return html
+  const markers: string[] = []
+  const masked = content.replace(_FILE_MARKER_RE, m => {
+    markers.push(m)
+    return `\n@F8FILE${markers.length - 1}@\n`
+  })
+  return renderMd(masked).replace(/@F8FILE(\d+)@/g, (_m, i) => _fileCardHtml(markers[Number(i)] || ''))
+}
+
+// ---------- B1：props 引用稳定化（memo 生效前提） ----------
+
+// msg.special 默认选中 keys 的引用缓存：以 msg 对象为 key 的 WeakMap——
+// 历史消息 msg 引用稳定（useChatStream 排水只替换末条）→ 派生数组引用稳定，
+// 不再每次渲染新建数组打穿 memo（原 :356 行为等价：优先取用户勾选，缺省全选）。
+const _defaultSpecialKeys = new WeakMap<object, string[]>()
+// 非末条消息的 followups 常量（isLast 分支才消费；模块级常量保证引用恒定）
+const _EMPTY_FOLLOWUPS: string[] = []
+
+// ---------- B2：列表窗口化（视口附近全渲染，其余等高占位） ----------
+// 陷阱防线：
+//  - idx 语义：map 仍遍历全量 messages，占位行只是空 div，idx 恒为全量下标
+//    （specialSel / dismissedSpecial / 追问三处状态数组按 idx 寻址不受影响）；
+//  - 粘底：占位区只在「上滚展开」时变化，流式期窗口冻结、占位静态，
+//    scrollHeight 只随尾部真实内容增长 → 8px 粘底判定与窗口化前等价；
+//  - 窗口冻结：流式追加（len 单调 +1~2）绝不把已物化消息打回占位（否则
+//    scrollHeight 中途变化 = 滚动条跳动 + 视口漂移）。
+const WINDOW_N = 12          // 完整渲染的窗口条数（末尾恒在窗口内）
+const WINDOW_STEP = 8        // 上滚展开批次
+const EST_MSG_HEIGHT = 120   // 占位估算高度（px，实测中位水平）
+
+/** 导出仅供测试（isFlowNode 同模式）：窗口起点随消息数变化的转移函数。
+ *  len≤n 不开窗；批量载入（跳变 > step）或收缩（切对话/删消息）→ 重置为末尾 n 条；
+ *  流式追加 → 冻结现值。 */
+export function nextWindowStart(prevStart: number, prevLen: number, len: number, n: number, step: number): number {
+  if (len <= n) return 0
+  if (len > prevLen + step || len < prevLen) return Math.max(0, len - n)
+  return prevStart
+}
+/** 导出仅供测试（isFlowNode 同模式） */
+export const specialKeysOf = (msg: Message): string[] => {
+  let keys = _defaultSpecialKeys.get(msg)
+  if (!keys) {
+    keys = (msg.special || []).map(x => x.key)
+    _defaultSpecialKeys.set(msg, keys)
+  }
+  return keys
+}
+
+/** 导出仅供测试（isFlowNode 同模式）：逐消息 props 推导——渲染路径 map 内同样
+ *  走本函数（spread 到 AssistantMessage），保证稳定性测试钉住的就是真实接线。
+ *  同输入两次调用，返回的每个 prop 引用逐个 Object.is 相等 → memo 浅比较可
+ *  跳过历史消息；流式期仅末条 msg 引用随帧变化 → 重渲染精确限制在 1 条。 */
+export function buildMessageProps(
+  msg: Message,
+  idx: number,
+  total: number,
+  ctx: {
+    isLoading: boolean
+    flowActiveAgent: string | null | undefined
+    flowStatus: string | undefined
+    flowAgents: string[] | undefined
+    specialSel: Record<number, string[]>
+    dismissedSpecial: Set<number>
+    followups: string[]
+    onToggleSpecial: (msgIndex: number, key: string) => void
+    onDismissSpecial: (msgIndex: number) => void
+    onSendFollowup: (q: string) => void
+    onManualSetup: (() => void) | undefined
+    currentProject: Project | null
+    onGenerateSpecial: ((keys: string[], content: string) => void) | undefined
+  },
+): AssistantMessageProps {
+  // isLoading / flowActiveAgent / flowStatus / flowAgents / followups 仅在
+  // streaming 或 isLast 分支被消费——非末条一律传常量：isLoading 翻转、step
+  // 切换、追问加载完成都不再打穿历史消息的 memo（末条身份变更时 isLast 翻转
+  // 本身已触发那一次重渲染，语义无损）。
+  const isLast = idx === total - 1
+  return {
+    msg,
+    msgIndex: idx,
+    isLoading: isLast ? ctx.isLoading : false,
+    isLast,
+    flowActiveAgent: isLast ? ctx.flowActiveAgent : undefined,
+    flowStatus: isLast ? ctx.flowStatus : undefined,
+    flowAgents: isLast ? ctx.flowAgents : undefined,
+    specialSelectedKeys: ctx.specialSel[idx] ?? specialKeysOf(msg),
+    onToggleSpecial: ctx.onToggleSpecial,
+    specialDismissed: ctx.dismissedSpecial.has(idx),
+    onDismissSpecial: ctx.onDismissSpecial,
+    followups: isLast ? ctx.followups : _EMPTY_FOLLOWUPS,
+    onSendFollowup: ctx.onSendFollowup,
+    onManualSetup: ctx.onManualSetup,
+    currentProject: ctx.currentProject,
+    onGenerateSpecial: ctx.onGenerateSpecial,
+  }
 }
 
 
@@ -87,9 +186,61 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
   const stickToBottomRef = useRef(true)
   // 上滑超过阈值时显示"回到底部"悬浮按钮
   const [showJumpBottom, setShowJumpBottom] = useState(false)
+  // B2：窗口起点——其上为等高占位，其下全渲染。onScroll 闭包一次性注册，经 ref 读最新值
+  const [winStart, setWinStart] = useState(0)
+  const winStartRef = useRef(0)
+  winStartRef.current = winStart
+  const expandingRef = useRef(false)
+  const prevLenRef = useRef(0)
+  const firstRenderedRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    setWinStart(s => nextWindowStart(s, prevLenRef.current, messages.length, WINDOW_N, WINDOW_STEP))
+    prevLenRef.current = messages.length
+  }, [messages])
+  // B2：上滚展开一批（接近已物化区顶部时），以 scrollHeight 差值锚定视口防跳动。
+  // 展开后若视口顶部仍贴近首条已渲染行（用户已顶到 scrollTop≈0，不再产生滚动
+  // 事件）→ 链式继续展开，直到边界离开 600px 或占位清零。
+  const expandWindow = () => {
+    if (winStartRef.current <= 0 || expandingRef.current) return
+    expandingRef.current = true
+    const el = msgScrollRef.current
+    const before = el?.scrollHeight ?? 0
+    setWinStart(s => Math.max(0, s - WINDOW_STEP))
+    requestAnimationFrame(() => {
+      const el2 = msgScrollRef.current
+      if (el2) el2.scrollTop += el2.scrollHeight - before
+      const top = firstRenderedRef.current?.offsetTop
+      if (el2 && winStartRef.current > 0 && top !== undefined && el2.scrollTop < top - 600) {
+        expandingRef.current = false
+        expandWindow()
+        return
+      }
+      expandingRef.current = false
+    })
+  }
   // 资源生成建议卡片：各消息选中的形式 key（默认全选）+ 已忽略的消息 idx
   const [specialSel, setSpecialSel] = useState<Record<number, string[]>>({})
   const [dismissedSpecial, setDismissedSpecial] = useState<Set<number>>(new Set())
+  // B1：全量 messages 的最新引用——稳定回调内按 idx 取当届消息，闭包不捕获数组
+  const messagesRef = useRef(messages)
+  messagesRef.current = messages
+  // B1：特殊建议回调做成全局稳定引用（目标消息 idx 作参数传入）——memo 生效前提；
+  // 默认全选 keys 从 messagesRef 现取当届消息，语义与原内联闭包一致
+  const handleToggleSpecial = useCallback((msgIndex: number, key: string) => {
+    setSpecialSel(prev => {
+      const cur = prev[msgIndex] ?? specialKeysOf(messagesRef.current[msgIndex])
+      const next = cur.includes(key) ? cur.filter(k => k !== key) : [...cur, key]
+      return { ...prev, [msgIndex]: next }
+    })
+  }, [])
+  const handleDismissSpecial = useCallback((msgIndex: number) => {
+    setDismissedSpecial(prev => new Set(prev).add(msgIndex))
+  }, [])
+  // B1：App 传入的 onManualSetup 是内联箭头（App 每帧重建）→ latest-ref 包一层，
+  // 引用恒定且总是调用最新版本，语义不变
+  const onManualSetupRef = useRef(onManualSetup)
+  onManualSetupRef.current = onManualSetup
+  const stableManualSetup = useCallback(() => { onManualSetupRef.current?.() }, [])
   useEffect(() => {
     const el = msgScrollRef.current
     if (!el) return
@@ -97,6 +248,11 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
       const dist = el.scrollHeight - el.scrollTop - el.clientHeight
       stickToBottomRef.current = dist < 8
       setShowJumpBottom(dist > 160)
+      // B2：视口顶部接近首条已渲染消息（<600px）→ 展开一批更早的消息。
+      // 必须用「相对首条已渲染行」的判定：占位区可高达数千 px，绝对 scrollTop
+      // 阈值在长历史下永远够不到。
+      const top = firstRenderedRef.current?.offsetTop
+      if (top !== undefined && el.scrollTop < top - 600) expandWindow()
     }
     el.addEventListener('scroll', onScroll, { passive: true })
     return () => el.removeEventListener('scroll', onScroll)
@@ -240,35 +396,43 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
     setAttachments([])
   }
 
-  const sendFollowup = (q: string) => {
-    if (!getApiKey()) { onRequestKey?.(); return }
-    onSendMessage(q, {
-      template: templateMode,
-      auto: autoMode,
+  // B1：sendFollowup / handleGenerateSpecial 的最新上下文引用——deps 里只要出现
+  // App 传入的内联回调或低频状态，useCallback 就会逐帧换引用打穿 memo；改走
+  // 空依赖 + latest-ref，引用恒定且行为（读当届值）不变
+  const followCtxRef = useRef({ onSendMessage, onRequestKey, templateMode, autoMode, currentProject })
+  followCtxRef.current = { onSendMessage, onRequestKey, templateMode, autoMode, currentProject }
+
+  const sendFollowup = useCallback((q: string) => {
+    const c = followCtxRef.current
+    if (!getApiKey()) { c.onRequestKey?.(); return }
+    c.onSendMessage(q, {
+      template: c.templateMode,
+      auto: c.autoMode,
     })
-  }
+  }, [])
 
   /** 资源生成：按能力注册表逐项生成，并保存到「我的上传」 */
-  const handleGenerateSpecial = async (keys: string[], content: string) => {
-    if (!keys.length || !currentProject) return
+  const handleGenerateSpecial = useCallback(async (keys: string[], content: string) => {
+    const c = followCtxRef.current
+    if (!keys.length || !c.currentProject) return
     const apiKey = getApiKey()
-    if (!apiKey) { onRequestKey?.(); return }
+    if (!apiKey) { c.onRequestKey?.(); return }
     const prov = lsGet(LS.provider, 'deepseek')
-    const baseUrl = prov === 'zhipu' ? 'https://open.bigmodel.cn/api/paas/v4' : 'https://api.deepseek.com/v1'
-    const model = prov === 'zhipu' ? 'glm-4-flash' : 'deepseek-v4-flash-vision-exp'
+    // R-D S5：辅助调用改走注册表镜像（后端 S3 已改注册表决策，base_url/model 传参降级为自洽值）
+    const aux = resolveAuxCall(prov, lsGet(LS.zenBaseUrl, ''))
     const done: string[] = []
     for (const key of keys) {
       try {
-        const r = await api.generateResource({ key, content, api_key: apiKey, base_url: baseUrl, model })
+        const r = await api.generateResource({ key, content, api_key: apiKey, base_url: aux.base_url, model: aux.model })
         if (r?.status === 'ok' && r.content) {
-          await api.saveResource({ name: `生成·${r.label}`, content: r.content, project_id: currentProject.id, type: 'gen:' + key, append: true })
+          await api.saveResource({ name: `生成·${r.label}`, content: r.content, project_id: c.currentProject.id, type: 'gen:' + key, append: true })
           done.push(r.label)
         }
       } catch {}
     }
     if (done.length) alert(`已生成：${done.join('、')}，已保存到「我的上传」`)
     else alert('资源生成失败，请检查 API Key')
-  }
+  }, [])
 
   return (
     <main className="flex-1 h-full min-w-0 flex flex-col panel rounded-3xl overflow-hidden">
@@ -340,35 +504,34 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
             </div>
           )}
 
-          {/* 消息列表：用户色块靠右，AI 正文流 */}
+          {/* 消息列表：用户色块靠右，AI 正文流。
+              B1：props 统一经 buildMessageProps 推导（引用稳定）→ memo 跳过历史消息。
+              B2：winStart 之上为等高占位（map 仍遍历全量数组，idx 恒为全量下标）。 */}
           {messages.map((msg, idx) => (
+            idx < winStart ? (
+              <div key={idx} data-placeholder="1" aria-hidden style={{ height: EST_MSG_HEIGHT, flexShrink: 0 }} />
+            ) :
             msg.role === 'user' ? (
-              <div key={idx} className="self-end max-w-[75%] card-surface px-4 py-3 text-sm leading-relaxed" style={{ borderBottomRightRadius: 6 }}>
+              <div key={idx} ref={idx === winStart ? (n => { firstRenderedRef.current = n }) : undefined} className="self-end max-w-[75%] card-surface px-4 py-3 text-sm leading-relaxed" style={{ borderBottomRightRadius: 6 }}>
                 <div dangerouslySetInnerHTML={{ __html: renderContent(msg.content) }} />
               </div>
             ) : (
-              <div key={idx} className="w-full text-sm leading-7 animate-[fadeIn_0.25s_ease]">
-                <AssistantMessage
-                  msg={msg}
-                  isLoading={isLoading}
-                  isLast={idx === messages.length - 1}
-                  flowActiveAgent={flowActiveAgent}
-                  flowStatus={flowStatus}
-                  flowAgents={flowAgents}
-                  specialSelectedKeys={specialSel[idx] ?? (msg.special || []).map(x => x.key)}
-                  onToggleSpecial={(key) => setSpecialSel(prev => {
-                    const cur = prev[idx] ?? (msg.special || []).map(x => x.key)
-                    const next = cur.includes(key) ? cur.filter(k => k !== key) : [...cur, key]
-                    return { ...prev, [idx]: next }
-                  })}
-                  specialDismissed={dismissedSpecial.has(idx)}
-                  onDismissSpecial={() => setDismissedSpecial(prev => new Set(prev).add(idx))}
-                  followups={followups}
-                  onSendFollowup={sendFollowup}
-                  onManualSetup={onManualSetup}
-                  currentProject={currentProject}
-                  onGenerateSpecial={handleGenerateSpecial}
-                />
+              <div key={idx} ref={idx === winStart ? (n => { firstRenderedRef.current = n }) : undefined} className="w-full text-sm leading-7 animate-[fadeIn_0.25s_ease]">
+                <AssistantMessage {...buildMessageProps(msg, idx, messages.length, {
+                  isLoading,
+                  flowActiveAgent,
+                  flowStatus,
+                  flowAgents,
+                  specialSel,
+                  dismissedSpecial,
+                  followups,
+                  onToggleSpecial: handleToggleSpecial,
+                  onDismissSpecial: handleDismissSpecial,
+                  onSendFollowup: sendFollowup,
+                  onManualSetup: stableManualSetup,
+                  currentProject,
+                  onGenerateSpecial: handleGenerateSpecial,
+                })} />
               </div>
             )
           ))}
@@ -426,7 +589,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
             />
             {/* 坞内工具行 */}
             <div className="flex items-center gap-0.5">
-              <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept=".txt,.md,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml,.pdf,.docx,.pptx" />
+              <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept=".txt,.md,.py,.js,.ts,.json,.csv,.html,.css,.log,.yaml,.yml,.pdf,.docx,.pptx,.png,.jpg,.jpeg,.gif,.webp" />
               <button onClick={() => fileInputRef.current && fileInputRef.current.click()} title="上传文件"
                 className="w-8 h-8 flex items-center justify-center rounded-xl icon-btn border border-[var(--border-strong)] bg-[var(--bg-input)]">
                 <Upload size={15} />

@@ -34,6 +34,15 @@ class KbRepo:
     def save_file_hash(self, project_id, sha256, source):
         self._db.save_file_hash(project_id, sha256, source)
 
+    def find_donor_by_hash(self, sha256, exclude_project_id):
+        return self._db.find_donor_by_hash(sha256, exclude_project_id)
+
+    def fetch_kb_rows(self, project_id, source):
+        return self._db.fetch_kb_rows(project_id, source)
+
+    def insert_kb_vectors_raw(self, items, table="kb_vectors"):
+        self._db.insert_kb_vectors_raw(items, table=table)
+
     def get_preset_doc(self, url):
         return self._db.get_preset_doc(url)
 
@@ -86,6 +95,12 @@ class KbRepo:
     def delete_kb_tree_by_source(self, project_id, source):
         return self._db.delete_kb_tree_by_source(project_id, source)
 
+    def purge_kb_tree_project(self, project_id):
+        """F9-S3（T50 防御）：项目级联删除清理 kb_tree——门面必须代理，
+        否则 delete_project_kb 在真实路径 AttributeError 被上层吞掉、purge 形同虚设
+        （F9-S5 E2E 实证：单测裸 client 通过≠门面链路通）。"""
+        return self._db.purge_kb_tree_project(project_id)
+
     def _text_tables_for_read(self, tables=None) -> list:
         """读取类方法的候选表序列：显式指定 > 全部版本（最新在前）。
         老文档可能停留在旧版本表里，读取时逐版本回退保证仍可读。"""
@@ -134,6 +149,22 @@ class KbRepo:
 
     def get_kb_docs(self, project_id, table="kb_vectors"):
         return self._db.get_kb_docs(project_id, table=table)
+
+    def upsert_gen_questions_bulk(self, items):
+        """闭环四·B1：批量写每块生成问题（旁路表）"""
+        self._db.upsert_gen_questions_bulk(items)
+
+    def get_gen_questions(self, project_id):
+        """闭环四·B1：{doc_id: questions_json}，供 BM25 语料拼接"""
+        return self._db.get_gen_questions(project_id)
+
+    def upsert_kg_edges_bulk(self, items):
+        """闭环五·B4-lite：批量写先修/相关边"""
+        self._db.upsert_kg_edges_bulk(items)
+
+    def get_kg_edges(self, project_id):
+        """闭环五：项目全部关系边 [{src, dst, rel}]"""
+        return self._db.get_kg_edges(project_id)
 
     def get_resources(self, project_id):
         """resources 表：取项目全部已上传资源（name + type + content 长度）"""

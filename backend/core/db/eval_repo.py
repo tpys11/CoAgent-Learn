@@ -59,9 +59,6 @@ class EvalRepo:
         return self._db.execute(
             "SELECT * FROM eval_traces WHERE request_id=%s ORDER BY id", (request_id,))
 
-    def distinct_stages(self, request_id: str) -> list:
-        return sorted({r["stage"] for r in self.by_request(request_id)})
-
 
 _eval_repo = None
 

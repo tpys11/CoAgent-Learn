@@ -176,7 +176,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   // Skill 实现源码（点开详情→查看实现）
   const [skillSource, setSkillSource] = useState<string | null>(null)
   const [skillSrcLoading, setSkillSrcLoading] = useState(false)
-  // 对话设定（项目介绍可编辑，localStorage 持久化；缺省用内置默认）
+  // 对话设定（localStorage 持久化；缺省用内置默认）
   const [globalCards, setGlobalCards] = useState<Array<[string, string]>>(() => {
     const saved = lsGetJSON<Array<[string, string]>>(LS.introGlobal, [])
     return Array.isArray(saved) && saved.length ? saved : DEFAULT_GLOBAL_CARDS

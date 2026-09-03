@@ -24,18 +24,9 @@ class BaseLLM:
     def _create_client(self) -> OpenAI:
         raise NotImplementedError
 
-    def _strip_thinking(self, content: str) -> str:
-        """去除 DeepSeek 的思考标签 <｜end▁of▁thinking｜> ... """
-        return re.sub(r"█████.*?█████", "", content, flags=re.DOTALL).strip()
-
     def chat(self, messages: list[dict], temperature: float = 0.7, max_tokens: int | None = None) -> str:
         """普通对话，返回文本"""
-        kwargs = {}
-        if getattr(self, "thinking", None) is not None:
-            # DeepSeek v4 思考模式开关：extra_body 透传（兼容旧版 openai SDK）
-            kwargs["extra_body"] = {"thinking": {"type": "enabled" if self.thinking else "disabled"}}
-            if self.thinking and self.effort:
-                kwargs["reasoning_effort"] = self.effort
+        kwargs = self._thinking_kwargs()
         if max_tokens is not None:
             kwargs["max_tokens"] = max_tokens
         for attempt in range(1, self.max_retries + 1):
@@ -50,11 +41,17 @@ class BaseLLM:
                 )
                 content = resp.choices[0].message.content or ""
                 self._log_tokens(resp, "chat", attempt)
-                return self._strip_thinking(content)
+                # D3：旧的 █████ 思考剥离助手已删——实证（2026-08-30，真实 API 双样本）
+                # DeepSeek thinking=True 时思考走独立 message.reasoning_content 字段，
+                # content 纯净、原正则永不匹配（死代码）；保留 .strip() 与原行为逐字节等价。
+                return content.strip()
             except Exception as e:
                 logger.warning(f"chat 第{attempt}次失败: {e}")
                 if attempt == self.max_retries:
-                    raise RuntimeError(f"chat 全部{self.max_retries}次重试均失败") from e
+                    _msg = f"chat 全部{self.max_retries}次重试均失败"
+                    if "429" in str(e):
+                        _msg += "（免费模型限流：请稍后重试，或在 设置→AI服务 切换预设档/模型）"
+                    raise RuntimeError(_msg) from e
                 time.sleep(attempt * 2)
 
     def chat_with_json(self, messages: list[dict], output_schema: dict, temperature: float = 0.3) -> dict:
@@ -80,14 +77,17 @@ class BaseLLM:
                     max_tokens=2000,
                     timeout=config.LLM_REQUEST_TIMEOUT,
                 )
+                # D3：旧的 █████ 思考剥离助手已删（同 chat 内注释）；_parse_json 内部自带 strip，行为等价。
                 content = resp.choices[0].message.content or "{}"
-                content = self._strip_thinking(content)
                 self._log_tokens(resp, "json", attempt)
                 return self._parse_json(content)
             except Exception as e:
                 logger.warning(f"chat_with_json 第{attempt}次失败: {e}")
                 if attempt == self.max_retries:
-                    raise RuntimeError(f"chat_with_json 全部{self.max_retries}次重试均失败") from e
+                    _msg = f"chat_with_json 全部{self.max_retries}次重试均失败"
+                    if "429" in str(e):
+                        _msg += "（免费模型限流：请稍后重试，或在 设置→AI服务 切换预设档/模型）"
+                    raise RuntimeError(_msg) from e
                 time.sleep(attempt * 2)
 
     def _describe_schema(self, schema: dict) -> str:
@@ -110,14 +110,14 @@ class BaseLLM:
             import json
             return json.loads(raw)
         except json.JSONDecodeError:
-            pass
+            logger.debug("模型输出直出 JSON 解析失败，回退正则提取")
         match = re.search(r"\{[\s\S]*\}", raw)
         if match:
             try:
                 import json
                 return json.loads(match.group())
             except json.JSONDecodeError:
-                pass
+                logger.debug("围栏片段 JSON 解析失败，放弃解析")
         raise ValueError(f"无法从模型输出中解析JSON: {raw[:200]}")
 
     def _log_tokens(self, resp, call_type: str, attempt: int):
@@ -130,6 +130,19 @@ class BaseLLM:
                 f"小计={usage.total_tokens} 累计={self.total_tokens}"
             )
 
+    def _thinking_kwargs(self) -> dict:
+        """F14-S4b：DeepSeek v4 思考开关只对 DeepSeek 端点透传。
+        为什么：extra_body thinking/reasoning_effort 是 DeepSeek 私有扩展，Zen 等
+        OpenAI 兼容网关语义未知——缺失 reasoning_content 时前端本就自动降级（双通道），无需透传。"""
+        if getattr(self, "thinking", None) is None:
+            return {}
+        if self._base_url and "deepseek" not in self._base_url:
+            return {}
+        kwargs: dict = {"extra_body": {"thinking": {"type": "enabled" if self.thinking else "disabled"}}}
+        if self.thinking and self.effort:
+            kwargs["reasoning_effort"] = self.effort
+        return kwargs
+
 
     def chat_stream(self, messages: list[dict], on_token, temperature: float = 0.7, on_content=None, cancel_event=None, on_reasoning=None, response_format=None):
         """流式对话，每收到一个token调用on_token(chunk_text)。
@@ -138,13 +151,7 @@ class BaseLLM:
         on_content：仅 content（最终回答）token 时调用——生成节点的回答内容直接流式推给前端。
         on_reasoning：仅 reasoning_content（思考）token 时调用——生成节点的思考单独流式进思维链（与回答内容区分）。
         cancel_event：用户手动停止时置位（threading.Event），chunk 循环内检查，最多延迟一个 chunk 即中断生成。"""
-        kwargs = {}
-        if getattr(self, "thinking", None) is not None:
-            # DeepSeek v4 思考模式开关：extra_body 透传（兼容旧版 openai SDK）
-            kwargs["extra_body"] = {"thinking": {"type": "enabled" if self.thinking else "disabled"}}
-            # 思考强度：low=极短思考（简单问题保留思维链但秒级完成）
-            if self.thinking and self.effort:
-                kwargs["reasoning_effort"] = self.effort
+        kwargs = self._thinking_kwargs()
         if response_format is not None:
             kwargs["response_format"] = response_format
         for attempt in range(self.max_retries):
@@ -173,7 +180,10 @@ class BaseLLM:
                 logger.warning(f"chat_stream 第{attempt+1}次失败: {e}")
                 if attempt < self.max_retries - 1:
                     time.sleep(self.retry_delays[attempt])
-        raise RuntimeError(f"chat_stream 全部{self.max_retries}次重试均失败")
+        _msg = f"chat_stream 全部{self.max_retries}次重试均失败"
+        if "429" in str(e):
+            _msg += "（免费模型限流：请稍后重试，或在 设置→AI服务 切换预设档/模型）"
+        raise RuntimeError(_msg)
 
 class DeepSeekLLM(BaseLLM):
     """OpenAI 兼容协议实现（DeepSeek/OpenAI/通义/GLM/Kimi/豆包等）"""

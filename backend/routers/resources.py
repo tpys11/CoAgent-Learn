@@ -5,6 +5,8 @@ import os
 from fastapi import APIRouter, File, Form, UploadFile
 from pydantic import BaseModel
 
+from core.model_provider import MODEL_MAIN
+
 logger = logging.getLogger("coagent.resources")
 router = APIRouter()
 
@@ -21,7 +23,7 @@ class GenerateDomainReq(BaseModel):
     domain: str
     api_key: str = ""
     base_url: str = "https://api.deepseek.com/v1"
-    model: str = "deepseek-v4-flash"
+    model: str = MODEL_MAIN
 
 
 class ResourceGenReq(BaseModel):
@@ -29,7 +31,7 @@ class ResourceGenReq(BaseModel):
     content: str = ""
     api_key: str = ""
     base_url: str = "https://api.deepseek.com/v1"
-    model: str = "deepseek-v4-flash"
+    model: str = MODEL_MAIN
 
 
 def _generate_domain_sync(req) -> dict:
@@ -138,7 +140,6 @@ async def upload_resource(
     file: UploadFile = File(...),
 ):
     """我的上传：上传文件存资源表（解析文本存 content，文件本体存 data/uploads）"""
-    import time, hashlib
     from core.postgres_client import pg_client
     from core.file_parser import parse_file
     data = await file.read()

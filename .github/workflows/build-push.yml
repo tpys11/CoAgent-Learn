@@ -1,0 +1,154 @@
+# =============================================================================
+# CoAgent-Learn — GHCR 预构建镜像自动构建推送（N3 子步骤 4 安装草案）
+# 安装位置：.github/workflows/build-push.yml
+# 来源备注：原总领起草稿（2026-08-30）遗失。本稿由 N3P 修补会话按修补版
+#   docs/dispatch/step-N3.md 子步骤 4「workflow 要点」逐条重建（含坑位注释），
+#   口径与修补版一致：裸完整 sha（type=raw），禁用 type=sha。
+# =============================================================================
+
+name: build-push
+
+on:
+  push:
+    branches: [master]
+    # docs/**、**.md、.gitignore 不该触发镜像重建（PROGRESS.md 改动频繁）
+    paths-ignore: ['docs/**', '**.md', '.gitignore']
+  workflow_dispatch: # 另保留手动触发
+
+# ⚠️ 缺 packages: write 推不上去（GITHUB_TOKEN 默认对 packages 无写权限）
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  # 决策 36：push 即机器验证（pytest/tsc/vitest），双镜像构建 gate 在测试之后——
+  # 总领验收由此从「人力复跑全量」降为「diff 审读 + CI 徽章 + 抽样变异」。
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend deps
+        run: |
+          pip install -r backend/requirements.txt
+          # pytest 不在 requirements（C1 有意不进镜像，宿主走 pyproject dev 组）——CI 需显式补齐
+          pip install pytest pytest-asyncio
+      - name: Backend tests
+        env:
+          PYTHONPATH: backend
+        run: |
+          # backend/tests 为本地空目录（零 tracked 文件，git 不跟踪空目录）——CI 无此路径，勿传
+          python -m pytest tests -q --tb=short -rf --junitxml=pytest-report.xml
+          code=$?
+          python tools/ci_annotations.py pytest-report.xml || true
+          exit $code
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+      - name: Frontend typecheck + tests
+        working-directory: frontend
+        run: |
+          npx tsc --noEmit
+          npx vitest run --reporter=junit --outputFile=vitest-report.xml
+          code=$?
+          python3 ../tools/ci_annotations.py vitest-report.xml || true
+          exit $code
+
+  backend:
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ⚠️ 必须先建 buildx builder（docker-container driver）：
+      #    type=gha 缓存导出与 provenance 在默认 docker driver 上不受支持（首跑 failure 根因）。
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          # 仓库自带 GITHUB_TOKEN，不需要配置任何密钥
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # ⚠️ 包名必须全小写（GHCR 硬约束）
+          images: ghcr.io/tpys11/coagent-learn/backend
+          # ⚠️ 标签必须是裸完整 sha：compose 里写死完整 sha（不写 latest）。
+          #    禁用 type=sha——默认前缀 sha- 会产生 sha-abc123…，与 compose 对不上。
+          tags: |
+            type=raw,value=${{ github.sha }}
+            type=raw,value=latest
+          # 关掉 flavor 自动 latest，保证恰好两个 tag：完整 sha + latest
+          flavor: latest=false
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          # ⚠️ context 必须与子步骤 1 的处置一致：走 A 时 backend 的 context 是仓库根 `.`
+          #    （配合仓库根 .dockerignore 排除 frontend/node_modules、.git、data/*.db*、**/__pycache__）
+          context: .
+          file: ./backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # 每仓库 10GB 免费 Actions 缓存，scope 按服务名隔离
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+
+  frontend:
+    needs: tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ⚠️ 必须先建 buildx builder（docker-container driver）：
+      #    type=gha 缓存导出与 provenance 在默认 docker driver 上不受支持（首跑 failure 根因）。
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/tpys11/coagent-learn/frontend
+          tags: |
+            type=raw,value=${{ github.sha }}
+            type=raw,value=latest
+          flavor: latest=false
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          # frontend 始终是 ./frontend（本步不改它的 Dockerfile 与上下文）
+          context: ./frontend
+          # file 缺省即 {context}/Dockerfile = ./frontend/Dockerfile，不显式写以免相对路径歧义
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max

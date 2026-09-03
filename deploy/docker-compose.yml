@@ -1,42 +1,62 @@
 ﻿services:
   frontend:
-    build:
-      context: ../frontend
-      dockerfile: Dockerfile
+    # C3: 多阶段构建的静态产物由 nginx 托管并反代后端（容器内 80，外部端口保持 5173）。
+    # 不再挂载源码——HMR 随 dev server 退役；前端改动在宿主 npm run dev 验证、N2/N3 检查点重建镜像。
+    # N3 子步骤 4 首推后回填完整 sha（首推 99cfe7c 构建通过后回填）
+    image: ghcr.io/tpys11/coagent-learn/frontend:99cfe7c97d1b156a508497319eda68ce415903f2
     container_name: guashuai-frontend
     ports:
-      - "5173:5173"
-    volumes:
-      - ../frontend/src:/app/src
-      - ../frontend/tailwind.config.js:/app/tailwind.config.js
-      - ../frontend/postcss.config.js:/app/postcss.config.js
-      - ../frontend/vite.config.ts:/app/vite.config.ts
-      - ../frontend/index.html:/app/index.html
-      - ../frontend/public:/app/public
-      - ../frontend/package.json:/app/package.json
-      - ../frontend/package-lock.json:/app/package-lock.json
+      - "5173:80"
+    # C4: 等 backend 探针通过（/healthz 200）才启动 frontend——消除启动窗口期
+    # 「backend 未就绪、nginx 已开始反代」时评委看到 502 错误页的问题。
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    # C4: 崩溃自愈；显式 stop/down 后不会被 Docker 拉起（区别于 always 的"神秘复活"）。
+    restart: unless-stopped
+    # F3（N2-1）：frontend 探活。nginx:alpine 自带 busybox wget，无需装任何包。
+    # host 必须 127.0.0.1：nginx listen 80 纯 IPv4，localhost 解析 ::1 且 busybox wget
+    # 无 IPv6→IPv4 回退——写 localhost 探针永远 Connection refused（容器内实测退出码 1）。
+    # 验证须整栈 up：nginx 启动期解析 upstream guashuai-backend，frontend 无法单独启动。
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     networks:
       - guashuai-network
 
   backend:
-    build:
-      context: ../backend
-      dockerfile: Dockerfile
+    # N3 子步骤 4 首推后回填完整 sha（首推 99cfe7c 构建通过后回填）
+    image: ghcr.io/tpys11/coagent-learn/backend:99cfe7c97d1b156a508497319eda68ce415903f2
     container_name: guashuai-backend
     ports:
       - "8000:8000"
     env_file:
-      - ../.env
+      # N1: .env 为可选覆盖（config.py 全部变量有默认值）。评委 clone 后无 .env
+      # 也能启动；需要代理等自定义配置时 cp .env.example .env 即可。
+      - path: ../.env
+        required: false
     environment:
       # 主数据统一落地宿主机仓库根 data/（与本地 start-backend.bat 同库，终结双库分叉）
       - SQLITE_DIR=/app-data
-    command: sh -c "pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --quiet sqlite-vec python-multipart pypdf python-docx python-pptx rank_bm25 jieba pytest mcp pymupdf4llm trafilatura markitdown llama-index-core && uvicorn main:app --host 0.0.0.0 --port 8000"
+    # C1: 依赖全部由镜像构建期提供（backend/requirements.txt），启动零联网安装。
+    # 勿在运行时联网装包——断网即挂（Step C1 实测）；新增运行时依赖进 requirements.txt 后 --build 重建。
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+    # C4: 崩溃自愈——后端进程异常退出后 Docker 自动重启（显式 stop 除外）。
+    restart: unless-stopped
+    # C4: liveness 探针。python:3.12-slim 无 curl/wget（C4 实测 NO_CURL/NO_WGET），
+    # 必须用镜像内自带的 python 发 HTTP 探测；exec 形式不经 shell，单条 python -c 合法。
+    # 只探 /healthz（纯 liveness、零 I/O），不查库/向量/LLM——readiness 不做的决策见 C4 交接。
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     volumes:
-      - ../backend:/app
-      - ../skills:/app/skills
-      - ../tests:/app/tests
+      # N3 决策 19：移除 3 条代码挂载（backend/skills/tests），只保留数据卷
       - ../data:/app-data
     networks:
       - guashuai-network

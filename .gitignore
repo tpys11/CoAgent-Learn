@@ -28,8 +28,9 @@ secrets/
 *.swp
 *.swo
 
-# 文档 — 本地记录，不提交
-docs/
+# 文档 — 本地记录，不提交（E-24 决策 A：仅放行唯一状态载体 PROGRESS.md）
+docs/*
+!docs/PROGRESS.md
 
 # Docker
 docker-compose.override.yml

@@ -116,8 +116,14 @@ def get_dialogue_profile_status(did: str):
 
 
 @router.get("/api/dialogues/{did}/messages")
-def get_dialogue_messages(did: str):
+def get_dialogue_messages(did: str, light: bool = False):
+    """对话历史。light=true（闭环六资源编辑会话用）：跳过 think JSON 解析——
+    编辑窗口不渲染思维链，长会话下逐条 loads 是纯浪费；默认行为不变。"""
     rows = get_project_repo().get_dialogue_messages(did)
+    if light:
+        return {"messages": [
+            {"role": r.get("role"), "content": r.get("content"), "created_at": r.get("created_at")}
+            for r in rows or []]}
     for r in rows or []:
         t = r.get("think") or ""
         r["think"] = json.loads(t) if t else []
