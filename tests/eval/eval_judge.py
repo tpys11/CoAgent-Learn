@@ -134,6 +134,30 @@ def judge_case(entry, client, model):
     return out
 
 
+def summarize_denominator(results):
+    """P0-S3 分母诚实化（单一事实源，main 与单测复用）：
+    口径：基础口径=非 IF 样本；有效=无 error 且回答非空白；失败/空=基础口径中其余样本。
+    三硬指标分母仍只取有效集（EVAL-1 协议不动），但失败/空总量与有效占比必须显性入
+    汇总——堵「失败/空样本悄悄蒸发出分母」的两处灌水口（旧 :154-156 跳过失败条、
+    :182-184 过滤空回答且汇总零呈现）。池空时 valid_ratio=None（不造 0 分母）。
+    返回 (denom 字段 dict, 有效样本列表)，有效样本列表供 evaluate 沿用原口径。"""
+    pool = [r for r in results or [] if not (r.get("case_id") or "").startswith("IF")]
+    valid = [r for r in pool if not r.get("error") and (r.get("answer") or "").strip()]
+    fields = {"base_total": len(pool), "failed_total": len(pool) - len(valid),
+              "valid_ratio": round(len(valid) / len(pool), 4) if pool else None}
+    return fields, valid
+
+
+def render_denominator_lines(denom):
+    """P0-S3：md 报告与 JSON 汇总同步呈现分母诚实化。render_markdown 只渲染固定键
+    （run_eval 属他域禁改），故在 judge 侧追加两行，保证报告里灌水口可见。"""
+    return [
+        f"- 分母诚实化：基础口径 {denom['base_total']} 条，"
+        f"失败/空 {denom['failed_total']} 条未计入三指标（failed_total）",
+        f"- 有效样本占比（valid_ratio）：{denom['valid_ratio']}",
+    ]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--evidence", default="docs/submission/evidence")
@@ -179,12 +203,14 @@ def main():
         json.dump(results, fh, ensure_ascii=False, indent=2)
 
     # 三指标汇总（复用 run_eval 纯函数；IF/记录型用例不计入基础口径分母）
-    base_cases = [r for r in results
-                  if not (r.get("case_id") or "").startswith("IF")
-                  and not r.get("error") and (r.get("answer") or "").strip()]
+    # P0-S3：base_cases 改由 summarize_denominator 供给（谓词与旧内联式逐字等价），
+    # 同时产出 failed_total/valid_ratio 如实呈现被剔除样本。
+    denom, base_cases = summarize_denominator(results)
     if_cases = [r for r in results if (r.get("case_id") or "").startswith("IF")
                 and not r.get("error")]
     rep = evaluate(base_cases)
+    rep["failed_total"] = denom["failed_total"]
+    rep["valid_ratio"] = denom["valid_ratio"]
     rep["if_cases"] = {"total": len(if_cases),
                        "ids": [r.get("case_id") for r in if_cases]}
     skipped_l0 = sum(1 for r in base_cases
@@ -195,7 +221,7 @@ def main():
     with open(os.path.join(args.evidence, "summary", f"report-final-{stamp}.json"),
               "w", encoding="utf-8") as fh:
         json.dump(rep, fh, ensure_ascii=False, indent=2)
-    md = render_markdown(rep)
+    md = render_markdown(rep) + "\n".join(render_denominator_lines(denom)) + "\n"
     with open(os.path.join(args.evidence, "summary", f"report-final-{stamp}.md"),
               "w", encoding="utf-8") as fh:
         fh.write(md)

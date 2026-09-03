@@ -1,0 +1,28 @@
+# P0-S3：评测副本栈 override（EVAL-1 Wave 2 批量跑数专用；不带本文件启动时 dev/交付栈零变化）。
+#
+# 隔离设计（四重）：独立 project 名 coagent-eval（独立网络/卷命名空间）；容器名
+# guashuai-eval-* 防撞名；端口 18000（后端，对齐 eval_runner.py 默认 --base
+# http://127.0.0.1:18000）与 5174（前端），避开 dev 栈 8000-8080 区；数据卷指向
+# 系统临时目录 ${TEMP:-/tmp}/coagent-eval-data——绝不挂载仓库真实数据卷（守卫钉死）。
+#
+# 起栈方式（仓库根执行；需 compose v2.24+ 支持 !override 合并标签）：
+#   docker compose -f deploy/docker-compose.yml -f deploy/eval-override.yml up -d
+#   隔离自检：docker compose -f deploy/docker-compose.yml -f deploy/eval-override.yml config
+#   （config 输出中后端仅 18000 映射、数据卷仅临时目录，即 merge 未残留 dev 栈条目）
+#   跑数：python tests/eval/eval_runner.py --base http://127.0.0.1:18000 --batch smoke --outdir docs/submission/evidence
+#   收栈：docker compose -f deploy/docker-compose.yml -f deploy/eval-override.yml down
+
+name: coagent-eval
+
+services:
+  frontend:
+    container_name: guashuai-eval-frontend
+    ports: !override
+      - "5174:80"
+
+  backend:
+    container_name: guashuai-eval-backend
+    ports: !override
+      - "18000:8000"
+    volumes: !override
+      - ${TEMP:-/tmp}/coagent-eval-data:/app-data
