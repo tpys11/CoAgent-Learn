@@ -21,20 +21,31 @@ _FALLBACK_JUDGE = MODEL_MAIN  # 跨厂商名缺 key 时的响亮回退值
 _RATE_LIMIT_SLEEP = 20  # RC3-S4：判卷撞 429 的延迟重试等待（秒）；模块级常量供测试注入
 
 # RC3-S4：fail-open 文案诚实化——think_then_json 吞异常返回「执行异常: …」指纹，
-# 该形态=审核器调用失败（免费档 429 重试耗尽为主），并非「输出不可解析」（谎报根因）
+# 该形态=审核器调用失败（免费档 429 重试耗尽为主），并非「输出不可解析」（谎报根因）。
+# RC5-S2：归因中性化——429 双指纹（执行异常+免费模型限流）才显「免费档限流」；
+# 其余调用失败（网络/超时/坏 key 等）用中性文案不误归因，真实异常指纹经 logger 留痕
+# （think_then_json 吞异常不抛，指纹即唯一现场）。
 _REASON_RATE_LIMIT_ONCE = "审核器暂不可用（免费档限流），本轮跳过"
+_REASON_CALL_FAIL_ONCE = "审核器暂不可用，本轮跳过"
 _REASON_UNPARSEABLE_ONCE = "审核器输出不可解析，跳过本轮"
 _REASON_RATE_LIMIT_CLAIMS = "本轮未经完整审核（审核器暂不可用（免费档限流））"
+_REASON_CALL_FAIL_CLAIMS = "本轮未经完整审核（审核器暂不可用）"
 _REASON_UNPARSEABLE_CLAIMS = "本轮未经完整审核（审核器输出不可解析）"
 
 
 def _failopen_reason(thinking: str, claims_form: bool) -> str:
-    """fail-open reasons 选文案：调用失败指纹（执行异常开头）→ 限流诚实文案；
-    调用成功但输出不合形 → 维持「输出不可解析」原文案。claims_form=断言级审核的前缀形态。"""
-    rate_limited = thinking.startswith("执行异常")
-    if claims_form:
-        return _REASON_RATE_LIMIT_CLAIMS if rate_limited else _REASON_UNPARSEABLE_CLAIMS
-    return _REASON_RATE_LIMIT_ONCE if rate_limited else _REASON_UNPARSEABLE_ONCE
+    """fail-open reasons 选文案（RC5-S2 三档归因）：
+    调用成功但输出不合形 → 维持「输出不可解析」原文案；
+    调用失败（执行异常指纹）再分两档——429 双指纹 → 限流文案（诚实归因）；
+    其余调用失败 → 中性文案（不误归因），并 warning 留真实异常指纹。
+    claims_form=断言级审核的前缀形态。"""
+    if not thinking.startswith("执行异常"):
+        return _REASON_UNPARSEABLE_CLAIMS if claims_form else _REASON_UNPARSEABLE_ONCE
+    if "免费模型限流" in thinking:
+        return _REASON_RATE_LIMIT_CLAIMS if claims_form else _REASON_RATE_LIMIT_ONCE
+    logger.warning("[审核] 判卷调用失败（非429），fail-open 跳过，真实异常指纹：%s",
+                   thinking[:200])
+    return _REASON_CALL_FAIL_CLAIMS if claims_form else _REASON_CALL_FAIL_ONCE
 
 
 def _judge_think(llm_review, prompt: str,

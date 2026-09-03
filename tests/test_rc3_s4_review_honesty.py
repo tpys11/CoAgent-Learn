@@ -95,10 +95,26 @@ def test_s4_429_retry_once_then_success(no_wait):
     assert out["skipped"] is False and out["passed"] is True
 
 
-def test_s4_non_429_no_retry(no_wait):
-    """非 429 异常（无「免费模型限流」后缀）不重试——重试只耐心给限流。"""
+def test_rc5_s2_non_429_call_failure_neutral_copy(no_wait, caplog):
+    """RC5-S2（worker 级）：非 429 调用失败（无「免费模型限流」后缀）→ 中性文案
+    「审核器暂不可用，本轮跳过」——不误归因免费档限流；不重试；log 层保留真实异常
+    （think_then_json 吞异常不抛，指纹即唯一现场，必须进 warning）。"""
+    import logging
     llm = _RaisingLLM(_PLAIN_MSG)
-    out = review_once(llm, "回答内容", "", "【输出策略指令】x")
+    with caplog.at_level(logging.WARNING, logger="coagent.review"):
+        out = review_once(llm, "回答内容", "", "【输出策略指令】x")
     assert llm.calls == 1 and no_wait == []
     assert out["skipped"] is True
-    assert out["reasons"] == "审核器暂不可用（免费档限流），本轮跳过"
+    assert out["reasons"] == "审核器暂不可用，本轮跳过"
+    assert any("chat_stream 全部3次重试均失败" in (r.getMessage() or "")
+               for r in caplog.records), "真实异常指纹必须进 log 层"
+
+
+def test_rc5_s2_non_429_call_failure_neutral_copy_claims(no_wait):
+    """RC5-S2（worker 级）：断言级审核同款——非 429 调用失败 → 中性文案
+    「本轮未经完整审核（审核器暂不可用）」，不误归因限流。"""
+    llm = _RaisingLLM(_PLAIN_MSG)
+    out = review_claims(llm, "回答内容", [], "【输出策略指令】x")
+    assert llm.calls == 1 and no_wait == []
+    assert out["skipped"] is True
+    assert out["reasons"] == "本轮未经完整审核（审核器暂不可用）"
