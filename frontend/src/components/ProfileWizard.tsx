@@ -16,30 +16,38 @@ interface Props {
   onSave: (profile: Record<string, any>) => void
 }
 
-const DOMAINS = ['智能制造', '人工智能', '软件开发', '工业互联网', '其他']
-const LEVELS = ['零基础', '有基础', '熟练', '精通']
-const IDENTITIES = ['在校本科生', '在校研究生', '在职工程师', '转行自学者', '其他']
-const PREFER = ['讲义讲解', '实操练习', '刷题巩固', '混合']
+/** 文本框行：label + 轻提示 + 自由输入 */
+function Field({ no, label, value, onChange, placeholder, hint }: {
+  no: string; label: string; value: string; onChange: (v: string) => void; placeholder: string; hint?: string
+}) {
+  return (
+    <div>
+      <div className="flex items-baseline justify-between">
+        <label className="text-xs font-medium text-gray-600">{no} {label}</label>
+        {hint && <span className="text-[10px] text-gray-400">{hint}</span>}
+      </div>
+      <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+        className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-[#1a1a1a]" />
+    </div>
+  )
+}
 
 export default function ProfileWizard({ mode, projectName, projectId, scopeTargets, inheritedProfile, onClose, onSave }: Props) {
   const isProject = mode === 'project'
-  // 填写形式：分类引导（默认） / 一段话自由填写
   const [formMode, setFormMode] = useState<'guide' | 'free'>(inheritedProfile?.raw ? 'free' : 'guide')
 
-  // ---- 分类字段 ----
-  const [domain, setDomain] = useState(inheritedProfile?.domain || DOMAINS[0])
-  const [identity, setIdentity] = useState(inheritedProfile?.identity || inheritedProfile?.background || IDENTITIES[0])
-  const [selfLevel, setSelfLevel] = useState(inheritedProfile?.selfLevel || inheritedProfile?.background || LEVELS[0])
-  const [goal, setGoal] = useState(inheritedProfile?.goal || '')
-  const [prefer, setPrefer] = useState(inheritedProfile?.prefer || PREFER[3])
-  // ---- 对话字段 ----
-  const [topic, setTopic] = useState(inheritedProfile?.topic || '')
-  const [target, setTarget] = useState(inheritedProfile?.target || '')
-  const [questionType, setQuestionType] = useState(inheritedProfile?.questionType || '基础')
-  // ---- 自由文本 ----
-  const [freeText, setFreeText] = useState(inheritedProfile?.raw || '')
+  // ---- 分类字段（文本框自由填写）----
+  const [domain, setDomain] = useState<string>(String(inheritedProfile?.domain || ''))
+  const [identity, setIdentity] = useState<string>(String(inheritedProfile?.identity || inheritedProfile?.background || ''))
+  const [selfLevel, setSelfLevel] = useState<string>(String(inheritedProfile?.selfLevel || ''))
+  const [goal, setGoal] = useState<string>(String(inheritedProfile?.goal || ''))
+  const [prefer, setPrefer] = useState<string>(String(inheritedProfile?.prefer || ''))
+  const [topic, setTopic] = useState<string>(String(inheritedProfile?.topic || ''))
+  const [target, setTarget] = useState<string>(String(inheritedProfile?.target || ''))
+  const [questionType, setQuestionType] = useState<string>(String(inheritedProfile?.questionType || ''))
+  const [freeText, setFreeText] = useState<string>(String(inheritedProfile?.raw || ''))
 
-  // F10-S1 向导补传
+  // 上传补传
   const [upBusy, setUpBusy] = useState(false)
   const [upMsg, setUpMsg] = useState('')
   const upFileRef = useRef<HTMLInputElement>(null)
@@ -80,16 +88,21 @@ export default function ProfileWizard({ mode, projectName, projectId, scopeTarge
     if (formMode === 'free' && freeText.trim()) {
       onSave({ raw: freeText.trim(), domain, prefer }); return
     }
-    const p: Record<string, any> = { domain, prefer }
+    const p: Record<string, any> = {}
+    if (domain.trim()) p.domain = domain.trim()
+    if (prefer.trim()) p.prefer = prefer.trim()
     if (isProject) {
-      p.identity = identity; p.selfLevel = selfLevel; p.goal = goal
+      if (identity.trim()) p.identity = identity.trim()
+      if (selfLevel.trim()) p.selfLevel = selfLevel.trim()
+      if (goal.trim()) p.goal = goal.trim()
     } else {
-      p.topic = topic; p.selfLevel = selfLevel || LEVELS[1]; p.target = target; p.questionType = questionType
+      if (topic.trim()) p.topic = topic.trim()
+      if (selfLevel.trim()) p.selfLevel = selfLevel.trim()
+      if (target.trim()) p.target = target.trim()
+      if (questionType.trim()) p.questionType = questionType.trim()
     }
     onSave(p)
   }
-
-  const chip = (on: boolean) => 'text-[11px] px-2.5 py-1 rounded-lg border transition-colors ' + (on ? 'bg-[#1a1a1a] text-white border-[#1a1a1a]' : 'bg-white text-gray-600 border-gray-200')
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60]" onMouseDown={e => { if (e.target === e.currentTarget) onClose() }}>
@@ -101,8 +114,8 @@ export default function ProfileWizard({ mode, projectName, projectId, scopeTarge
         </h2>
         <p className="text-[11px] text-gray-400 mb-4">
           {scopeStep ? '上传的教材已完成切割入库：逐份选择留存范围；跳过则保留全部内容（默认）。'
-            : isProject ? '为课程「' + (projectName || '') + '」建立学情画像，AI 将据此调整讲解深度与方式'
-            : '补充本次学习画像（已继承课程画像）'}
+            : isProject ? '为课程「' + (projectName || '') + '」建立学情画像，AI 将据此调整讲解深度与方式。可逐项填写，或切到「一段话告诉我」一次说清。'
+            : '补充本次学习画像（已继承课程画像）。'}
         </p>
 
         {scopeStep ? (
@@ -118,10 +131,9 @@ export default function ProfileWizard({ mode, projectName, projectId, scopeTarge
           </div>
         ) : (
           <>
-            {/* 填写形式切换：分类引导 / 一段话自由填写 */}
             <div className="flex gap-1 p-1 rounded-xl bg-gray-100 mb-4">
               <button onClick={() => setFormMode('guide')} className={'flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-lg transition-colors ' + (formMode === 'guide' ? 'bg-white shadow-sm font-semibold text-gray-800' : 'text-gray-500')}>
-                <ListChecks size={13} /> 分类填写
+                <ListChecks size={13} /> 逐项填写
               </button>
               <button onClick={() => setFormMode('free')} className={'flex-1 flex items-center justify-center gap-1.5 text-xs py-1.5 rounded-lg transition-colors ' + (formMode === 'free' ? 'bg-white shadow-sm font-semibold text-gray-800' : 'text-gray-500')}>
                 <FileText size={13} /> 一段话告诉我
@@ -139,67 +151,31 @@ export default function ProfileWizard({ mode, projectName, projectId, scopeTarge
               </div>
             ) : (
               <div className="flex flex-col gap-3">
-                {isProject && (
+                {isProject ? (
                   <>
-                    <div>
-                      <label className="text-xs font-medium text-gray-600">① 学习领域</label>
-                      <div className="flex flex-wrap gap-1.5 mt-1">
-                        {DOMAINS.map(d => (
-                          <button key={d} onClick={() => setDomain(d)} className={chip(domain === d)}>{d}</button>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-gray-600">② 你的身份 / 学历背景</label>
-                      <div className="flex flex-wrap gap-1.5 mt-1">
-                        {IDENTITIES.map(x => (
-                          <button key={x} onClick={() => setIdentity(x)} className={chip(identity === x)}>{x}</button>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-gray-600">③ 先验水平自评</label>
-                      <div className="flex flex-wrap gap-1.5 mt-1">
-                        {LEVELS.map(l => (
-                          <button key={l} onClick={() => setSelfLevel(l)} className={chip(selfLevel === l)}>{l}</button>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-gray-600">④ 学习目标</label>
-                      <input value={goal} onChange={e => setGoal(e.target.value)} placeholder="如：掌握基本原理，能独立完成一个小型实操项目"
-                        className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-[#1a1a1a]" />
-                    </div>
+                    <Field no="①" label="学习领域 / 方向" value={domain} onChange={setDomain}
+                      placeholder="如：人工智能 / 智能制造 / PLC 编程…" hint="自由填写，不必照固定选项" />
+                    <Field no="②" label="你的身份 / 学历背景" value={identity} onChange={setIdentity}
+                      placeholder="如：在校本科生 / 研究生 / 在职工程师 / 转行自学者…" />
+                    <Field no="③" label="先验水平自评" value={selfLevel} onChange={setSelfLevel}
+                      placeholder="如：零基础 / 有一点点了解 / 学过基础 / 比较熟练…" />
+                    <Field no="④" label="学习目标" value={goal} onChange={setGoal}
+                      placeholder="如：掌握基本原理，能独立完成一个小型实操项目" />
+                    <Field no="⑤" label="偏好学习方式" value={prefer} onChange={setPrefer}
+                      placeholder="如：多讲例子少推导 / 边学边实操 / 讲义+刷题巩固…" />
+                  </>
+                ) : (
+                  <>
+                    <Field no="①" label="本次学什么" value={topic} onChange={setTopic}
+                      placeholder="如：梯形图编程 / 线性代数矩阵…" />
+                    <Field no="②" label="本次水平自评" value={selfLevel} onChange={setSelfLevel}
+                      placeholder="如：零基础 / 有一点基础 / 熟练…" hint="不填则沿用课程画像" />
+                    <Field no="③" label="本次目标" value={target} onChange={setTarget}
+                      placeholder="如：理解基本指令并能独立编写" />
+                    <Field no="④" label="偏好学习方式" value={prefer} onChange={setPrefer}
+                      placeholder="如：多讲例子 / 多实操 / 讲义+刷题…" />
                   </>
                 )}
-                {!isProject && (
-                  <>
-                    <div>
-                      <label className="text-xs font-medium text-gray-600">① 本次学什么</label>
-                      <input value={topic} onChange={e => setTopic(e.target.value)} placeholder="如：梯形图编程" className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-[#1a1a1a]" />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-gray-600">② 本次水平自评</label>
-                      <div className="flex flex-wrap gap-1.5 mt-1">
-                        {LEVELS.map(l => (
-                          <button key={l} onClick={() => setSelfLevel(l)} className={chip(selfLevel === l)}>{l}</button>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-gray-600">③ 本次目标</label>
-                      <input value={target} onChange={e => setTarget(e.target.value)} placeholder="如：理解基本指令并能独立编写" className="mt-1 w-full px-3 py-2 border border-gray-200 rounded-lg text-sm outline-none focus:border-[#1a1a1a]" />
-                    </div>
-                  </>
-                )}
-                <div>
-                  <label className="text-xs font-medium text-gray-600">{isProject ? '⑤' : '④'} 偏好学习方式</label>
-                  <div className="flex flex-wrap gap-1.5 mt-1">
-                    {PREFER.map(p => (
-                      <button key={p} onClick={() => setPrefer(p)} className={chip(prefer === p)}>{p}</button>
-                    ))}
-                  </div>
-                </div>
                 {!isProject && projectId && (
                   <div className="border-t border-gray-100 pt-3 mt-1">
                     <input ref={upFileRef} type="file" className="hidden"
