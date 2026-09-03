@@ -220,8 +220,12 @@ export const api = {
     apiFetch<any>('/api/dialogues/' + encodeURIComponent(did) + '/followups', { cache: 'no-store' }),
   getLearningLog: (pid?: string) =>
     apiFetch<any>('/api/learning-log' + (pid ? '?project_id=' + encodeURIComponent(pid) : ''), { cache: 'no-store' }),
-  getFocusDays: (pid?: string) =>
-    apiFetch<any>('/api/stats/focus-days' + (pid ? '?project_id=' + encodeURIComponent(pid) : ''), { cache: 'no-store' }),
+  getFocusDays: (opts?: { project_id?: string; month?: string }) => {
+    const qs: string[] = []
+    if (opts?.project_id) qs.push('project_id=' + encodeURIComponent(opts.project_id))
+    if (opts?.month) qs.push('month=' + encodeURIComponent(opts.month))
+    return apiFetch<any>('/api/stats/focus-days' + (qs.length ? '?' + qs.join('&') : ''), { cache: 'no-store' })
+  },
   getMemoryProgress: (pid: string) =>
     apiFetch<any>('/api/memory/progress?project_id=' + encodeURIComponent(pid), { cache: 'no-store' }),
   memoryChat: (body: unknown) => apiFetch<any>('/api/memory-chat', jsonInit('POST', body)),

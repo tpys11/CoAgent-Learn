@@ -33,12 +33,9 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
   // 每课程最新对话名（"上次学到哪"）
   const [lastTopics, setLastTopics] = useState<Record<string, string>>({})
   // 主页学习记录：近30天哪天学了多久、涉及哪些课程（/api/stats/focus-days）
-  const [focusDays, setFocusDays] = useState<Array<{ date: string; projects: Array<{ project_id: string; project_name: string; seconds: number }> }>>([])
   const [logDays, setLogDays] = useState<Array<{ date: string; items: Array<Record<string, any>> }>>([])
   useEffect(() => {
-    api.getFocusDays().then(d => {
-      setFocusDays(Array.isArray(d.days) ? d.days : [])
-    }).catch(() => {})
+    // 学习日历(月历)由 LearningCalendar 自管翻月与数据拉取；这里只拉学习日志全量供弹窗当天内容用
     api.getLearningLog().then(d => {
       setLogDays(Array.isArray(d.days) ? d.days : [])
     }).catch(() => {})
@@ -94,7 +91,7 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
           </div>
           {/* 学习日历（快速引导下方）：30 天日期格，颜色深浅=时长，点格看当天明细 */}
           <div className="w-[360px] max-w-full border hairline rounded-2xl p-3 bg-[var(--bg-panel)] flex flex-col">
-            <LearningCalendar focusDays={focusDays} logDays={logDays} />
+            <LearningCalendar logDays={logDays} />
           </div>
           {/* 课程区块 */}
           <div className="flex flex-col gap-6">

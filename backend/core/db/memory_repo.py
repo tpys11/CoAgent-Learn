@@ -106,6 +106,17 @@ class MemoryRepo:
             "SELECT substr(created_at,1,10) AS d, project_id, SUM(duration_seconds) AS s FROM focus_log "
             "WHERE created_at >= datetime('now','-30 days') GROUP BY d, project_id ORDER BY d", ())
 
+    def get_focus_month(self, project_id, year_month):
+        """专注日志按 天+项目 分组（整月，'YYYY-MM'）——月历视图用"""
+        if project_id:
+            return self._db.execute(
+                "SELECT substr(created_at,1,10) AS d, project_id, SUM(duration_seconds) AS s FROM focus_log "
+                "WHERE project_id=%s AND substr(created_at,1,7)=%s GROUP BY d, project_id ORDER BY d",
+                (project_id, year_month))
+        return self._db.execute(
+            "SELECT substr(created_at,1,10) AS d, project_id, SUM(duration_seconds) AS s FROM focus_log "
+            "WHERE substr(created_at,1,7)=%s GROUP BY d, project_id ORDER BY d", (year_month,))
+
     def get_task_stats(self, pid, limit):
         return self._db.execute(
             "SELECT dialogue_id, data, created_at FROM task_stats WHERE project_id=%s ORDER BY id DESC LIMIT %s",

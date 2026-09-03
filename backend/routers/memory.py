@@ -219,11 +219,15 @@ def export_all(project_id: str = "default"):
 
 
 @router.get("/api/stats/focus-days")
-def get_focus_days(project_id: str = ""):
-    """主页学习记录列表：近30天按 天+项目 聚合专注时长（哪天学了多久，涉及哪些课程）"""
+def get_focus_days(project_id: str = "", month: str = ""):
+    """学习日历数据：按 天+项目 聚合专注时长。
+    month 形如 '2026-09' → 查该整月；空 → 近30天。"""
     mrepo = get_memory_repo()
     prepo = get_project_repo()
-    rows = mrepo.get_focus_daily_by_project(project_id)
+    if month and len(month) == 7 and month[4] == '-':
+        rows = mrepo.get_focus_month(project_id, month)
+    else:
+        rows = mrepo.get_focus_daily_by_project(project_id)
     pnames = {p["id"]: (p.get("name") or p["id"]) for p in (prepo.list_project_names() or [])}
     by_date: dict = {}
     for r in (rows or []):
