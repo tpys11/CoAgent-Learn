@@ -93,7 +93,7 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
             </button>
           </div>
           {/* 学习日历（快速引导下方）：30 天日期格，颜色深浅=时长，点格看当天明细 */}
-          <div className="w-[560px] max-w-full border hairline rounded-2xl p-4 bg-[var(--bg-panel)] flex flex-col">
+          <div className="w-[360px] max-w-full border hairline rounded-2xl p-3 bg-[var(--bg-panel)] flex flex-col">
             <LearningCalendar focusDays={focusDays} logDays={logDays} />
           </div>
           {/* 课程区块 */}

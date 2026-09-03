@@ -44,38 +44,36 @@ export default function LearningCalendar({ focusDays, logDays }: { focusDays: Fo
   const totalSec = days.reduce((s, x) => s + x.seconds, 0)
   const activeDays = days.filter(x => x.seconds > 0).length
   const logOf = (date: string) => (logDays || []).find(x => x.date === date)
+  // 月份标签：30 天跨月显示 "8-9月"，同月显示 "2026年9月"
+  const monthLabel = (() => {
+    const first = days[0]?.date || '', last = days[days.length - 1]?.date || ''
+    if (first.slice(0, 7) === last.slice(0, 7)) return last.slice(0, 7).replace('-', '年') + '月'
+    return String(parseInt(first.slice(5, 7), 10)) + '-' + String(parseInt(last.slice(5, 7), 10)) + '月'
+  })()
 
   return (
     <div className="flex flex-col gap-2.5">
       <div className="flex items-center justify-between text-[10px] text-dim">
         <span className="font-semibold uppercase tracking-wider">学习日历</span>
-        <span>近 30 天 · {activeDays} 天学习 · 累计 {fmtDur(totalSec)}</span>
+        <span className="font-semibold">{monthLabel}</span>
       </div>
       {/* 星期表头 */}
-      <div className="grid grid-cols-7 gap-1 text-center text-[9px] text-dim mb-0.5">
+      <div className="grid grid-cols-7 gap-0.5 text-center text-[8px] text-dim mb-0.5">
         {['日', '一', '二', '三', '四', '五', '六'].map(w => <span key={w}>{w}</span>)}
       </div>
-      <div className="grid grid-cols-7 gap-1">
+      <div className="grid grid-cols-7 gap-0.5">
         {days.map(d => {
           const a = levelAlpha(d.seconds)
           return (
             <button key={d.date} onClick={() => setSel(d.seconds > 0 ? d : null)}
               title={d.date + (d.seconds > 0 ? ' · ' + fmtDur(d.seconds) : ' · 未学习')}
-              className={`aspect-square rounded-lg flex flex-col items-center justify-center text-[11px] font-medium transition-transform hover:scale-110
-                ${d.seconds > 0 ? 'text-white cursor-pointer' : 'text-[var(--text-muted)] cursor-default'} ${d.isToday ? 'ring-2 ring-[#1a1a1a]' : ''}`}
+              className={`aspect-square rounded-md flex items-center justify-center text-[9px] font-medium transition-transform hover:scale-110
+                ${d.seconds > 0 ? 'text-white cursor-pointer' : 'text-[var(--text-muted)] cursor-default'} ${d.isToday ? 'ring-1.5 ring-[#1a1a1a]' : ''}`}
               style={d.seconds > 0 ? { background: `rgba(59,130,246,${a})` } : { background: 'var(--bg-hover)' }}>
-              <span>{parseInt(d.date.slice(8), 10)}</span>
+              {parseInt(d.date.slice(8), 10)}
             </button>
           )
         })}
-      </div>
-      {/* 图例 */}
-      <div className="flex items-center gap-2 text-[9px] text-dim mt-0.5">
-        <span>少</span>
-        {[0.22, 0.4, 0.58, 0.75, 1].map(a => (
-          <span key={a} className="w-3 h-3 rounded-sm" style={{ background: `rgba(59,130,246,${a})` }} />
-        ))}
-        <span>多</span>
       </div>
       {/* 当天明细弹窗 */}
       {sel && (() => {
