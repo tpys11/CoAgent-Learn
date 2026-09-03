@@ -95,6 +95,17 @@ class MemoryRepo:
             "SELECT substr(created_at,1,10) AS d, SUM(duration_seconds) AS s FROM focus_log WHERE project_id=%s AND created_at >= datetime('now','-30 days') GROUP BY d ORDER BY d",
             (project_id,))
 
+    def get_focus_daily_by_project(self, project_id=""):
+        """专注日志按 天+项目 分组（近30天），返回 [{d, project_id, s}]——主页学习记录列表用"""
+        if project_id:
+            return self._db.execute(
+                "SELECT substr(created_at,1,10) AS d, project_id, SUM(duration_seconds) AS s FROM focus_log "
+                "WHERE project_id=%s AND created_at >= datetime('now','-30 days') GROUP BY d, project_id ORDER BY d",
+                (project_id,))
+        return self._db.execute(
+            "SELECT substr(created_at,1,10) AS d, project_id, SUM(duration_seconds) AS s FROM focus_log "
+            "WHERE created_at >= datetime('now','-30 days') GROUP BY d, project_id ORDER BY d", ())
+
     def get_task_stats(self, pid, limit):
         return self._db.execute(
             "SELECT dialogue_id, data, created_at FROM task_stats WHERE project_id=%s ORDER BY id DESC LIMIT %s",

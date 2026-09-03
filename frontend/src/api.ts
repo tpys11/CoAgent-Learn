@@ -220,6 +220,8 @@ export const api = {
     apiFetch<any>('/api/dialogues/' + encodeURIComponent(did) + '/followups', { cache: 'no-store' }),
   getLearningLog: (pid?: string) =>
     apiFetch<any>('/api/learning-log' + (pid ? '?project_id=' + encodeURIComponent(pid) : ''), { cache: 'no-store' }),
+  getFocusDays: (pid?: string) =>
+    apiFetch<any>('/api/stats/focus-days' + (pid ? '?project_id=' + encodeURIComponent(pid) : ''), { cache: 'no-store' }),
   getMemoryProgress: (pid: string) =>
     apiFetch<any>('/api/memory/progress?project_id=' + encodeURIComponent(pid), { cache: 'no-store' }),
   memoryChat: (body: unknown) => apiFetch<any>('/api/memory-chat', jsonInit('POST', body)),

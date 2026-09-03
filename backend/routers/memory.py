@@ -218,6 +218,25 @@ def export_all(project_id: str = "default"):
     return {"exported_at": __import__("datetime").datetime.now().isoformat(), "data": out}
 
 
+@router.get("/api/stats/focus-days")
+def get_focus_days(project_id: str = ""):
+    """主页学习记录列表：近30天按 天+项目 聚合专注时长（哪天学了多久，涉及哪些课程）"""
+    mrepo = get_memory_repo()
+    prepo = get_project_repo()
+    rows = mrepo.get_focus_daily_by_project(project_id)
+    pnames = {p["id"]: (p.get("name") or p["id"]) for p in (prepo.list_project_names() or [])}
+    by_date: dict = {}
+    for r in (rows or []):
+        pid = r.get("project_id") or "default"
+        by_date.setdefault(r.get("d") or "", []).append({
+            "project_id": pid,
+            "project_name": pnames.get(pid, pid),
+            "seconds": int(r.get("s") or 0),
+        })
+    days = [{"date": d, "projects": sorted(v, key=lambda x: -x["seconds"])} for d, v in sorted(by_date.items(), reverse=True)]
+    return {"days": days}
+
+
 @router.get("/api/learning-log")
 def get_learning_log(project_id: str = ""):
     prepo = get_project_repo()

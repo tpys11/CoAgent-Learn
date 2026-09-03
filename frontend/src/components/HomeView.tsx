@@ -1,7 +1,6 @@
 ﻿import { useEffect, useState } from 'react'
 import { Plus, X, FolderOpen, Pencil, HelpCircle } from 'lucide-react'
 import GuideModal from './GuideModal'
-import TrendCalendar from './TrendCalendar'
 import { api } from '../api'
 
 /** 系统预设领域 → 预存图片；非预设领域/未设置领域使用默认学习封面 */
@@ -32,11 +31,11 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
   const [kbCount, setKbCount] = useState<Record<string, number>>({})
   // 每课程最新对话名（"上次学到哪"）
   const [lastTopics, setLastTopics] = useState<Record<string, string>>({})
-  // 主页趋势：专注时长·最近30天（/api/stats?project_id=all 聚合全部项目）
-  const [trendDays, setTrendDays] = useState<Array<{ date: string; seconds: number }>>([])
+  // 主页学习记录：近30天哪天学了多久、涉及哪些课程（/api/stats/focus-days）
+  const [focusDays, setFocusDays] = useState<Array<{ date: string; projects: Array<{ project_id: string; project_name: string; seconds: number }> }>>([])
   useEffect(() => {
-    api.getStats('all').then(d => {
-      setTrendDays(Array.isArray(d.daily_focus) ? d.daily_focus : [])
+    api.getFocusDays().then(d => {
+      setFocusDays(Array.isArray(d.days) ? d.days : [])
     }).catch(() => {})
   }, [])
   useEffect(() => {
@@ -70,52 +69,12 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
   const strOf = (v: any) => Array.isArray(v) ? v.join('、') : v ? String(v) : ''
   const short = (s: string, n = 34) => s.length > n ? s.slice(0, n) + '…' : s
 
-  // ---------- 快速引导：系统提示建议（课程 / 资源） ----------
-  const totalCount = Object.values(stats).reduce((s, n) => s + n, 0)
-  const totalDocs = Object.values(kbCount).reduce((s, n) => s + n, 0)
-  const latestDate = trendDays.filter(d => (d.seconds || 0) > 0).map(d => d.date).sort().pop() || ''
-  const buildTips = () => {
-    const tips: Array<{ title: string; text: string }> = []
-    if (projects.length === 0) {
-      tips.push({ title: '课程', text: '还没有课程。点击下方「新建课程」卡片创建第一个课程，开始你的学习之旅。' })
-    } else {
-      const stale = projects.filter(p => (stats[p.id] ?? 0) === 0)
-      if (stale.length > 0) {
-        tips.push({ title: '课程', text: `${stale.length} 个课程还没有对话记录（如「${stale[0].name}」），建议尽快安排时间开始学习；若时间紧迫，优先推进最近创建的课程。` })
-      } else {
-        tips.push({ title: '课程', text: `学习进度正常，最近学习${latestDate ? '于 ' + latestDate : '记录暂无'}。可参考各课程卡片的「进度 / 上次 / 后续」决定下一步。` })
-      }
-    }
-    if (totalDocs === 0) {
-      tips.push({ title: '资源', text: '知识库还没有文档。在课程侧栏「资源」中上传文件或从系统预设资源加入，回答将更有依据、更少幻觉。' })
-    } else {
-      tips.push({ title: '资源', text: `知识库已收录 ${totalDocs} 份文档。建议定期补充或更新资料（如教程更新、新文档发布），让回答持续贴合最新内容。` })
-    }
-    return tips
-  }
-  const tips = buildTips()
-
   // 行内改名：正在编辑名称的课程 id
   const [renamingId, setRenamingId] = useState<string | null>(null)
   // 删除确认弹窗：待删除的课程 id
   const [deleteId, setDeleteId] = useState<string | null>(null)
   // 快速引导弹窗开关
   const [guideOpen, setGuideOpen] = useState(false)
-
-  // 顶部问候：按时间打招呼 + 最近学习时间与连续学习天数
-  const hour = new Date().getHours()
-  const greeting = hour < 5 ? '夜深了' : hour < 11 ? '早上好' : hour < 13 ? '中午好' : hour < 18 ? '下午好' : '晚上好'
-  // 连续学习天数：从今日（或昨日）向前连续有学习记录的日期数
-  const streakDays = (() => {
-    const daySet = new Set(Object.keys(trendDays))
-    const key = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
-    const d = new Date()
-    if (!daySet.has(key(d))) d.setDate(d.getDate() - 1)
-    let streak = 0
-    while (daySet.has(key(d))) { streak++; d.setDate(d.getDate() - 1) }
-    return streak
-  })()
-  const statusTxt = `最近学习${latestDate ? ' ' + latestDate : ' 暂无记录'} · 连续学习 ${streakDays} 天`
 
   return (
     <div className="flex-1 h-full min-w-0 flex panel rounded-3xl overflow-hidden">
@@ -128,9 +87,33 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
               <HelpCircle size={15} /> 快速引导
             </button>
           </div>
-          {/* 专注时长趋势（快速引导下方） */}
-          <div className="w-[560px] max-w-full border hairline rounded-2xl p-4 bg-[var(--bg-panel)] flex flex-col">
-            <TrendCalendar days={trendDays} />
+          {/* 学习记录列表（快速引导下方） */}
+          <div className="w-[560px] max-w-full border hairline rounded-2xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2.5">
+            <div className="flex items-center justify-between text-[10px] text-dim">
+              <span className="font-semibold uppercase tracking-wider">学习记录</span>
+              <span>最近 30 天</span>
+            </div>
+            {focusDays.length === 0 ? (
+              <p className="text-[10px] leading-relaxed text-[var(--text-muted)] py-3 text-center">最近 30 天还没有学习记录，开始第一节课吧</p>
+            ) : (
+              <div className="flex flex-col divide-y hairline-divide">
+                {focusDays.slice(0, 15).map(dd => {
+                  const total = (dd.projects || []).reduce((s, x) => s + x.seconds, 0)
+                  const fmt = (s: number) => s >= 3600 ? Math.round(s / 3600 * 10) / 10 + ' 小时' : Math.max(1, Math.round(s / 60)) + ' 分钟'
+                  const date = dd.date.slice(5).replace('-', '/')
+                  const wd = ['日', '一', '二', '三', '四', '五', '六'][new Date(dd.date + 'T00:00:00').getDay()]
+                  return (
+                    <div key={dd.date} className="py-2 flex items-center gap-3">
+                      <span className="text-[11px] font-semibold flex-shrink-0 w-[52px]">{date}<span className="text-dim font-normal"> 周{wd}</span></span>
+                      <span className="text-[11px] text-[var(--text-muted)] flex-1 truncate">
+                        {(dd.projects || []).map(x => x.project_name).filter((v, i, a) => a.indexOf(v) === i).join('、')}
+                      </span>
+                      <span className="text-[11px] font-semibold flex-shrink-0">{fmt(total)}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
           {/* 课程区块 */}
           <div className="flex flex-col gap-6">
