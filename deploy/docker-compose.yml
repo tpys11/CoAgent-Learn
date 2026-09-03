@@ -1,9 +1,9 @@
-services:
+﻿services:
   frontend:
     # C3: 多阶段构建的静态产物由 nginx 托管并反代后端（容器内 80，外部端口保持 5173）。
     # 不再挂载源码——HMR 随 dev server 退役；前端改动在宿主 npm run dev 验证、N2/N3 检查点重建镜像。
     # N3 子步骤 4 首推后回填完整 sha（首推 99cfe7c 构建通过后回填）
-    image: ghcr.io/tpys11/coagent-learn/frontend:c17438202fccdf6a17f8d738929752880d2d05ab
+    image: ghcr.io/tpys11/coagent-learn/frontend:0164c6cca82ac0d40fb66e360f3b702b76ed779e
     container_name: guashuai-frontend
     ports:
       - "5173:80"
@@ -29,7 +29,7 @@ services:
 
   backend:
     # N3 子步骤 4 首推后回填完整 sha（首推 99cfe7c 构建通过后回填）
-    image: ghcr.io/tpys11/coagent-learn/backend:c17438202fccdf6a17f8d738929752880d2d05ab
+    image: ghcr.io/tpys11/coagent-learn/backend:0164c6cca82ac0d40fb66e360f3b702b76ed779e
     container_name: guashuai-backend
     ports:
       - "8000:8000"
