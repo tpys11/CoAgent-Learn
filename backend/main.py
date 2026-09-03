@@ -29,6 +29,7 @@ from routers.resources import router as resources_router
 from routers.memory import router as memory_router
 from routers.skills import router as skills_router
 from routers.preset_library import router as preset_library_router
+from routers.domain_res import router as domain_res_router
 from core.helpers import extract_json_obj
 # D1：三函数已原样迁至 services/chat_context——re-export 保持 main._auto_settings 等可解析
 from services.chat_context import _auto_settings, _build_preloaded, _parse_special_inputs
@@ -119,6 +120,7 @@ app.include_router(resources_router)
 app.include_router(memory_router)
 app.include_router(skills_router)
 app.include_router(preset_library_router)
+app.include_router(domain_res_router)
 
 
 from engine.cancel import ACTIVE_CANCELS as _active_cancels  # noqa: E402
