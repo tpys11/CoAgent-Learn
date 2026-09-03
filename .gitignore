@@ -58,3 +58,4 @@ data/app.db.backup-premigration
 _attic*/
 backend/eval/reports/report-*
 .codegraph/
+backend/data/uploads/
