@@ -55,8 +55,7 @@ def _llm_text(api_key, base_url, model, prompt):
 
 @router.post("/api/domain/outline")
 def domain_outline(req: OutlineReq):
-    from starlette.concurrency import run_in_threadpool
-    return run_in_threadpool(_outline_sync, req)
+    return _outline_sync(req)
 
 
 def _outline_sync(req):
@@ -83,8 +82,7 @@ def _outline_sync(req):
 
 @router.post("/api/domain/chapter")
 def domain_chapter(req: ChapterReq):
-    from starlette.concurrency import run_in_threadpool
-    return run_in_threadpool(_chapter_sync, req)
+    return _chapter_sync(req)
 
 
 def _chapter_sync(req):
