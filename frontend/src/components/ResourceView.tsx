@@ -3,7 +3,7 @@
  *  「我的生成」产物在对话界面右栏资源生成栏查看；上传走课程弹窗/对话侧栏的上传面板。
  *  F13-S1：预设文件资源（data/preset_library 三级索引）经 GET /api/preset-library 驱动，
  *  原 URL 型教程归入「链接资源」类别；无前端硬编码资源清单。 */
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { BookOpen, Plus, FolderTree, Library, ExternalLink, Download } from 'lucide-react'
 import { LS, lsGet, lsGetJSON, lsSetJSON } from '../storage'
 import { api } from '../api'
@@ -130,14 +130,18 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
   }, [])
   useEffect(() => { loadPreset() }, [loadPreset])
 
-  // F13-S1：进入「预设资源」页签而当前领域无内容时，自动跳到第一个有预设资源的领域
+  // F13-S1：预设库加载完成后，若默认领域无内容，自动聚焦第一个有预设资源的领域。
+  // 仅聚焦一次（autoFocused）；之后用户主动点击任何领域都尊重选择，不再自动跳转（无内容时显示空态）。
+  const autoFocused = useRef(false)
   useEffect(() => {
-    if (selectedCat !== PRESET_CAT || !presetLoaded) return
+    if (!presetLoaded || autoFocused.current) return
+    autoFocused.current = true
+    if (selectedCat !== PRESET_CAT) return
     if ((presetByDomain[selectedDomain] || []).length > 0) return
     const target = firstPresetDomain(domains, presetByDomain)
     if (target && target !== selectedDomain) setSelectedDomain(target)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCat, presetLoaded, presetByDomain, selectedDomain])
+  }, [presetLoaded])
 
   // 教程资源
   const allTutorials = [...PRESET_TUTORIALS, ...tutorials]
