@@ -502,7 +502,19 @@ function App() {
       </>) : (
         <LSusp><HomeView
           projects={projects}
-          onEnter={(id) => { setCurrentProjectId(id); setChatOpen(true); setSidebarCollapsed(false) }}
+          onEnter={(id) => {
+            // 进入课程：选中该课程首个对话并加载其消息，重置执行流——避免上个课程的界面残留
+            setCurrentProjectId(id)
+            const first = dialogues.find(d => d.projectId === id && !d.archived)
+            if (first) {
+              setCurrentDialogueId(first.id)
+              resetFlow()
+              loadDialogueMessages(first.id)
+            } else {
+              setCurrentDialogueId(null)
+            }
+            setChatOpen(true); setSidebarCollapsed(false)
+          }}
           onCreate={handleCreateProject}
           onDelete={handleDeleteProject}
           onRename={handleRenameProject}
