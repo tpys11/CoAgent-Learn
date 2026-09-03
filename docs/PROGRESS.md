@@ -67,6 +67,7 @@
 
 ## 2. 环境登记（OPEN 条目；已备案 E-1…E-25/E-27/E-28/E-30…E-33/E-36 见归档 §2.4）
 | **A-01** | **【独立分析 09-03】** 报告 docs/progress/analysis/ANALYSIS_2026-09-03.md（本地不入库）：P0×4（compose 终钉目标=c174382 非 HEAD/**P0-2 已关闭 09-03：泄露 key 双双已失效（sk-1b1c5a/336c43cb 均不在平台活跃列表），泄露分支 analysis/merge-master+2 陈旧分支已删，残余风险≈0**/tests-eval 未交付/评测分母与副本栈两口）+ 三硬指标静态审计 + 四维独立评分 69-80 vs 45-60 | 总领 9-3 夜决策最后一轮小修范围 |
+| **P0** | **P0 清账微批 ✅（T2 验收 09-03）**：3 commit 6fa367d..3a39924——S1 compose 终钉 c174382+README 双-f 提示（5 守卫 24 绿）/S2 tests/eval 5 文件入库（897 行，绝对路径清零）/S3 failed_total+valid_ratio 分母诚实化+eval-override 副本栈；CI #31 success+双镜像 manifest 实证；**变异亲放恰 2 红**（failed_total 恒 0→文案+分母两测试 AssertionError）→还原 5 绿；终钉**保持 c174382**（3a39924 与其运行时零差异，镜像已实证，避免无谓回归）；⚠️ Wave 2 前置：EVAL_KB_EXTERNAL_DIR 指向有效语料（本机 AI-Agents-books 缺失）+快照护栏；两笔过程纠偏如实入档（BOM 假警报=PowerShell 管道失真/守卫逮自家注释） | 独立分析 P0 全清，等 RC3 复验 → Wave 2 |
 
 | # | 事实 | 影响范围 |
 |:-:|------|---------|
