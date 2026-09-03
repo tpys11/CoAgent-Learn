@@ -34,6 +34,17 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
   const [confirming, setConfirming] = useState(false)
   const [saving, setSaving] = useState(false)
   const [collected, setCollected] = useState<Record<string, string>>({})
+  // 个人基本信息（全局画像）：仅初始化时填一次身份/年龄；空才问
+  const [gId, setGId] = useState('')
+  const [gAge, setGAge] = useState('')
+  useEffect(() => {
+    if (!initialOnly) return
+    api.getGlobalProfile().then((d: any) => {
+      const p = d?.profile || {}
+      setGId(p['身份'] ? String(p['身份']) : '')
+      setGAge(p['年龄'] ? String(p['年龄']) : '')
+    }).catch(() => {})
+  }, [initialOnly])
 
   const doSave = async () => {
     if (!projectId) return
@@ -49,6 +60,17 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
       }
       if (Object.keys(profile).length) {
         await api.saveProjectMemory(projectId, profile)
+      }
+      // 个人基本信息（全局画像，身份/年龄）——仅当用户填了才写，保留 global 原有其他结构
+      const gNeed = (gId.trim() || gAge.trim())
+      if (gNeed) {
+        try {
+          const gd: any = await api.getGlobalProfile().catch(() => ({ profile: {} }))
+          const gp: Record<string, any> = { ...(gd?.profile || {}) }
+          if (gId.trim()) gp['身份'] = gId.trim()
+          if (gAge.trim()) gp['年龄'] = gAge.trim()
+          await api.saveGlobalProfile(gp)
+        } catch { /* 个人画像写失败不阻塞课程保存 */ }
       }
       // 标记该课程已完成初次手动填写
       const done = lsGetJSON<string[]>(LS.manualSetupDone, [])
@@ -88,6 +110,27 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
           {initialOnly ? (
             // 初始化：记忆与资源同一界面整体滚动（一个滚动容器，一起滑动）
             <div className="h-full overflow-y-auto flex flex-col">
+              {/* 个人基本信息（全局画像，跨课程共享）：身份 / 年龄 填一次即可，空才问 */}
+              <div className="px-6 pt-4">
+                <div className="border hairline rounded-2xl p-4 bg-[var(--bg-panel)] flex flex-col gap-3 max-w-3xl">
+                  <div className="flex items-baseline justify-between">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-dim">个人信息（跨课程共享）</h3>
+                    <span className="text-[10px] text-dim">各课程共用，填一次即可</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold flex-shrink-0">身份：</span>
+                      <input value={gId} onChange={e => setGId(e.target.value)} placeholder="如：在校本科生 / 在职工程师…"
+                        className="flex-1 min-w-0 border hairline rounded-lg px-2.5 py-1.5 bg-[var(--bg-input)] text-xs outline-none focus:border-[var(--accent)]" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold flex-shrink-0">年龄：</span>
+                      <input value={gAge} onChange={e => setGAge(e.target.value)} placeholder="如：22"
+                        className="flex-1 min-w-0 border hairline rounded-lg px-2.5 py-1.5 bg-[var(--bg-input)] text-xs outline-none focus:border-[var(--accent)]" />
+                    </div>
+                  </div>
+                </div>
+              </div>
               <MemoryView projectId={projectId} projectOnly initialEdit onEditChange={setCollected}
                 onRequestModify={onRequestModify} onRequestAnalyze={onRequestAnalyze} />
               <div className="border-t hairline">
