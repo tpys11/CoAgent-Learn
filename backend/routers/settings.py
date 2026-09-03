@@ -65,9 +65,9 @@ class SettingsSave(BaseModel):
     rrf_k: int = 60
     fetch_mult: int = 3
     zen_api_key: str = ""               # F14-S4c：OpenCode Zen Bearer key
-    review_model_research: str = ""     # F14-S4c：研究档判卷模型（zen: 前缀=Zen 路由，"/"=硅基流动）
-    review_follow_main: bool = False    # RA-S1：审核子开关——true=审核时用主模型（关闭独立审核路由）
     zen_test_mode: bool = False         # R-D S4：测试档全局开关（决策 38 后台辅助链随档总开关）
+    # RC4-S1：review_model_research/review_follow_main 字段退役（owner 09-03 终版：
+    # 判卷路由=档位定值格，无用户可配判卷模型）——前端 PUT 旧字段被 pydantic 默认忽略
 
 
 @router.get("/api/settings")
@@ -107,11 +107,9 @@ def get_settings():
         },
         "review": {
             "model": getattr(_cfg, "REVIEW_MODEL", "Qwen/Qwen2.5-72B-Instruct"),
-            "model_research": getattr(_cfg, "REVIEW_MODEL_RESEARCH", ""),
             "enabled": str(getattr(_cfg, "REVIEW_ENABLED", "0")) == "1",
-            "follow_main": str(getattr(_cfg, "REVIEW_FOLLOW_MAIN", "0")) == "1",  # RA-S1：审核子开关回显
-            # RA5-S1 additive：实际生效判卷模型（resolve_review_route 权威判定）——
-            # 前端自检卡审核行改读此值，删除前端路由复算（T59 漂移根因）
+            # RC4-S1：effective_model=档位定值格权威回显（standard=Qwen2.5-72B/test=big-pickle）——
+            # 前端自检卡审核行读此值；follow_main/model_research 退役键已同步清（T61）
             "effective_model": resolve_review_route("研究")["model"],
         },
         "zen": {
@@ -169,12 +167,10 @@ def save_settings(req: SettingsSave):
     _set("KB_MODE", "kb_mode")
     if "review_enabled" in _vals:
         _s.set_setting("REVIEW_ENABLED", "1" if _vals["review_enabled"] else "0")
-    # RA-S1：bool 用 in _vals 显式判断（R14 红线：false 必须能落 0，不能被 exclude_unset 吞掉）
-    if "review_follow_main" in _vals:
-        _s.set_setting("REVIEW_FOLLOW_MAIN", "1" if _vals["review_follow_main"] else "0")
     # R-D S4：测试档全局开关（同款 bool-in-_vals 显式落库；S1 起 current_tier 读此键）
     if "zen_test_mode" in _vals:
         _s.set_setting("ZEN_TEST_MODE", "1" if _vals["zen_test_mode"] else "0")
+    # RC4-S1：review_follow_main/REVIEW_MODEL_RESEARCH 落库分支退役（字段已删，见 SettingsSave）
     _set("REVIEW_MODEL", "review_model")
     _set("PARSE_ENGINE", "parse_engine")
     _set("MINERU_API_TOKEN", "mineru_api_token")
@@ -191,7 +187,6 @@ def save_settings(req: SettingsSave):
     if "fetch_mult" in _vals:
         _s.set_setting("KB_FETCH_MULT", str(max(1, min(10, int(_vals["fetch_mult"] or 3)))))
     _set("ZEN_API_KEY", "zen_api_key")
-    _set("REVIEW_MODEL_RESEARCH", "review_model_research")
     _apply_dynamic_settings()
     return {"status": "ok", "msg": "配置已保存并即时生效"}
 
@@ -264,33 +259,29 @@ def test_settings(req: SettingsSave):
             results[_name] = {"ok": ok, "msg": "" if ok else f"HTTP {_r.status_code}"}
         except Exception as e:
             results[_name] = {"ok": False, "msg": str(e)[:100]}
-    # 审核行：RA5-S1 探测改调单一事实源 resolve_review_route——URL/key 按返回的 provider 构造
-    # （手工复刻段删除；key 值仍取自 _cfg，req 上下文不入纯函数。两处只改一处则
-    # GET/探测回显不一致=自检卡说谎的旧漂移根因就此拔除）
+    # 审核行：RA5-S1 探测调单一事实源 resolve_review_route——URL/key 按返回的 provider 构造。
+    # RC4-S1：档位定值格恒有模型，探测无条件按 provider 走通道（follow_main「未配置审核模型」
+    # 分叉退役）；key 兜底链与 pick_judge 同序（SF=VL||EMBEDDING、zen=ZEN）
     from core.model_provider import resolve_review_route
     _route = resolve_review_route("研究")
-    _review_model = getattr(_cfg, "REVIEW_MODEL_RESEARCH", "")
-    if _route["follow_main"] or _review_model:
-        if _route["provider"] == "zen":
-            _review_base = getattr(_cfg, "ZEN_BASE_URL", "")
-            _review_key = _zen_key
-        elif _route["provider"] == "siliconflow":
-            _review_base = getattr(_cfg, "VL_BASE_URL", "https://api.siliconflow.cn/v1")
-            _review_key = getattr(_cfg, "VL_API_KEY", "") or _embed_key
-        else:
-            _review_base = getattr(_cfg, "DEEPSEEK_BASE_URL", "")
-            _review_key = getattr(_cfg, "DEEPSEEK_API_KEY", "")
-        if not _review_key or not _review_base:
-            results["review"] = {"ok": False, "msg": "未配置 Key"}
-        else:
-            try:
-                _r = _req.get(_review_base.rstrip("/") + "/models", headers={"Authorization": "Bearer " + _review_key}, timeout=20)
-                ok = _r.status_code == 200
-                results["review"] = {"ok": ok, "msg": "" if ok else f"HTTP {_r.status_code}"}
-            except Exception as e:
-                results["review"] = {"ok": False, "msg": str(e)[:100]}
+    if _route["provider"] == "zen":
+        _review_base = getattr(_cfg, "ZEN_BASE_URL", "")
+        _review_key = _zen_key
+    elif _route["provider"] == "siliconflow":
+        _review_base = getattr(_cfg, "VL_BASE_URL", "https://api.siliconflow.cn/v1")
+        _review_key = getattr(_cfg, "VL_API_KEY", "") or _embed_key
     else:
-        results["review"] = {"ok": False, "msg": "未配置审核模型"}
+        _review_base = getattr(_cfg, "DEEPSEEK_BASE_URL", "")
+        _review_key = getattr(_cfg, "DEEPSEEK_API_KEY", "")
+    if not _review_key or not _review_base:
+        results["review"] = {"ok": False, "msg": "未配置 Key"}
+    else:
+        try:
+            _r = _req.get(_review_base.rstrip("/") + "/models", headers={"Authorization": "Bearer " + _review_key}, timeout=20)
+            ok = _r.status_code == 200
+            results["review"] = {"ok": ok, "msg": "" if ok else f"HTTP {_r.status_code}"}
+        except Exception as e:
+            results["review"] = {"ok": False, "msg": str(e)[:100]}
 
     # RA-S4：parse 探测（additive，既有键不删）——配置态判定，零网络零计费：
     # mineru→token 已配置即 ok；pymupdf4llm→本地引擎恒 ok（失败自动降级本地快道，故 mathpix 亦归此）

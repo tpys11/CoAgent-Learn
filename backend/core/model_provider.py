@@ -95,7 +95,9 @@ def get_model_provider(api_key=None, model=None, base_url=None) -> ModelProvider
 # 格语义：{provider, model|model_key, base_url_key, api_key_key|api_key_keys}——
 #   model 为字面量实名；model_key 表示运行时读 config 同名键（embedding/rerank 用户自填）；
 #   api_key_keys 为 or 链（首个非空生效，写进格定义保标准档 key 前序逐字节等价）。
-# review=动态格（存路由函数引用，follow_main/research 是运行时配置键非静态值）；
+# RC4-S1（owner 09-03 终版）：review=定值格档位定死——standard=SF Qwen2.5-72B（跨厂商
+# 独立判卷）、test=zen big-pickle；_review_dynamic 动态格删除（follow_main/REVIEW_MODEL_*
+# 设置项退役）。VL||EMBEDDING、ZEN||req 的 key 兜底仍在调用方 pick_judge（可用性判定不入纯函数）。
 # parse 非 LLM 不入矩阵（mineru 通道不经此表）。
 
 import dataclasses
@@ -103,31 +105,11 @@ import dataclasses
 
 @dataclasses.dataclass(frozen=True)
 class ModelSpec:
-    """注册表解析产物：一格的运行时值。review 动态格额外携带 provider/follow_main
-    （RA5 resolve_review_route 契约三键的载体；key 可用性副作用仍归调用方 pick_judge）。"""
+    """注册表解析产物：一格的运行时值。key 可用性副作用归调用方 pick_judge。"""
     model: str
     base_url: str
     api_key: str
     provider: str = "main"
-    follow_main: bool = False
-
-
-def _review_dynamic(template):
-    """review 动态格：RA5-S1 resolve_review_route 四分支逻辑原样搬迁（行为零变化）。
-    follow_main='1' 短路主模型；research 档 zen: 前缀走 Zen、含"/"走硅基流动跨厂商、
-    空/其余回落主模型。key 值仅随 provider 给缺省映射（SF=VL||EMBEDDING、zen=ZEN、
-    主=req 兜底 DEEPSEEK），缺 key 的响亮回退判定仍归调用方。"""
-    from core.config import config as _cfg
-    if template == "研究" and str(getattr(_cfg, "REVIEW_FOLLOW_MAIN", "0")) == "1":
-        return ModelSpec(MODEL_MAIN, _cfg.DEEPSEEK_BASE_URL, _cfg.DEEPSEEK_API_KEY,
-                         provider="main", follow_main=True)
-    model = ((_cfg.REVIEW_MODEL_RESEARCH if template == "研究" else _cfg.REVIEW_MODEL_THINK) or "").strip() or MODEL_MAIN
-    if model.startswith("zen:"):
-        return ModelSpec(model[4:].strip(), _cfg.ZEN_BASE_URL, _cfg.ZEN_API_KEY, provider="zen")
-    if template == "研究" and "/" in model:
-        return ModelSpec(model, _cfg.VL_BASE_URL, _cfg.VL_API_KEY or _cfg.EMBEDDING_API_KEY,
-                         provider="siliconflow")
-    return ModelSpec(model, _cfg.DEEPSEEK_BASE_URL, _cfg.DEEPSEEK_API_KEY, provider="main")
 
 
 # embedding/rerank 两格两档共用同一 cell 引用=决策 38「专有能力留 SF，test 格沿用 standard」
@@ -139,6 +121,15 @@ _RERANK_CELL = {"provider": "siliconflow", "model_key": "RERANK_MODEL",
 
 # 决策 38 测试档对话/视觉实名（smoke2 对齐 Zen API ID：显示名≠API ID 会 401）
 MODEL_ZEN_TEST = "mimo-v2.5-free"
+# RC4-S1（owner 09-03 终版）：判卷两格实名定值——换判卷模型=改这两行（改一格机制）
+MODEL_REVIEW_SF = "Qwen/Qwen2.5-72B-Instruct"   # 标准档：SF 跨厂商独立判卷
+MODEL_ZEN_REVIEW = "big-pickle"                 # 测试档：zen 免费档判卷（与前端 models.ts 双源同值）
+
+# review 定值格 key=单键（VL_API_KEY / ZEN_API_KEY）；调用方 pick_judge 持有 or 兜底链
+_REVIEW_SF_CELL = {"provider": "siliconflow", "model": MODEL_REVIEW_SF,
+                   "base_url_key": "VL_BASE_URL", "api_key_key": "VL_API_KEY"}
+_REVIEW_ZEN_CELL = {"provider": "zen", "model": MODEL_ZEN_REVIEW,
+                    "base_url_key": "ZEN_BASE_URL", "api_key_key": "ZEN_API_KEY"}
 
 REGISTRY: dict = {
     "standard": {
@@ -146,7 +137,7 @@ REGISTRY: dict = {
                       "base_url_key": "DEEPSEEK_BASE_URL", "api_key_key": "DEEPSEEK_API_KEY"},
         "fast":      {"provider": "main", "model": MODEL_FAST,
                       "base_url_key": "DEEPSEEK_BASE_URL", "api_key_key": "DEEPSEEK_API_KEY"},
-        "review":    _review_dynamic,
+        "review":    _REVIEW_SF_CELL,
         "embedding": _EMBEDDING_CELL,
         "rerank":    _RERANK_CELL,
         "vision":    {"provider": "main", "model": MODEL_MAIN,
@@ -157,7 +148,7 @@ REGISTRY: dict = {
                       "base_url_key": "ZEN_BASE_URL", "api_key_key": "ZEN_API_KEY"},
         "fast":      {"provider": "zen", "model": MODEL_ZEN_TEST,
                       "base_url_key": "ZEN_BASE_URL", "api_key_key": "ZEN_API_KEY"},
-        "review":    _review_dynamic,
+        "review":    _REVIEW_ZEN_CELL,
         "embedding": _EMBEDDING_CELL,
         "rerank":    _RERANK_CELL,
         "vision":    {"provider": "zen", "model": MODEL_ZEN_TEST,
@@ -172,6 +163,7 @@ _ZEN_URL_MARK = "opencode.ai/zen"   # RC1 先例：req 端点含 Zen 网关标�
 def resolve_model(role: str, tier: str, template: str | None = None) -> ModelSpec:
     """注册表唯一解析入口：role=干什么（main/fast/review/embedding/rerank/vision），
     tier=什么环境（standard/test——有 req 用 detect_tier(req.base_url)，后台无 req 用 current_tier()）。
+    template 参数已退役（RC4-S1 删 _review_dynamic 后无消费者；保留签名防调用点连锁改动）。
     未知 role/tier 直接 raise ValueError——错误配置应响亮失败，防静默错路由。"""
     tier_cell = REGISTRY.get(tier)
     if tier_cell is None:
@@ -179,8 +171,6 @@ def resolve_model(role: str, tier: str, template: str | None = None) -> ModelSpe
     cell = tier_cell.get(role)
     if cell is None:
         raise ValueError(f"未知角色 role={role!r}（合法：{sorted(tier_cell)}；parse 非 LLM 不入矩阵）")
-    if callable(cell):
-        return cell(template)
     from core.config import config as _cfg
     model = cell["model"] if "model" in cell else getattr(_cfg, cell["model_key"])
     if "api_key_keys" in cell:
@@ -191,11 +181,11 @@ def resolve_model(role: str, tier: str, template: str | None = None) -> ModelSpe
                      api_key=api_key, provider=cell.get("provider", "main"))
 
 
-def resolve_review_route(template: str) -> dict:
-    """R-D S1：判卷路由单一事实源自 engine.review 搬迁入注册表（review 动态格的 dict 视图，
-    RA5 契约 {"model","provider","follow_main"} 不变）——S2 起 engine.review 转调此处。"""
+def resolve_review_route(template: str | None = None) -> dict:
+    """R-D S1：判卷路由单一事实源。RC4-S1 契约收敛两键 {"model","provider"}
+    （follow_main 随动态格退役删除；template 参数退役保留签名，调用方零连锁改动）。"""
     spec = resolve_model("review", current_tier(), template=template)
-    return {"model": spec.model, "provider": spec.provider, "follow_main": spec.follow_main}
+    return {"model": spec.model, "provider": spec.provider}
 
 
 def detect_tier(req_base_url: str | None) -> str:

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
-"""F14-S4e：pick_judge_llm zen 前缀路由——区分自搭跨厂商和官方 Zen（红先行）。
-T33：main / pipeline 一律 fixture 执行期导入。"""
+"""F14-S4e（RC4-S1 改写）：pick_judge_llm zen 通道——档位定值格语义。
+原「REVIEW_MODEL_RESEARCH zen: 前缀路由」随动态格退役；zen 通道改由档位驱动
+（ZEN_TEST_MODE=1 → test 档判卷=big-pickle 走 Zen）。T33：main / pipeline 一律 fixture 执行期导入。"""
 import sys, os
 import pytest
 from unittest.mock import MagicMock, patch
@@ -13,12 +14,6 @@ def _make_req(api_key="sk-deepseek-fake", base_url="https://api.deepseek.com/v1"
     req.api_key = api_key
     req.base_url = base_url
     return req
-
-
-class FakeLLM:
-    def __init__(self, **kw):
-        for k, v in kw.items():
-            setattr(self, k, v)
 
 
 def _fake_cached_llm(key, base_url, model, thinking, effort, factory):
@@ -34,12 +29,13 @@ def _fake_cached_llm(key, base_url, model, thinking, effort, factory):
 
 
 @patch("engine.pipeline_v2._cached_llm", side_effect=_fake_cached_llm)
-def test_zen_prefix_routes_to_zen_endpoint(mock_cll, monkeypatch):
-    """S4e①：REVIEW_MODEL_RESEARCH='zen:mimo-v2.5-free'+ZEN_API_KEY→调用 base_url/model 正确"""
+def test_test_tier_routes_to_zen_endpoint(mock_cll, monkeypatch):
+    """改写①：ZEN_TEST_MODE=1（test 档）→ 判卷=big-pickle，调用 base_url/key 正确（档位驱动）。"""
     from core.config import config as _cfg
+    monkeypatch.setattr(_cfg, "ZEN_TEST_MODE", "1")
     monkeypatch.setattr(_cfg, "ZEN_API_KEY", "sk-zen-test-only-fake")
     monkeypatch.setattr(_cfg, "ZEN_BASE_URL", "https://opencode.ai/zen/v1")
-    monkeypatch.setattr(_cfg, "REVIEW_MODEL_RESEARCH", "zen:mimo-v2.5-free")
+    monkeypatch.setattr(_cfg, "REVIEW_MODEL_RESEARCH", "zen:mimo-v2.5-free")   # 退役键不被读
     monkeypatch.setattr(_cfg, "VL_API_KEY", "")
     monkeypatch.setattr(_cfg, "EMBEDDING_API_KEY", "")
 
@@ -47,18 +43,18 @@ def test_zen_prefix_routes_to_zen_endpoint(mock_cll, monkeypatch):
     req = _make_req()
     llm = pick_judge_llm("研究", req)
     assert llm._api_key == "sk-zen-test-only-fake"
-    assert llm.model_name == "mimo-v2.5-free"
+    assert llm.model_name == "big-pickle"
     assert llm._base_url == "https://opencode.ai/zen/v1"
     assert llm.thinking is False
 
 
 @patch("engine.pipeline_v2._cached_llm", side_effect=_fake_cached_llm)
-def test_zen_prefix_no_key_falls_back_to_model_main(mock_cll, monkeypatch):
-    """S4e②：zen: 前缀但 ZEN_API_KEY 缺失→响亮回退 MODEL_MAIN"""
+def test_test_tier_no_zen_key_falls_back_to_model_main(mock_cll, monkeypatch):
+    """改写②：test 档但 ZEN_API_KEY 缺失→响亮回退 MODEL_MAIN（fail-open 语义保持）。"""
     from core.config import config as _cfg
+    monkeypatch.setattr(_cfg, "ZEN_TEST_MODE", "1")
     monkeypatch.setattr(_cfg, "ZEN_API_KEY", "")
     monkeypatch.setattr(_cfg, "DEEPSEEK_API_KEY", "")  # 清除真实 .env 的 key
-    monkeypatch.setattr(_cfg, "REVIEW_MODEL_RESEARCH", "zen:mimo-v2.5-free")
     monkeypatch.setattr(_cfg, "VL_API_KEY", "")
     monkeypatch.setattr(_cfg, "EMBEDDING_API_KEY", "")
 
@@ -70,12 +66,12 @@ def test_zen_prefix_no_key_falls_back_to_model_main(mock_cll, monkeypatch):
 
 
 @patch("engine.pipeline_v2._cached_llm", side_effect=_fake_cached_llm)
-def test_slash_branch_still_works(mock_cll, monkeypatch):
-    """S4e③：硅基流动 / 分支回归钉——无 zen: 前缀时走原路径"""
+def test_standard_tier_siliconflow_branch(mock_cll, monkeypatch):
+    """改写③：standard 档 SF 通道回归钉（VL key 桩；research 桩退役不再需要）。"""
     from core.config import config as _cfg
-    monkeypatch.setattr(_cfg, "ZEN_API_KEY", "")
-    monkeypatch.setattr(_cfg, "REVIEW_MODEL_RESEARCH", "Qwen/Qwen2.5-72B-Instruct")
+    monkeypatch.setattr(_cfg, "ZEN_TEST_MODE", "0")
     monkeypatch.setattr(_cfg, "VL_API_KEY", "sk-siliconflow-test")
+    monkeypatch.setattr(_cfg, "EMBEDDING_API_KEY", "")
     monkeypatch.setattr(_cfg, "VL_BASE_URL", "https://api.siliconflow.cn/v1")
 
     from engine.review import pick_judge_llm
@@ -87,9 +83,11 @@ def test_slash_branch_still_works(mock_cll, monkeypatch):
 
 
 @patch("engine.pipeline_v2._cached_llm", side_effect=_fake_cached_llm)
-def test_zen_prefix_with_slash_in_name(mock_cll, monkeypatch):
-    """S4e④：zen:前缀 + 名称含 "/" 也走 zen 通道（前缀优先于 "/" 路由）"""
+def test_test_tier_immune_to_retired_research_value(mock_cll, monkeypatch):
+    """改写④：退役键 REVIEW_MODEL_RESEARCH 含"/"或 zen: 前缀均不再影响路由——
+    test 档判卷恒 big-pickle 走 Zen（原「zen: 前缀优先于 /」解析逻辑随动态格删除）。"""
     from core.config import config as _cfg
+    monkeypatch.setattr(_cfg, "ZEN_TEST_MODE", "1")
     monkeypatch.setattr(_cfg, "ZEN_API_KEY", "sk-zen-test-only-fake")
     monkeypatch.setattr(_cfg, "ZEN_BASE_URL", "https://opencode.ai/zen/v1")
     monkeypatch.setattr(_cfg, "REVIEW_MODEL_RESEARCH", "zen:Qwen/Qwen2.5-72B-Instruct")
@@ -99,7 +97,7 @@ def test_zen_prefix_with_slash_in_name(mock_cll, monkeypatch):
     from engine.review import pick_judge_llm
     req = _make_req()
     llm = pick_judge_llm("研究", req)
-    # zen: 前缀优先——走 Zen，不走硅基流动
+    # 档位定值优先——走 Zen 定值 big-pickle，不走硅基流动
     assert llm._api_key == "sk-zen-test-only-fake"
-    assert llm.model_name == "Qwen/Qwen2.5-72B-Instruct"
+    assert llm.model_name == "big-pickle"
     assert llm._base_url == "https://opencode.ai/zen/v1"

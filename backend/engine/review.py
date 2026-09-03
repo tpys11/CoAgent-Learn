@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """S5 ReviewGate（Loop4）：双LLM异构终审——知识正确性 + 指令遵从。
-模式矩阵：研究必开(默认同源视觉版判卷；REVIEW_MODEL_RESEARCH 配硅基流动名+key 自动跨厂商防自我包庇)｜思考可配(默认关)｜极速关。
+模式矩阵：研究必开｜思考可配(reviewEnabled)｜极速关。判卷路由=档位定值格
+（RC4-S1 owner 09-03 终版：standard=SF Qwen2.5-72B 跨厂商独立判卷、test=zen big-pickle；
+REVIEW_MODEL_RESEARCH/REVIEW_FOLLOW_MAIN 用户配置退役）。
 研究档升级（断言级忠实度审核）：单调用完成"声明拆解+逐条判定"，
 unsupported 断言映射进前端既有 issues[] 样式（problem=【诊断】声明, fix=理由），
 claims 全表交由调用方落 eval_traces 供幻觉率统计（L1）。
@@ -70,12 +72,10 @@ def review_enabled(template: str, settings: dict | None) -> bool:
 def pick_judge_llm(template: str, req):
     """审核模型选择（研究档防自我包庇是设计目标）：
     RA5-S1：路由判定收敛到 resolve_review_route（单一事实源，/test 探测与 GET effective_model 同源）；
+    RC4-S1：路由=档位定值格（standard→siliconflow Qwen2.5-72B、test→zen big-pickle），template 参数退役。
     本函数只保留 key 选择副作用：SF 分支用 VL_API_KEY/EMBEDDING_API_KEY、zen 分支用 ZEN_API_KEY
     （缺省回退 req key）、主分支用 req.api_key||DEEPSEEK_API_KEY。
-    研究档 = config.REVIEW_MODEL_RESEARCH（空=MODEL_MAIN 同源视觉版，走用户 key）；
-      值含"/"（硅基流动命名风格）且配了硅基流动 key → 走硅基流动端点真跨厂商；
-      含"/"但缺 key → WARNING 响亮回退 MODEL_MAIN（旧版静默 400 即本函数事故根因）。
-    思考档 = config.REVIEW_MODEL_THINK（空=MODEL_MAIN），走用户 key。
+    缺 key → WARNING 响亮回退 MODEL_MAIN（fail-open 前置；运行时 401 同样跳过审核，owner 换 key 恢复）。
     构造失败回退主模型接缝（原语义保留）。"""
     from core.base_llm import DeepSeekLLM
     from core.config import config as _cfg

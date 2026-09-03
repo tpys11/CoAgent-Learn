@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
-"""RA-S1：REVIEW_FOLLOW_MAIN 审核子开关——「关=审核时用主模型」（红先行）。
-T51 陷阱：PUT 空串不覆写 → 关闭语义不能写 REVIEW_MODEL_RESEARCH=''（会被吞掉=假关闭），
-故用独立布尔键 REVIEW_FOLLOW_MAIN 承载。T33：main/pipeline 一律执行期导入；
-T49：测试骨架沿用 test_f14_t51_put_semantics.py 的隔离库 + test_f14_zen_judge.py 的 mock LLM。"""
+"""RA-S1（RC4-S1 改写）：REVIEW_FOLLOW_MAIN 退役语义验证——owner 09-03 终版拍板
+判卷路由=档位定值格，follow_main/REVIEW_MODEL_RESEARCH 设置项退役。
+原「开关行为」断言按新语义改写（正当行为变更，非删测试护绿）：开关键不再落库生效、
+不再短路路由、探测不再分叉。T33：main/pipeline 一律执行期导入；
+T49：测试骨架沿用 test_f14_t51_put_semantics.py 的隔离库 + mock LLM。"""
 import sys, os
 import pytest
 import fastapi.testclient
@@ -16,12 +17,6 @@ def _make_req(api_key="sk-deepseek-fake", base_url="https://api.deepseek.com/v1"
     req.api_key = api_key
     req.base_url = base_url
     return req
-
-
-class FakeLLM:
-    def __init__(self, **kw):
-        for k, v in kw.items():
-            setattr(self, k, v)
 
 
 def _fake_cached_llm(key, base_url, model, thinking, effort, factory):
@@ -52,67 +47,66 @@ def settings_env(tmp_path, monkeypatch):
 
 
 @patch("engine.pipeline_v2._cached_llm", side_effect=_fake_cached_llm)
-def test_follow_main_on_research_judge_uses_model_main(mock_cll, monkeypatch):
-    """RA-S1①：follow_main='1' → 研究档判卷=MODEL_MAIN（即使研究档模型配了 zen: 也短路）。"""
+def test_follow_main_setting_no_longer_steers_judge(mock_cll, monkeypatch):
+    """改写①：REVIEW_FOLLOW_MAIN='1' 不再短路主模型——判卷按档位定值格（standard=SF Qwen72B）。"""
     from core.config import config as _cfg
     monkeypatch.setattr(_cfg, "REVIEW_FOLLOW_MAIN", "1")
     monkeypatch.setattr(_cfg, "REVIEW_MODEL_RESEARCH", "zen:Big Pickle")
-    monkeypatch.setattr(_cfg, "ZEN_API_KEY", "sk-zen-test-only-fake")
+    monkeypatch.setattr(_cfg, "VL_API_KEY", "sk-vl-test-only-fake")
+    monkeypatch.setattr(_cfg, "EMBEDDING_API_KEY", "")
+    monkeypatch.setattr(_cfg, "VL_BASE_URL", "https://api.siliconflow.cn/v1")
 
     from engine.review import pick_judge_llm
-    req = _make_req()
-    llm = pick_judge_llm("研究", req)
-    # 主模型通道：model=MODEL_MAIN、base_url=req.base_url（非 Zen 端点）
-    assert llm.model_name == "deepseek-v4-flash-vision-exp"
-    assert llm._base_url == "https://api.deepseek.com/v1"
-    assert llm._api_key == "sk-deepseek-fake"
+    llm = pick_judge_llm("研究", _make_req())
+    assert llm.model_name == "Qwen/Qwen2.5-72B-Instruct"
+    assert llm._base_url == "https://api.siliconflow.cn/v1"
+    assert llm._api_key == "sk-vl-test-only-fake"
 
 
 @patch("engine.pipeline_v2._cached_llm", side_effect=_fake_cached_llm)
-def test_follow_main_off_zen_routing_unaffected(mock_cll, monkeypatch):
-    """RA-S1②：follow_main='0' → 研究档 zen: 路由不受影响（原语义零回归）。"""
+def test_test_tier_judge_routes_zen(mock_cll, monkeypatch):
+    """改写②：test 档（ZEN_TEST_MODE=1）判卷=zen big-pickle（档位驱动替代旧 follow_main 分叉）。"""
     from core.config import config as _cfg
-    monkeypatch.setattr(_cfg, "REVIEW_FOLLOW_MAIN", "0")
-    monkeypatch.setattr(_cfg, "REVIEW_MODEL_RESEARCH", "zen:Big Pickle")
+    monkeypatch.setattr(_cfg, "ZEN_TEST_MODE", "1")
     monkeypatch.setattr(_cfg, "ZEN_API_KEY", "sk-zen-test-only-fake")
     monkeypatch.setattr(_cfg, "ZEN_BASE_URL", "https://opencode.ai/zen/v1")
 
     from engine.review import pick_judge_llm
-    req = _make_req()
-    llm = pick_judge_llm("研究", req)
-    assert llm.model_name == "Big Pickle"
+    llm = pick_judge_llm("研究", _make_req())
+    assert llm.model_name == "big-pickle"
     assert llm._base_url == "https://opencode.ai/zen/v1"
     assert llm._api_key == "sk-zen-test-only-fake"
 
 
-def test_put_follow_main_false_lands_zero(settings_env):
-    """RA-S1③：bool 红线——显式 review_follow_main=false 必须落库 0（R14：false 不能被当缺省吞掉）。"""
+def test_put_retired_fields_ignored(settings_env):
+    """改写③：PUT 退役字段 review_follow_main（含 false 显式体）被 pydantic 忽略——
+    GET review 节无 follow_main 键（不再落库生效，T61 同步清）。"""
     tc, _client = settings_env
     tc.put("/api/settings", json={"review_follow_main": True})
     tc.put("/api/settings", json={"review_follow_main": False})
-    resp = tc.get("/api/settings")
-    assert resp.json()["review"]["follow_main"] == False
+    body = tc.get("/api/settings").json()["review"]
+    assert "follow_main" not in body
 
 
-def test_get_settings_echoes_follow_main(settings_env):
-    """RA-S1④：GET /api/settings 的 review 节回显 follow_main（默认 False）。"""
+def test_get_settings_review_node_no_retired_keys(settings_env):
+    """改写④：GET review 节不再回显 follow_main/model_research（退役键同步清）。"""
     tc, _client = settings_env
-    # 默认（未保存过）=False
-    assert tc.get("/api/settings").json()["review"]["follow_main"] == False
-    tc.put("/api/settings", json={"review_follow_main": True})
-    assert tc.get("/api/settings").json()["review"]["follow_main"] == True
+    body = tc.get("/api/settings").json()["review"]
+    assert "follow_main" not in body
+    assert "model_research" not in body
+    assert body["effective_model"] == "Qwen/Qwen2.5-72B-Instruct"   # 定值格权威回显
 
 
-def test_test_endpoint_review_probe_respects_follow_main(settings_env, monkeypatch):
-    """RA-S1⑤：/api/settings/test 的 review 探测在 follow_main=1 时按主通道
-    （与 pick_judge 同款；漏这处=自检卡说谎）。全程 mock requests，零真实网络。"""
+def test_test_endpoint_review_probe_by_tier_not_follow_main(settings_env, monkeypatch):
+    """改写⑤：/api/settings/test 的 review 探测按档位定值格 provider 走通道——
+    REVIEW_FOLLOW_MAIN=1 不再劫持到主通道（standard→SF 端点）。全程 mock requests，零真实网络。"""
     tc, _client = settings_env
     from core.config import config as _cfg
-    monkeypatch.setattr(_cfg, "REVIEW_FOLLOW_MAIN", "1")
+    monkeypatch.setattr(_cfg, "REVIEW_FOLLOW_MAIN", "1")   # 退役键：不得影响探测通道
     monkeypatch.setattr(_cfg, "REVIEW_MODEL_RESEARCH", "zen:Big Pickle")
-    monkeypatch.setattr(_cfg, "ZEN_API_KEY", "sk-zen-test-only-fake")
-    monkeypatch.setattr(_cfg, "DEEPSEEK_API_KEY", "sk-deepseek-test-only-fake")
-    monkeypatch.setattr(_cfg, "DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+    monkeypatch.setattr(_cfg, "VL_API_KEY", "sk-vl-test-only-fake")
+    monkeypatch.setattr(_cfg, "EMBEDDING_API_KEY", "")
+    monkeypatch.setattr(_cfg, "VL_BASE_URL", "https://api.siliconflow.cn/v1")
 
     seen = {}
 
@@ -135,6 +129,6 @@ def test_test_endpoint_review_probe_respects_follow_main(settings_env, monkeypat
     resp = tc.post("/api/settings/test", json={})
     assert resp.status_code == 200
     results = resp.json()["results"]
-    # review 探测走主通道（DeepSeek 端点），不被 zen: 路由劫走
+    # review 探测走定值格 provider 通道（SF 端点），不被退役键劫持到主通道
     assert results["review"]["ok"] is True
-    assert seen["url"].startswith("https://api.deepseek.com/v1")
+    assert seen["url"].startswith("https://api.siliconflow.cn/v1")

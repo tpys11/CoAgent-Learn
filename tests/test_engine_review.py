@@ -21,30 +21,37 @@ class _Req:
     base_url = None
 
 
-def test_pick_judge_llm_by_mode():
+def test_pick_judge_llm_by_mode(monkeypatch):
+    """RC4 改写：判卷=档位定值格（standard=SF Qwen72B），思考/研究同格。"""
+    from core.config import config as _cfg
+    monkeypatch.setattr(_cfg, "ZEN_TEST_MODE", "0")   # T60 家族防线：显式 standard 档
+    monkeypatch.setattr(_cfg, "VL_API_KEY", "sk-test-sf")
+    monkeypatch.setattr(_cfg, "EMBEDDING_API_KEY", "")
     j1 = pick_judge_llm("思考", _Req())
-    assert j1.model_name == "deepseek-v4-flash-vision-exp"
+    assert j1.model_name == "Qwen/Qwen2.5-72B-Instruct"
     j2 = pick_judge_llm("研究", _Req())
-    assert j2.model_name == "deepseek-v4-flash-vision-exp"
+    assert j2.model_name == "Qwen/Qwen2.5-72B-Instruct"
 
 
 def test_pick_judge_llm_research_cross_vendor_lane(monkeypatch):
-    """研究档配硅基流动模型名+key → 走硅基流动端点真跨厂商（防自我包庇的设计意图落地）。"""
+    """RC4 改写：standard 档判卷定值 SF 实名——走硅基流动端点真跨厂商（防自我包庇的设计意图落地）。"""
     from core.config import config as _cfg
-    monkeypatch.setattr(_cfg, "REVIEW_MODEL_RESEARCH", "Qwen/Qwen2.5-72B-Instruct")
+    monkeypatch.setattr(_cfg, "ZEN_TEST_MODE", "0")
     monkeypatch.setattr(_cfg, "VL_API_KEY", "sk-test-sf")
+    monkeypatch.setattr(_cfg, "EMBEDDING_API_KEY", "")
     j = pick_judge_llm("研究", _Req())
     assert j.model_name == "Qwen/Qwen2.5-72B-Instruct"
     assert j._base_url == _cfg.VL_BASE_URL
 
 
-def test_pick_judge_llm_research_missing_key_loud_fallback(monkeypatch, caplog):
-    """跨厂商模型名缺硅基流动 key → 响亮回退同源视觉版（旧版静默 400 即本处事故）。"""
+def test_pick_judge_llm_missing_key_loud_fallback(monkeypatch, caplog):
+    """定值格模型缺硅基流动 key → 响亮回退同源视觉版（VL||EMBEDDING 兜底全空时；运行时 401/fail-open 预期）。"""
     import logging as _logging
     from core.config import config as _cfg
-    monkeypatch.setattr(_cfg, "REVIEW_MODEL_RESEARCH", "Qwen/Qwen2.5-72B-Instruct")
+    monkeypatch.setattr(_cfg, "ZEN_TEST_MODE", "0")
     monkeypatch.setattr(_cfg, "VL_API_KEY", "")
     monkeypatch.setattr(_cfg, "EMBEDDING_API_KEY", "")
+    monkeypatch.setattr(_cfg, "ZEN_API_KEY", "")   # standard 档不走 zen，但显式清空防环境波动
     with caplog.at_level(_logging.WARNING, logger="coagent.review"):
         j = pick_judge_llm("研究", _Req())
     assert j.model_name == "deepseek-v4-flash-vision-exp"

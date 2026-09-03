@@ -38,10 +38,11 @@ def test_put_empty_zen_api_key_keeps_existing(settings_env):
     assert data["zen"]["api_key_set"] is True
 
 
-def test_put_review_model_research_echoes(settings_env):
-    """F14-S4c③：PUT review_model_research=zen:mimo-v2.5-free→GET 回显"""
+def test_put_retired_review_model_research_ignored(settings_env):
+    """RC4 改写：review_model_research 字段退役——PUT 被 pydantic 忽略，GET 无 model_research 键。"""
     tc, _client = settings_env
     tc.put("/api/settings", json={"review_model_research": "zen:mimo-v2.5-free"})
     resp = tc.get("/api/settings")
     data = resp.json()
-    assert data["review"]["model_research"] == "zen:mimo-v2.5-free"
+    assert "model_research" not in data["review"]
+    assert data["review"]["effective_model"] == "Qwen/Qwen2.5-72B-Instruct"   # 定值格不受影响

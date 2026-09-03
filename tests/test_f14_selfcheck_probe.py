@@ -69,13 +69,15 @@ def test_chat_probe_timeout(settings_env, monkeypatch):
     assert "timeout" in data["results"]["chat"]["msg"]
 
 
-def test_review_probe_missing_model(settings_env, monkeypatch):
-    """审核探测缺模型：未配置审核模型时返回未配置"""
+def test_review_probe_missing_key(settings_env, monkeypatch):
+    """RC4 改写：审核探测缺配置=「未配置 Key」（定值格恒有模型，原「未配置审核模型」分支退役）——
+    standard 档 VL/EMBEDDING 兜底链全空 → review 探测诚实报缺配置。"""
     tc, _client = settings_env
     from core.config import config as _cfg
-    monkeypatch.setattr(_cfg, "REVIEW_MODEL_RESEARCH", "")
+    monkeypatch.setattr(_cfg, "VL_API_KEY", "")
+    monkeypatch.setattr(_cfg, "EMBEDDING_API_KEY", "")
     resp = tc.post("/api/settings/test", json={})
     data = resp.json()
     assert "review" in data["results"]
     assert data["results"]["review"]["ok"] is False
-    assert "未配置审核模型" in data["results"]["review"]["msg"]
+    assert "未配置 Key" in data["results"]["review"]["msg"]
