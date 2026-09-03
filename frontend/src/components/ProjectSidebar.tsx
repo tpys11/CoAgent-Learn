@@ -201,7 +201,7 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
           {true && (
             <div className="flex flex-col gap-1">
               {(() => {
-                const active = dialogues.filter(d => !d.archived)
+                const active = dialogues.filter(d => !d.archived && d.projectId === project?.id)
                 if (active.length === 0) return <p className="text-[10px] text-dim">暂无对话，新建一个开始</p>
                 return active.map(d => (
                 <div key={d.id} className="group relative">
