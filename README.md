@@ -96,6 +96,9 @@ docker compose -f deploy/docker-compose.yml up -d
 > `docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.override.yml up -d --build`
 > ⚠️ 只加 `--build` 而没有 `build:` 配置**不会触发构建**——compose 会直接拉取 GHCR 镜像。
 
+> **本地开发者注意**：交付镜像已钉定在固定 sha 版本，本地开发重启须带 override（双 `-f`）加载本地构建配置；
+> 裸执行 `up -d` 会直接使用交付钉版镜像（评委按上方标准流程启动，无此问题）。
+
 ### 3. 确认服务就绪
 
 ```bash

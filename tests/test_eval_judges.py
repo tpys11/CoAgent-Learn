@@ -9,9 +9,9 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 
-# tests/eval 评估工具链暂未入库（untracked，EVAL-1 Wave 2 收口时拍板）——
-# fresh clone/CI 无该目录时整文件跳过；本地与入库后照常执行。
-pytest.importorskip("eval", reason="tests/eval 评估工具链未入库，跳过 judge 守卫")
+# 守卫探测对象是 backend/eval 包（judges + run_eval 纯逻辑），随 backend 入库——
+# fresh clone/CI 若缺该包则整文件跳过；tests/eval 工具链已随 P0-S2 入库。
+pytest.importorskip("eval", reason="backend/eval 评估包缺失，跳过 judge 纯逻辑守卫")
 
 from eval.judges import coverage, fit, hallucination  # noqa: E402
 from eval.run_eval import _diff, evaluate, render_markdown  # noqa: E402

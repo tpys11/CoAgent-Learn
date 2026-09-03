@@ -1,0 +1,162 @@
+{
+  "_meta": {
+    "source": "docs/submission/评估方案.md §3（EVAL-1 Wave 1，owner 验收 c77f272）",
+    "count": 60,
+    "note": "54 基础用例 + 6 交互反馈用例；expect_kps 为 Wave 2 审校初稿，审校记录落 evidence/manual-review.md"
+  },
+  "personas": {
+    "P1": {
+      "label": "入门自学者",
+      "wizard": {
+        "domain": "人工智能",
+        "background": "零基础",
+        "prefer": "讲义讲解",
+        "topic": "大模型应用入门",
+        "selfLevel": "零基础",
+        "target": "AI 产品应用/运营岗",
+        "questionType": "基础",
+        "goal": "看懂 AI 产品文档，能与开发团队有效对话"
+      }
+    },
+    "P2": {
+      "label": "有基础进阶者",
+      "wizard": {
+        "domain": "人工智能",
+        "background": "有基础",
+        "prefer": "混合",
+        "topic": "RAG 应用开发",
+        "selfLevel": "有基础",
+        "target": "算法工程师",
+        "questionType": "进阶",
+        "goal": "补齐大模型原理，能独立完成 RAG 应用"
+      }
+    },
+    "P3": {
+      "label": "专业复习者",
+      "wizard": {
+        "domain": "人工智能",
+        "background": "熟练",
+        "prefer": "实操练习",
+        "topic": "LLM 应用工程体系复盘",
+        "selfLevel": "熟练",
+        "target": "大模型应用架构师",
+        "questionType": "进阶",
+        "goal": "体系化复盘大模型应用工程，指导技术选型与架构评审"
+      }
+    }
+  },
+  "cases": [
+    {"id": "P1-01", "persona": "P1", "q": "什么是 Transformer？为什么现在的 AI 模型都用它？", "kps": ["Transformer", "注意力机制"]},
+    {"id": "P1-02", "persona": "P1", "q": "大模型是怎么训练出来的？为什么要先预训练再做微调？", "kps": ["预训练", "微调", "RLHF"]},
+    {"id": "P1-03", "persona": "P1", "q": "AI 聊着聊着就忘了前面说过的话，是怎么回事？", "kps": ["Token", "上下文窗口"]},
+    {"id": "P1-04", "persona": "P1", "q": "为什么给 AI 看几个例子，它回答得就更符合要求了？", "kps": ["Few-shot", "示例学习"]},
+    {"id": "P1-05", "persona": "P1", "q": "让 AI「一步一步想」为什么答案会更准？", "kps": ["思维链", "CoT"]},
+    {"id": "P1-06", "persona": "P1", "q": "怎么让 AI 稳定输出 JSON 这种固定格式，而不是随性发挥？", "kps": ["结构化输出", "角色设定"]},
+    {"id": "P1-07", "persona": "P1", "q": "什么是 RAG？企业问答为什么不能只靠模型自己答？", "kps": ["RAG", "检索增强生成"]},
+    {"id": "P1-08", "persona": "P1", "q": "为什么有时候光靠关键词搜不到想要的资料？", "kps": ["混合检索", "语义检索"]},
+    {"id": "P1-09", "persona": "P1", "q": "检索回来一大堆资料，怎么挑出最有用的几段？", "kps": ["Rerank", "重排序"]},
+    {"id": "P1-10", "persona": "P1", "q": "用了 RAG 还会答错吗？什么情况下会？", "kps": ["RAG 失效", "缓解"]},
+    {"id": "P1-11", "persona": "P1", "q": "文字是怎么变成向量、还能算「像不像」的？", "kps": ["Embedding", "相似度"]},
+    {"id": "P1-12", "persona": "P1", "q": "向量数据库和普通数据库有什么不一样？", "kps": ["向量索引", "近似最近邻"]},
+    {"id": "P1-13", "persona": "P1", "q": "把一本厚文档直接丢给 AI 为什么效果差？切块是干什么的？", "kps": ["切块", "重叠"]},
+    {"id": "P1-14", "persona": "P1", "q": "AI Agent 是什么？和普通聊天机器人差在哪？", "kps": ["Agent", "工具调用"]},
+    {"id": "P1-15", "persona": "P1", "q": "Agent 接到一个复杂任务，是怎么一步步拆开做的？", "kps": ["任务分解", "规划"]},
+    {"id": "P1-16", "persona": "P1", "q": "AI 怎么记住我之前说过的话？记性有上限怎么办？", "kps": ["对话记忆", "记忆压缩"]},
+    {"id": "P1-17", "persona": "P1", "q": "好几个 AI 一起干活，是怎么分工的？", "kps": ["多Agent", "角色分工", "编排"]},
+    {"id": "P1-18", "persona": "P1", "q": "多个 AI 互相检查，能减少「一本正经胡说八道」吗？", "kps": ["交叉验证", "幻觉"]},
+    {"id": "P2-01", "persona": "P2", "q": "自注意力中 Q/K/V 各起什么作用？缩放点积为什么要除以 √d_k？", "kps": ["自注意力", "QKV", "缩放点积"]},
+    {"id": "P2-02", "persona": "P2", "q": "SFT 和 RLHF 在训练目标与数据构成上的区别是什么？", "kps": ["SFT", "RLHF", "奖励模型"]},
+    {"id": "P2-03", "persona": "P2", "q": "上下文窗口长度受限的根源是什么？长文本有哪些应对思路？", "kps": ["上下文窗口", "长文本处理"]},
+    {"id": "P2-04", "persona": "P2", "q": "Few-shot 提示里示例的数量和顺序对效果的影响怎么评估？", "kps": ["Few-shot", "提示效果评估"]},
+    {"id": "P2-05", "persona": "P2", "q": "思维链和自一致性（多路采样投票）结合的收益来自哪里？", "kps": ["思维链", "自一致性"]},
+    {"id": "P2-06", "persona": "P2", "q": "用函数调用约束 JSON 输出时，字段校验失败怎么设计重试？", "kps": ["结构化输出", "工具调用"]},
+    {"id": "P2-07", "persona": "P2", "q": "RAG 离线建库和在线问答两个阶段各有哪些环节？", "kps": ["建库流程", "在线检索生成"]},
+    {"id": "P2-08", "persona": "P2", "q": "BM25 与向量召回做 RRF 融合时，k 参数如何影响排序？", "kps": ["混合检索", "RRF"]},
+    {"id": "P2-09", "persona": "P2", "q": "CrossEncoder 重排相比双塔召回的精度与成本权衡？", "kps": ["Rerank", "CrossEncoder"]},
+    {"id": "P2-10", "persona": "P2", "q": "知识库更新频繁时，RAG 的时效性失效怎么缓解？", "kps": ["RAG 失效缓解", "增量更新"]},
+    {"id": "P2-11", "persona": "P2", "q": "Embedding 维度与向量量化对召回率的影响是什么？", "kps": ["Embedding 维度", "向量量化"]},
+    {"id": "P2-12", "persona": "P2", "q": "HNSW 这类图索引在查询速度和内存上怎么权衡？", "kps": ["HNSW", "近似最近邻"]},
+    {"id": "P2-13", "persona": "P2", "q": "语义切块和固定长度切块在不同文档类型上怎么选？", "kps": ["切块策略", "语义切块"]},
+    {"id": "P2-14", "persona": "P2", "q": "ReAct 循环里「思考-行动-观察」怎么防止死循环？", "kps": ["ReAct", "循环终止"]},
+    {"id": "P2-15", "persona": "P2", "q": "Agent 任务分解的粒度对执行成功率有什么影响？", "kps": ["任务分解", "规划粒度"]},
+    {"id": "P2-16", "persona": "P2", "q": "对话记忆的滑动窗口和摘要压缩各适合什么场景？", "kps": ["滑动窗口", "摘要压缩"]},
+    {"id": "P2-17", "persona": "P2", "q": "多 Agent 编排用中心调度还是流水线？各有什么坑？", "kps": ["编排模式", "中心调度"]},
+    {"id": "P2-18", "persona": "P2", "q": "「生成-判别」交叉验证相比单模型自查，幻觉抑制增益怎么测？", "kps": ["交叉验证", "幻觉率"]},
+    {"id": "P3-01", "persona": "P3", "q": "注意力计算的显存开销随序列长度增长，根源是什么？KV 缓存如何影响推理吞吐？", "kps": ["注意力机制", "KV缓存"]},
+    {"id": "P3-02", "persona": "P3", "q": "LoRA 低秩适配的秩选择和目标模块覆盖怎么权衡？", "kps": ["LoRA", "参数高效微调"]},
+    {"id": "P3-03", "persona": "P3", "q": "Token 数、上下文窗口与显存占用之间怎么估算换算？", "kps": ["Token", "上下文窗口"]},
+    {"id": "P3-04", "persona": "P3", "q": "提示注入攻击在带示例（Few-shot）场景下的攻击面与防御手段？", "kps": ["Few-shot", "提示注入"]},
+    {"id": "P3-05", "persona": "P3", "q": "思维链在哪些任务类型上会失效？失败模式怎么归因？", "kps": ["思维链", "失效归因"]},
+    {"id": "P3-06", "persona": "P3", "q": "结构化输出的 schema 约束与生成自由度冲突时怎么调？", "kps": ["结构化输出", "schema约束"]},
+    {"id": "P3-07", "persona": "P3", "q": "RAG 中查询改写多路召回时，召回率与噪声比的权衡怎么处理？", "kps": ["查询改写", "多路召回"]},
+    {"id": "P3-08", "persona": "P3", "q": "RRF 融合相比加权分数融合的优势与适用边界？", "kps": ["RRF", "分数融合"]},
+    {"id": "P3-09", "persona": "P3", "q": "Rerank 模型的 pointwise/pairwise/listwise 训练目标差异？", "kps": ["Rerank", "排序学习"]},
+    {"id": "P3-10", "persona": "P3", "q": "模型参数记忆与检索证据矛盾（知识冲突）时怎么检测与仲裁？", "kps": ["知识冲突", "证据优先"]},
+    {"id": "P3-11", "persona": "P3", "q": "Embedding 选型时通用榜单成绩和业务域微调怎么取舍？", "kps": ["Embedding选型", "领域微调"]},
+    {"id": "P3-12", "persona": "P3", "q": "千万级向量规模下 HNSW 与 IVF-PQ 的内存-精度权衡？", "kps": ["向量索引选型", "量化压缩"]},
+    {"id": "P3-13", "persona": "P3", "q": "父子块（parent-child）检索在长文档问答里的增益机制？", "kps": ["父子块", "检索粒度"]},
+    {"id": "P3-14", "persona": "P3", "q": "Agent 工具调用的失败重试与超时熔断，实现要点是什么？", "kps": ["工具调用", "重试熔断"]},
+    {"id": "P3-15", "persona": "P3", "q": "Plan-and-Execute 与 ReAct 的适用场景边界在哪？", "kps": ["规划执行", "ReAct"]},
+    {"id": "P3-16", "persona": "P3", "q": "用户画像融合显式自评与隐式答题行为时，置信度怎么加权？", "kps": ["画像融合", "置信度加权"]},
+    {"id": "P3-17", "persona": "P3", "q": "多 Agent 系统的失败传播怎么控制？降级策略怎么设计？", "kps": ["失败传播", "降级策略"]},
+    {"id": "P3-18", "persona": "P3", "q": "LLM 裁判模型的自我偏好、长度偏好等偏置怎么校准？", "kps": ["LLM裁判偏置", "校准"]}
+  ],
+  "if_cases": [
+    {
+      "id": "IF-01", "persona": "P1",
+      "baseline_q": "什么是 RAG？为什么要用检索增强，而不是只靠模型自己回答？",
+      "quiz": [
+        {"question_id": "if01-q1", "kp_tag": "RAG 技术原理", "correct": false},
+        {"question_id": "if01-q2", "kp_tag": "RAG 技术原理", "correct": false},
+        {"question_id": "if01-q3", "kp_tag": "向量数据库与Embedding", "correct": false}
+      ],
+      "followup_q": "那向量数据库在 RAG 里起什么作用？",
+      "assert": "quiz 后 profile.level_score 存在且低于 IF-02 同画像终值；followup 的 t_value/strategy_id 与 baseline 对比记录"
+    },
+    {
+      "id": "IF-02", "persona": "P1",
+      "baseline_q": "什么是 RAG？为什么要用检索增强，而不是只靠模型自己回答？",
+      "quiz": [
+        {"question_id": "if02-q1", "kp_tag": "RAG 技术原理", "correct": true},
+        {"question_id": "if02-q2", "kp_tag": "RAG 技术原理", "correct": true},
+        {"question_id": "if02-q3", "kp_tag": "向量数据库与Embedding", "correct": true}
+      ],
+      "followup_q": "那向量数据库在 RAG 里起什么作用？",
+      "assert": "quiz 后 profile.level_score 高于 IF-01 终值"
+    },
+    {
+      "id": "IF-03", "persona": "P2",
+      "baseline_q": "BM25 与向量召回做 RRF 融合时，k 参数如何影响排序？",
+      "quiz": [
+        {"question_id": "if03-q1", "kp_tag": "RAG 技术原理", "correct": false},
+        {"question_id": "if03-q2", "kp_tag": "Prompt工程", "correct": true},
+        {"question_id": "if03-q3", "kp_tag": "Rerank 重排序", "correct": false},
+        {"question_id": "if03-q4", "kp_tag": "RAG 技术原理", "correct": true}
+      ],
+      "followup_q": "那 CrossEncoder 重排相比双塔召回，精度和成本怎么权衡？",
+      "assert": "level_score 移动方向与近窗正确率一致（近窗 0.5，预期围绕原位小幅波动）；记录型"
+    },
+    {
+      "id": "IF-04", "persona": "P3",
+      "baseline_q": "LoRA 低秩适配的秩选择和目标模块覆盖怎么权衡？",
+      "quiz": [
+        {"question_id": "if04-q1", "kp_tag": "参数高效微调", "correct": false},
+        {"question_id": "if04-q2", "kp_tag": "参数高效微调", "correct": false}
+      ],
+      "followup_q": "Embedding 选型时通用榜单成绩和业务域微调怎么取舍？",
+      "assert": "预期注记：轻微下降或不动（种子分高）；记录型，不符不判系统失败"
+    },
+    {
+      "id": "IF-05", "persona": "P2",
+      "baseline_q": "语义切块和固定长度切块在不同文档类型上怎么选？",
+      "profile_change": {"prefer": "实操练习"},
+      "followup_q": "语义切块和固定长度切块在不同文档类型上怎么选？",
+      "assert": "profile 保存往返成功；两轮回答形态对比记录型（观察实操导向变化）"
+    },
+    {
+      "id": "IF-06", "persona": "P1",
+      "reuse_dialogue_of": "IF-01",
+      "assert": "GET /api/report/match 返回四要素非空：盲区定位/难度曲线/知识点正确率/路径树 + 综合匹配度；quiz 数据已刷新（IF-01 的 3 错题可见）"
+    }
+  ]
+}
