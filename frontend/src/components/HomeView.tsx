@@ -1,6 +1,7 @@
 ﻿import { useEffect, useState } from 'react'
 import { Plus, X, FolderOpen, Pencil, HelpCircle } from 'lucide-react'
 import GuideModal from './GuideModal'
+import LearningCalendar from './LearningCalendar'
 import { api } from '../api'
 
 /** 系统预设领域 → 预存图片；非预设领域/未设置领域使用默认学习封面 */
@@ -33,9 +34,13 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
   const [lastTopics, setLastTopics] = useState<Record<string, string>>({})
   // 主页学习记录：近30天哪天学了多久、涉及哪些课程（/api/stats/focus-days）
   const [focusDays, setFocusDays] = useState<Array<{ date: string; projects: Array<{ project_id: string; project_name: string; seconds: number }> }>>([])
+  const [logDays, setLogDays] = useState<Array<{ date: string; items: Array<Record<string, any>> }>>([])
   useEffect(() => {
     api.getFocusDays().then(d => {
       setFocusDays(Array.isArray(d.days) ? d.days : [])
+    }).catch(() => {})
+    api.getLearningLog().then(d => {
+      setLogDays(Array.isArray(d.days) ? d.days : [])
     }).catch(() => {})
   }, [])
   useEffect(() => {
@@ -87,33 +92,9 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
               <HelpCircle size={15} /> 快速引导
             </button>
           </div>
-          {/* 学习记录列表（快速引导下方） */}
-          <div className="w-[560px] max-w-full border hairline rounded-2xl p-4 bg-[var(--bg-panel)] flex flex-col gap-2.5">
-            <div className="flex items-center justify-between text-[10px] text-dim">
-              <span className="font-semibold uppercase tracking-wider">学习记录</span>
-              <span>最近 30 天</span>
-            </div>
-            {focusDays.length === 0 ? (
-              <p className="text-[10px] leading-relaxed text-[var(--text-muted)] py-3 text-center">最近 30 天还没有学习记录，开始第一节课吧</p>
-            ) : (
-              <div className="flex flex-col divide-y hairline-divide">
-                {focusDays.slice(0, 15).map(dd => {
-                  const total = (dd.projects || []).reduce((s, x) => s + x.seconds, 0)
-                  const fmt = (s: number) => s >= 3600 ? Math.round(s / 3600 * 10) / 10 + ' 小时' : Math.max(1, Math.round(s / 60)) + ' 分钟'
-                  const date = dd.date.slice(5).replace('-', '/')
-                  const wd = ['日', '一', '二', '三', '四', '五', '六'][new Date(dd.date + 'T00:00:00').getDay()]
-                  return (
-                    <div key={dd.date} className="py-2 flex items-center gap-3">
-                      <span className="text-[11px] font-semibold flex-shrink-0 w-[52px]">{date}<span className="text-dim font-normal"> 周{wd}</span></span>
-                      <span className="text-[11px] text-[var(--text-muted)] flex-1 truncate">
-                        {(dd.projects || []).map(x => x.project_name).filter((v, i, a) => a.indexOf(v) === i).join('、')}
-                      </span>
-                      <span className="text-[11px] font-semibold flex-shrink-0">{fmt(total)}</span>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
+          {/* 学习日历（快速引导下方）：30 天日期格，颜色深浅=时长，点格看当天明细 */}
+          <div className="w-[560px] max-w-full border hairline rounded-2xl p-4 bg-[var(--bg-panel)] flex flex-col">
+            <LearningCalendar focusDays={focusDays} logDays={logDays} />
           </div>
           {/* 课程区块 */}
           <div className="flex flex-col gap-6">
