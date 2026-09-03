@@ -385,13 +385,19 @@ def save_project_profile(pid: str, req: ProfileData):
     p = req.profile
     if isinstance(p, dict):
         if p.get("domain"):
-            proj["抽象项目情况"] = p["domain"]
+            proj["领域"] = p["domain"]
         if p.get("background"):
             proj["抽象项目情况"] = p["background"] or proj.get("抽象项目情况", "")
+        if p.get("identity"):
+            proj["学历背景"] = p["identity"]
+        if p.get("selfLevel"):
+            proj["当前水平"] = p["selfLevel"]
         if p.get("prefer"):
             proj["偏好"] = p["prefer"]
         if p.get("goal"):
             proj["目标"] = p["goal"]
+        if p.get("raw"):
+            proj["原始画像描述"] = p["raw"]
     mrepo.save_project_memory(pid, json.dumps(proj, ensure_ascii=False))
     return {"status": "ok"}
 

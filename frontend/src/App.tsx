@@ -242,17 +242,15 @@ function App() {
         const id = d.id
         setProjects(prev => [...prev, { id, name, simple: false }])
         setCurrentProjectId(id)
-        // 创建默认对话并直接进入对话界面，对话内展示静态创建课程引导（命名/简述/资源/目的/时间）
+        // 创建默认对话（保留现状），不塞静态引导文字
         const did = generateId()
         const dia: Dialogue = { id: did, name: '对话 1', projectId: id, createdAt: new Date().toISOString(), archived: false }
         setDialogues(prev => [...prev, dia])
         setCurrentDialogueId(did)
-        setAllMessages(prev => ({ ...prev, [did]: [{ role: 'assistant' as const, content: PROJECT_GUIDE(name) }] }))
-        // 落库：对话 + 静态引导消息（刷新后保留）
         api.createDialogue({ project_id: id, name: dia.name, id: did }).catch(() => {})
         pollProfileStatus(did)
-        api.postDialogueMessage(did, { role: 'assistant', content: PROJECT_GUIDE(name) }).catch(() => {})
-        setChatOpen(true)
+        // 弹「课程画像」弹窗（分类引导 或 一段话自由填写）
+        setWizard({ mode: 'project', id, name })
       } catch (e) {
         alert('创建课程失败：' + ((e as any)?.message || '网络异常') + '，请检查后端服务。')
       }
