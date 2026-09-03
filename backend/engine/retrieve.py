@@ -5,17 +5,25 @@ P1 增补：多路排名 RRF 融合（公式照抄 llama-index QueryFusionRetrie
 + 优质源标注（rules.py 池）进筛选提示词。
 闭环三 B2-lite 增补：研究档（rounds≥2）子问题分解 + 覆盖度判据 + 自适应补搜
 （总轮次≤3封顶），替代旧"强制两轮 angle 递归"契约。
+RC4-S3：0 候选短路修复——queries 非空无视 need_search=false（T55 误判实锤：数学课程
+知识题被「数学计算类」规则误杀 → 0 候选）；prompt 收紧「课程知识题≠纯计算」；
+规划器失败路径 warning 可观测（原静默吞异常）。
 测试接缝：_web_search / _kb_search / _fetch_all 可被 monkeypatch 替换。"""
 import json
+import logging
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as _FTimeout
 
 from rules import QUALITY_SOURCE_POOL
 from engine.llm_io import think_then_json
 
+logger = logging.getLogger("coagent.retrieve")
+
 
 # B2-lite 研究档分解提示词：few-shot 对照示例骨架移植自 llama-index-core
 # SubQuestionQueryEngine（question_gen/prompts.py 的 EXAMPLES 段：对比题按实体拆
 # 独立信息需求），砍 tool 维度；单面问题防碎片化规则为本仓约定。
+# RC4-S3：补「学科知识题≠纯计算」判定规则——owner 实证「正定与半正定…二次型」被
+# flash 归入数学计算类误杀（need_search=false → 0 候选短路）。
 _RESEARCH_DECOMPOSE_PROMPT = (
     "你是检索查询规划器，负责研究档的子问题分解：把多面问题拆成可独立检索的信息需求。\n"
     '只输出 JSON：{"need_search": true|false, "queries": ["子问题1", "子问题2", ...], '
@@ -24,7 +32,9 @@ _RESEARCH_DECOMPOSE_PROMPT = (
     '{"need_search": true, "queries": ["Uber 的营收增长情况", "Lyft 的营收增长情况"], '
     '"decomposed": true}\n'
     "规则：每条子问题须能独立检索出答案、互不包含；单面问题禁止碎片化——"
-    "返回原问题单元素且 decomposed=false；子问题最多 4 条。只输出 JSON。"
+    "返回原问题单元素且 decomposed=false；子问题最多 4 条；"
+    "数学/物理等学科的知识概念题（定义、性质、区别、判定）是知识问题，一律 need_search=true。"
+    "只输出 JSON。"
 )
 
 
@@ -37,7 +47,8 @@ def rewrite_queries(llm_fast, message: str, angle_hint: str = "",
     prompt = _RESEARCH_DECOMPOSE_PROMPT if research else (
         "你是检索查询规划器。判断该消息是否需要外部检索，并产出搜索词。\n"
         '只输出 JSON：{"need_search": true|false, "queries": ["搜索词1", "搜索词2", ...]}\n'
-        "规则：闲聊/纯创作/数学计算类 need_search=false；"
+        "规则：闲聊/纯创作/纯算术运算（无需任何知识内容）类 need_search=false；"
+        "数学、物理等学科的知识概念题（定义、性质、区别、判定）是知识问题，需要检索；"
         "需要事实、教程、最新信息时给 3~5 条互不重复的高质量搜索词。只输出 JSON。"
     )
     if angle_hint:
@@ -45,13 +56,22 @@ def rewrite_queries(llm_fast, message: str, angle_hint: str = "",
     try:
         _, result = think_then_json(
             llm_fast, prompt, message[:1000], "知识库管理", silent=True)
+        if str(result.get("content") or "").startswith("执行异常") or not result:
+            # RC4-S3：think_then_json 吞异常返回指纹/空 dict（LLM 调用失败主路径，如 zen 429）
+            # ——失败可观测（原静默吞异常违反 CONVENTIONS §6），观察窗可解释「终筛 0 候选」
+            # 来自规划器失败而非知识库无数据
+            logger.warning("查询规划器调用失败，本轮按无需检索处理（可能造成 0 候选）")
         need = bool(result.get("need_search"))
         qs = [str(q).strip() for q in (result.get("queries") or []) if str(q).strip()]
-        if need and not qs:
-            need = False
+        # RC4-S3：queries 非空=检索意图最强信号——need=false+queries 非空是规划器自相矛盾
+        # 输出（T55 误判实锤：数学课程知识题被误杀 → 0 候选短路），以 queries 为准
+        if qs:
+            need = True
         return {"need_search": need, "queries": qs[:4 if research else 5],
                 "decomposed": bool(result.get("decomposed"))}
-    except Exception:
+    except Exception as e:
+        # RC4-S3：防御路径（result 非 dict 等解析意外）——同样留痕不静默
+        logger.warning("查询规划器输出解析失败，本轮按无需检索处理（可能造成 0 候选）：%s", e)
         return {"need_search": False, "queries": [], "decomposed": False}
 
 
