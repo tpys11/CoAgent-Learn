@@ -14,6 +14,7 @@ import { reportIngestDone } from '../lib/kbScopeBus'
 import { ListItem, exportItem } from './resource/commons'
 import { ResourceCardGrid, ResourceEmpty } from './resource/ResourceCardGrid'
 import { ResourceDetailModal } from './resource/ResourceDetailModal'
+import MyUploads from './MyUploads'
 import { PresetResourceCard } from './resource/PresetResourceCard'
 import { PresetDetailModal } from './resource/PresetDetailModal'
 import KbReaderModal from './KbReaderModal'
@@ -100,6 +101,7 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
   const [wikiTheme, setWikiTheme] = useState('all')
   const [loading, setLoading] = useState(false)
   const [detail, setDetail] = useState<ListItem | null>(null)
+  const [activeView, setActiveView] = useState<'domain' | 'mine'>('domain')
   // F13-S1：预设资源库状态（API 数据驱动；失败=结构化可见错误，不阻塞其他页签）
   const [presetByDomain, setPresetByDomain] = useState<Record<string, PresetResource[]>>({})
   const [presetLoaded, setPresetLoaded] = useState(false)
@@ -372,7 +374,18 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
 
   return (
     <div className="flex-1 h-full min-w-0 flex flex-col panel rounded-3xl overflow-hidden">
-      {/* 主体：左侧分类栏 + 内容区（只读系统资源） */}
+      {/* 顶部切换：领域资源 / 我的上传 */}
+      <div className="flex gap-1 px-4 pt-3 pb-0 flex-shrink-0">
+        {([['domain', '领域资源'], ['mine', '我的上传']] as const).map(([k, label]) => (
+          <button key={k} onClick={() => setActiveView(k)}
+            className={'px-3.5 py-1.5 rounded-t-lg text-xs font-medium transition-colors ' + (activeView === k ? 'bg-[var(--bg-panel)] border border-b-0 hairline font-semibold text-[var(--text)]' : 'text-dim hover:bg-[var(--bg-hover)]')}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {activeView === 'mine' ? (
+        <MyUploads />
+      ) : (
       <div className="flex-1 flex min-h-0">
         <div className="w-[260px] flex-shrink-0 border-r hairline bg-[var(--bg-sidebar)] p-2.5 flex flex-col gap-1 overflow-y-auto">
           <p className="text-[10px] font-bold text-dim uppercase tracking-wider px-2.5 mt-1 mb-0.5">领域</p>
@@ -428,6 +441,7 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
           </div>
         </div>
       </div>
+      )}
 
       {/* 详情模态（F13-S2 留桩：预设资源的「加入课程」将走上传解析链，本轮先不给文本插入入口） */}
       {detail && (
