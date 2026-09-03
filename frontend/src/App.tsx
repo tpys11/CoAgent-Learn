@@ -249,8 +249,10 @@ function App() {
         setCurrentDialogueId(did)
         api.createDialogue({ project_id: id, name: dia.name, id: did }).catch(() => {})
         pollProfileStatus(did)
-        // 弹「课程画像」弹窗（分类引导 或 一段话自由填写）
-        setWizard({ mode: 'project', id, name })
+        // 打开「课程初始化」大弹窗（原地编辑课程画像 + 上传资源）
+        setManualSetupOnly(true)
+        setProjectConfigTab('memory')
+        setShowProjectConfig(true)
       } catch (e) {
         alert('创建课程失败：' + ((e as any)?.message || '网络异常') + '，请检查后端服务。')
       }
