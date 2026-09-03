@@ -1,6 +1,6 @@
 [
-  {"kind": "file", "path": "ai工程与应用/AI-Agents-books（李博杰）.pdf", "source": "AI-Agents-books（李博杰）.pdf", "external": true},
-  {"kind": "text", "path": "ai原理与应用简述/AI 编程学习路线（鱼皮）.md", "source": "AI 编程学习路线（鱼皮）.md", "external": true},
+  {"kind": "file", "path": "data/preset_library/线性代数/线性代数讲义_武汉大学_马涛.pdf", "source": "线性代数讲义_武汉大学_马涛.pdf"},
+  {"kind": "text", "path": "data/preset_library/ai原理与应用简述/AI 编程学习路线（鱼皮）.md", "source": "AI 编程学习路线（鱼皮）.md"},
   {"kind": "text", "path": "data/documents/01-大模型基础概念.md", "source": "01-大模型基础概念.md"},
   {"kind": "text", "path": "data/documents/02-Prompt工程.md", "source": "02-Prompt工程.md"},
   {"kind": "text", "path": "data/documents/03-RAG技术原理.md", "source": "03-RAG技术原理.md"},

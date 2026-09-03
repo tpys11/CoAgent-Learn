@@ -111,7 +111,8 @@ def new_dialogue(base, pid, case_id, wizard):
 
 def _resolve_kb_path(item):
     """P0-S2：manifest 中 external=true 的条目为评委自备件——路径是「自备根目录」的
-    相对形式，经 EVAL_KB_EXTERNAL_DIR 解析；仓库内条目（data/documents/*）原样返回。
+    相对形式，经 EVAL_KB_EXTERNAL_DIR 解析；仓库内条目（data/preset_library、data/documents/*）
+    原样返回。决策 39（09-04）起 manifest 已全仓库内条目，external 机制保留为零依赖兜底。
     不设环境变量时对自备件显式报错，绝不回落到任何写死的本机绝对路径。"""
     if not item.get("external"):
         return item["path"]
