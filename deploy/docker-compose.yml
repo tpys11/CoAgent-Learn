@@ -1,4 +1,4 @@
-﻿services:
+services:
   frontend:
     # C3: 多阶段构建的静态产物由 nginx 托管并反代后端（容器内 80，外部端口保持 5173）。
     # 不再挂载源码——HMR 随 dev server 退役；前端改动在宿主 npm run dev 验证、N2/N3 检查点重建镜像。
