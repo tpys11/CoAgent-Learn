@@ -11,6 +11,10 @@ export const MODEL_PRO = 'deepseek-v4-pro'                 // legacy alias 目�
 export const MODEL_ZEN_TEST = 'mimo-v2.5-free'             // 双源同值① = backend MODEL_ZEN_TEST（决策 38 测试档对话/辅助实名）
 export const MODEL_ZEN_REVIEW = 'big-pickle'               // 双源同值②（RC4 测试档判卷实名 = backend MODEL_ZEN_REVIEW）
 export const MODEL_REVIEW_SF = 'Qwen/Qwen2.5-72B-Instruct' // 双源同值④（RC4 标准档判卷实名 = backend MODEL_REVIEW_SF，SF 跨厂商）
+// S3（owner 09-04 拍板）：go 第二测试通道实名——字面占位，owner 提供网关确切 API ID 后两侧各改一行
+// （backend MODEL_GO_* 同步；zen smoke2 先例：显示名≠API ID 会 401）
+export const MODEL_GO_MAIN = 'GLM-5.3-Flash'               // 双源同值⑤ = backend MODEL_GO_MAIN（go 通道主对话/辅助）
+export const MODEL_GO_REVIEW = 'Qwen3.8 Flash'             // 双源同值⑥ = backend MODEL_GO_REVIEW（go 通道判卷）
 export const DEEPSEEK_BASE_URL = 'https://api.deepseek.com/v1'
 export const ZEN_BASE_URL = 'https://opencode.ai/zen/v1'
 
@@ -21,6 +25,8 @@ export const ZEN_BASE_URL = 'https://opencode.ai/zen/v1'
 export const REGISTRY_MIRROR = {
   standard: { main: MODEL_MAIN, fast: MODEL_MAIN, vision: MODEL_MAIN, pro: MODEL_PRO, review: MODEL_REVIEW_SF, base_url: DEEPSEEK_BASE_URL },
   test: { main: MODEL_ZEN_TEST, fast: MODEL_ZEN_TEST, vision: MODEL_ZEN_TEST, review: MODEL_ZEN_REVIEW, base_url: ZEN_BASE_URL },
+  // S3：go 档——端点动态（设置页填 GO_BASE_URL）无镜像常量位，base_url 留空仅占位防误用
+  go: { main: MODEL_GO_MAIN, fast: MODEL_GO_MAIN, vision: MODEL_GO_MAIN, review: MODEL_GO_REVIEW, base_url: '' },
 } as const
 
 /** zen 态对话模型「显示名」兜底（chatRouting 源级契约值——非 API ID，F14 显示语义原样保留，
@@ -33,6 +39,7 @@ export const ZEN_CHAT_FALLBACK_DISPLAY = 'mimo-V2.5 Free'
  *  设计原意），空值才兜底显示名，zen 分支不吃 alias。R-D S5：实现自 useChatStream 移入镜像。 */
 export function resolveChatModel(provider: string, lsModel: string): string {
   if (provider === 'zen') return lsModel || ZEN_CHAT_FALLBACK_DISPLAY
+  if (provider === 'go') return MODEL_GO_MAIN   // S3：go 通道定值（不吃 LS.model；401 校正=改常量一行）
   const alias: Record<string, string> = {
     'deepseek-chat': MODEL_PRO,
     'deepseek-reasoner': MODEL_PRO,
@@ -46,10 +53,14 @@ export function resolveChatModel(provider: string, lsModel: string): string {
 /** R-D S5：辅助调用（资源生成/上传链等非对话 LLM 调用）注册表薄封装——后端 S3 已改为注册表
  *  决策（base_url/model 传参被后端忽略），前端同源发送镜像值保持请求自洽：
  *  standard=DeepSeek 端点+MODEL_MAIN（zhipu 不再特判——注册表 main 无 zhipu 格）；
- *  test(zen)=Zen 端点+mimo；zenBaseUrl 空回落 DeepSeek 端点（RA-S5 既有语义）。 */
-export function resolveAuxCall(provider: string, zenBaseUrl: string): { base_url: string; model: string } {
+ *  test(zen)=Zen 端点+mimo；zenBaseUrl 空回落 DeepSeek 端点（RA-S5 既有语义）；
+ *  S3：go=go 网关端点+GLM-5.3-Flash，goBaseUrl 空同款回落（三参化由 tsc 逼出全部调用点）。 */
+export function resolveAuxCall(provider: string, zenBaseUrl: string, goBaseUrl: string): { base_url: string; model: string } {
   if (provider === 'zen') {
     return { base_url: zenBaseUrl || DEEPSEEK_BASE_URL, model: REGISTRY_MIRROR.test.main }
+  }
+  if (provider === 'go') {
+    return { base_url: goBaseUrl || DEEPSEEK_BASE_URL, model: REGISTRY_MIRROR.go.main }
   }
   return { base_url: REGISTRY_MIRROR.standard.base_url, model: REGISTRY_MIRROR.standard.main }
 }

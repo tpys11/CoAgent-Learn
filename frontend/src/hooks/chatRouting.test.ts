@@ -24,18 +24,25 @@ afterEach(() => {
 
 describe('resolveChatBaseUrl (RA-S5)', () => {
   it('zen 路由取 LS.zenBaseUrl', () => {
-    expect(resolveChatBaseUrl('zen', 'https://opencode.ai/zen/v1')).toBe('https://opencode.ai/zen/v1')
+    expect(resolveChatBaseUrl('zen', 'https://opencode.ai/zen/v1', '')).toBe('https://opencode.ai/zen/v1')
   })
 
   it('zen 空 zenBaseUrl 回落 undefined 并 console.warn（与现状等价不炸）', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    expect(resolveChatBaseUrl('zen', '')).toBeUndefined()
+    expect(resolveChatBaseUrl('zen', '', '')).toBeUndefined()
+    expect(warn).toHaveBeenCalled()
+  })
+
+  it('go 路由取 LS.goBaseUrl（S3）；空同款回落 undefined 并 warn', () => {
+    expect(resolveChatBaseUrl('go', '', 'https://gw.example.com/v1')).toBe('https://gw.example.com/v1')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(resolveChatBaseUrl('go', '', '')).toBeUndefined()
     expect(warn).toHaveBeenCalled()
   })
 
   it('deepseek/zhipu 路由不受影响（标准档零回归）', () => {
-    expect(resolveChatBaseUrl('deepseek', '')).toBe('https://api.deepseek.com/v1')
-    expect(resolveChatBaseUrl('zhipu', '')).toBe('https://open.bigmodel.cn/api/paas/v4')
+    expect(resolveChatBaseUrl('deepseek', '', '')).toBe('https://api.deepseek.com/v1')
+    expect(resolveChatBaseUrl('zhipu', '', '')).toBe('https://open.bigmodel.cn/api/paas/v4')
   })
 })
 
@@ -56,6 +63,11 @@ describe('resolveChatModel (RA3-S1)', () => {
 
   it('zen 空值兜底 mimo-V2.5 Free', () => {
     expect(resolveChatModel('zen', '')).toBe('mimo-V2.5 Free')
+  })
+
+  it('go 取定值 GLM-5.3-Flash（S3：不吃 LS.model；401 校正=改镜像常量一行）', () => {
+    expect(resolveChatModel('go', '任何杂值')).toBe('GLM-5.3-Flash')
+    expect(resolveChatModel('go', '')).toBe('GLM-5.3-Flash')
   })
 
   it('alias 迁移映射保留（老存量名→v4 系，标准档零回归；zen 分支不吃 alias）', () => {

@@ -39,6 +39,8 @@ export const LS = {
   preset: 'coagent-preset',
   /** RA-S2：OpenCode Zen 网关地址（测试档 LS 写集之一；S5 主链路 zen 路由读此键） */
   zenBaseUrl: 'coagent-zen-base-url',
+  /** S3：go 网关地址（第二测试通道 LS 写集；与 zenBaseUrl 同构，主链路 go 路由读此键） */
+  goBaseUrl: 'coagent-go-base-url',
 } as const
 
 export function lsGet(key: string, fallback = ''): string {
