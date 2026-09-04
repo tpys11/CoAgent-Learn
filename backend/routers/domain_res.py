@@ -115,3 +115,48 @@ def _chapter_sync(req):
     except Exception:
         links = []
     return {"status": "ok", "intro": (intro or "").strip()[:3000], "links": links}
+
+
+class LinksReq(BaseModel):
+    domain: str
+    api_key: str = ""
+    base_url: str = "https://api.deepseek.com/v1"
+    model: str = MODEL_MAIN
+
+
+@router.post("/api/domain/links")
+def domain_links(req: LinksReq):
+    return _links_sync(req)
+
+
+def _links_sync(req):
+    """新建领域：AI 生成该领域 5-6 个可搜的学习子主题 → websearch 聚合真实链接。
+    不做大纲/导读（B3 修订：用户只要真实资源）。"""
+    name = (req.domain or "").strip()
+    if not name:
+        return {"status": "error", "msg": "领域名称不能为空"}
+    # 1. AI 生成该领域具体学习主题（作为搜索查询）
+    topics = []
+    try:
+        prompt = NL.join([
+            "请列出学习「" + name + "」时最值得找资料看的 6 个具体子主题（作为搜索关键词，简短具体，利于搜到好资料）。",
+            '只输出 JSON 数组：["子主题1", "子主题2", ...]，不要其它文字。',
+        ])
+        data = _llm_json(req.api_key, req.base_url, req.model, prompt)
+        if isinstance(data, list):
+            topics = [str(t).strip() for t in data if str(t).strip()][:6]
+    except Exception:
+        topics = []
+    if not topics:
+        topics = [name + " 入门教程", name + " 实战", name + " 官方文档", name + " 常见问题", name + " 进阶学习"]
+    # 2. 用主题词联网搜真实链接
+    links = []
+    try:
+        from services.websearch import search_multi
+        queries = [t for t in topics]
+        queries.append(name + " 学习资料")
+        links = search_multi(queries, max_per=3)
+    except Exception:
+        links = []
+    logger.info("[domain-links] domain=%s topics=%d links=%d", name, len(topics), len(links))
+    return {"status": "ok", "topics": topics[:6], "links": links[:8]}

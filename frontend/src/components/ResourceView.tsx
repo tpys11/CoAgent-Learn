@@ -177,18 +177,14 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
     try {
       const _keys = lsGetJSON<Record<string, string>>(LS.providerKeys, {})
       const _k = _keys['deepseek'] || lsGet(LS.apiKey, '')
-      const d = await api.generateOutline({ domain: name, api_key: _k })
+      const d = await api.generateLinks({ domain: name, api_key: _k })
       if (d.status === 'ok') {
-        // 大纲章节存 syllabus（供课程大纲展示 + 按需生成导读/真实链接）
-        const chapters = (d.chapters || []).map((ch: any) => ({ title: ch.title || '', goal: ch.goal || '', keywords: Array.isArray(ch.keywords) ? ch.keywords : [] })).filter((ch: any) => ch.title)
+        // 该领域真实学习资源存 syllabus（links）
+        const links = (d.links || []).map((l: any) => ({ title: l.title || l.url, url: l.url || '', snippet: l.snippet || '' })).filter((l: any) => l.url)
         const syl = lsGetJSON<Record<string, any>>(LS.syllabus, {})
-        syl[name] = { chapters }
+        syl[name] = { links }
         lsSetJSON(LS.syllabus, syl)
-        if (chapters.length < 3) alert('大纲生成不完整（仅 ' + chapters.length + ' 章），词条已保存，可稍后重新生成领域。')
-        const nw = (d.wiki || []).map((w: any) => ({ ...w, domain: name }))
-        const nextW = [...customWiki, ...nw]
-        setCustomWiki(nextW)
-        lsSetJSON(LS.customWiki, nextW)
+        if (links.length === 0) alert('未检索到该领域资源链接，请检查网络或换领域重试。')
         const nextDomains = [...customDomains, name]
         setCustomDomains(nextDomains)
         lsSetJSON(LS.domains, nextDomains)
