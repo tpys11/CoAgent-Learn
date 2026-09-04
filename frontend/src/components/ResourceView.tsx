@@ -15,7 +15,6 @@ import { ListItem, exportItem } from './resource/commons'
 import { ResourceCardGrid, ResourceEmpty } from './resource/ResourceCardGrid'
 import { ResourceDetailModal } from './resource/ResourceDetailModal'
 import MyUploads from './MyUploads'
-import DomainSyllabus from './DomainSyllabus'
 import { PresetResourceCard } from './resource/PresetResourceCard'
 import { PresetDetailModal } from './resource/PresetDetailModal'
 import KbReaderModal from './KbReaderModal'
@@ -179,17 +178,21 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
       const _k = _keys['deepseek'] || lsGet(LS.apiKey, '')
       const d = await api.generateLinks({ domain: name, api_key: _k })
       if (d.status === 'ok') {
-        // 该领域真实学习资源存 syllabus（links）
-        const links = (d.links || []).map((l: any) => ({ title: l.title || l.url, url: l.url || '', snippet: l.snippet || '' })).filter((l: any) => l.url)
-        const syl = lsGetJSON<Record<string, any>>(LS.syllabus, {})
-        syl[name] = { links }
-        lsSetJSON(LS.syllabus, syl)
-        if (links.length === 0) alert('未检索到该领域资源链接，请检查网络或换领域重试。')
+        // 真实链接 → 存为该领域「链接资源」教程（与系统预设教程同形式，点开外部学习）
+        const links = (d.links || []).filter((l: any) => l.url)
+        if (links.length === 0) { alert('未检索到该领域资源链接，请检查网络或换领域重试。'); return }
+        const nt = links.map((l: any) => ({
+          id: 'dom-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+          title: (l.title || l.url).slice(0, 80), url: l.url,
+          desc: (l.snippet || '').slice(0, 160), category: '链接资源', domain: name, preset: false,
+        }))
+        const prev = lsGetJSON<Tutorial[]>(LS.tutorials, [])
+        saveTutorials([...prev, ...nt])
         const nextDomains = [...customDomains, name]
         setCustomDomains(nextDomains)
         lsSetJSON(LS.domains, nextDomains)
         setSelectedDomain(name)
-        setSelectedCat(CATEGORIES[0].key)
+        setSelectedCat('链接资源')
         setNewDomainName('')
         setShowNewDomain(false)
       } else {
@@ -431,7 +434,6 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
         </div>
         <div className="flex-1 overflow-y-auto px-10 py-8">
           <div className="max-w-6xl mx-auto">
-            <DomainSyllabus key={selectedDomain} domain={selectedDomain} />
             {showNewDomain && (
               <div className="border border-[var(--border-color)] rounded-2xl p-4 mb-5 flex flex-col gap-2 bg-[var(--bg-panel)] shadow-soft">
                 <p className="text-sm font-semibold">新建领域</p>
