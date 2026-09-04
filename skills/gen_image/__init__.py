@@ -98,7 +98,7 @@ def search_images(query: str, limit: int = 2) -> list:
 
 
 _LLM_KEYWORD_PROMPT = (
-    "从以下内容提取 2 个最适合搜索配图的关键词，只输出逗号分隔，不要其他文字。\n内容：\n"
+    "从以下内容提取 2 个最适合搜索配图的英文关键词（供 Wikimedia 检索），只输出逗号分隔，不要其他文字。\n内容：\n"
 )
 
 
