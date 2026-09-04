@@ -173,6 +173,7 @@
 | **T58** | **【死视图 · F12 发现】KnowledgeView 无入口组件**（假编辑已修、渲染已统一，但全应用无导航可达） | F12 交接 | **✅ owner 拍板（09-01）：删除** → **F15 直发微轮**（删组件+全部引用+路由残链；tsc 0+vitest 全绿+CI 徽章；一笔 commit；提示词总领出，可并入任意间隙） |
 | **T61** | **【测试档独立构造残留 · FIXAUX 上报】三处不走 _make_llm 的 LLM 构造**：memory_edit.py:53、chat_context.py:33（requests.post 直打 DEEPSEEK 公式）、outline_service.py:266（自带判档但 go/zai 档回落 req key）——测试档下仍有 standard 公式路径；owner LS 正确时经 req key 实际可用，LS 错配时复现 401 类故障 | FIXAUX 连带核查上报（不扩纪律） | 10 月窗口「req 无 key 时按档位取注册表格 key」统一收口；**若提交演示涉及 go 档下记忆编辑/大纲生成则提前微修** |
 | **T62** | **【口径矛盾 · FIXDEMO 上报】水平分范围两处表述不一致**：assess.py coerce_score 实现=[0,1] float（权威），resource_branches.py:301 既有提示词标注（-1~1）；FIXDEMO 新【难度适配】条款沿用 -1~1 标注（沿袭既有文案） | FIXDEMO 执行会话口径观察上报（未动钦定文本，合规） | 后续微修统一为 0~1（两处一行文案）；10 月口径梳理一并 |
+| **T63** | **【记忆机制对账 · 总领 09-05 审计】设计稿（《（跨）会话记忆》《总述》）vs 实现逐项对账**：主干已实现（预算制压缩/游标/五站并行学情/三层记忆表/克制传递/level_score 四事件）；缺口 6 项=四件套 schema（现状五段式语义近似）/15% 预提醒/跨会话按需读取/薄弱点翻转消除/时效四类分治/新开对话禁发降级语义。逐项对账全文：docs/progress/memory-audit-20260905.md | 总领会话审计（owner 问"两条记忆机制实现了吗"触发） | 10 月完善窗口（长对话个性化深度；均不影响今晚三硬指标） |
 | **E-45** | **【数据安全 · FIXEVAL 复盘】评测副本库（Windows bind mount + WAL）禁止宿主侧 SQLite 直连读写**：宿主 Win 原生 SQLite 与容器 Linux SQLite（Docker FUSE 层）的 WAL/-shm 锁语义不同——总领钥匙迁移曾直连副本库写入，BUMP-4 容器重建触发跨 OS WAL 恢复 → `disk I/O error` → KB 写连接全灭（后台入库失败）→ 检索探针全空 → 闸门正确拦停。修复=停容器 → 宿主 `PRAGMA wal_checkpoint(TRUNCATE)` → 重启（干净初态）。**钥匙注入正解=.env**（runner/后端钦定路径：env_file→容器 env→config，重建自动播种）；宿主侧直连读取亦有 WAL 快照可见性陷阱（读陈旧态） | 副本库的一切宿主侧 SQLite 操作；钥匙注入只走 .env | FIXEVAL 复盘实录（eval_P1.log + evbe.log disk I/O 链） |
 
 ---
