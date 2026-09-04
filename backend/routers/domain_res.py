@@ -97,7 +97,8 @@ def _chapter_sync(req):
     try:
         intro = _llm_text(req.api_key, req.base_url, req.model,
             "你是「" + name + "」领域的老师。为章节「" + title + "」写一份精炼导读（Markdown，600-1000字）："
-            "这章学什么、关键概念、建议的学习顺序、容易踩的坑、学完自测两问。只输出 Markdown 正文，不要其它说明。")
+            "这章学什么、关键概念、建议的学习顺序、容易踩的坑、学完自测两问。"
+            "严格禁止写任何网址/链接/URL（外部学习链接由系统另外提供），正文里不要出现 http 开头的文字。只输出 Markdown 正文。")
     except Exception:
         intro = ""
     logger.info("[domain-chapter] domain=%s title=%s key=%s", name, title, ('set' if (req.api_key or '').strip() else 'EMPTY'))
