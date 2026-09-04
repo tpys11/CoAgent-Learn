@@ -78,8 +78,14 @@ class Config:
     # 端点默认=zen go 计划（S6 实测同一 Bearer 鉴权复用 ZEN_API_KEY——key 空时 or 链兜底，零配置可开）
     GO_BASE_URL: str = os.getenv("GO_BASE_URL", "https://opencode.ai/zen/go/v1")
     GO_API_KEY: str = os.getenv("GO_API_KEY", "")
-    # 测试态通道定向（ZEN_TEST_MODE='1' 时生效）：'zen'→test 档 / 'go'→go 档；默认 zen 兼容旧语义
+    # 测试态通道定向（ZEN_TEST_MODE='1' 时生效）：'zen'→test 档 / 'go'→go 档 / 'zai'→zai 档；默认 zen 兼容旧语义
     TEST_CHANNEL: str = os.getenv("TEST_CHANNEL", "zen")
+
+    # ── Z.AI 通道（owner 09-04 拍板）：智谱 bigmodel 官方端点，与 zen/go 并列的第三测试通道 ──
+    # 主模型与审核模型均 glm-4.7（owner 指定同模型自审，专用记忆机制测试——防自我包庇设计在
+    # 此通道不适用，如实备案）；OpenAI chat/completions 兼容+标准 Bearer（官方文档实测核对）
+    ZAI_BASE_URL: str = os.getenv("ZAI_BASE_URL", "https://open.bigmodel.cn/api/paas/v4")
+    ZAI_API_KEY: str = os.getenv("ZAI_API_KEY", "")
 
     # ── 联网代理（可选）：容器访问国外站点（GitHub 等）失败时，配宿主梯子代理 ──
     # 例：PROXY_URL=http://host.docker.internal:7993（宿主梯子监听端口）

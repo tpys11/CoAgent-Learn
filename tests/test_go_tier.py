@@ -48,7 +48,7 @@ def test_go_registry_abilities_stay_sf():
 
 def test_go_registry_tier_listed():
     from core.model_provider import REGISTRY
-    assert set(REGISTRY) == {"standard", "test", "go"}
+    assert set(REGISTRY) == {"standard", "test", "go", "zai"}   # C1：zai 第三测试通道入表
 
 
 def test_detect_tier_go_by_base_url(monkeypatch):

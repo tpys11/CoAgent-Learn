@@ -68,7 +68,8 @@ class SettingsSave(BaseModel):
     zen_test_mode: bool = False         # R-D S4：测试档全局开关（决策 38 后台辅助链随档总开关）
     go_api_key: str = ""                # S2：go 网关 Bearer key（owner 09-04 拍板，第二测试通道）
     go_base_url: str = ""               # S2：go 网关端点（无默认值，设置页填；空串不覆写）
-    test_channel: str = ""              # S2：测试态通道定向（'go'|'zen'，ZEN_TEST_MODE='1' 时生效）
+    zai_api_key: str = ""               # C1：Z.AI（bigmodel）Bearer key（第三测试通道，URL 固定官方不开放 PUT）
+    test_channel: str = ""              # S2：测试态通道定向（'go'|'zai'|'zen'，ZEN_TEST_MODE='1' 时生效）
     # RC4-S1：review_model_research/review_follow_main 字段退役（owner 09-03 终版：
     # 判卷路由=档位定值格，无用户可配判卷模型）——前端 PUT 旧字段被 pydantic 默认忽略
 
@@ -129,7 +130,13 @@ def get_settings():
             "api_key_set": bool(getattr(_cfg, "GO_API_KEY", "")),
             "api_key_hint": _mask_key(getattr(_cfg, "GO_API_KEY", "")),
         },
-        "test_channel": getattr(_cfg, "TEST_CHANNEL", "zen"),   # S2：测试态通道定向回显（'go'|'zen'）
+        # C1：zai 第三测试通道回显（URL 固定官方端点不开放 PUT；key 只回显 set/hint）
+        "zai": {
+            "base_url": getattr(_cfg, "ZAI_BASE_URL", ""),
+            "api_key_set": bool(getattr(_cfg, "ZAI_API_KEY", "")),
+            "api_key_hint": _mask_key(getattr(_cfg, "ZAI_API_KEY", "")),
+        },
+        "test_channel": getattr(_cfg, "TEST_CHANNEL", "zen"),   # S2：测试态通道定向回显（'go'|'zai'|'zen'）
         # RA2-S1：chat 节 additive main_model——owner 冒烟反馈①②：自检卡需显主模型实名（deepseek-v4-flash-vision-exp）
         "chat": {"deepseek_key_set": bool(getattr(_cfg, "DEEPSEEK_API_KEY", "")), "main_model": MODEL_MAIN},
         "parse": {
@@ -199,9 +206,10 @@ def save_settings(req: SettingsSave):
     _set("ZEN_API_KEY", "zen_api_key")
     _set("GO_API_KEY", "go_api_key")
     _set("GO_BASE_URL", "go_base_url")
-    # S2：测试态通道定向——白名单 'go'，其余一律落 'zen'（防杂值进 current_tier）
+    _set("ZAI_API_KEY", "zai_api_key")
+    # S2：测试态通道定向——白名单 'go'/'zai'，其余一律落 'zen'（防杂值进 current_tier）
     if "test_channel" in _vals:
-        _s.set_setting("TEST_CHANNEL", "go" if _vals["test_channel"] == "go" else "zen")
+        _s.set_setting("TEST_CHANNEL", _vals["test_channel"] if _vals["test_channel"] in ("go", "zai") else "zen")
     _apply_dynamic_settings()
     return {"status": "ok", "msg": "配置已保存并即时生效"}
 
@@ -266,6 +274,8 @@ def test_settings(req: SettingsSave):
         _chat_targets.append(("chat_zen", getattr(_cfg, "ZEN_BASE_URL", ""), _zen_key))
     if getattr(_cfg, "GO_BASE_URL", ""):   # S2：go 通道探测（同款 GET /models 原语，零 token 计费）
         _chat_targets.append(("chat_go", getattr(_cfg, "GO_BASE_URL", ""), getattr(_cfg, "GO_API_KEY", "")))
+    if getattr(_cfg, "ZAI_BASE_URL", ""):  # C1：zai 通道探测（bigmodel 同款原语；key 独立无兜底）
+        _chat_targets.append(("chat_zai", getattr(_cfg, "ZAI_BASE_URL", ""), getattr(_cfg, "ZAI_API_KEY", "")))
     for _name, _base, _key in _chat_targets:
         if not _key or not _base:
             results[_name] = {"ok": False, "msg": "未配置 Key"}

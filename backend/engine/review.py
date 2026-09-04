@@ -118,6 +118,16 @@ def pick_judge_llm(template: str, req):
             logger.warning("go 档判卷模型 %s 需要 GO key（或复用 Zen key）与 GO Base URL（设置→AI服务），未配置——响亮回退 %s",
                            route["model"], _FALLBACK_JUDGE)
             model = _FALLBACK_JUDGE
+    elif route["provider"] == "zai":
+        # C1：zai 通道判卷——bigmodel 官方端点标准 Bearer；key 独立无兜底（ZAI_API_KEY 专有），
+        # 缺 key 响亮回退（fail-open 先例）；主审同模型 glm-4.7 为 owner 明示取舍（记忆机制专用）
+        _zai_key = _cfg.ZAI_API_KEY or key
+        if _zai_key and getattr(_cfg, "ZAI_BASE_URL", ""):
+            key, base_url = _zai_key, _cfg.ZAI_BASE_URL
+        else:
+            logger.warning("zai 档判卷模型 %s 需要 Z.AI key（设置→AI服务），未配置——响亮回退 %s",
+                           route["model"], _FALLBACK_JUDGE)
+            model = _FALLBACK_JUDGE
     elif route["provider"] == "siliconflow":
         sf_key = _cfg.VL_API_KEY or _cfg.EMBEDDING_API_KEY
         if sf_key:

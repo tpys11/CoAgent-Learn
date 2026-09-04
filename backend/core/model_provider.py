@@ -141,6 +141,12 @@ _GO_CELL_MAIN = {"provider": "go", "model": MODEL_GO_MAIN,
                  "base_url_key": "GO_BASE_URL", "api_key_keys": ("GO_API_KEY", "ZEN_API_KEY")}
 _GO_CELL_REVIEW = {"provider": "go", "model": MODEL_GO_REVIEW,
                    "base_url_key": "GO_BASE_URL", "api_key_keys": ("GO_API_KEY", "ZEN_API_KEY")}
+# zai 格（owner 09-04 拍板）：智谱 bigmodel 官方端点——主模型与审核模型均 glm-4.7（同模型自审，
+# 专用记忆机制测试，防自我包庇设计在此通道不适用=owner 明示取舍）；key 独立无兜底（ZAI_API_KEY）
+MODEL_ZAI_MAIN = "glm-4.7"
+MODEL_ZAI_REVIEW = "glm-4.7"
+_ZAI_CELL = {"provider": "zai", "model": MODEL_ZAI_MAIN,
+             "base_url_key": "ZAI_BASE_URL", "api_key_key": "ZAI_API_KEY"}
 
 REGISTRY: dict = {
     "standard": {
@@ -174,9 +180,18 @@ REGISTRY: dict = {
         "rerank":    _RERANK_CELL,
         "vision":    _GO_CELL_MAIN,
     },
+    # C1：zai 测试通道——决策 38 同构；主审同模型 glm-4.7（owner 指定，专用记忆机制测试）
+    "zai": {
+        "main":      _ZAI_CELL,
+        "fast":      _ZAI_CELL,
+        "review":    _ZAI_CELL,
+        "embedding": _EMBEDDING_CELL,
+        "rerank":    _RERANK_CELL,
+        "vision":    _ZAI_CELL,
+    },
 }
 
-_TIERS = ("standard", "test", "go")
+_TIERS = ("standard", "test", "go", "zai")
 _ZEN_URL_MARK = "opencode.ai/zen"   # RC1 先例：req 端点含 Zen 网关标记 → 测试档
 
 
@@ -208,14 +223,20 @@ def resolve_review_route(template: str | None = None) -> dict:
     return {"model": spec.model, "provider": spec.provider}
 
 
-def detect_tier(req_base_url: str | None) -> str:
+def detect_tier(req_base_url: str | None, req_model: str | None = None) -> str:
     """请求级档位判定：与已配置 GO_BASE_URL 精确相等（尾斜杠容忍）→ go——**必须先于 zen 标记判定**
     （S6：go 端点默认值 https://opencode.ai/zen/go/v1 含 zen 标记子串，先判 zen 会误归 test）；
+    与 ZAI_BASE_URL 相等且 req_model==MODEL_ZAI_MAIN → zai——**model 双参缺一不可**（C1：
+    zai 默认端点与标准档 zhipu 主对话完全相同，单看 URL 会把标准档智谱对话误归 zai 档）；
     req.base_url 指向 Zen 网关（含 opencode.ai/zen）→ test；其余含 None → standard。"""
     from core.config import config as _cfg
     _go_base = str(getattr(_cfg, "GO_BASE_URL", "") or "")
     if req_base_url and _go_base and req_base_url.rstrip("/") == _go_base.rstrip("/"):
         return "go"
+    _zai_base = str(getattr(_cfg, "ZAI_BASE_URL", "") or "")
+    if (req_base_url and _zai_base and req_base_url.rstrip("/") == _zai_base.rstrip("/")
+            and req_model == MODEL_ZAI_MAIN):
+        return "zai"
     if req_base_url and _ZEN_URL_MARK in req_base_url:
         return "test"
     return "standard"
@@ -223,8 +244,9 @@ def detect_tier(req_base_url: str | None) -> str:
 
 def current_tier() -> str:
     """全局档位判定（无 req 的后台调用）：ZEN_TEST_MODE=='1' → TEST_CHANNEL 定向
-    （'go'→go 档，其余→test 兼容旧语义），否则 standard。S4 起该键由设置页 PUT/GET 透传。"""
+    （'go'→go 档 / 'zai'→zai 档，其余→test 兼容旧语义），否则 standard。S4 起该键由设置页 PUT/GET 透传。"""
     from core.config import config as _cfg
     if str(getattr(_cfg, "ZEN_TEST_MODE", "0")) != "1":
         return "standard"
-    return "go" if str(getattr(_cfg, "TEST_CHANNEL", "zen")) == "go" else "test"
+    _ch = str(getattr(_cfg, "TEST_CHANNEL", "zen"))
+    return "go" if _ch == "go" else ("zai" if _ch == "zai" else "test")
