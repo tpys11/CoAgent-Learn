@@ -27,15 +27,15 @@ class BaseLLM:
     def chat(self, messages: list[dict], temperature: float = 0.7, max_tokens: int | None = None) -> str:
         """普通对话，返回文本"""
         kwargs = self._thinking_kwargs()
-        if max_tokens is not None:
-            kwargs["max_tokens"] = max_tokens
+        # FIXLLM①：max_tokens 单点供给——显式入参覆盖，缺省 2000；create() 内不再硬编码，
+        # 否则显式传参时 create 同时收到位置参数与 **kwargs 里的 max_tokens（TypeError）。
+        kwargs["max_tokens"] = max_tokens if max_tokens is not None else 2000
         for attempt in range(1, self.max_retries + 1):
             try:
                 resp = self.client.chat.completions.create(
                     model=self.model_name,
                     messages=messages,
                     temperature=temperature,
-                    max_tokens=2000,
                     timeout=config.LLM_REQUEST_TIMEOUT,
                     **kwargs,
                 )
@@ -154,6 +154,7 @@ class BaseLLM:
         kwargs = self._thinking_kwargs()
         if response_format is not None:
             kwargs["response_format"] = response_format
+        last_exc: Exception | None = None  # FIXLLM③：except 块结束时 Python 会 del e，块外只能用块内捕获的引用
         for attempt in range(self.max_retries):
             if cancel_event and cancel_event.is_set():
                 return  # 用户手动停止：重试/等待间隙也立即退出
@@ -164,6 +165,8 @@ class BaseLLM:
                 for chunk in response:
                     if cancel_event and cancel_event.is_set():
                         return  # 用户手动停止：立即中断（不抛错，上层按已取消处理）
+                    if not chunk.choices:
+                        continue  # FIXLLM②：网关尾部空 choices chunk（usage-only 等），跳过不算失败
                     delta = chunk.choices[0].delta
                     reasoning = getattr(delta, "reasoning_content", None) or ""
                     piece = delta.content or ""
@@ -177,13 +180,14 @@ class BaseLLM:
                             on_content(piece)
                 return
             except Exception as e:
+                last_exc = e
                 logger.warning(f"chat_stream 第{attempt+1}次失败: {e}")
                 if attempt < self.max_retries - 1:
                     time.sleep(self.retry_delays[attempt])
         _msg = f"chat_stream 全部{self.max_retries}次重试均失败"
-        if "429" in str(e):
+        if last_exc is not None and "429" in str(last_exc):
             _msg += "（免费模型限流：请稍后重试，或在 设置→AI服务 切换预设档/模型）"
-        raise RuntimeError(_msg)
+        raise RuntimeError(_msg) from last_exc
 
 class DeepSeekLLM(BaseLLM):
     """OpenAI 兼容协议实现（DeepSeek/OpenAI/通义/GLM/Kimi/豆包等）"""
