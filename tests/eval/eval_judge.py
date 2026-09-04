@@ -2,18 +2,27 @@
 """EVAL-1 Wave 2 裁判脚本（L1 引用核验 + L2 异厂商复判 + difficulty 评定 + fit/coverage）。
 
 前置：PYTHONPATH=backend（复用 backend/eval/judges 三裁判 + eval.run_eval 汇总纯函数）。
-凭据：从副本库 settings 表读硅基流动 key（内存用，绝不打印/落盘）。
+判卷通道（--judge-provider）：
+  zhipu（默认，go 决策）：智谱 glm-4-flash，免费真异厂；key 解析链
+    --judge-key → 环境变量 JUDGE_API_KEY → evaluation/config.py（本地不入 git 的便利件）。
+  sf：硅基流动（旧路径），必需 --replica-db 从副本库 settings 读凭据（内存用，绝不打印/落盘）。
+陷阱事实：默认加载同目录 eval_annotations.json，L2 提示词注入错误说法清单，
+  回答复述即记 trap_hits（文件缺失自动降级为无陷阱判卷）。
+报告增强：审核门工作证据（resets/L0 结论/断言级 by_diag）+ difficulty 校准表
+  （rubric 判分 vs 流内 level_score 偏差分布）+ 运行元信息（tier/models 进 meta）。
+产出：evidence/cases/<id>/judge-L1.json|judge-L2.json|eval.json + results-final.json
+      + evidence/summary/report-final-<stamp>.json|.md（存档）
+      + evidence/summary/report-final.json|.md（固定路径最新版，查看同 evaluation 体验；
+        雷达图跑 python tests/eval/eval_report_html.py）
 用法：
   set PYTHONPATH=backend
-  python tests/eval/eval_judge.py --evidence docs/submission/evidence ^
-      --replica-db <path> [--judge-model Qwen/Qwen2.5-7B-Instruct]
-产出：evidence/cases/<id>/judge-L1.json|judge-L2.json|eval.json + results-final.json
-      + evidence/summary/report-final.json|.md
+  python tests/eval/eval_judge.py --evidence docs/submission/evidence
 """
 import argparse
 import glob
 import json
 import os
+import re
 import sqlite3
 import sys
 import time
@@ -24,6 +33,10 @@ from eval.judges import coverage, fit, hallucination
 from eval.run_eval import evaluate, render_markdown
 
 SF_BASE_DEFAULT = "https://api.siliconflow.cn/v1"
+ZHIPU_BASE_DEFAULT = "https://open.bigmodel.cn/api/paas/v4"
+ZHIPU_MODEL_DEFAULT = "glm-4-flash"
+HERE = os.path.dirname(os.path.abspath(__file__))
+ANNOTATIONS_PATH_DEFAULT = os.path.join(HERE, "eval_annotations.json")
 
 DIFFICULTY_RUBRIC = (
     "你是学习资源难度评定员。对下面的回答按 0-1 评定内容难度（不是质量）：\n"
@@ -54,6 +67,68 @@ def load_sf_creds(replica_db):
     return key, base
 
 
+def _read_zhipu_key_from_local_config():
+    """本机便利件：从 evaluation/config.py 抽 JUDGE_API_KEY（该目录不入 git，仅本地存在）。"""
+    import re
+    cand = os.path.join(HERE, "..", "..", "evaluation", "config.py")
+    try:
+        text = open(cand, encoding="utf-8").read()
+        m = re.search(r'JUDGE_API_KEY\s*=\s*"([^"]+)"', text)
+        return m.group(1) if m else ""
+    except Exception:
+        return ""
+
+
+def build_judge_client(args):
+    """判卷客户端装配。zhipu（默认，免费异厂）key 三级回退：
+    --judge-key → 环境变量 JUDGE_API_KEY → evaluation/config.py；sf 走旧副本库路径。"""
+    if args.judge_provider == "zhipu":
+        key = args.judge_key or os.environ.get("JUDGE_API_KEY", "") \
+            or _read_zhipu_key_from_local_config()
+        if not key:
+            raise SystemExit("[judge] 智谱 key 未配置：--judge-key / 环境变量 "
+                             "JUDGE_API_KEY / evaluation/config.py 三者其一")
+        base = args.judge_base_url or os.environ.get("JUDGE_BASE_URL", "") \
+            or ZHIPU_BASE_DEFAULT
+        model = args.judge_model or ZHIPU_MODEL_DEFAULT
+        return openai.OpenAI(api_key=key, base_url=base), model
+    key, base = load_sf_creds(args.replica_db)
+    model = args.judge_model or "Qwen/Qwen2.5-7B-Instruct"
+    return openai.OpenAI(api_key=key, base_url=base), model
+
+
+def load_trap_facts(path):
+    """读陷阱事实清单；文件缺失/格式不符 → 空表（L2 降级为无陷阱判卷，不阻断）。"""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+        return [t for t in (data.get("trap_facts") or [])
+                if isinstance(t, dict) and (t.get("claim") or "").strip()]
+    except Exception:
+        return []
+
+
+def _norm_text(s):
+    import re
+    # 去空白 + 常见中英标点——配对比较只看实词序列，防"句读差异"漏配
+    return re.sub(r"[\s，。；：、,.;:\"'“”‘’（）()\[\]【】]+", "", str(s or "")).lower()
+
+
+def match_trap_hits(suspicious, traps):
+    """启发式配对：可疑断言 × 陷阱说法的归一化前缀包含（12 字符）双向匹配。"""
+    hits = []
+    sus_norms = [_norm_text(s) for s in suspicious or []]
+    for t in traps or []:
+        c = _norm_text(t.get("claim"))
+        if not c:
+            continue
+        head = c[:12]
+        if any(head and (head in s or (s[:12] and s[:12] in c)) for s in sus_norms):
+            hits.append({"claim": str(t.get("claim"))[:120],
+                         "truth": str(t.get("truth") or "")[:120]})
+    return hits
+
+
 def _chat(client, model, prompt, max_tokens=300):
     """温度 0 判卷；返回解析后的 dict 或 {'skipped': True}。"""
     try:
@@ -82,7 +157,7 @@ def extract_retrieval_sources(mindchain):
     return titles
 
 
-def judge_case(entry, client, model):
+def judge_case(entry, client, model, traps=None):
     cid = entry.get("case_id") or ""
     answer = entry.get("answer") or ""
     retrieval_sources = extract_retrieval_sources(entry.get("mindchain"))
@@ -97,12 +172,19 @@ def judge_case(entry, client, model):
     out["L1"]["note"] = ("invalid 项=未匹配可核验源，交 L3 定向裁决（真实但未入预览的"
                          "web 命中不判幻觉）")
 
-    # L2 异厂商复判（qwen 判 deepseek，温度 0）
+    # L2 异厂商复判（异厂模型判 DeepSeek 产出，温度 0；带陷阱事实主动诱捕）
+    trap_block = ""
+    if traps:
+        trap_block = ("\n【陷阱事实·领域常见错误说法，回答若复述或附和即为判错】"
+                      + "；".join(str(t.get("claim")) for t in traps[:20]))
     src_list = "\n".join(f"- {s}" for s in sources[:25])
     l2 = _chat(client, model,
-               L2_PROMPT + f"【知识库文档清单】\n{src_list}\n【待核查回答】{answer[:2000]}")
+               L2_PROMPT + trap_block
+               + f"\n【知识库文档清单】\n{src_list}\n【待核查回答】{answer[:2000]}")
+    suspicious = [str(x)[:120] for x in (l2.get("suspicious_claims") or [])]
     out["L2"] = {"hallucinated": l2.get("hallucinated"),
-                 "suspicious_claims": [str(x)[:120] for x in (l2.get("suspicious_claims") or [])],
+                 "suspicious_claims": suspicious,
+                 "trap_hits": match_trap_hits(suspicious, traps),
                  "skipped": bool(l2.get("skipped")),
                  "error": l2.get("error")}
 
@@ -158,27 +240,112 @@ def render_denominator_lines(denom):
     ]
 
 
+def summarize_review_gate(base_cases):
+    """审核门工作证据聚合（幻觉防控有效性的直接素材，喂创新性评分）：
+    resets=审核打回重生成次数；review=L0 结论计数；by_diag=研究档断言级诊断分布。"""
+    resets_total = sum(len(r.get("resets") or []) for r in base_cases)
+    passed = sum(1 for r in base_cases if (r.get("review") or {}).get("passed") is True)
+    failed = sum(1 for r in base_cases if (r.get("review") or {}).get("passed") is False)
+    by_diag = {"hallucination": 0, "retrieval_gap": 0, "no_evidence": 0}
+    claims_total = unsupported = 0
+    for r in base_cases:
+        rd = r.get("review_digest") or {}
+        claims_total += int(rd.get("claims_total") or 0)
+        unsupported += int(rd.get("unsupported") or 0)
+        for k, v in (rd.get("by_diag") or {}).items():
+            if k in by_diag:
+                by_diag[k] += int(v or 0)
+    return {"resets_total": resets_total,
+            "cases_with_resets": sum(1 for r in base_cases if r.get("resets")),
+            "review_passed": passed, "review_failed": failed,
+            "claims_total": claims_total, "unsupported": unsupported,
+            "by_diag": by_diag}
+
+
+def render_review_gate_lines(gate):
+    return [
+        f"- 审核门证据：打回重稿 {gate['resets_total']} 次（涉及 "
+        f"{gate['cases_with_resets']} 例），L0 通过 {gate['review_passed']} / "
+        f"未通过 {gate['review_failed']}",
+        f"- 断言级审核（研究档）：claims {gate['claims_total']}，无证据支撑 "
+        f"{gate['unsupported']}（幻觉 {gate['by_diag']['hallucination']} / "
+        f"检索缺口 {gate['by_diag']['retrieval_gap']} / "
+        f"无引用 {gate['by_diag']['no_evidence']}）",
+    ]
+
+
+def summarize_calibration(base_cases):
+    """difficulty 校准表：rubric 判分 vs 流内 level_score 的偏差分布——
+    适配率（目标 ≥85%）标定改进的数据源（dev = difficulty − level_score，容差 ±0.25）。"""
+    pairs = []
+    for r in base_cases:
+        ls, df = r.get("level_score"), r.get("difficulty")
+        if ls is None or df is None:
+            continue
+        pairs.append({"case_id": r.get("case_id"), "persona": r.get("persona"),
+                      "level_score": ls, "difficulty": df,
+                      "dev": round(float(df) - float(ls), 4)})
+    if not pairs:
+        return {"n": 0, "mean_dev": None, "mean_abs_dev": None,
+                "within_tolerance": None, "pairs": []}
+    devs = [p["dev"] for p in pairs]
+    return {"n": len(pairs),
+            "mean_dev": round(sum(devs) / len(devs), 4),
+            "mean_abs_dev": round(sum(abs(d) for d in devs) / len(devs), 4),
+            "within_tolerance": round(
+                sum(1 for d in devs if abs(d) <= 0.25) / len(devs), 4),
+            "pairs": pairs}
+
+
+def render_calibration_lines(cal):
+    if not cal.get("n"):
+        return ["- difficulty 校准：无有效 (level_score, difficulty) 配对"]
+    return [
+        f"- difficulty 校准：n={cal['n']}，平均偏差 {cal['mean_dev']}"
+        f"（+ 表示判卷难度偏高），平均绝对偏差 {cal['mean_abs_dev']}，"
+        f"容差带内 {cal['within_tolerance']}",
+    ]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--evidence", default="docs/submission/evidence")
-    ap.add_argument("--replica-db", required=True)
-    ap.add_argument("--judge-model", default="Qwen/Qwen2.5-7B-Instruct")
+    ap.add_argument("--replica-db", default="",
+                    help="provider=sf 时必需（读硅基流动凭据）；zhipu 通道不需要")
+    ap.add_argument("--judge-provider", choices=["zhipu", "sf"], default="zhipu",
+                    help="L2 判卷厂商：zhipu=智谱免费异厂（go 决策默认）/ sf=硅基流动")
+    ap.add_argument("--judge-model", default="",
+                    help="判卷模型；缺省按 provider 取默认")
+    ap.add_argument("--judge-key", default="",
+                    help="判卷 key；缺省走 JUDGE_API_KEY 环境变量或 evaluation/config.py")
+    ap.add_argument("--judge-base-url", default="", help="判卷端点覆盖")
+    ap.add_argument("--annotations", default=ANNOTATIONS_PATH_DEFAULT,
+                    help="陷阱事实清单 JSON；文件缺失自动降级为无陷阱判卷")
+    ap.add_argument("--tier-label", default="go", help="被测档位标注（进报告 meta）")
+    ap.add_argument("--models-label",
+                    default="main/fast=glm-5.3-flash review=qwen3.8-flash "
+                            "embedding=bge-m3 rerank=bge-reranker-v2-m3",
+                    help="被测模型实名标注（进报告 meta）")
     args = ap.parse_args()
 
-    key, base_url = load_sf_creds(args.replica_db)
-    client = openai.OpenAI(api_key=key, base_url=base_url)
-    print(f"[judge] model={args.judge_model} base={base_url} (key 不打印)")
+    client, model_used = build_judge_client(args)
+    traps = load_trap_facts(args.annotations)
+    print(f"[judge] provider={args.judge_provider} model={model_used} "
+          f"traps={len(traps)} (key 不打印)")
 
     results = []
+    # 只认批次结果文件（P1/P2/P3/IF/smoke），其余 results-*（未来扩展）不误收
+    batch_re = re.compile(r"results-(P1|P2|P3|IF|smoke)\.json$")
     for path in sorted(glob.glob(os.path.join(args.evidence, "results-*.json"))):
+        if not batch_re.search(os.path.basename(path)):
+            continue
         with open(path, encoding="utf-8") as fh:
             batch = json.load(fh)
-        name = os.path.basename(path)[8:-5]
         for entry in batch:
             if entry.get("error") and not entry.get("answer"):
                 results.append(entry)
                 continue
-            j = judge_case(entry, client, args.judge_model)
+            j = judge_case(entry, client, model_used, traps)
             entry.update(j)
             cid = entry.get("case_id") or "unknown"
             d = os.path.join(args.evidence, "cases", cid)
@@ -194,7 +361,9 @@ def main():
                           fh, ensure_ascii=False, indent=2)
             results.append(entry)
             print(f"[judge] {cid}: L1 invalid={j['L1']['invalid']}/{j['L1']['total']} "
-                  f"L2 hall={j['L2']['hallucinated']} diff={j.get('difficulty')} "
+                  f"L2 hall={j['L2']['hallucinated']} "
+                  f"traps={len(j['L2'].get('trap_hits') or [])} "
+                  f"diff={j.get('difficulty')} "
                   f"fit={j.get('fit')} cov={(j.get('coverage') or {}).get('total')}",
                   flush=True)
 
@@ -216,16 +385,38 @@ def main():
     skipped_l0 = sum(1 for r in base_cases
                      if (r.get("review") or {}).get("skipped"))
     rep["L0_skip_rate_note"] = f"研究档审核跳过 {skipped_l0}/{len(base_cases)}"
-    os.makedirs(os.path.join(args.evidence, "summary"), exist_ok=True)
+    # v1.1 增强：审核门证据 / difficulty 校准 / 陷阱命中 / 运行元信息
+    gate = summarize_review_gate(base_cases)
+    rep["review_gate"] = gate
+    cal = summarize_calibration(base_cases)
+    rep["difficulty_calibration"] = cal
+    rep["trap_hits_total"] = sum(
+        len((r.get("L2") or {}).get("trap_hits") or []) for r in base_cases)
     stamp = time.strftime("%Y%m%d-%H%M%S")
-    with open(os.path.join(args.evidence, "summary", f"report-final-{stamp}.json"),
-              "w", encoding="utf-8") as fh:
-        json.dump(rep, fh, ensure_ascii=False, indent=2)
-    md = render_markdown(rep) + "\n".join(render_denominator_lines(denom)) + "\n"
-    with open(os.path.join(args.evidence, "summary", f"report-final-{stamp}.md"),
-              "w", encoding="utf-8") as fh:
-        fh.write(md)
+    rep["meta"] = {"tier": args.tier_label, "models": args.models_label,
+                   "judge_provider": args.judge_provider,
+                   "judge_model": model_used, "trap_facts": len(traps),
+                   "generated_at": stamp}
+    extra_lines = render_denominator_lines(denom) \
+        + render_review_gate_lines(gate) + render_calibration_lines(cal)
+    if traps:
+        extra_lines.append(
+            f"- 陷阱事实命中：{rep['trap_hits_total']}（预埋 {len(traps)} 条，"
+            "命中=被测回答复述了错误说法）")
+    sdir = os.path.join(args.evidence, "summary")
+    os.makedirs(sdir, exist_ok=True)
+    # 时间戳存档 + 固定路径最新版（evaluation 同款查看体验）
+    for name in (f"report-final-{stamp}.json", "report-final.json"):
+        with open(os.path.join(sdir, name), "w", encoding="utf-8") as fh:
+            json.dump(rep, fh, ensure_ascii=False, indent=2)
+    md = render_markdown(rep) + "\n".join(extra_lines) + "\n"
+    for name in (f"report-final-{stamp}.md", "report-final.md"):
+        with open(os.path.join(sdir, name), "w", encoding="utf-8") as fh:
+            fh.write(md)
     print(md)
+    print(f"[judge] 最新报告固定路径：{os.path.abspath(os.path.join(sdir, 'report-final.md'))}"
+          "（雷达图：python tests/eval/eval_report_html.py --evidence "
+          f"{args.evidence}）")
 
 
 if __name__ == "__main__":
