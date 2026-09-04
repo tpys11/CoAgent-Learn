@@ -40,5 +40,23 @@ class SkillRegistry:
             return {"error": f"Skill '{name}' 不存在"}
         return skill.execute(**kwargs)
 
+    def reload_skill(self, name: str) -> dict:
+        """动态加载/重载单个 skill（上传写文件后调用），返回 {status, name 或 msg}"""
+        try:
+            mod = importlib.import_module(f"skills.{name}")
+            importlib.reload(mod)
+            for attr in dir(mod):
+                obj = getattr(mod, attr)
+                if isinstance(obj, type) and issubclass(obj, Skill) and obj is not Skill:
+                    self._skills[obj.name] = obj()
+                    return {"status": "ok", "name": obj.name}
+            return {"status": "error", "msg": "代码中未找到 Skill 子类"}
+        except Exception as e:
+            return {"status": "error", "msg": str(e)[:200]}
+
+    def remove_skill(self, name: str):
+        """从注册中心移除 skill（删文件夹后调用）"""
+        self._skills.pop(name, None)
+
 
 registry = SkillRegistry()

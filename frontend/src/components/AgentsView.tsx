@@ -195,6 +195,10 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   })
   const [saveTplName, setSaveTplName] = useState('')
   const [showNewTplModal, setShowNewTplModal] = useState(false)
+  const [showSkillUpload, setShowSkillUpload] = useState(false)
+  const [skillUploadName, setSkillUploadName] = useState('')
+  const [skillUploadCode, setSkillUploadCode] = useState('')
+  const [skillUploadMsg, setSkillUploadMsg] = useState('')
   // 子 Agent 添加弹窗
   const [showSubAdd, setShowSubAdd] = useState(false)
   const [subName, setSubName] = useState('')
@@ -215,9 +219,35 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   const [mcpList, setMcpList] = useState<Array<{ id: string; name: string; type: string; target: string }>>(() => {
     return lsGetJSON<Array<{ id: string; name: string; type: string; target: string }>>(LS.mcpServers, [])
   })
+  const [mcpTools, setMcpTools] = useState<Record<string, Array<{ name: string; description: string }>>>({})
+  const [mcpTesting, setMcpTesting] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     setMode(agent?.mode || '均衡')
+  const uploadSkill = async () => {
+    const name = skillUploadName.trim()
+    if (!name || !skillUploadCode.trim()) { setSkillUploadMsg('请填写名称和代码'); return }
+    setSkillUploadMsg('上传中…')
+    try {
+      const r = await fetch('/api/skills', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, code: skillUploadCode }) })
+      const d = await r.json()
+      if (d.status === 'ok') {
+        setSkillUploadMsg('上传成功：' + d.name)
+        setSkillUploadName(''); setSkillUploadCode('')
+        fetch('/api/skills').then(r => r.json()).then(dd => setAllSkills(dd.skills || []))
+        setTimeout(() => { setShowSkillUpload(false); setSkillUploadMsg('') }, 800)
+      } else {
+        setSkillUploadMsg('失败：' + (d.msg || '未知'))
+      }
+    } catch (e) {
+      setSkillUploadMsg('失败：' + e)
+    }
+  }
+
+  const loadSkills = () => {
+    fetch('/api/skills').then(r => r.json()).then(d => setAllSkills(d.skills || []))
+  }
+
     setPrompt(agent?.systemPrompt || '')
     setSubIntroOpen(false)
     api.listSkills().then(d => {
@@ -266,6 +296,25 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
     const next = mcpList.filter(s => s.id !== id)
     setMcpList(next)
     lsSetJSON(LS.mcpServers, next)
+    setMcpTools(prev => { const n = { ...prev }; delete n[id]; return n })
+  }
+
+  const testMcpServer = async (s: { id: string; type: string; target: string }) => {
+    setMcpTesting(prev => ({ ...prev, [s.id]: true }))
+    setMcpTools(prev => ({ ...prev, [s.id]: [] }))
+    try {
+      const r = await fetch('/api/mcp/tools', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: s.type, target: s.target }) })
+      const d = await r.json()
+      if (d.status === 'ok') {
+        setMcpTools(prev => ({ ...prev, [s.id]: d.tools || [] }))
+      } else {
+        alert('连接失败：' + (d.msg || '未知'))
+      }
+    } catch (e) {
+      alert('连接失败：' + e)
+    } finally {
+      setMcpTesting(prev => ({ ...prev, [s.id]: false }))
+    }
   }
   const downloadTemplate = () => {
     const blob = new Blob([SKILL_TEMPLATE], { type: 'text/markdown' })
@@ -401,9 +450,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold text-dim uppercase tracking-wider flex items-center gap-1"><Folder size={13} /> Skill 模块</label>
-                <button onClick={() => document.getElementById('agent-skill-upload')?.click()}
-                  className="text-[10px] px-2 py-1 rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors">上传 Skill</button>
-                <input id="agent-skill-upload" type="file" className="hidden" {...({ webkitdirectory: '', directory: '' } as any)} />
               </div>
               <div className="grid grid-cols-3 gap-3">
                 {allSkills.map(s => {
@@ -605,7 +651,7 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                   <p className="font-semibold text-[var(--text)] mb-1.5">三步接入外部 Skill（MCP 标准协议）</p>
                   <p className="mb-1">1. 在聚合平台搜索所需 MCP Server（如 filesystem / github / fetch）</p>
                   <p className="mb-1">2. 复制其安装命令（stdio：npx xxx）或连接地址（http/sse：URL）</p>
-                  <p className="mb-1">3. 粘贴到下方「我的 MCP Server」完成登记（后端连接与调用能力开发中）</p>
+                  <p className="mb-1">3. 粘贴到下方「我的 MCP Server」完成登记，点「测试连接」验证并查看工具列表</p>
                 </div>
                 {/* 平台链接 */}
                 <div className="flex flex-wrap gap-2">
@@ -621,11 +667,27 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                 {mcpList.length > 0 && (
                   <div className="flex flex-col gap-1.5">
                     {mcpList.map(s => (
-                      <div key={s.id} className="flex items-center gap-2 border hairline rounded-lg px-3 py-2 bg-[var(--bg-panel)]">
-                        <span className="text-[11px] font-semibold flex-shrink-0">{s.name}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-dim flex-shrink-0">{s.type}</span>
-                        <span className="text-[10px] text-dim truncate flex-1 font-mono">{s.target}</span>
-                        <button onClick={() => removeMcpServer(s.id)} className="p-1 text-gray-300 hover:text-red-500"><Trash2 size={12} /></button>
+                      <div key={s.id} className="flex flex-col gap-1.5">
+                        <div className="flex items-center gap-2 border hairline rounded-lg px-3 py-2 bg-[var(--bg-panel)]">
+                          <span className="text-[11px] font-semibold flex-shrink-0">{s.name}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-hover)] text-dim flex-shrink-0">{s.type}</span>
+                          <span className="text-[10px] text-dim truncate flex-1 font-mono">{s.target}</span>
+                          <button onClick={() => testMcpServer(s)} disabled={mcpTesting[s.id]}
+                            className="px-2 py-1 text-[10px] rounded-lg border hairline text-dim hover:bg-[var(--bg-hover)] transition-colors flex-shrink-0">
+                            {mcpTesting[s.id] ? '连接中…' : '测试连接'}
+                          </button>
+                          <button onClick={() => removeMcpServer(s.id)} className="p-1 text-gray-300 hover:text-red-500"><Trash2 size={12} /></button>
+                        </div>
+                        {mcpTools[s.id] && mcpTools[s.id].length > 0 && (
+                          <div className="ml-4 flex flex-col gap-1 border-l-2 border-[var(--border-strong)] pl-3">
+                            {mcpTools[s.id].map((t, i) => (
+                              <div key={i} className="text-[10px]">
+                                <span className="font-semibold font-mono">{t.name}</span>
+                                <span className="text-dim"> — {t.description || '无描述'}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -663,13 +725,19 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
                 <div className="border hairline rounded-xl p-4 bg-[var(--bg-panel)] text-xs text-dim leading-relaxed">
                   <p className="font-semibold text-[var(--text)] mb-1.5">开发自己的 Skill</p>
                   <p className="mb-1">1. 下载下方模板，按示例实现 <span className="font-mono">execute</span> 方法</p>
-                  <p className="mb-1">2. 将文件夹放入后端 <span className="font-mono">skills/</span> 目录（或上传目录）</p>
-                  <p className="mb-1">3. 重启后端容器，Skill 自动注册，即可在「已安装」中查看并启用</p>
+                  <p className="mb-1">2. 点下方「上传 Skill」，粘贴代码（或手动放入后端 <span className="font-mono">skills/</span> 目录）</p>
+                  <p className="mb-1">3. 上传后自动注册，即可在「已安装」中查看并启用（无需重启）</p>
                 </div>
-                <button onClick={downloadTemplate}
-                  className="flex items-center gap-1.5 px-3 py-2 text-[11px] border hairline rounded-xl text-dim hover:bg-[var(--bg-hover)] self-start transition-colors">
-                  <Download size={12} /> 下载 Skill 开发模板
-                </button>
+                <div className="flex items-center gap-2">
+                  <button onClick={downloadTemplate}
+                    className="flex items-center gap-1.5 px-3 py-2 text-[11px] border hairline rounded-xl text-dim hover:bg-[var(--bg-hover)] transition-colors">
+                    <Download size={12} /> 下载 Skill 开发模板
+                  </button>
+                  <button onClick={() => { setSkillUploadMsg(''); setShowSkillUpload(true) }}
+                    className="flex items-center gap-1.5 px-3 py-2 text-[11px] bg-[#1a1a1a] text-white rounded-xl hover:bg-[#333333] transition-colors">
+                    <Upload size={12} /> 上传 Skill
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -869,6 +937,27 @@ lsSetJSON(LS.introTiers, next)
         </div>
       )}
       {/* 新建模板弹窗 */}
+      {showSkillUpload && (
+        <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setShowSkillUpload(false)}>
+          <div className="bg-[var(--bg-panel)] rounded-2xl p-5 w-[520px] max-h-[80vh] flex flex-col gap-3 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold">上传 Skill</p>
+              <button onClick={() => setShowSkillUpload(false)} className="p-1 rounded-lg text-dim hover:bg-[var(--bg-hover)]"><X size={16} /></button>
+            </div>
+            <input autoFocus value={skillUploadName} onChange={e => setSkillUploadName(e.target.value)}
+              placeholder="Skill 名称（小写字母/数字/下划线，如 my_skill）"
+              className="px-3 py-2 text-xs input-surface rounded-xl outline-none" />
+            <textarea value={skillUploadCode} onChange={e => setSkillUploadCode(e.target.value)}
+              placeholder="粘贴 Skill 代码（继承 Skill 类，含 name/description/execute）"
+              rows={12} className="px-3 py-2 text-xs input-surface rounded-xl outline-none resize-none font-mono" />
+            <p className="text-[11px] text-dim leading-relaxed">代码示例见「开发者」tab 的 Skill 开发模板。上传后自动注册，Agent 即可调用。</p>
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] text-dim">{skillUploadMsg}</span>
+              <button onClick={uploadSkill} className="px-4 py-2 text-xs bg-[#1a1a1a] text-white font-semibold rounded-lg hover:bg-[#333333] transition-colors">上传</button>
+            </div>
+          </div>
+        </div>
+      )}
       {showNewTplModal && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={() => setShowNewTplModal(false)}>
           <div className="bg-[var(--bg-panel)] rounded-2xl shadow-xl w-full max-w-sm p-6 mx-4" onClick={e => e.stopPropagation()}>

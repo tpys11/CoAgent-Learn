@@ -1,5 +1,5 @@
 ﻿import { useEffect, useState } from 'react'
-import { ArrowLeft, MessageSquare, FileText, X, SlidersHorizontal, Pencil, PanelLeftClose, Download, ChevronRight, ChevronDown } from 'lucide-react'
+import { ArrowLeft, MessageSquare, FileText, X, SlidersHorizontal, Pencil, PanelLeftClose, Download, ChevronRight, ChevronDown, Brain, FolderOpen } from 'lucide-react'
 import { LS, lsGetJSON, lsSetJSON } from '../storage'
 import { api } from '../api'
 import { OutlineTree } from './OutlineTree'
@@ -57,8 +57,6 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
     })
   }
   const SECTIONS: Array<{ key: 'memory' | 'resource' | 'chat'; label: string }> = [
-    { key: 'memory', label: '记忆与进程' },
-    { key: 'resource', label: '资源' },
     { key: 'chat', label: '对话' },
   ]
   useEffect(() => {
@@ -108,85 +106,7 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
         </div>
       </div>
       <div className="flex-1 overflow-y-auto p-3 flex flex-col gap-4">
-        {/* 记忆与进程：常开，右上角 ✕ 关闭（顶部「展示设置」可重新打开） */}
-        {visible.memory && (
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-dim uppercase tracking-wider">记忆与进程</span>
-            <button onClick={() => toggleVisible('memory')} className="p-1 rounded-md text-dim hover:text-red-500 transition-colors" title="关闭此模块（可在上方「展示设置」重新打开）">
-              <X size={12} />
-            </button>
-          </div>
-          {true && (
-            <div className="border hairline rounded-xl p-3 bg-[var(--bg-panel)] flex flex-col h-[100px] overflow-hidden">
-              <p className="text-[10px] leading-relaxed text-[var(--text-muted)] line-clamp-3">
-                {memLines.length === 0
-                  ? '暂无记忆，对话后自动分析生成。'
-                  : memLines.map(([k, v]) => `${k}：${v}`).join('；')}
-              </p>
-              <button onClick={onOpenMemory} className="text-[10px] font-semibold text-[var(--accent)] hover:underline ml-auto mt-auto">
-                查看更多
-              </button>
-            </div>
-          )}
-        </div>
-        )}
-        {/* 资源：常开，右上角 ✕ 关闭（顶部「展示设置」可重新打开） */}
-        {visible.resource && (
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-dim uppercase tracking-wider">资源</span>
-            <button onClick={() => toggleVisible('resource')} className="p-1 rounded-md text-dim hover:text-red-500 transition-colors" title="关闭此模块（可在上方「展示设置」重新打开）">
-              <X size={12} />
-            </button>
-          </div>
-          {true && (
-            <div className="border hairline rounded-xl p-2 bg-[var(--bg-panel)] flex flex-col">
-              {kbDocs.length === 0 ? (
-                <p className="text-[10px] text-[var(--text-muted)] px-1.5 py-1">暂无资源，可上传文件或加入系统资源。</p>
-              ) : (
-                <>
-                  <div className="flex flex-col max-h-[30vh] overflow-y-auto">
-                    {kbDocs.map(d => {
-                      const hasOutline = Array.isArray(d.tree) && d.tree.length > 0
-                      const open = expandedDocs.has(d.source)
-                      return (
-                        <div key={d.source} className="flex flex-col">
-                          <div onClick={() => onOpenKbDoc && onOpenKbDoc(d.source)}
-                            className="flex items-center gap-1.5 px-1.5 py-1 rounded-lg text-[11px] font-medium hover:bg-[var(--bg-hover)] transition-colors cursor-pointer" title={d.source}>
-                            {hasOutline ? (
-                              <button onClick={(e) => { e.stopPropagation(); setExpandedDocs(prev => { const nx = new Set(prev); if (nx.has(d.source)) nx.delete(d.source); else nx.add(d.source); return nx }) }}
-                                className="flex-shrink-0 text-dim hover:text-[var(--text)]" title={open ? '收起大纲' : '展开大纲'}>
-                                {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                              </button>
-                            ) : <span className="w-[12px] flex-shrink-0" />}
-                            <FileText size={12} className="text-dim flex-shrink-0" />
-                            <span className="truncate flex-1">{d.source}</span>
-                            {d.vectorized === false
-                              ? <span className="text-[9px] text-amber-500/80 flex-shrink-0">未向量化</span>
-                              : <span className="text-[9px] text-dim flex-shrink-0">{d.chunks}</span>}
-                          </div>
-                          {hasOutline && open && (
-                            <div className="pl-4 pb-1 max-h-48 overflow-y-auto">
-                              <OutlineTree tree={d.tree || []} compact showBadges
-                                onSelect={() => onOpenKbDoc && onOpenKbDoc(d.source)} />
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                  <p className="text-[9px] text-dim px-1.5 pt-1">共 {kbDocs.length} 份文档</p>
-                </>
-              )}
-              <button onClick={onOpenResource} className="text-[10px] font-semibold text-[var(--accent)] hover:underline ml-auto mt-1">
-                查看更多
-              </button>
-            </div>
-          )}
-        </div>
-        )}
-        {/* 对话：常开，右上角 ✕ 关闭（顶部「展示设置」可重新打开） */}
+          {/* 对话：常开，右上角 ✕ 关闭（顶部「展示设置」可重新打开） */}
         {visible.chat && (
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
@@ -201,7 +121,7 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
           {true && (
             <div className="flex flex-col gap-1">
               {(() => {
-                const active = dialogues.filter(d => !d.archived)
+                const active = dialogues.filter(d => !d.archived && d.projectId === project?.id)
                 if (active.length === 0) return <p className="text-[10px] text-dim">暂无对话，新建一个开始</p>
                 return active.map(d => (
                 <div key={d.id} className="group relative">
@@ -241,6 +161,17 @@ export default function ProjectSidebar({ project, dialogues, currentDialogueId, 
           )}
         </div>
         )}
+      </div>
+      {/* 底部固定入口：记忆与进程 / 资源（点击弹出对应详情弹窗） */}
+      <div className="p-3 border-t hairline flex flex-col gap-1 flex-shrink-0">
+        <button onClick={onOpenMemory}
+          className="flex items-center gap-2 px-2.5 py-2 rounded-xl text-[11px] font-medium text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors">
+          <Brain size={13} className="flex-shrink-0" /> 记忆与进程
+        </button>
+        <button onClick={onOpenResource}
+          className="flex items-center gap-2 px-2.5 py-2 rounded-xl text-[11px] font-medium text-dim hover:bg-[var(--bg-hover)] hover:text-[var(--text)] transition-colors">
+          <FolderOpen size={13} className="flex-shrink-0" /> 资源
+        </button>
       </div>
     </div>
   )

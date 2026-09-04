@@ -1,0 +1,7 @@
+{
+  "hallucination": 0.1378,
+  "adaptation": 0.6667,
+  "coverage": 0.3815,
+  "faithfulness": 0.9341,
+  "context_recall": 0.3333
+}

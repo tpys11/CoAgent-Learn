@@ -29,6 +29,7 @@ from routers.resources import router as resources_router
 from routers.memory import router as memory_router
 from routers.skills import router as skills_router
 from routers.preset_library import router as preset_library_router
+from routers.domain_res import router as domain_res_router
 from core.helpers import extract_json_obj
 # D1：三函数已原样迁至 services/chat_context——re-export 保持 main._auto_settings 等可解析
 from services.chat_context import _auto_settings, _build_preloaded, _parse_special_inputs
@@ -119,6 +120,7 @@ app.include_router(resources_router)
 app.include_router(memory_router)
 app.include_router(skills_router)
 app.include_router(preset_library_router)
+app.include_router(domain_res_router)
 
 
 from engine.cancel import ACTIVE_CANCELS as _active_cancels  # noqa: E402
@@ -149,6 +151,7 @@ class ChatRequest(BaseModel):
     gen_resource: str | None = None  # 闭环七：在场（能力 key）→ 资源生成管线分支（研究档级，kind='resource' 隔离）
     extra_followup_did: str | None = None  # 额外生成追问的目标对话（主对话完成后同步给第二对话）
     extra_followup_focus: str | None = None  # 额外追问风格（默认 expand）
+    debug: bool = False  # 评测用：为 True 时 done 事件附带回 internals（画像/检索/审核中间数据）
     client_msg_id: str = ""  # D4 重试幂等：前端每次「按发送」生成、重试复用；空=旧客户端，不入去重
 class StopRequest(BaseModel):
     request_id: str  # /api/chat 的 start 事件返回的生成请求 id（用户手动停止时置位取消）

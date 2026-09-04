@@ -226,6 +226,12 @@ export const api = {
     apiFetch<any>('/api/dialogues/' + encodeURIComponent(did) + '/followups', { cache: 'no-store' }),
   getLearningLog: (pid?: string) =>
     apiFetch<any>('/api/learning-log' + (pid ? '?project_id=' + encodeURIComponent(pid) : ''), { cache: 'no-store' }),
+  getFocusDays: (opts?: { project_id?: string; month?: string }) => {
+    const qs: string[] = []
+    if (opts?.project_id) qs.push('project_id=' + encodeURIComponent(opts.project_id))
+    if (opts?.month) qs.push('month=' + encodeURIComponent(opts.month))
+    return apiFetch<any>('/api/stats/focus-days' + (qs.length ? '?' + qs.join('&') : ''), { cache: 'no-store' })
+  },
   getMemoryProgress: (pid: string) =>
     apiFetch<any>('/api/memory/progress?project_id=' + encodeURIComponent(pid), { cache: 'no-store' }),
   memoryChat: (body: unknown) => apiFetch<any>('/api/memory-chat', jsonInit('POST', body)),
@@ -238,7 +244,12 @@ export const api = {
     apiFetch<any>('/api/resources/upload', { method: 'POST', body: form }),
   deleteResource: (rid: string) =>
     apiFetch<any>('/api/resources/' + encodeURIComponent(rid), jsonInit('DELETE')),
+  resourceJoinProject: (rid: string, projectId: string) =>
+    apiFetch<any>('/api/resources/' + encodeURIComponent(rid) + '/join-project', jsonInit('POST', { project_id: projectId })),
   generateDomain: (body: unknown) => apiFetch<any>('/api/generate-domain', jsonInit('POST', body)),
+  generateOutline: (body: unknown) => apiFetch<any>('/api/domain/outline', jsonInit('POST', body)),
+  generateChapter: (body: unknown) => apiFetch<any>('/api/domain/chapter', jsonInit('POST', body)),
+  generateLinks: (body: unknown) => apiFetch<any>('/api/domain/links', jsonInit('POST', body)),
   /** F13-S1：预设资源库三级清单（领域→资源→文件，含页数等元数据） */
   getPresetLibrary: () =>
     apiFetch<{ status: string; domains: PresetDomain[] }>('/api/preset-library', { cache: 'no-store' }),

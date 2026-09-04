@@ -7,6 +7,8 @@ import { resolveAuxCall } from '../models'
 import { renderMd } from '../lib/mdRenderer'
 import AssistantMessage, { type AssistantMessageProps } from './chat/AssistantMessage'
 
+
+
 /** 档位模式：极速/思考/研究（用户时间-质量期望的表达），与「对话流程」区块一致 */
 const TEMPLATE_OPTIONS = [
   { name: '极速', desc: '最短响应（1 秒内首字，500-800 字）' },

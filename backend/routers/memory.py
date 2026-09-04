@@ -218,6 +218,29 @@ def export_all(project_id: str = "default"):
     return {"exported_at": __import__("datetime").datetime.now().isoformat(), "data": out}
 
 
+@router.get("/api/stats/focus-days")
+def get_focus_days(project_id: str = "", month: str = ""):
+    """学习日历数据：按 天+项目 聚合专注时长。
+    month 形如 '2026-09' → 查该整月；空 → 近30天。"""
+    mrepo = get_memory_repo()
+    prepo = get_project_repo()
+    if month and len(month) == 7 and month[4] == '-':
+        rows = mrepo.get_focus_month(project_id, month)
+    else:
+        rows = mrepo.get_focus_daily_by_project(project_id)
+    pnames = {p["id"]: (p.get("name") or p["id"]) for p in (prepo.list_project_names() or [])}
+    by_date: dict = {}
+    for r in (rows or []):
+        pid = r.get("project_id") or "default"
+        by_date.setdefault(r.get("d") or "", []).append({
+            "project_id": pid,
+            "project_name": pnames.get(pid, pid),
+            "seconds": int(r.get("s") or 0),
+        })
+    days = [{"date": d, "projects": sorted(v, key=lambda x: -x["seconds"])} for d, v in sorted(by_date.items(), reverse=True)]
+    return {"days": days}
+
+
 @router.get("/api/learning-log")
 def get_learning_log(project_id: str = ""):
     prepo = get_project_repo()
@@ -344,10 +367,10 @@ def save_project_memory(project_id: str, req: ProfileData):
     proj = _as_dict(rows[0]["data"]) if rows and rows[0]["data"] else {}
     p = req.profile
     if isinstance(p, dict):
-        for k in ["抽象目的", "抽象项目情况", "起点", "当前水平", "目标", "偏好", "知识点", "难点", "薄弱点", "兴趣", "里程碑", "课程结束时间", "平均每日投入时间", "其他"]:
+        for k in ["领域", "学历背景", "原始画像描述", "抽象目的", "抽象项目情况", "起点", "当前水平", "目标", "偏好", "知识点", "难点", "薄弱点", "兴趣", "里程碑", "课程结束时间", "平均每日投入时间", "其他"]:
             if k in p:
                 proj[k] = p[k]
-        for k in ["抽象目的", "抽象项目情况", "起点", "当前水平", "目标", "课程结束时间", "平均每日投入时间", "其他"]:
+        for k in ["领域", "学历背景", "抽象目的", "抽象项目情况", "起点", "当前水平", "目标", "课程结束时间", "平均每日投入时间", "其他"]:
             if k in p and not p[k]:
                 proj.pop(k, None)
     mrepo.save_project_memory(project_id, json.dumps(proj, ensure_ascii=False))
@@ -362,13 +385,19 @@ def save_project_profile(pid: str, req: ProfileData):
     p = req.profile
     if isinstance(p, dict):
         if p.get("domain"):
-            proj["抽象项目情况"] = p["domain"]
+            proj["领域"] = p["domain"]
         if p.get("background"):
             proj["抽象项目情况"] = p["background"] or proj.get("抽象项目情况", "")
+        if p.get("identity"):
+            proj["学历背景"] = p["identity"]
+        if p.get("selfLevel"):
+            proj["当前水平"] = p["selfLevel"]
         if p.get("prefer"):
             proj["偏好"] = p["prefer"]
         if p.get("goal"):
             proj["目标"] = p["goal"]
+        if p.get("raw"):
+            proj["原始画像描述"] = p["raw"]
     mrepo.save_project_memory(pid, json.dumps(proj, ensure_ascii=False))
     return {"status": "ok"}
 

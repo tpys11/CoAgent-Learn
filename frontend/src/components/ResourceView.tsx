@@ -3,8 +3,8 @@
  *  「我的生成」产物在对话界面右栏资源生成栏查看；上传走课程弹窗/对话侧栏的上传面板。
  *  F13-S1：预设文件资源（data/preset_library 三级索引）经 GET /api/preset-library 驱动，
  *  原 URL 型教程归入「链接资源」类别；无前端硬编码资源清单。 */
-import { useState, useEffect, useCallback } from 'react'
-import { BookOpen, Plus, FolderTree, Library, ExternalLink, Download } from 'lucide-react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { BookOpen, Plus, FolderTree, Library, ExternalLink, Download, X } from 'lucide-react'
 import { LS, lsGet, lsGetJSON, lsSetJSON } from '../storage'
 import { api } from '../api'
 import { WIKI_ENTRIES, WikiEntry } from '../data/wikiEntries'
@@ -14,6 +14,7 @@ import { reportIngestDone } from '../lib/kbScopeBus'
 import { ListItem, exportItem } from './resource/commons'
 import { ResourceCardGrid, ResourceEmpty } from './resource/ResourceCardGrid'
 import { ResourceDetailModal } from './resource/ResourceDetailModal'
+import MyUploads from './MyUploads'
 import { PresetResourceCard } from './resource/PresetResourceCard'
 import { PresetDetailModal } from './resource/PresetDetailModal'
 import KbReaderModal from './KbReaderModal'
@@ -100,6 +101,7 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
   const [wikiTheme, setWikiTheme] = useState('all')
   const [loading, setLoading] = useState(false)
   const [detail, setDetail] = useState<ListItem | null>(null)
+  const [activeView, setActiveView] = useState<'domain' | 'mine'>('domain')
   // F13-S1：预设资源库状态（API 数据驱动；失败=结构化可见错误，不阻塞其他页签）
   const [presetByDomain, setPresetByDomain] = useState<Record<string, PresetResource[]>>({})
   const [presetLoaded, setPresetLoaded] = useState(false)
@@ -130,14 +132,18 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
   }, [])
   useEffect(() => { loadPreset() }, [loadPreset])
 
-  // F13-S1：进入「预设资源」页签而当前领域无内容时，自动跳到第一个有预设资源的领域
+  // F13-S1：预设库加载完成后，若默认领域无内容，自动聚焦第一个有预设资源的领域。
+  // 仅聚焦一次（autoFocused）；之后用户主动点击任何领域都尊重选择，不再自动跳转（无内容时显示空态）。
+  const autoFocused = useRef(false)
   useEffect(() => {
-    if (selectedCat !== PRESET_CAT || !presetLoaded) return
+    if (!presetLoaded || autoFocused.current) return
+    autoFocused.current = true
+    if (selectedCat !== PRESET_CAT) return
     if ((presetByDomain[selectedDomain] || []).length > 0) return
     const target = firstPresetDomain(domains, presetByDomain)
     if (target && target !== selectedDomain) setSelectedDomain(target)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCat, presetLoaded, presetByDomain, selectedDomain])
+  }, [presetLoaded])
 
   // 教程资源
   const allTutorials = [...PRESET_TUTORIALS, ...tutorials]
@@ -151,26 +157,47 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
   }
 
   // 新建领域：调后端 AI 生成该领域的教程 + 百科词条，存 localStorage
+  // 删除已生成的领域（自定义）：移出领域 + 清 syllabus + 清该领域词条
+  const removeDomain = (name: string) => {
+    if (!window.confirm('删除领域「' + name + '」？将同时移除其生成的大纲与百科词条。')) return
+    const nextDomains = customDomains.filter(x => x !== name)
+    setCustomDomains(nextDomains); lsSetJSON(LS.domains, nextDomains)
+    const syl = lsGetJSON<Record<string, any>>(LS.syllabus, {})
+    if (syl[name]) { delete syl[name]; lsSetJSON(LS.syllabus, syl) }
+    const nw = customWiki.filter(w => w.domain !== name)
+    setCustomWiki(nw); lsSetJSON(LS.customWiki, nw)
+    if (selectedDomain === name) setSelectedDomain(domains.find(d => d !== name) || domains[0] || '')
+  }
   const createDomain = async () => {
     const name = newDomainName.trim()
     if (!name) return
     if (domains.includes(name)) { alert('该领域已存在'); return }
     setNewDomainLoading(true)
     try {
-      const d = await api.generateDomain({ domain: name, api_key: lsGet(LS.apiKey, '') })
+      const _keys = lsGetJSON<Record<string, string>>(LS.providerKeys, {})
+      const _k = _keys['deepseek'] || lsGet(LS.apiKey, '')
+      const d = await api.generateLinks({ domain: name, api_key: _k })
       if (d.status === 'ok') {
-        const nt = (d.tutorials || []).map((t: any) => ({ ...t, id: 'dom-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), domain: name, preset: false }))
+        // 真实链接 → 存为该领域「链接资源」教程（与系统预设教程同形式，点开外部学习）
+        const links = (d.links || []).filter((l: any) => l.url)
+        if (links.length === 0) { alert('未检索到该领域资源链接，请检查网络或换领域重试。'); return }
+        const nt = links.map((l: any) => ({
+          id: 'dom-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+          title: (l.title || l.url).slice(0, 80), url: l.url,
+          desc: (l.snippet || '').slice(0, 160), category: '链接资源', domain: name, preset: false,
+        }))
+        const prev = lsGetJSON<Tutorial[]>(LS.tutorials, [])
+        saveTutorials([...prev, ...nt])
+        // 百科词条存 customWiki（同领域词条，显示在百科词条分类）
         const nw = (d.wiki || []).map((w: any) => ({ ...w, domain: name }))
-        const nextT = [...tutorials, ...nt]
         const nextW = [...customWiki, ...nw]
-        saveTutorials(nextT)
         setCustomWiki(nextW)
         lsSetJSON(LS.customWiki, nextW)
         const nextDomains = [...customDomains, name]
         setCustomDomains(nextDomains)
         lsSetJSON(LS.domains, nextDomains)
         setSelectedDomain(name)
-        setSelectedCat(CATEGORIES[0].key)
+        setSelectedCat('链接资源')
         setNewDomainName('')
         setShowNewDomain(false)
       } else {
@@ -368,7 +395,18 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
 
   return (
     <div className="flex-1 h-full min-w-0 flex flex-col panel rounded-3xl overflow-hidden">
-      {/* 主体：左侧分类栏 + 内容区（只读系统资源） */}
+      {/* 顶部切换：领域资源 / 我的上传 */}
+      <div className="flex gap-1 px-4 pt-3 pb-0 flex-shrink-0">
+        {([['domain', '领域资源'], ['mine', '我的上传']] as const).map(([k, label]) => (
+          <button key={k} onClick={() => setActiveView(k)}
+            className={'px-3.5 py-1.5 rounded-t-lg text-xs font-medium transition-colors ' + (activeView === k ? 'bg-[var(--bg-panel)] border border-b-0 hairline font-semibold text-[var(--text)]' : 'text-dim hover:bg-[var(--bg-hover)]')}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {activeView === 'mine' ? (
+        <MyUploads />
+      ) : (
       <div className="flex-1 flex min-h-0">
         <div className="w-[260px] flex-shrink-0 border-r hairline bg-[var(--bg-sidebar)] p-2.5 flex flex-col gap-1 overflow-y-auto">
           <p className="text-[10px] font-bold text-dim uppercase tracking-wider px-2.5 mt-1 mb-0.5">领域</p>
@@ -378,13 +416,19 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
             return (
               <button
                 key={d}
-                onClick={() => { setSelectedDomain(d); setSelectedCat(CATEGORIES[0].key); setDetail(null) }}
-                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-colors ${
+                onClick={() => { setSelectedDomain(d); setSelectedCat(CATEGORIES[0].key); setDetail(null); setShowNewDomain(false) }}
+                className={`group/dom flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-colors ${
                   active ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
                 }`}
               >
                 <span className={`w-2 h-2 rounded-full flex-shrink-0 ${c.active}`} />
-                <span className="font-semibold truncate">{d}</span>
+                <span className="font-semibold truncate flex-1">{d}</span>
+                {customDomains.includes(d) && (
+                  <span onClick={(e) => { e.stopPropagation(); removeDomain(d) }}
+                    className="opacity-0 group-hover/dom:opacity-100 p-0.5 rounded-md text-dim hover:text-red-500 hover:bg-red-50 transition-all flex-shrink-0" title="删除该领域">
+                    <X size={12} />
+                  </span>
+                )}
               </button>
             )
           })}
@@ -424,6 +468,7 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
           </div>
         </div>
       </div>
+      )}
 
       {/* 详情模态（F13-S2 留桩：预设资源的「加入课程」将走上传解析链，本轮先不给文本插入入口） */}
       {detail && (

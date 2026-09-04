@@ -242,17 +242,17 @@ function App() {
         const id = d.id
         setProjects(prev => [...prev, { id, name, simple: false }])
         setCurrentProjectId(id)
-        // 创建默认对话并直接进入对话界面，对话内展示静态创建课程引导（命名/简述/资源/目的/时间）
+        // 创建默认对话（保留现状），不塞静态引导文字
         const did = generateId()
         const dia: Dialogue = { id: did, name: '对话 1', projectId: id, createdAt: new Date().toISOString(), archived: false }
         setDialogues(prev => [...prev, dia])
         setCurrentDialogueId(did)
-        setAllMessages(prev => ({ ...prev, [did]: [{ role: 'assistant' as const, content: PROJECT_GUIDE(name) }] }))
-        // 落库：对话 + 静态引导消息（刷新后保留）
         api.createDialogue({ project_id: id, name: dia.name, id: did }).catch(() => {})
         pollProfileStatus(did)
-        api.postDialogueMessage(did, { role: 'assistant', content: PROJECT_GUIDE(name) }).catch(() => {})
-        setChatOpen(true)
+        // 打开「课程初始化」大弹窗（原地编辑课程画像 + 上传资源）
+        setManualSetupOnly(true)
+        setProjectConfigTab('memory')
+        setShowProjectConfig(true)
       } catch (e) {
         alert('创建课程失败：' + ((e as any)?.message || '网络异常') + '，请检查后端服务。')
       }
@@ -415,7 +415,7 @@ function App() {
     <div ref={appRef} className="flex flex-col h-screen w-screen bg-[#ffffff] text-[#1a1a1a] overflow-hidden">
       <div className="flex-1 flex min-h-0 pt-3 pb-3 pr-3">
       {/* 最左侧细轨：主页时展开加宽，点开课程/离开主页自动折叠为仅图标 */}
-      <ActivityBar view={view} onChange={handleViewChange} expanded={view === 'chat' && !chatOpen}
+      <ActivityBar view={view} onChange={handleViewChange} expanded={view !== 'chat' || !chatOpen}
         onSettings={() => setShowSettings(true)} />
       {sidebarCollapsed && (
         <button onClick={() => setSidebarCollapsed(false)} className="flex-shrink-0 w-7 h-7 mt-3 ml-1.5 flex items-center justify-center rounded-lg icon-btn" title="展开侧栏">
@@ -495,14 +495,26 @@ function App() {
             <span className="w-1 h-10 rounded-full bg-[#d0d0d0] opacity-0 group-hover:opacity-100 transition-opacity" />
           </div>
           <div style={{ width: rightPanelWidth, minWidth: 260 }} className="h-full flex-shrink-0 relative panel rounded-3xl overflow-hidden">
-            <RightPanel messageCount={currentMessages.filter(m => m.role === 'assistant').length} projectId={currentProjectId} sideDialogueId={secondDialogueIdRef.current} onCollapse={() => setRightCollapsed(true)} />
+            <RightPanel messageCount={currentMessages.filter(m => m.role === 'assistant').length} projectId={currentProjectId} sideDialogueId={secondDialogueIdRef.current} messages={currentMessages} onCollapse={() => setRightCollapsed(true)} />
           </div>
         </>
       )}
       </>) : (
         <LSusp><HomeView
           projects={projects}
-          onEnter={(id) => { setCurrentProjectId(id); setChatOpen(true); setSidebarCollapsed(false) }}
+          onEnter={(id) => {
+            // 进入课程：选中该课程首个对话并加载其消息，重置执行流——避免上个课程的界面残留
+            setCurrentProjectId(id)
+            const first = dialogues.find(d => d.projectId === id && !d.archived)
+            if (first) {
+              setCurrentDialogueId(first.id)
+              resetFlow()
+              loadDialogueMessages(first.id)
+            } else {
+              setCurrentDialogueId(null)
+            }
+            setChatOpen(true); setSidebarCollapsed(false)
+          }}
           onCreate={handleCreateProject}
           onDelete={handleDeleteProject}
           onRename={handleRenameProject}
@@ -520,7 +532,13 @@ function App() {
           projectName={(projectKBId ? projects.find(x => x.id === projectKBId) : currentProject)?.name || ''}
           initialTab={projectConfigTab}
           initialOnly={manualSetupOnly}
-          onSaved={() => setManualSetupOnly(false)}
+          onSaved={(renamed) => {
+            setManualSetupOnly(false)
+            if (renamed) {
+              const pid = projectKBId ?? currentProjectId
+              setProjects(prev => prev.map(x => x.id === pid ? { ...x, name: renamed } : x))
+            }
+          }}
           onRequestModify={handleRequestModify}
           onRequestAnalyze={handleRequestAnalyze}
           onClose={() => { setShowProjectConfig(false); setManualSetupOnly(false) }}

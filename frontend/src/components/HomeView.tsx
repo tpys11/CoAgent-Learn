@@ -1,6 +1,7 @@
 ﻿import { useEffect, useState } from 'react'
-import { Plus, X, FolderOpen, Pencil } from 'lucide-react'
-import TrendCalendar from './TrendCalendar'
+import { Plus, X, FolderOpen, Pencil, HelpCircle } from 'lucide-react'
+import GuideModal from './GuideModal'
+import LearningCalendar from './LearningCalendar'
 import { api } from '../api'
 
 /** 系统预设领域 → 预存图片；非预设领域/未设置领域使用默认学习封面 */
@@ -31,11 +32,12 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
   const [kbCount, setKbCount] = useState<Record<string, number>>({})
   // 每课程最新对话名（"上次学到哪"）
   const [lastTopics, setLastTopics] = useState<Record<string, string>>({})
-  // 主页趋势：专注时长·最近30天（/api/stats?project_id=all 聚合全部项目）
-  const [trendDays, setTrendDays] = useState<Array<{ date: string; seconds: number }>>([])
+  // 主页学习记录：近30天哪天学了多久、涉及哪些课程（/api/stats/focus-days）
+  const [logDays, setLogDays] = useState<Array<{ date: string; items: Array<Record<string, any>> }>>([])
   useEffect(() => {
-    api.getStats('all').then(d => {
-      setTrendDays(Array.isArray(d.daily_focus) ? d.daily_focus : [])
+    // 学习日历(月历)由 LearningCalendar 自管翻月与数据拉取；这里只拉学习日志全量供弹窗当天内容用
+    api.getLearningLog().then(d => {
+      setLogDays(Array.isArray(d.days) ? d.days : [])
     }).catch(() => {})
   }, [])
   useEffect(() => {
@@ -69,76 +71,27 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
   const strOf = (v: any) => Array.isArray(v) ? v.join('、') : v ? String(v) : ''
   const short = (s: string, n = 34) => s.length > n ? s.slice(0, n) + '…' : s
 
-  // ---------- 快速引导：系统提示建议（课程 / 资源） ----------
-  const totalCount = Object.values(stats).reduce((s, n) => s + n, 0)
-  const totalDocs = Object.values(kbCount).reduce((s, n) => s + n, 0)
-  const latestDate = trendDays.filter(d => (d.seconds || 0) > 0).map(d => d.date).sort().pop() || ''
-  const buildTips = () => {
-    const tips: Array<{ title: string; text: string }> = []
-    if (projects.length === 0) {
-      tips.push({ title: '课程', text: '还没有课程。点击下方「新建课程」卡片创建第一个课程，开始你的学习之旅。' })
-    } else {
-      const stale = projects.filter(p => (stats[p.id] ?? 0) === 0)
-      if (stale.length > 0) {
-        tips.push({ title: '课程', text: `${stale.length} 个课程还没有对话记录（如「${stale[0].name}」），建议尽快安排时间开始学习；若时间紧迫，优先推进最近创建的课程。` })
-      } else {
-        tips.push({ title: '课程', text: `学习进度正常，最近学习${latestDate ? '于 ' + latestDate : '记录暂无'}。可参考各课程卡片的「进度 / 上次 / 后续」决定下一步。` })
-      }
-    }
-    if (totalDocs === 0) {
-      tips.push({ title: '资源', text: '知识库还没有文档。在课程侧栏「资源」中上传文件或从系统预设资源加入，回答将更有依据、更少幻觉。' })
-    } else {
-      tips.push({ title: '资源', text: `知识库已收录 ${totalDocs} 份文档。建议定期补充或更新资料（如教程更新、新文档发布），让回答持续贴合最新内容。` })
-    }
-    return tips
-  }
-  const tips = buildTips()
-
   // 行内改名：正在编辑名称的课程 id
   const [renamingId, setRenamingId] = useState<string | null>(null)
   // 删除确认弹窗：待删除的课程 id
   const [deleteId, setDeleteId] = useState<string | null>(null)
-
-  // 顶部问候：按时间打招呼 + 最近学习时间与连续学习天数
-  const hour = new Date().getHours()
-  const greeting = hour < 5 ? '夜深了' : hour < 11 ? '早上好' : hour < 13 ? '中午好' : hour < 18 ? '下午好' : '晚上好'
-  // 连续学习天数：从今日（或昨日）向前连续有学习记录的日期数
-  const streakDays = (() => {
-    const daySet = new Set(Object.keys(trendDays))
-    const key = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
-    const d = new Date()
-    if (!daySet.has(key(d))) d.setDate(d.getDate() - 1)
-    let streak = 0
-    while (daySet.has(key(d))) { streak++; d.setDate(d.getDate() - 1) }
-    return streak
-  })()
-  const statusTxt = `最近学习${latestDate ? ' ' + latestDate : ' 暂无记录'} · 连续学习 ${streakDays} 天`
+  // 快速引导弹窗开关
+  const [guideOpen, setGuideOpen] = useState(false)
 
   return (
     <div className="flex-1 h-full min-w-0 flex panel rounded-3xl overflow-hidden">
       <div className="flex-1 overflow-y-auto">
-        <div className="px-28 py-8 flex flex-col gap-10">
-          {/* 顶部：时间问候（大字号）+ 最近学习时间与连续天数（小字） */}
-          <div className="flex flex-col gap-1.5">
-            <p className="text-3xl font-bold leading-snug">{greeting}！</p>
-            <p className="text-xs text-dim">{statusTxt}</p>
+        <div className="px-28 py-8 flex flex-col gap-8">
+          {/* 左上角：快速引导按钮（点击弹出项目使用教程） */}
+          <div className="flex justify-start">
+            <button onClick={() => setGuideOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#1a1a1a] text-white text-xs font-semibold shadow-soft hover:bg-[#333333] transition-colors">
+              <HelpCircle size={15} /> 快速引导
+            </button>
           </div>
-          {/* 快速引导 | 专注时长趋势（横排，趋势图挪出右栏空区） */}
-          <div className="flex gap-6 items-stretch">
-            <div className="flex-1 min-w-0 flex flex-col gap-2.5">
-              <h2 className="text-sm font-bold">快速引导</h2>
-              <div className="border hairline rounded-2xl p-4 bg-[var(--bg-panel)] flex flex-col gap-3.5">
-                {tips.map(t => (
-                  <div key={t.title} className="flex flex-col gap-1">
-                    <span className="text-xs font-bold">{t.title}</span>
-                    <p className="text-[10px] leading-relaxed text-[var(--text-muted)]">{t.text}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="w-[420px] flex-shrink-0 border hairline rounded-2xl p-4 bg-[var(--bg-panel)] flex flex-col">
-              <TrendCalendar days={trendDays} />
-            </div>
+          {/* 学习日历（快速引导下方）：30 天日期格，颜色深浅=时长，点格看当天明细 */}
+          <div className="w-[360px] max-w-full border hairline rounded-2xl p-3 bg-[var(--bg-panel)] flex flex-col">
+            <LearningCalendar logDays={logDays} />
           </div>
           {/* 课程区块 */}
           <div className="flex flex-col gap-6">
@@ -248,6 +201,8 @@ export default function HomeView({ projects, onEnter, onCreate, onDelete, onRena
               </div>
             )
           })()}
+          {/* 快速引导弹窗（静态项目使用教程） */}
+          {guideOpen && <GuideModal onClose={() => setGuideOpen(false)} />}
         </div>
       </div>
     </div>

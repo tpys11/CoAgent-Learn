@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { FileText, BookOpen, Upload, Trash2, Save, X, Loader2, CheckCircle2, ExternalLink, Plus } from 'lucide-react'
+import { FileText, BookOpen, Upload, Trash2, Save, X, Loader2, CheckCircle2, ExternalLink, Plus, ListChecks } from 'lucide-react'
 import MemoryView from './MemoryView'
 import ResourceView from './ResourceView'
 import { UploadPanel } from './resource/UploadPanel'
@@ -19,7 +19,7 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
   onClose: () => void
   initialTab?: 'memory' | 'resource'
   initialOnly?: boolean
-  onSaved?: () => void
+  onSaved?: (name?: string) => void
   onUploaded?: () => void
   /** F10-S1：留存选择目标由 App 裁决下发（呈现面=内联面板的 pending 子集），透传 UploadPanel */
   scopeTargets?: ScopeTarget[]
@@ -34,14 +34,51 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
   const [confirming, setConfirming] = useState(false)
   const [saving, setSaving] = useState(false)
   const [collected, setCollected] = useState<Record<string, string>>({})
+  // 双形式：逐项填写 / 一段话告诉我（仅课程初始化）
+  const [formMode, setFormMode] = useState<'guide' | 'free'>('guide')
+  const [freeText, setFreeText] = useState('')
+  // 个人基本信息（全局画像）：仅初始化时填一次身份/年龄；空才问
+  const [gId, setGId] = useState('')
+  const [gAge, setGAge] = useState('')
+  useEffect(() => {
+    if (!initialOnly) return
+    api.getGlobalProfile().then((d: any) => {
+      const p = d?.profile || {}
+      setGId(p['身份'] ? String(p['身份']) : '')
+      setGAge(p['年龄'] ? String(p['年龄']) : '')
+    }).catch(() => {})
+  }, [initialOnly])
+
+  const _saveGlobal = async () => {
+    const gNeed = (gId.trim() || gAge.trim())
+    if (!gNeed) return
+    try {
+      const gd: any = await api.getGlobalProfile().catch(() => ({ profile: {} }))
+      const gp: Record<string, any> = { ...(gd?.profile || {}) }
+      if (gId.trim()) gp['身份'] = gId.trim()
+      if (gAge.trim()) gp['年龄'] = gAge.trim()
+      await api.saveGlobalProfile(gp)
+    } catch { /* 个人画像写失败不阻塞课程保存 */ }
+  }
 
   const doSave = async () => {
     if (!projectId) return
     setSaving(true)
     try {
-      // 提交编辑过的字段：项目名（PATCH）/ 基本情况（课程结束时间/平均每日投入时间/其他）/ 目的（抽象目的）/ 初始情况（起点）
+      // 一段话模式：整段存为「原始画像描述」+ 个人身份年龄；跳过逐项字段收集
+      if (formMode === 'free') {
+        const raw = freeText.trim()
+        if (projectId && raw) {
+          await api.saveProjectMemory(projectId, { '原始画像描述': raw } as any)
+        }
+        await _saveGlobal()
+        onSaved?.(projectName)
+        onClose()
+        return
+      }
+      // 提交编辑过的字段：项目名（PATCH）+ 画像字段
       const profile: Record<string, string> = {}
-      for (const k of ['课程结束时间', '平均每日投入时间', '其他', '抽象目的', '起点']) {
+      for (const k of ['领域', '学历背景', '当前水平', '目标', '偏好', '其他']) {
         if (collected[k]) profile[k] = collected[k]
       }
       if (collected['项目名'] && collected['项目名'].trim() && collected['项目名'].trim() !== projectName) {
@@ -50,10 +87,12 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
       if (Object.keys(profile).length) {
         await api.saveProjectMemory(projectId, profile)
       }
+      const finalName = (collected['项目名'] && collected['项目名'].trim()) ? collected['项目名'].trim() : projectName
+      await _saveGlobal()
       // 标记该课程已完成初次手动填写
       const done = lsGetJSON<string[]>(LS.manualSetupDone, [])
       if (!done.includes(projectId)) { done.push(projectId); lsSetJSON(LS.manualSetupDone, done) }
-      onSaved?.()
+      onSaved?.(finalName)
       onClose()
     } catch (e) {
       alert('保存失败：' + ((e as any)?.message || '网络异常'))
@@ -88,8 +127,52 @@ export default function ProjectConfigModal({ projectId, projectName, onRequestMo
           {initialOnly ? (
             // 初始化：记忆与资源同一界面整体滚动（一个滚动容器，一起滑动）
             <div className="h-full overflow-y-auto flex flex-col">
-              <MemoryView projectId={projectId} projectOnly initialEdit onEditChange={setCollected}
-                onRequestModify={onRequestModify} onRequestAnalyze={onRequestAnalyze} />
+              {/* 双形式切换：逐项填写 / 一段话告诉我 */}
+              <div className="px-6 pt-4">
+                <div className="flex gap-1 p-1 rounded-xl bg-gray-100 w-fit mb-1">
+                  <button onClick={() => setFormMode('guide')} className={'flex items-center gap-1.5 text-xs px-4 py-1.5 rounded-lg transition-colors ' + (formMode === 'guide' ? 'bg-white shadow-sm font-semibold text-gray-800' : 'text-gray-500')}>
+                    <ListChecks size={13} /> 逐项填写
+                  </button>
+                  <button onClick={() => setFormMode('free')} className={'flex items-center gap-1.5 text-xs px-4 py-1.5 rounded-lg transition-colors ' + (formMode === 'free' ? 'bg-white shadow-sm font-semibold text-gray-800' : 'text-gray-500')}>
+                    <FileText size={13} /> 一段话告诉我
+                  </button>
+                </div>
+              </div>
+              {/* 个人基本信息（全局画像，跨课程共享）：身份 / 年龄 填一次即可，空才问 */}
+              <div className="px-6 pt-2">
+                <div className="border hairline rounded-2xl p-4 bg-[var(--bg-panel)] flex flex-col gap-3 max-w-3xl">
+                  <div className="flex items-baseline justify-between">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-dim">个人信息（跨课程共享）</h3>
+                    <span className="text-[10px] text-dim">各课程共用，填一次即可</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold flex-shrink-0">身份：</span>
+                      <input value={gId} onChange={e => setGId(e.target.value)} placeholder="如：在校本科生 / 在职工程师…"
+                        className="flex-1 min-w-0 border hairline rounded-lg px-2.5 py-1.5 bg-[var(--bg-input)] text-xs outline-none focus:border-[var(--accent)]" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold flex-shrink-0">年龄：</span>
+                      <input value={gAge} onChange={e => setGAge(e.target.value)} placeholder="如：22"
+                        className="flex-1 min-w-0 border hairline rounded-lg px-2.5 py-1.5 bg-[var(--bg-input)] text-xs outline-none focus:border-[var(--accent)]" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {formMode === 'guide' ? (
+                <MemoryView projectId={projectId} projectOnly initialEdit onEditChange={setCollected}
+                  onRequestModify={onRequestModify} onRequestAnalyze={onRequestAnalyze} />
+              ) : (
+                <div className="px-6 py-4">
+                  <div className="border hairline rounded-2xl p-5 bg-[var(--bg-panel)] max-w-3xl flex flex-col gap-2.5">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-dim">用一段话描述学习画像</h3>
+                    <p className="text-[11px] text-[var(--text-muted)]">涵盖你的背景 / 目前水平 / 学习目标 / 偏好方式即可，AI 会据此调整讲解。个人身份年龄请在右侧单独填。</p>
+                    <textarea value={freeText} onChange={e => setFreeText(e.target.value)} rows={8}
+                      placeholder={'例如：我是大二本科生，没系统学过这门课但有一点基础。想学懂基本原理、能动手做小项目，希望多讲例子少讲公式推导。'}
+                      className="w-full border hairline rounded-xl px-3 py-2 bg-[var(--bg-input)] text-[13px] leading-6 outline-none resize-y focus:border-[var(--accent)]" />
+                  </div>
+                </div>
+              )}
               <div className="border-t hairline">
                 <ProjectResources projectId={projectId} naturalHeight onUploaded={onUploaded} scopeTargets={scopeTargets} />
               </div>

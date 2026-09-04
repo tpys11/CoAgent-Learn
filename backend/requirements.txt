@@ -21,3 +21,4 @@ python-multipart>=0.0.9
 sqlite-vec>=0.1.6
 trafilatura>=2.0.0
 llama-index-core
+mcp>=1.0.0  # skill/MCP 工具调用（评测器/技能系统用）

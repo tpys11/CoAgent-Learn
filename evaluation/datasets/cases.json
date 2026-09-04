@@ -1,0 +1,65 @@
+[
+  {
+    "case": 1,
+    "learner": "零基础新手",
+    "level": "初级",
+    "question": "什么是监督学习？请简要解释",
+    "kb_key": "监督学习"
+  },
+  {
+    "case": 2,
+    "learner": "零基础新手",
+    "level": "初级",
+    "question": "监督学习有哪些常见算法？",
+    "kb_key": "监督学习"
+  },
+  {
+    "case": 3,
+    "learner": "零基础新手",
+    "level": "初级",
+    "question": "请举例说明监督学习在实际中的应用",
+    "kb_key": "监督学习"
+  },
+  {
+    "case": 4,
+    "learner": "非专业本科生",
+    "level": "中级",
+    "question": "什么是监督学习？请简要解释",
+    "kb_key": "监督学习"
+  },
+  {
+    "case": 5,
+    "learner": "非专业本科生",
+    "level": "中级",
+    "question": "监督学习有哪些常见算法？",
+    "kb_key": "监督学习"
+  },
+  {
+    "case": 6,
+    "learner": "非专业本科生",
+    "level": "中级",
+    "question": "请举例说明监督学习在实际中的应用",
+    "kb_key": "监督学习"
+  },
+  {
+    "case": 7,
+    "learner": "专业进阶",
+    "level": "高级",
+    "question": "什么是监督学习？请简要解释",
+    "kb_key": "监督学习"
+  },
+  {
+    "case": 8,
+    "learner": "专业进阶",
+    "level": "高级",
+    "question": "监督学习有哪些常见算法？",
+    "kb_key": "监督学习"
+  },
+  {
+    "case": 9,
+    "learner": "专业进阶",
+    "level": "高级",
+    "question": "请举例说明监督学习在实际中的应用",
+    "kb_key": "监督学习"
+  }
+]

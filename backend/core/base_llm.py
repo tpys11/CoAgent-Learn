@@ -35,6 +35,7 @@ class BaseLLM:
                     model=self.model_name,
                     messages=messages,
                     temperature=temperature,
+                    max_tokens=2000,
                     timeout=config.LLM_REQUEST_TIMEOUT,
                     **kwargs,
                 )
@@ -73,6 +74,7 @@ class BaseLLM:
                     messages=messages,
                     temperature=temperature,
                     response_format={"type": "json_object"},
+                    max_tokens=2000,
                     timeout=config.LLM_REQUEST_TIMEOUT,
                 )
                 # D3：旧的 █████ 思考剥离助手已删（同 chat 内注释）；_parse_json 内部自带 strip，行为等价。
@@ -142,7 +144,7 @@ class BaseLLM:
         return kwargs
 
 
-    def chat_stream(self, messages: list[dict], on_token, temperature: float = 0.7, on_content=None, cancel_event=None, on_reasoning=None):
+    def chat_stream(self, messages: list[dict], on_token, temperature: float = 0.7, on_content=None, cancel_event=None, on_reasoning=None, response_format=None):
         """流式对话，每收到一个token调用on_token(chunk_text)。
         同时消费 delta.reasoning_content（v4 思考模式的推理内容，作为思维链推送）与 delta.content（最终回答），
         推理阶段 content 为空时仍能持续推送推理文本，保证前端思维链实时可见。
@@ -150,6 +152,8 @@ class BaseLLM:
         on_reasoning：仅 reasoning_content（思考）token 时调用——生成节点的思考单独流式进思维链（与回答内容区分）。
         cancel_event：用户手动停止时置位（threading.Event），chunk 循环内检查，最多延迟一个 chunk 即中断生成。"""
         kwargs = self._thinking_kwargs()
+        if response_format is not None:
+            kwargs["response_format"] = response_format
         for attempt in range(self.max_retries):
             if cancel_event and cancel_event.is_set():
                 return  # 用户手动停止：重试/等待间隙也立即退出
