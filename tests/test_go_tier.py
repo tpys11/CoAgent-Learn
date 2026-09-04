@@ -13,8 +13,9 @@ from core.model_provider import (MODEL_GO_MAIN, MODEL_GO_REVIEW,
 
 def test_go_model_ids_literal():
     # 双源同值（钉字面防漂移）：换 API ID = 本行字面 + model_provider 常量 + 前端 models.ts 镜像，三处同步改
-    assert MODEL_GO_MAIN == "GLM-5.3-Flash"
-    assert MODEL_GO_REVIEW == "Qwen3.8 Flash"
+    # S6 实测校正（owner 截图）：zen go 计划 API ID=小写 glm-5.3-flash / qwen3.8-flash，双模型 chat/completions 200 通
+    assert MODEL_GO_MAIN == "glm-5.3-flash"
+    assert MODEL_GO_REVIEW == "qwen3.8-flash"
 
 
 def test_go_registry_main_cell():
@@ -22,7 +23,8 @@ def test_go_registry_main_cell():
     assert spec.model == MODEL_GO_MAIN
     assert spec.provider == "go"
     assert spec.base_url == config.GO_BASE_URL
-    assert spec.api_key == config.GO_API_KEY
+    # S6：key=or 链（GO 优先，空则复用 ZEN——go 子通道同一 Bearer 鉴权）
+    assert spec.api_key == (config.GO_API_KEY or config.ZEN_API_KEY)
 
 
 def test_go_registry_review_cell():
@@ -59,6 +61,20 @@ def test_detect_tier_go_by_base_url(monkeypatch):
 def test_detect_tier_zen_and_none_unchanged():
     assert detect_tier("https://opencode.ai/zen/v1") == "test"
     assert detect_tier(None) == "standard"
+
+
+def test_detect_tier_go_wins_over_zen_mark(monkeypatch):
+    # S6 关键顺序守卫：go 默认端点含 zen 标记子串（opencode.ai/zen/go/v1）——
+    # 精确相等判定必须先于 zen 子串判定，否则 go 请求被误归 test
+    monkeypatch.setattr(config, "GO_BASE_URL", "https://opencode.ai/zen/go/v1")
+    assert detect_tier("https://opencode.ai/zen/go/v1") == "go"
+    assert detect_tier("https://opencode.ai/zen/go/v1/") == "go"
+    assert detect_tier("https://opencode.ai/zen/v1") == "test"   # 真 zen 端点不受影响
+
+
+def test_detect_tier_go_default_base_url():
+    # S6：config 默认 GO_BASE_URL=zen go 计划端点（零配置路径的前提）
+    assert config.GO_BASE_URL == "https://opencode.ai/zen/go/v1"
 
 
 def test_detect_tier_go_unset_base_url(monkeypatch):
@@ -115,13 +131,40 @@ def test_pick_judge_go_key_routing(monkeypatch):
                         "model": MODEL_GO_REVIEW}
 
 
+def test_pick_judge_go_zen_key_fallback(monkeypatch):
+    # S6：GO_API_KEY 空→兜底复用 ZEN_API_KEY（go 子通道同一 Bearer 鉴权，零配置路径）
+    import engine.review as rv
+    monkeypatch.setattr(config, "GO_API_KEY", "")
+    monkeypatch.setattr(config, "ZEN_API_KEY", "sk-zen-fallback")
+    monkeypatch.setattr(config, "GO_BASE_URL", "https://opencode.ai/zen/go/v1")
+    monkeypatch.setattr(config, "ZEN_TEST_MODE", "1")
+    monkeypatch.setattr(config, "TEST_CHANNEL", "go")
+    captured = {}
+
+    def fake_cache(key, base_url, model, thinking, x, factory):
+        captured.update(key=key, base_url=base_url, model=model)
+        return "LLM"
+
+    monkeypatch.setattr("engine.pipeline_v2._cached_llm", fake_cache)
+
+    class Req:
+        api_key = ""
+        base_url = "https://opencode.ai/zen/go/v1"
+
+    assert rv.pick_judge_llm(None, Req()) == "LLM"
+    assert captured == {"key": "sk-zen-fallback",
+                        "base_url": "https://opencode.ai/zen/go/v1",
+                        "model": MODEL_GO_REVIEW}
+
+
 def test_pick_judge_go_missing_key_fallback(monkeypatch, caplog):
-    # 缺 GO key 且 req/DEEPSEEK key 均空（or 兜底链全空）→ 响亮回退主模型（fail-open 先例），不抛错
+    # 缺 GO key 且 ZEN/req/DEEPSEEK key 均空（or 兜底链全空）→ 响亮回退主模型（fail-open 先例），不抛错
     import engine.review as rv
     from core.model_provider import MODEL_MAIN
     monkeypatch.setattr(config, "GO_API_KEY", "")
     monkeypatch.setattr(config, "GO_BASE_URL", "https://gw.example.com/v1")
     monkeypatch.setattr(config, "DEEPSEEK_API_KEY", "")
+    monkeypatch.setattr(config, "ZEN_API_KEY", "")
     monkeypatch.setattr(config, "ZEN_TEST_MODE", "1")
     monkeypatch.setattr(config, "TEST_CHANNEL", "go")
     captured = {}

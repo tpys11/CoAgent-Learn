@@ -109,12 +109,13 @@ def pick_judge_llm(template: str, req):
                         route["model"], _FALLBACK_JUDGE)
         model = _FALLBACK_JUDGE
     elif route["provider"] == "go":
-        # S1：go 通道判卷——对称 zen 定值格语义；URL+Key 任一缺省即响亮回退（fail-open 先例）
-        _go_key = _cfg.GO_API_KEY or key
+        # S1：go 通道判卷——对称 zen 定值格语义；S6：key 兜底链 GO||ZEN（go 子通道同一 Bearer 鉴权，
+        # 实测复用 ZEN_API_KEY 200 通），链全空才响亮回退（fail-open 先例）
+        _go_key = _cfg.GO_API_KEY or _cfg.ZEN_API_KEY or key
         if _go_key and getattr(_cfg, "GO_BASE_URL", ""):
             key, base_url = _go_key, _cfg.GO_BASE_URL
         else:
-            logger.warning("go 档判卷模型 %s 需要 GO key 与 GO Base URL（设置→AI服务），未配置——响亮回退 %s",
+            logger.warning("go 档判卷模型 %s 需要 GO key（或复用 Zen key）与 GO Base URL（设置→AI服务），未配置——响亮回退 %s",
                            route["model"], _FALLBACK_JUDGE)
             model = _FALLBACK_JUDGE
     elif route["provider"] == "siliconflow":

@@ -11,10 +11,10 @@ export const MODEL_PRO = 'deepseek-v4-pro'                 // legacy alias 目�
 export const MODEL_ZEN_TEST = 'mimo-v2.5-free'             // 双源同值① = backend MODEL_ZEN_TEST（决策 38 测试档对话/辅助实名）
 export const MODEL_ZEN_REVIEW = 'big-pickle'               // 双源同值②（RC4 测试档判卷实名 = backend MODEL_ZEN_REVIEW）
 export const MODEL_REVIEW_SF = 'Qwen/Qwen2.5-72B-Instruct' // 双源同值④（RC4 标准档判卷实名 = backend MODEL_REVIEW_SF，SF 跨厂商）
-// S3（owner 09-04 拍板）：go 第二测试通道实名——字面占位，owner 提供网关确切 API ID 后两侧各改一行
-// （backend MODEL_GO_* 同步；zen smoke2 先例：显示名≠API ID 会 401）
-export const MODEL_GO_MAIN = 'GLM-5.3-Flash'               // 双源同值⑤ = backend MODEL_GO_MAIN（go 通道主对话/辅助）
-export const MODEL_GO_REVIEW = 'Qwen3.8 Flash'             // 双源同值⑥ = backend MODEL_GO_REVIEW（go 通道判卷）
+// S3/S6（owner 09-04 拍板+截图实测校正）：go 第二测试通道实名=zen go 计划子通道 API ID（小写，
+// 双模型 chat/completions 实测 200 通）；换 API ID=两侧各改一行+两处测试钉字
+export const MODEL_GO_MAIN = 'glm-5.3-flash'               // 双源同值⑤ = backend MODEL_GO_MAIN（go 通道主对话/辅助）
+export const MODEL_GO_REVIEW = 'qwen3.8-flash'             // 双源同值⑥ = backend MODEL_GO_REVIEW（go 通道判卷）
 export const DEEPSEEK_BASE_URL = 'https://api.deepseek.com/v1'
 export const ZEN_BASE_URL = 'https://opencode.ai/zen/v1'
 

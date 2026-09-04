@@ -35,10 +35,10 @@ export function testPresetLsWrites(zenBaseUrl: string): { provider: string; mode
 }
 
 /** S4：go 通道 LS 写集（对称 zen 版）——model 字面与 backend MODEL_GO_MAIN / models.ts
- *  双源同值⑤一致；goBaseUrl 空串同款防御性抛错（S3：go 路由 base_url 取此值）。 */
+ *  双源同值⑤一致（S6 实测校正=zen go 计划小写 API ID）；goBaseUrl 空串同款防御性抛错（S3：go 路由 base_url 取此值）。 */
 export function goTestPresetLsWrites(goBaseUrl: string): { provider: string; model: string; goBaseUrl: string } {
   if (!goBaseUrl) throw new Error('goTestPresetLsWrites: goBaseUrl 为空——调用方禁走（S3 路由约束）')
-  return { provider: 'go', model: 'GLM-5.3-Flash', goBaseUrl }
+  return { provider: 'go', model: 'glm-5.3-flash', goBaseUrl }
 }
 
 /** 标准档 PUT body（退出测试档=本地解析+后台链路回标准档）：

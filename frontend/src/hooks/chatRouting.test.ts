@@ -65,9 +65,9 @@ describe('resolveChatModel (RA3-S1)', () => {
     expect(resolveChatModel('zen', '')).toBe('mimo-V2.5 Free')
   })
 
-  it('go 取定值 GLM-5.3-Flash（S3：不吃 LS.model；401 校正=改镜像常量一行）', () => {
-    expect(resolveChatModel('go', '任何杂值')).toBe('GLM-5.3-Flash')
-    expect(resolveChatModel('go', '')).toBe('GLM-5.3-Flash')
+  it('go 取定值 glm-5.3-flash（S3/S6 实测校正：不吃 LS.model；换 API ID=改镜像常量一行）', () => {
+    expect(resolveChatModel('go', '任何杂值')).toBe('glm-5.3-flash')
+    expect(resolveChatModel('go', '')).toBe('glm-5.3-flash')
   })
 
   it('alias 迁移映射保留（老存量名→v4 系，标准档零回归；zen 分支不吃 alias）', () => {

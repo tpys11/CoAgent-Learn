@@ -161,6 +161,8 @@ export default function ServiceSettings() {
         rrf_k: d.chunking?.rrf_k ?? 60,
         fetch_mult: d.chunking?.fetch_mult ?? 3,
       }))
+      // S6：后端默认 go 端点落 LS（零配置路径——GO URL 无需手填，开 go 开关即走）
+      if (d.go?.base_url) lsSet(LS.goBaseUrl, d.go.base_url)
     }).catch(() => {})
   }, [])
 
@@ -245,6 +247,10 @@ export default function ServiceSettings() {
         lsSet(LS.provider, gls.provider)
         lsSet(LS.model, gls.model)
         lsSet(LS.goBaseUrl, gls.goBaseUrl)
+        // S6：零配置——provKeys.go 空且 zen 有值时复制（对话发送 apiKey=provKeys[provider]；
+        // go 子通道同一 Bearer 鉴权，实测复用 ZEN key 200 通）
+        const keys = lsGetJSON(LS.providerKeys, {} as Record<string, string>)
+        if (!keys.go && keys.zen) lsSetJSON(LS.providerKeys, { ...keys, go: keys.zen })
       }
       setPresetGuardHint(false)
       setPresetFailMsg('')

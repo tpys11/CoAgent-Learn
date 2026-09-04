@@ -25,9 +25,9 @@ describe('REGISTRY_MIRROR 双源同值（与 backend tests/test_rd_s1_registry.p
     expect(MODEL_REVIEW_SF).toBe('Qwen/Qwen2.5-72B-Instruct') // 双源同值④（RC4-S1 标准档判卷定值）
   })
 
-  it('go 通道实名同值（S3）：GLM-5.3-Flash / Qwen3.8 Flash——字面占位，owner 确切 API ID 到位后两侧各改一行', () => {
-    expect(MODEL_GO_MAIN).toBe('GLM-5.3-Flash')      // 双源同值⑤
-    expect(MODEL_GO_REVIEW).toBe('Qwen3.8 Flash')    // 双源同值⑥
+  it('go 通道实名同值（S3/S6 实测校正）：glm-5.3-flash / qwen3.8-flash（zen go 计划小写 API ID）', () => {
+    expect(MODEL_GO_MAIN).toBe('glm-5.3-flash')      // 双源同值⑤
+    expect(MODEL_GO_REVIEW).toBe('qwen3.8-flash')    // 双源同值⑥
   })
 
   it('矩阵语义（RC4-S1）：review 两档定值——standard=Qwen2.5-72B(SF 跨厂商)、test=big-pickle(zen)', () => {

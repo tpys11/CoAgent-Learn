@@ -73,10 +73,10 @@ class Config:
     # R-D S1：测试档全局开关（'1'=后台链路走 test 档语义，决策 38）；S4 起设置页 PUT/GET 透传
     ZEN_TEST_MODE: str = os.getenv("ZEN_TEST_MODE", "0")
 
-    # ── GO 网关（owner 09-04 拍板）：独立 OpenAI 兼容网关，与 zen 上下并列的第二测试通道 ──
-    # 主对话 GLM-5.3-Flash / 审核 Qwen3.8 Flash（model_provider MODEL_GO_* 定值）；端点无默认值
-    # ——URL+Key 由设置页填（对称 zen），空=go 档不可用（current_tier 定向回 test 由前端互斥开关保证不发生）
-    GO_BASE_URL: str = os.getenv("GO_BASE_URL", "")
+    # ── GO 通道（owner 09-04 拍板）：zen 网关 go 计划子通道，与 zen 上下并列的第二测试通道 ──
+    # 主对话 glm-5.3-flash / 审核 qwen3.8-flash（model_provider MODEL_GO_* 定值，S6 实测 200 通）；
+    # 端点默认=zen go 计划（S6 实测同一 Bearer 鉴权复用 ZEN_API_KEY——key 空时 or 链兜底，零配置可开）
+    GO_BASE_URL: str = os.getenv("GO_BASE_URL", "https://opencode.ai/zen/go/v1")
     GO_API_KEY: str = os.getenv("GO_API_KEY", "")
     # 测试态通道定向（ZEN_TEST_MODE='1' 时生效）：'zen'→test 档 / 'go'→go 档；默认 zen 兼容旧语义
     TEST_CHANNEL: str = os.getenv("TEST_CHANNEL", "zen")

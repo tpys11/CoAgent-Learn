@@ -60,10 +60,10 @@ describe('presets', () => {
     expect(testPresetPutBody('zen').test_channel).toBe('zen')
   })
 
-  it('S4: goTestPresetLsWrites 返回 go 写集三键（model=双源同值⑤字面）', () => {
+  it('S4: goTestPresetLsWrites 返回 go 写集三键（model=双源同值⑤字面，S6 实测校正小写 API ID）', () => {
     const w = goTestPresetLsWrites('https://gw.example.com/v1')
     expect(w.provider).toBe('go')
-    expect(w.model).toBe('GLM-5.3-Flash')
+    expect(w.model).toBe('glm-5.3-flash')
     expect(w.goBaseUrl).toBe('https://gw.example.com/v1')
   })
 
