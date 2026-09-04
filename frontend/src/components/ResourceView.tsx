@@ -164,13 +164,16 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
     if (domains.includes(name)) { alert('该领域已存在'); return }
     setNewDomainLoading(true)
     try {
-      const d = await api.generateDomain({ domain: name, api_key: lsGet(LS.apiKey, '') })
+      const d = await api.generateOutline({ domain: name, api_key: lsGet(LS.apiKey, '') })
       if (d.status === 'ok') {
-        const nt = (d.tutorials || []).map((t: any) => ({ ...t, id: 'dom-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), domain: name, preset: false }))
+        // 大纲章节存 syllabus（供课程大纲展示 + 按需生成导读/真实链接）
+        const chapters = (d.chapters || []).map((ch: any) => ({ title: ch.title || '', goal: ch.goal || '', keywords: Array.isArray(ch.keywords) ? ch.keywords : [] })).filter((ch: any) => ch.title)
+        const syl = lsGetJSON<Record<string, any>>(LS.syllabus, {})
+        syl[name] = { chapters }
+        lsSetJSON(LS.syllabus, syl)
+        if (chapters.length < 3) alert('大纲生成不完整（仅 ' + chapters.length + ' 章），词条已保存，可稍后重新生成领域。')
         const nw = (d.wiki || []).map((w: any) => ({ ...w, domain: name }))
-        const nextT = [...tutorials, ...nt]
         const nextW = [...customWiki, ...nw]
-        saveTutorials(nextT)
         setCustomWiki(nextW)
         lsSetJSON(LS.customWiki, nextW)
         const nextDomains = [...customDomains, name]
