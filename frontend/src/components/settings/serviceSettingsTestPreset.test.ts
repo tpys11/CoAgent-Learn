@@ -38,3 +38,16 @@ describe('RA4-S2 测试档开关直切（owner 拍板：取消确认框，点击
     expect(SRC).toContain('setPresetFailMsg(')
   })
 })
+
+// ── FIXAUX③：go 通道 key 独立（7b91c44 owner 拍板三通道独立持键）——源级守卫 ──
+describe('FIXAUX③ go key 独立持键（对称 zai 先例）——源级守卫', () => {
+  it('旧 S6 zen→go key 复制语义禁止复活（拿 A 通道 key 冒充 B 通道凭据=铁律 35 前端形态）', () => {
+    expect(SRC).not.toContain('go: keys.zen')
+  })
+
+  it('go 未配 key 禁走+持久守卫存在（对称 zai：!keysG.go && !svc.go_key_set → 守卫返回）', () => {
+    expect(SRC).toContain('!keysG.go && !svc.go_key_set')
+    expect(SRC).toContain("setGuardKind('go')")
+    expect(SRC).toContain('setPresetGuardHint(true)')
+  })
+})

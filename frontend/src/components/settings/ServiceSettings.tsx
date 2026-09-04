@@ -265,7 +265,13 @@ export default function ServiceSettings() {
     const goBaseUrl = lsGet(LS.goBaseUrl, '')
     const zaiBaseUrl = lsGet(LS.zaiBaseUrl, '')
     if (channel === 'zen' && !zenBaseUrl) { setGuardKind('zen'); setPresetGuardHint(true); return }
-    if (channel === 'go' && !goBaseUrl) { setGuardKind('go'); setPresetGuardHint(true); return }
+    if (channel === 'go') {
+      if (!goBaseUrl) { setGuardKind('go'); setPresetGuardHint(true); return }
+      // FIXAUX③：go 未配 key 禁走并持久守卫（对称 zai 先例；7b91c44 owner 拍板三通道独立持键，
+      // 旧 S6 zen→go 复制=凭据臆造，已删除）——key 唯一来源=saveGoKey 用户输入落 LS
+      const keysG = lsGetJSON(LS.providerKeys, {} as Record<string, string>)
+      if (!keysG.go && !svc.go_key_set) { setGuardKind('go'); setPresetGuardHint(true); return }
+    }
     // C1：zai 无跨通道 key 兜底（ZAI_API_KEY 独立）——未配 key 禁走并持久守卫
     if (channel === 'zai') {
       const keys0 = lsGetJSON(LS.providerKeys, {} as Record<string, string>)
@@ -286,10 +292,6 @@ export default function ServiceSettings() {
         lsSet(LS.provider, gls.provider)
         lsSet(LS.model, gls.model)
         lsSet(LS.goBaseUrl, gls.goBaseUrl)
-        // S6：零配置——provKeys.go 空且 zen 有值时复制（对话发送 apiKey=provKeys[provider]；
-        // go 子通道同一 Bearer 鉴权，实测复用 ZEN key 200 通）
-        const keys = lsGetJSON(LS.providerKeys, {} as Record<string, string>)
-        if (!keys.go && keys.zen) lsSetJSON(LS.providerKeys, { ...keys, go: keys.zen })
       } else {
         const zls = zaiTestPresetLsWrites(zaiBaseUrl)
         lsSet(LS.preset, 'test')

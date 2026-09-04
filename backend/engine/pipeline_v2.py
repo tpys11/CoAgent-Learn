@@ -203,22 +203,45 @@ def _cached_llm(api_key, base_url, model, thinking, effort, build):
 def _make_llm(req, model_override=None):
     from core.base_llm import DeepSeekLLM
     from core.config import config as _cfg
-    api_key = req.api_key or _cfg.DEEPSEEK_API_KEY
-    model = model_override or req.model or DEFAULT_MODEL
+    from core.model_provider import detect_tier, resolve_model
+    # FIXAUX①：测试档 key 路由——注册表定值格 key 优先（决策 38/40/41 格语义；R-D 单一决策点）。
+    # 测试档严禁落 DEEPSEEK 兜底（三通道 key 隔离，owner 7b91c44 拍板：内容同值也各自持键）——
+    # 格 key 与 req.api_key 均空时构造响亮抛「未配置 API Key」，不静默换通道。
+    tier = detect_tier(req.base_url, req.model)
+    if tier != "standard":
+        spec = resolve_model("main", tier)
+        api_key = spec.api_key or req.api_key   # 注册表格 key 优先，空才回落 req（前端残留=上一通道 key）
+        base_url = spec.base_url
+        model = model_override or spec.model    # 显式覆盖语义保留（model_override 仍最优先）
+    else:
+        # standard 档行为逐字节不变（守卫回归控制断言钉死）
+        api_key = req.api_key or _cfg.DEEPSEEK_API_KEY
+        base_url = req.base_url
+        model = model_override or req.model or DEFAULT_MODEL
     return _cached_llm(
-        api_key, req.base_url, model, None, None,
-        lambda: DeepSeekLLM(api_key=api_key, model=model, base_url=req.base_url))
+        api_key, base_url, model, None, None,
+        lambda: DeepSeekLLM(api_key=api_key, model=model, base_url=base_url))
 
 
 def _make_fast_llm(req):
     """快模型：同通道关思考（现版规则：未配置独立快模型时=主模型关thinking）。"""
     from core.base_llm import DeepSeekLLM
     from core.config import config as _cfg
-    api_key = req.api_key or _cfg.DEEPSEEK_API_KEY
-    model = req.model or DEFAULT_MODEL
+    from core.model_provider import detect_tier, resolve_model
+    # FIXAUX①：fast 角色按注册表自己格取 key/端点/模型（go/zai 档 fast=main 同格）
+    tier = detect_tier(req.base_url, req.model)
+    if tier != "standard":
+        spec = resolve_model("fast", tier)
+        api_key = spec.api_key or req.api_key
+        base_url = spec.base_url
+        model = spec.model
+    else:
+        api_key = req.api_key or _cfg.DEEPSEEK_API_KEY
+        base_url = req.base_url
+        model = req.model or DEFAULT_MODEL
     return _cached_llm(
-        api_key, req.base_url, model, False, None,
-        lambda: DeepSeekLLM(api_key=api_key, model=model, base_url=req.base_url,
+        api_key, base_url, model, False, None,
+        lambda: DeepSeekLLM(api_key=api_key, model=model, base_url=base_url,
                             thinking=False))
 
 

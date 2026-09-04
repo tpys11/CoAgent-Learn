@@ -4,6 +4,7 @@
   1. 闭包捕获的 on_token / cancel_event 参数化为显式入参
   2. 其余分支（```json 围栏 → 裸花括号 → 纯文本兜底）逐字保留
 旧 agents/graph.py 内的同名副本继续服务旧路径，Loop5 删除时一并消亡。"""
+import ast
 import json
 import logging
 import re
@@ -43,12 +44,27 @@ def think_then_json(llm, system_prompt: str, user_prompt: str, agent_name: str,
         m = re.search(r'```json\s*([\s\S]*?)\s*```', raw)
         if m:
             thinking = raw[:m.start()].strip()
-            result = json.loads(m.group(1))
+            try:
+                result = json.loads(m.group(1))
+            except ValueError as _ve:
+                try:
+                    # FIXAUX②：qwen3.8-flash 单引号 JSON 实录修复——json.loads 拒单引号伪 JSON，
+                    # ast.literal_eval 规整；双失败抛原 ValueError（「执行异常」指纹语义不变）
+                    result = ast.literal_eval(m.group(1))
+                except (ValueError, SyntaxError):
+                    raise _ve
         else:
             m2 = re.search(r'\{[\s\S]*\}', raw)
             if m2:
                 thinking = raw[:m2.start()].strip()
-                result = json.loads(m2.group())
+                try:
+                    result = json.loads(m2.group())
+                except ValueError as _ve:
+                    try:
+                        # FIXAUX②：qwen3.8-flash 单引号 JSON 实录修复（花括号分支同款兜底）
+                        result = ast.literal_eval(m2.group())
+                    except (ValueError, SyntaxError):
+                        raise _ve
             else:
                 thinking = raw[:300]
                 result = {"content": raw}
