@@ -222,8 +222,6 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
   const [mcpTools, setMcpTools] = useState<Record<string, Array<{ name: string; description: string }>>>({})
   const [mcpTesting, setMcpTesting] = useState<Record<string, boolean>>({})
 
-  useEffect(() => {
-    setMode(agent?.mode || '均衡')
   const uploadSkill = async () => {
     const name = skillUploadName.trim()
     if (!name || !skillUploadCode.trim()) { setSkillUploadMsg('请填写名称和代码'); return }
@@ -248,6 +246,8 @@ export default function AgentsView({ agents, onSave, onReplace, projectId }: Pro
     fetch('/api/skills').then(r => r.json()).then(d => setAllSkills(d.skills || []))
   }
 
+  useEffect(() => {
+    setMode(agent?.mode || '均衡')
     setPrompt(agent?.systemPrompt || '')
     setSubIntroOpen(false)
     api.listSkills().then(d => {

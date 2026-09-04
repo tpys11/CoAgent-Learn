@@ -4,7 +4,7 @@ import { LS, lsGetJSON, lsSetJSON } from '../storage'
 import { api } from '../api'
 import { OutlineTree } from './OutlineTree'
 
-interface Dialogue { id: string; name: string; archived?: boolean }
+interface Dialogue { id: string; name: string; projectId?: string; archived?: boolean }
 interface KbDoc { source: string; chunks: number; preview: string; vectorized?: boolean; tree?: any[] }
 export default function ProjectSidebar({ project, dialogues, currentDialogueId, kbRefreshKey = 0, onHome, onSelectDialogue, onCreateDialogue, onRenameDialogue, onDeleteDialogue, onOpenMemory, onOpenResource, onCollapse, onOpenKbDoc }: {
   project: { id: string; name: string } | null

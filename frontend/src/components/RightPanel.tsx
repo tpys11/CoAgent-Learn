@@ -10,6 +10,8 @@ import { api } from '../api'
 
 interface Props {
   messageCount: number
+  /** 当前对话全部消息 */
+  messages?: any[]
   projectId?: string | null
   /** 第二对话 id（App 持有，主对话完成后为它同步生成横向拓展追问） */
   sideDialogueId?: string
