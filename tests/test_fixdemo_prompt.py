@@ -51,6 +51,8 @@ def test_fixdemo_guard2_terminology_bilingual():
     src = _source()
     assert "【术语规范】" in src, "pipeline_v2.py 缺【术语规范】条款（FIXDEMO 回退？）"
     assert "中英文对照" in src, "【术语规范】须要求关键术语首次出现给中英文对照"
+    # FIXDEMO2b：覆盖判定口径对齐——概念须用标准中文名称命名（覆盖率关键词自标注口径）
+    assert "标准中文名称命名" in src, "【术语规范】缺标准中文命名要求（覆盖判定关键词口径对齐）"
 
 
 def test_fixdemo_guard3_formula_format_regression_anchor():

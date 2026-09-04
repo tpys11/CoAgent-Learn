@@ -600,7 +600,8 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                     "④篇幅压缩：短句为主，总长不超过常规回答的一半；"
                     "⑤结尾给一个「下一步建议」帮助学习者小步前进。")
         base_system += ("\n【术语规范】关键术语首次出现时给出中英文对照，"
-                        "如「自注意力（Self-Attention）」「QKV（Query/Key/Value）」「KV缓存（KV Cache）」，全文统一用词。")
+                        "如「自注意力（Self-Attention）」「QKV（Query/Key/Value）」「KV缓存（KV Cache）」，全文统一用词。"
+                        "回答中涉及的概念须使用其标准中文名称命名（如：参数高效微调、长文本处理）。")
         # 画像/历史上下文注入（v1 对齐）：用户背景、偏好、早期摘要、近期原文
         context_blocks = ""
         if profile_cache.get("用户背景"):
