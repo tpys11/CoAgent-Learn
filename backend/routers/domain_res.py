@@ -74,10 +74,13 @@ def _outline_sync(req):
         "}",
         "要求：chapters 5-8 章，从入门到进阶、覆盖该领域核心知识链路；wiki 5-8 个领域核心词条。",
     ])
+    logger.info("[domain-outline] domain=%s key=%s", name, ('set' if (req.api_key or '').strip() else 'EMPTY'))
     data = _llm_json(req.api_key, req.base_url, req.model, prompt)
     if not data:
         return {"status": "error", "msg": "AI 返回内容无法解析"}
-    return {"status": "ok", "chapters": data.get("chapters") or [], "wiki": data.get("wiki") or []}
+    chs = data.get("chapters") or []; wks = data.get("wiki") or []
+    logger.info("[domain-outline] done chapters=%d wiki=%d", len(chs), len(wks))
+    return {"status": "ok", "chapters": chs, "wiki": wks}
 
 
 @router.post("/api/domain/chapter")
@@ -97,6 +100,7 @@ def _chapter_sync(req):
             "这章学什么、关键概念、建议的学习顺序、容易踩的坑、学完自测两问。只输出 Markdown 正文，不要其它说明。")
     except Exception:
         intro = ""
+    logger.info("[domain-chapter] domain=%s title=%s key=%s", name, title, ('set' if (req.api_key or '').strip() else 'EMPTY'))
     links = []
     try:
         from services.websearch import search_multi
