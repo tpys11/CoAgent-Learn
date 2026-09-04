@@ -3,7 +3,7 @@ import { Database, Check, X } from 'lucide-react'
 import { api } from '../../api'
 import type { SettingsData } from '../../types'
 import { LS, lsGet, lsSet, lsRemove, lsGetJSON, lsSetJSON } from '../../storage'
-import { SERVICE_GROUPS, TEST_PRESET_NOTE, KB_MERGE_NOTE, TEST_PRESET_ZEN_GUARD_NOTE, TEST_PRESET_ON_NOTE, TEST_PRESET_OFF_NOTE, REVIEW_BUBBLE_NOTE, GO_CHANNEL_NOTE, TEST_PRESET_GO_GUARD_NOTE, GO_ON_NOTE, CHANNEL_EXCLUDE_NOTE, ZAI_CHANNEL_NOTE, TEST_PRESET_ZAI_GUARD_NOTE, ZAI_ON_NOTE } from './serviceGroups'
+import { SERVICE_GROUPS, TEST_PRESET_NOTE, KB_MERGE_NOTE, TEST_PRESET_ZEN_GUARD_NOTE, TEST_PRESET_ON_NOTE, TEST_PRESET_OFF_NOTE, REVIEW_BUBBLE_NOTE, GO_CHANNEL_NOTE, TEST_PRESET_GO_GUARD_NOTE, GO_ON_NOTE, ZAI_CHANNEL_NOTE, TEST_PRESET_ZAI_GUARD_NOTE, ZAI_ON_NOTE } from './serviceGroups'
 import { buildSvcBody } from './settingsPayload'
 import { testPresetLsWrites, goTestPresetLsWrites, zaiTestPresetLsWrites, testPresetPutBody, standardPresetPutBody } from './presets'
 import SelfCheckCard from './SelfCheckCard'
@@ -109,16 +109,8 @@ export default function ServiceSettings() {
     embedding_api_key: '',
     mineru_api_token: '', mathpix_app_id: '', mathpix_app_key: '',
   })
-  // Zen key 输入（RA-S3：原 ZenProviderCard 双写逻辑内联至此）
-  const [zenKey, setZenKey] = useState('')
-  const [zenSaving, setZenSaving] = useState(false)
-  // RA4-S1：保存失败持久红字态——不清到下次成功
-  const [zenSaveErr, setZenSaveErr] = useState(false)
-  // S4：go 通道输入（URL+Key）与保存态——与 zen 输入同构
-  const [goUrl, setGoUrl] = useState(() => lsGet(LS.goBaseUrl, ''))
-  const [goKey, setGoKey] = useState('')
-  const [goSaving, setGoSaving] = useState(false)
-  const [goSaveErr, setGoSaveErr] = useState(false)
+  // C3 09-04：Zen/Go 的 Key 与 URL 输入块按 owner 圈选整体删除——zen key 已在后端配置（GET 回显
+  // 徽标仍在自检卡）、go 全零配置（URL 默认值+key 兜底复用 Zen）；仅 Z.AI 保留 Key 输入（key 独立须用户填）
   // C1：zai 通道输入（URL 固定官方端点由 GET 落 LS，仅 Key 输入）与保存态
   const [zaiKey, setZaiKey] = useState('')
   const [zaiSaving, setZaiSaving] = useState(false)
@@ -172,6 +164,8 @@ export default function ServiceSettings() {
       }))
       // S6：后端默认 go 端点落 LS（零配置路径——GO URL 无需手填，开 go 开关即走）
       if (d.go?.base_url) lsSet(LS.goBaseUrl, d.go.base_url)
+      // C3：zen 端点落 LS（对称 go/zai——Zen Key UI 已删，开 zen 开关所需的 base_url 由 GET 保证）
+      if (d.zen?.base_url) lsSet(LS.zenBaseUrl, d.zen.base_url)
       // C1：zai 官方端点落 LS（URL 固定官方，开 zai 开关即走）
       if (d.zai?.base_url) lsSet(LS.zaiBaseUrl, d.zai.base_url)
     }).catch(() => {})
@@ -207,32 +201,9 @@ export default function ServiceSettings() {
     }
   }
 
-  /** RA-S3：保存 Zen Key（原 ZenProviderCard 双写逻辑内联：settings DB + LS.providerKeys.zen）；
-   *  顺带把 zen.base_url 落 LS.zenBaseUrl——测试档 LS 写集与 S5 主链路 zen 路由都读它。 */
-  const saveZenKey = async () => {
-    if (!zenKey.trim()) return
-    setZenSaving(true)
-    try {
-      // RA5-S2：改调专用通道 saveZenKey（不再经通用 saveSettings）——E-40 教训：字段存活不靠约定靠通道
-      await api.saveZenKey(zenKey.trim())
-      const keys = lsGetJSON(LS.providerKeys, {} as Record<string, string>)
-      lsSetJSON(LS.providerKeys, { ...keys, zen: zenKey.trim() })
-      const g = await api.getSettings()
-      lsSet(LS.zenBaseUrl, g.zen?.base_url || '')
-      // RA2-S2：保存后状态收敛走纯函数——输入保留（旧卡保存即清空输入的交互已删，owner 反馈③）
-      const next = zenSaveUiState(zenKey, g)
-      setZenKey(next.zenKey)
-      setSvc(s => ({ ...s, zen_key_set: next.zenKeySet, zen_key_hint: next.zenKeyHint }))
-      setZenSaveErr(false)
-      flash(zenSavedFlashText())
-    } catch {
-      // RA4-S1：失败持久红字（flash 降级为动作回执，状态本体走 zenSaveErr 常驻渲染）
-      setZenSaveErr(true)
-      flashErr(zenSaveFailFlashText())
-    } finally {
-      setZenSaving(false)
-    }
-  }
+  /** C3 09-04：saveZenKey/saveGoKey 输入函数随对应 UI 块删除（owner 圈选）——zen key 已在后端
+   *  配置、go 全零配置兜底复用 Zen；api.saveZenKey/api.saveGoKey 通道在 api.ts 留存（PUT 体契约
+   *  测试钉住），未来需要换 key 时可直接接线。 */
 
   /** RA4-S2：进入测试档——owner 拍板取消确认框，点击直接转换；
    *  先 PUT（失败回弹不写 LS，防 DB/LS 两端漂移）→ 再写 LS 写集。
@@ -335,30 +306,6 @@ export default function ServiceSettings() {
     }
   }
 
-  /** S4：保存 go 通道 URL+Key（对称 saveZenKey：专用通道 saveGoKey 防 E-40 类字段静默丢失；
-   *  URL 必须落库——后端 detect_tier 靠「req.base_url==GO_BASE_URL」精确判定；LS 双写
-   *  providerKeys.go（对话发送 apiKey=provKeys[provider]）+LS.goBaseUrl（主链路 go 路由读）。 */
-  const saveGoKey = async () => {
-    if (!goKey.trim() || !goUrl.trim()) return
-    setGoSaving(true)
-    try {
-      await api.saveGoKey(goKey.trim(), goUrl.trim())
-      const keys = lsGetJSON(LS.providerKeys, {} as Record<string, string>)
-      lsSetJSON(LS.providerKeys, { ...keys, go: goKey.trim() })
-      const g = await api.getSettings()
-      lsSet(LS.goBaseUrl, g.go?.base_url || goUrl.trim())
-      // RA2-S2 同款语义：输入保留（不清空），set/hint 落 svc 持久渲染
-      setSvc(s => ({ ...s, go_key_set: !!g.go?.api_key_set, go_key_hint: g.go?.api_key_hint || '', go_base_url: g.go?.base_url || goUrl.trim() }))
-      setGoSaveErr(false)
-      flash(zenSavedFlashText())
-    } catch {
-      setGoSaveErr(true)
-      flashErr(zenSaveFailFlashText())
-    } finally {
-      setGoSaving(false)
-    }
-  }
-
   // RC4-S2：合并栏「独立审核」开关退役（owner 09-03 终版：判卷路由=档位定值格，
   // 无用户开关语义）——原开关处理器/PUT 体构造函数/失败红字态全部删除，
   // 气泡 B 下方改为一行档位定值说明（REVIEW_BUBBLE_NOTE）。
@@ -383,7 +330,7 @@ export default function ServiceSettings() {
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold">测试档</p>
                   <p className={`text-[10px] ${testChannel ? 'text-green-700' : 'text-dim'}`}>
-                    {testChannel ? `当前：${testChannel === 'zen' ? 'Zen' : 'Go'} 通道` : TEST_PRESET_OFF_NOTE}
+                    {testChannel ? `当前：${testChannel === 'zen' ? 'Zen' : (testChannel === 'go' ? 'Go' : 'Z.AI')} 通道` : TEST_PRESET_OFF_NOTE}
                   </p>
                 </div>
                 {/* RA4-S2：三态持久指示——启用绿字/未启用灰字/守卫 amber/失败红字（flash 只做动作回执） */}
@@ -397,65 +344,23 @@ export default function ServiceSettings() {
                 )}
                 {presetFailMsg && <p className="text-[10px] text-red-500">{presetFailMsg}</p>}
 
-                {/* ── Zen 通道行 ── */}
+                {/* ── Zen 通道行（C3：Key 输入块已删——key 在后端配置，开开关即走） ── */}
                 <div className="flex items-center justify-between">
-                  <p className="text-[11px] font-semibold text-dim">Zen 通道（opencode zen 免费档）</p>
+                  <p className="text-[11px] font-semibold text-dim">Zen 通道</p>
                   <Toggle checked={testChannel === 'zen'} onChange={onZenToggle} />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <p className="text-[11px] font-medium text-dim">Zen API Key</p>
-                  {/* RA2-S2：输入框常驻不再被「已配置」分支替换——保存后输入保留，尾号提示在其下方（不依赖清空触发） */}
-                  <div className="flex items-center gap-2">
-                    <input type="password" autoComplete="new-password" value={zenKey}
-                      placeholder="sk-...（OpenCode Zen Key）"
-                      onChange={e => setZenKey(e.target.value)} className={inputCls} />
-                    <button onClick={saveZenKey} disabled={zenSaving || !zenKey.trim()}
-                      className={`px-4 py-1.5 text-[11px] rounded-lg font-semibold flex-shrink-0 ${zenSaving ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#1a1a1a] text-white'}`}>
-                      {zenSaving ? '保存中…' : '保存'}
-                    </button>
-                  </div>
-                  {/* RA4-S1：持久配置态徽标（绿=已配置+尾号，灰=未配置）——不再依赖 flash；hint 空串仍显「已配置」 */}
-                  <p className={`text-[10px] ${svc.zen_key_set ? 'text-green-700' : 'text-dim'}`}>
-                    {zenKeyConfigText(svc.zen_key_set, svc.zen_key_hint)}
-                  </p>
-                  {zenSaveErr && (
-                    <p className="text-[10px] text-red-500">{zenSaveFailPersistText()}</p>
-                  )}
                 </div>
                 <p className="text-[10px] text-dim">{TEST_PRESET_NOTE}</p>
 
-                {/* ── Go 通道行（与 Zen 上下并列；S4 owner 拍板） ── */}
+                {/* ── Go 通道行（与 Zen 上下并列；S4 owner 拍板；C3：URL/Key 输入块已删——后端默认端点+key 兜底复用 Zen） ── */}
                 <div className="flex items-center justify-between">
-                  <p className="text-[11px] font-semibold text-dim">Go 通道（独立网关）</p>
+                  <p className="text-[11px] font-semibold text-dim">Go 通道</p>
                   <Toggle checked={testChannel === 'go'} onChange={onGoToggle} />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <p className="text-[11px] font-medium text-dim">GO Base URL</p>
-                  <input type="text" value={goUrl}
-                    placeholder="https://...（go 网关地址，OpenAI 兼容 /v1）"
-                    onChange={e => setGoUrl(e.target.value)} className={inputCls} />
-                  <p className="text-[11px] font-medium text-dim">GO API Key</p>
-                  <div className="flex items-center gap-2">
-                    <input type="password" autoComplete="new-password" value={goKey}
-                      placeholder="sk-...（GO Key）"
-                      onChange={e => setGoKey(e.target.value)} className={inputCls} />
-                    <button onClick={saveGoKey} disabled={goSaving || !goKey.trim() || !goUrl.trim()}
-                      className={`px-4 py-1.5 text-[11px] rounded-lg font-semibold flex-shrink-0 ${goSaving ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#1a1a1a] text-white'}`}>
-                      {goSaving ? '保存中…' : '保存'}
-                    </button>
-                  </div>
-                  <p className={`text-[10px] ${svc.go_key_set ? 'text-green-700' : 'text-dim'}`}>
-                    {zenKeyConfigText(svc.go_key_set, svc.go_key_hint)}
-                  </p>
-                  {goSaveErr && (
-                    <p className="text-[10px] text-red-500">{zenSaveFailPersistText()}</p>
-                  )}
                 </div>
                 <p className="text-[10px] text-dim">{GO_CHANNEL_NOTE}</p>
 
                 {/* ── Z.AI 通道行（与 Zen/Go 上下并列；C1 owner 拍板，专用记忆机制测试） ── */}
                 <div className="flex items-center justify-between">
-                  <p className="text-[11px] font-semibold text-dim">Z.AI 通道（智谱 bigmodel 官方端点）</p>
+                  <p className="text-[11px] font-semibold text-dim">Z.AI 通道</p>
                   <Toggle checked={testChannel === 'zai'} onChange={onZaiToggle} />
                 </div>
                 <div className="flex flex-col gap-1.5">
@@ -477,7 +382,6 @@ export default function ServiceSettings() {
                   )}
                 </div>
                 <p className="text-[10px] text-dim">{ZAI_CHANNEL_NOTE}</p>
-                <p className="text-[10px] text-dim">{CHANNEL_EXCLUDE_NOTE}</p>
               </div>
             )}
 

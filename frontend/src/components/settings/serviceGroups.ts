@@ -15,8 +15,9 @@ export const TEST_PRESET_NOTE =
 /** RA-S3：合并栏小字（owner 指定原文，一字不改） */
 export const KB_MERGE_NOTE = '填写一个key，选用固定的知识库服务与独立审核模型'
 
-/** RA4-S2：zenBaseUrl 空守卫持久内联文案（旧瞬时 flash 即 return=开关不亮无反馈根因——owner 反馈②b） */
-export const TEST_PRESET_ZEN_GUARD_NOTE = '请先填写并保存 Zen Key，测试档走 Zen 通道'
+/** RA4-S2：zenBaseUrl 空守卫持久内联文案（C3 09-04 改写：Zen Key UI 已删，base_url 由 GET 落 LS，
+ *  守卫仅在后端不可达时触发——旧文案「请先填写并保存 Zen Key」对应的输入块已不存在） */
+export const TEST_PRESET_ZEN_GUARD_NOTE = 'Zen 通道信息未就绪（后端不可达）——请刷新后重试'
 
 /** RA4-S2：测试档启用后常驻绿字（模型组实名；owner 拍板点击直切，持久态替代确认框） */
 export const TEST_PRESET_ON_NOTE =
@@ -41,13 +42,10 @@ export const TEST_PRESET_GO_GUARD_NOTE = 'GO 通道信息未就绪（后端不�
 export const GO_ON_NOTE =
   '测试档已启用（解析 mineru · embedding qwen3-VL · 主模型 glm-5.3-flash · 审核 qwen3.8-flash）'
 
-/** S4/C1：互斥说明（owner 语义：通道各一开关，只能开一个；开 A 自动关其他，关 A 则其他不动；全关=标准档） */
-export const CHANNEL_EXCLUDE_NOTE = 'Zen / Go / Z.AI 三个通道互斥：开启一个会自动关闭其他通道；全部关闭即回到标准档'
-
-/** C1（owner 09-04 拍板）：zai 通道小字——与 zen/go 并列的第三测试通道（智谱 bigmodel 官方端点）。
- *  owner 原话要求注明「专用于测试记忆机制」；主审同模型 glm-4.7（同模型自审=owner 明示取舍） */
+/** C1/C3（owner 09-04 拍板）：zai 通道小字——与 zen/go 并列的第三测试通道；owner 原话要求
+ *  注明「专用于测试记忆机制」；主审同模型 glm-4.7（同模型自审=owner 明示取舍）。C3 按圈选删端点括注 */
 export const ZAI_CHANNEL_NOTE =
-  '主模型与审核模型均用 glm-4.7（同模型自审）· 专用于测试记忆机制；文档解析用mineru、embedding模型用qwen3-VL-embedding-8B（智谱 bigmodel 官方端点，Key 在 bigmodel.cn 获取）'
+  '主模型与审核模型均用 glm-4.7（同模型自审）· 专用于测试记忆机制；文档解析用mineru、embedding模型用qwen3-VL-embedding-8B'
 
 /** C1：zai 通道 Key 空守卫持久内联文案（zai 无跨通道 key 兜底，必须先配 key） */
 export const TEST_PRESET_ZAI_GUARD_NOTE = '请先填写并保存 Z.AI Key（bigmodel.cn 获取），测试档走 Z.AI 通道'

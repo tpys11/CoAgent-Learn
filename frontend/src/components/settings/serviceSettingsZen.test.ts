@@ -60,8 +60,7 @@ describe('RA3-S2 Zen 保存反馈——纯函数直调 + 源级守卫', () => {
     expect(zenSaveFailFlashText()).toBe('保存失败（后端不可达），请重试')
   })
 
-  it('源级守卫：成功/失败文案被 saveZenKey 真实消费', () => {
-    expect(SRC).toContain('flash(zenSavedFlashText())')
+  it('源级守卫：失败文案被 zai 保存路径真实消费（C3：saveZenKey 随 UI 删除，saveZaiKeyFn 承接同款语义）', () => {
     expect(SRC).toContain('flashErr(zenSaveFailFlashText())')
   })
 
@@ -76,12 +75,12 @@ describe('RA4-S1 Zen 持久配置态——纯函数直调 + 源级守卫', () =>
     expect(zenSaveFailPersistText()).toBe('保存失败，请检查网络后重试')
   })
 
-  it('源级守卫：持久红字由 zenSaveErr 态驱动且在 saveZenKey 失败分支置位', () => {
-    expect(SRC).toContain('setZenSaveErr(true)')
-    expect(SRC).toContain('zenSaveErr &&')
+  it('源级守卫：持久红字由 zaiSaveErr 态驱动且在 saveZaiKeyFn 失败分支置位（C3：zen 态随 UI 删除，zai 承接同款语义）', () => {
+    expect(SRC).toContain('setZaiSaveErr(true)')
+    expect(SRC).toContain('zaiSaveErr &&')
   })
 
   it('源级守卫：成功分支清失败红字（下次成功即消）', () => {
-    expect(SRC).toContain('setZenSaveErr(false)')
+    expect(SRC).toContain('setZaiSaveErr(false)')
   })
 })
