@@ -72,15 +72,28 @@ def probe_kb_candidates() -> None:
                 print(f"[cand] {size_kb}KB (读取失败: {e})  <- {src}")
 
 
-def guardrail(replica_db: str) -> None:
+def guardrail(replica_db: str, tier: str = "go") -> None:
     con = sqlite3.connect(replica_db)
     con.execute("UPDATE settings SET value='pymupdf4llm' WHERE key='PARSE_ENGINE'")
+    # go 档决策（owner 09-04）：副本库落档位开关（非密钥，可程序写）。
+    # standard = 清空开关回标准档；go = ZEN_TEST_MODE=1 + TEST_CHANNEL=go。
+    if tier == "go":
+        con.execute("INSERT INTO settings(key,value) VALUES('ZEN_TEST_MODE','1') "
+                    "ON CONFLICT(key) DO UPDATE SET value='1'")
+        con.execute("INSERT INTO settings(key,value) VALUES('TEST_CHANNEL','go') "
+                    "ON CONFLICT(key) DO UPDATE SET value='go'")
+    else:
+        con.execute("DELETE FROM settings WHERE key IN ('ZEN_TEST_MODE','TEST_CHANNEL')")
     con.commit()
     keys = [r[0] for r in con.execute("SELECT key FROM settings ORDER BY key")]
-    print("[guardrail] PARSE_ENGINE -> pymupdf4llm, rows_changed:", con.total_changes)
+    print(f"[guardrail] PARSE_ENGINE -> pymupdf4llm, tier -> {tier}, "
+          "rows_changed:", con.total_changes)
     print("[guardrail] settings keys (names only):", keys)
-    for must in ("EMBEDDING_API_KEY",):
+    for must in ("EMBEDDING_API_KEY", "GO_API_KEY"):
         print(f"[guardrail] has {must}:", must in keys)
+    if tier == "go" and "GO_API_KEY" not in keys:
+        print("[guardrail] ⚠ GO_API_KEY 缺失：go 档对话/判卷将失败——"
+              "请 owner 经副本栈前端(5174)设置页或 .env 注入（键值不过 agent）")
     con.close()
 
 
@@ -101,8 +114,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--replica-db", required=True)
     ap.add_argument("--no-probe", action="store_true")
+    ap.add_argument("--tier", choices=["go", "standard"], default="go",
+                    help="副本库档位开关（默认 go，owner 09-04 拍板；"
+                         "GO_API_KEY 密钥本体仍须 owner 本人注入）")
     args = ap.parse_args()
-    guardrail(args.replica_db)
+    guardrail(args.replica_db, args.tier)
     if not args.no_probe:
         probe_kb_candidates()
 
