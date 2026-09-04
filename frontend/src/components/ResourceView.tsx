@@ -401,7 +401,7 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
             return (
               <button
                 key={d}
-                onClick={() => { setSelectedDomain(d); setSelectedCat(CATEGORIES[0].key); setDetail(null) }}
+                onClick={() => { setSelectedDomain(d); setSelectedCat(CATEGORIES[0].key); setDetail(null); setShowNewDomain(false) }}
                 className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-colors ${
                   active ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
                 }`}
