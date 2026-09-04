@@ -189,6 +189,21 @@ def _poll_progress(base, pid, source, log, timeout=900):
                     "parse_engine": p.get("parse_engine")}
         if p.get("status") == "error" or p.get("error"):
             return {"status": "error", "progress": p}
+        # FIXEVAL 库内事实兜底（双信号收口）：进度态是 backend 进程内存字典——后台直投
+        # 路径不写进度、进程重启即丢、enhance 阶段把 done 重置后 LLM 异常被吞不阻断，
+        # 三种形态都让上面的快路径永假、轮询耗满 timeout 假性卡死；而后台日志"入库完成"。
+        # 故以库内可见事实（list 中该 source chunks>0）为终态判定兜底；进度快路径与
+        # error 路径原样保留，正常形态行为零变更。
+        try:
+            docs = _get_json(base, f"/api/knowledge/list?project_id={pid}",
+                              timeout=15).get("docs") or []
+        except Exception as e:  # noqa: BLE001 —— list 探测失败等同暂无库内事实，续走原轮询节奏
+            log(f"    [progress] {source}: doc-list probe failed {str(e)[:80]}")
+            docs = []
+        for d in docs:
+            if (d.get("source") or d.get("name")) == source and (d.get("chunks") or 0) > 0:
+                log(f"    [progress] {source}: rescued-by-doc-list chunks={d.get('chunks')}")
+                return {"status": "ok", "chunks": d.get("chunks"), "via": "doc-list"}
         cur = f"{done}/{total}"
         if cur != last:
             log(f"    [progress] {source}: {cur}")
