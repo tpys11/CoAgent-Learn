@@ -180,6 +180,39 @@ def _poll_progress(base, pid, source, log, timeout=900):
     return {"status": "timeout", "progress": last}
 
 
+# ---------- KB 检索冒烟自检（覆盖率/ContextRecall 的前置闸门） ----------
+
+def kb_retrieval_check(base, pid, kb_items, log, top_k=3):
+    """灌库后逐文档探针 GET /api/knowledge/query：
+    通过条件=全部探针返回非空 且 ≥半数探针命中其目标文档（metadata.source 匹配）。
+    不通过即 SystemExit 卡闸门——防"知识库没生效通识作答"重演（覆盖率 38% 教训）。
+    --skip-check 可跳过。返回 (探针明细, passed)。"""
+    probes = [{"q": os.path.splitext(it["source"])[0][:40], "source": it["source"]}
+              for it in kb_items]
+    detail, src_matched = [], 0
+    for p in probes:
+        try:
+            r = _get_json(base, f"/api/knowledge/query?project_id={pid}"
+                                f"&q={requests.utils.quote(p['q'])}&top_k={top_k}",
+                          timeout=60)
+        except Exception as e:  # noqa: BLE001 —— 探针失败等同零命中，如实入明细
+            r = {"results": [], "error": str(e)[:120]}
+        hits = r.get("results") or []
+        hit_srcs = [str(((h or {}).get("metadata") or {}).get("source")
+                        or (h or {}).get("source") or "") for h in hits]
+        matched = any(p["source"] in s or s in p["source"]
+                      for s in hit_srcs if s)
+        src_matched += 1 if matched else 0
+        detail.append({"probe": p["q"], "hits": len(hits),
+                       "target_matched": matched, "hit_sources": hit_srcs[:3]})
+        log(f"  [kb-check] {p['q'][:24]}: hits={len(hits)} target_matched={matched}")
+    non_empty = bool(detail) and all(d["hits"] > 0 for d in detail)
+    passed = non_empty and src_matched >= max(1, len(detail) // 2)
+    log(f"[kb-check] {'PASS' if passed else 'FAIL'} "
+        f"(探针 {len(detail)}，非空 {sum(1 for d in detail if d['hits'])}，命中目标 {src_matched})")
+    return detail, passed
+
+
 # ---------- 用例执行 ----------
 
 def run_chat_case(base, case, persona, pid, kb_sources, outdir, log):
@@ -252,6 +285,12 @@ def _checkpoint(outdir, name, entries):
     with open(tmp, "w", encoding="utf-8") as fh:
         json.dump(entries, fh, ensure_ascii=False, indent=2)
     os.replace(tmp, path)
+
+
+def _dump(outdir, name, data):
+    """通用落盘（不经 results- 前缀——eval_judge 的批次 glob 只认 results-*.json）。"""
+    with open(os.path.join(outdir, name), "w", encoding="utf-8") as fh:
+        json.dump(data, fh, ensure_ascii=False, indent=2)
 
 
 # ---------- IF 批次 ----------
@@ -374,6 +413,8 @@ def main():
     ap.add_argument("--kb", default=os.path.join(HERE, "eval_kb_manifest.json"))
     ap.add_argument("--skip-kb", action="store_true",
                     help="跳过灌库（复用同 run_stamp 的既有项目时用）")
+    ap.add_argument("--skip-check", action="store_true",
+                    help="跳过灌库后的 KB 检索冒烟自检闸门")
     args = ap.parse_args()
 
     with open(CASES_PATH, encoding="utf-8") as fh:
@@ -394,6 +435,12 @@ def main():
         pid = ensure_project(base := args.base, "smoke", run_stamp)
         if kb_items and not args.skip_kb:
             ingest_kb(base, pid, kb_items, log)
+            detail, passed = kb_retrieval_check(base, pid, kb_items, log)
+            _dump(args.outdir, "kb-check-smoke.json", detail)
+            if not passed and not args.skip_check:
+                raise SystemExit("[kb-check] 检索冒烟未通过：知识库大概率未生效，"
+                                 "先排查灌库/ embedding 配置再跑正式批次"
+                                 "（--skip-check 强制放行）")
         case = cases["cases"][0]
         log(f"[smoke] project={pid} case={case['id']}")
         kb_sources = [it["source"] for it in kb_items]
@@ -416,6 +463,11 @@ def main():
     kb_sources = [it["source"] for it in kb_items]
     if kb_items and not args.skip_kb:
         ingest_kb(base, pid, kb_items, log)
+        detail, passed = kb_retrieval_check(base, pid, kb_items, log)
+        _dump(args.outdir, f"kb-check-{args.batch}.json", detail)
+        if not passed and not args.skip_check:
+            raise SystemExit(f"[kb-check] {args.batch} 批次检索冒烟未通过，停止跑数"
+                             "（--skip-check 强制放行）")
     entries = []
     for i, case in enumerate(batch_cases, 1):
         log(f"  [{i}/{len(batch_cases)}] {case['id']}")
