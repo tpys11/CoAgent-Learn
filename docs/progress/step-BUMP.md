@@ -1,9 +1,9 @@
 # Step-BUMP 交接文档：compose 镜像终钉
 
 ## 1. 改动文件清单
-- `deploy/docker-compose.yml` (commit 1: `91b1f6b`)
-- `docs/dispatch/step-BUMP.md` (commit 2)
-- `docs/progress/step-BUMP.md` (commit 2)
+- `deploy/docker-compose.yml` (commit 1: `91b1f6b188c1bb6b60a0944f185d74ec657c4f4f`)
+- `docs/dispatch/step-BUMP.md` (commit 2: `d245b261abd6e26a2835ba01f7411f54d910e77a`)
+- `docs/progress/step-BUMP.md` (commit 2: `d245b261abd6e26a2835ba01f7411f54d910e77a`)
 
 ## 2. S0-S6 执行实录与关键输出
 
@@ -99,14 +99,32 @@ git show --stat HEAD
 
 ### S5 文档提交
 ```powershell
-git add docs/progress/step-BUMP.md docs/dispatch/step-BUMP.md
+git add -f docs/progress/step-BUMP.md docs/dispatch/step-BUMP.md
 git commit -m "docs(BUMP): dispatch + handoff"
+git show --stat HEAD
+# 输出：
+# commit d245b261abd6e26a2835ba01f7411f54d910e77a
+# Author: spp <3163959449@qq.com>
+# Date:   Fri Sep 4 14:39:45 2026 +0800
+# 
+#     docs(BUMP): dispatch + handoff
+# 
+#  docs/dispatch/step-BUMP.md |  42 ++++++++++++++++
+#  docs/progress/step-BUMP.md | 116 +++++++++++++++++++++++++++++++++++++++++++++
+#  2 files changed, 158 insertions(+)
 ```
 
 ### S6 push 与远端一致性校验
 ```powershell
 git push origin master
+# 输出：
+# To github.com:tpys11/CoAgent-Learn.git
+#    7b91c44..d245b26  master -> master
+
 git ls-remote origin refs/heads/master; git rev-parse HEAD
+# 输出两行原文：
+# d245b261abd6e26a2835ba01f7411f54d910e77a	refs/heads/master
+# d245b261abd6e26a2835ba01f7411f54d910e77a
 ```
 
 ## 3. 被否决方案 / 未走通路径
