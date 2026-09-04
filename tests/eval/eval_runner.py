@@ -216,17 +216,34 @@ def kb_retrieval_check(base, pid, kb_items, log, top_k=3):
 # ---------- 用例执行 ----------
 
 def _load_go_api_key(replica_db):
-    """副本库只读抽 GO_API_KEY（owner 经 5174 设置页注入；内存传递零打印零落盘）。
-    go 档主模型 key 路径与前端一致：随请求 api_key 直传——_make_llm 的
-    req.api_key or DEEPSEEK 兜底在 go 档不可用（DEEPSEEK 无余额）。"""
+    """GO_API_KEY 解析链（内存传递零打印零落盘；凭据唯一来源=owner）：
+    ① 副本库 settings（owner 经 UI 注入的规范路径——但前端 saveGoKey 未接线，
+    该行通常为空）② 仓库根 .env 的 GO_API_KEY（owner 手工添加，本会话拍板路径）。"""
     import sqlite3
-    con = sqlite3.connect(f"file:{replica_db}?mode=ro", uri=True)
     try:
-        row = con.execute(
-            "SELECT value FROM settings WHERE key='GO_API_KEY'").fetchone()
-    finally:
-        con.close()
-    return (row[0] if row and row[0] else "")
+        con = sqlite3.connect(f"file:{replica_db}?mode=ro", uri=True)
+        try:
+            row = con.execute(
+                "SELECT value FROM settings WHERE key='GO_API_KEY'").fetchone()
+        finally:
+            con.close()
+        if row and row[0]:
+            return row[0]
+    except sqlite3.OperationalError:
+        pass
+    env_path = os.path.join(os.path.dirname(os.path.dirname(
+        os.path.dirname(os.path.abspath(__file__)))), ".env")
+    try:
+        with open(env_path, encoding="utf-8-sig") as fh:
+            for line in fh:
+                s = line.strip()
+                if s.startswith("GO_API_KEY="):
+                    val = s.split("=", 1)[1].strip().strip('"').strip("'")
+                    if val:
+                        return val
+    except OSError:
+        pass
+    return ""
 
 
 def build_tier_extras(args):
@@ -237,9 +254,10 @@ def build_tier_extras(args):
     key = _load_go_api_key(args.replica_db)
     if not key:
         raise SystemExit(
-            "[tier=go] 副本库无 GO_API_KEY：请 owner 打开 http://localhost:5174 "
-            "→设置→AI 服务→测试档卡，开 go 开关并粘贴 GO Key 保存"
-            "（键值不过 agent）；或 --tier standard 回标准档")
+            "[tier=go] GO_API_KEY 未找到（副本库 settings 与仓库 .env 均无）："
+            "请 owner 在仓库根 .env 加一行 GO_API_KEY=<你的go密钥>，"
+            "然后重启评测后端容器（docker restart guashuai-eval-backend）；"
+            "或 --tier standard 回标准档")
     return {"model": args.chat_model, "base_url": args.chat_base_url,
             "api_key": key}
 

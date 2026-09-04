@@ -74,7 +74,10 @@ def probe_kb_candidates() -> None:
 
 def guardrail(replica_db: str, tier: str = "go") -> None:
     con = sqlite3.connect(replica_db)
-    con.execute("UPDATE settings SET value='pymupdf4llm' WHERE key='PARSE_ENGINE'")
+    # 空库起步时 PARSE_ENGINE 行不存在——UPDATE-only 会静默无效（本会话实证），
+    # 一律 upsert。前端 saveGoKey 未接线（handoff §七），GO_API_KEY 行不由本脚本写。
+    con.execute("INSERT INTO settings(key,value) VALUES('PARSE_ENGINE','pymupdf4llm') "
+                "ON CONFLICT(key) DO UPDATE SET value='pymupdf4llm'")
     # go 档决策（owner 09-04）：副本库落档位开关（非密钥，可程序写）。
     # standard = 清空开关回标准档；go = ZEN_TEST_MODE=1 + TEST_CHANNEL=go。
     if tier == "go":
