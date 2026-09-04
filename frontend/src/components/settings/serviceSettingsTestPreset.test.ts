@@ -11,8 +11,8 @@ describe('RA4-S2 测试档开关直切（owner 拍板：取消确认框，点击
     expect(SRC).not.toContain('window.confirm')
   })
 
-  it('zenBaseUrl 空守卫=持久内联 amber 文案（C3 改写：Key UI 已删，守卫仅后端不可达时触发）', () => {
-    expect(TEST_PRESET_ZEN_GUARD_NOTE).toBe('Zen 通道信息未就绪（后端不可达）——请刷新后重试')
+  it('zenBaseUrl 空守卫=持久内联 amber 文案（旧瞬时 flash 即 return=开关不亮无反馈根因）', () => {
+    expect(TEST_PRESET_ZEN_GUARD_NOTE).toBe('请先填写并保存 Zen Key，测试档走 Zen 通道')
     expect(SRC).toContain('TEST_PRESET_ZEN_GUARD_NOTE')
     expect(SRC).toContain('setPresetGuardHint(true)')
   })

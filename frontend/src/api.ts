@@ -108,10 +108,10 @@ export const api = {
    *  通用入口 body 是 unknown 黑盒，未来表单保存路径改动时 zen_api_key 会被静默丢字段；
    *  专用函数把「该通道只发 zen_api_key」钉在类型签名上（api.test.ts PUT 体契约守卫）。 */
   saveZenKey: (key: string) => apiFetch<any>('/api/settings', jsonInit('PUT', { zen_api_key: key })),
-  /** S3：go 通道专用保存通道（对称 saveZenKey；URL 必须落库——后端 detect_tier 靠
-   *  「req.base_url==GO_BASE_URL」精确判定（与 zen 标记子串机制不同），URL 不落库 go 档失效；
-   *  key 空串由后端 T51 语义不覆写） */
-  saveGoKey: (key: string, baseUrl: string) => apiFetch<any>('/api/settings', jsonInit('PUT', { go_api_key: key, go_base_url: baseUrl })),
+  /** S3/C3：go 通道专用保存通道（对称 saveZenKey）；C3 修正=单参只发 go_api_key（URL 后端
+   *  GO_BASE_URL 默认值已定不由前端提交，LS.goBaseUrl 由 GET 回显落）；
+   *  key 空串由后端 T51 语义不覆写 */
+  saveGoKey: (key: string) => apiFetch<any>('/api/settings', jsonInit('PUT', { go_api_key: key })),
   /** C1：Z.AI 通道专用保存通道（对称 saveZenKey/saveGoKey；URL 固定官方端点不开放 PUT，只发 zai_api_key） */
   saveZaiKey: (key: string) => apiFetch<any>('/api/settings', jsonInit('PUT', { zai_api_key: key })),
   testSettings: (body: unknown) => apiFetch<any>('/api/settings/test', jsonInit('POST', body)),
