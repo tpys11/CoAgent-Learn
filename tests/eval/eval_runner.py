@@ -125,19 +125,29 @@ def _resolve_kb_path(item):
 
 
 def ingest_kb(base, pid, kb_items, log):
-    """kb_items: [{kind: file|text, path, source, external?}]；重复入库由后端 hash 去重。"""
+    """kb_items: [{kind: file|text, path, source, external?}]；重复入库由后端 hash 去重。
+    EVALOPT 09-04：文本改「后台直投 + 统一轮询」——同步 wait=true 会被大纲提取的
+    LLM 重试等待拖爆 runner 超时（本会话 smoke 实证：DeepSeek 端点容器内 SSL 中断，
+    每调用 3 次重试×20-40s）；后台路径服务器并行处理，墙钟≈最慢一份。
+    加料步骤（大纲/出题/图谱）失败即跳过（设计如此），不影响三硬指标。"""
     results = []
+    pending_texts = []
     for it in kb_items:
         src = it["source"]
         resolved = _resolve_kb_path(it)
         if it["kind"] == "text":
             with open(resolved, encoding="utf-8-sig") as fh:
                 text = fh.read()
-            resp = _post_json(base, "/api/knowledge/upload?wait=true",
-                              {"project_id": pid, "text": text, "source": src,
-                               "session_id": "default", "api_key": ""}, timeout=300)
+            try:
+                resp = _post_json(base, "/api/knowledge/upload",
+                                  {"project_id": pid, "text": text, "source": src,
+                                   "session_id": "default", "api_key": ""}, timeout=60)
+            except Exception as e:  # noqa: BLE001 —— 投递失败如实记录
+                resp = {"status": "error", "msg": str(e)[:150]}
             results.append({"source": src, **resp})
-            log(f"  [kb-text] {src}: {resp.get('status')} chunks={resp.get('chunks')}")
+            if resp.get("status") == "processing":
+                pending_texts.append(src)
+            log(f"  [kb-text] {src}: {resp.get('status')} {(resp.get('msg') or '')[:80]}")
         else:
             with open(resolved, "rb") as fh:
                 files = {"file": (os.path.basename(resolved), fh,
@@ -151,6 +161,13 @@ def ingest_kb(base, pid, kb_items, log):
                 resp = _poll_progress(base, pid, src, log)
             results.append({"source": src, **resp})
             log(f"  [kb-file] {src}: {resp.get('status')} chunks={resp.get('chunks') or resp.get('done')}")
+    for src in pending_texts:
+        resp = _poll_progress(base, pid, src, log)
+        for r in results:
+            if r.get("source") == src:
+                r.update(resp)
+        log(f"  [kb-text-poll] {src}: {resp.get('status')} "
+            f"chunks={resp.get('chunks') or resp.get('done')} {(resp.get('msg') or '')[:80]}")
     return results
 
 
