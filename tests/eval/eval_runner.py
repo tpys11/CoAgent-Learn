@@ -98,7 +98,10 @@ def ensure_project(base, persona, run_stamp):
 
 
 def new_dialogue(base, pid, case_id, wizard):
-    did = "edlg-" + case_id.lower()
+    # E-46 连带防复发：对话 ID 嵌项目 ID 尾段——ensure_project 每次跑数新建项目
+    # ⇒ 对话随跑数全新，杜绝跨跑复用旧对话历史（旧方案 edlg-<case> 写死已实证
+    # 同题历史跨 4 次跑数累积，污染 assess「近期对话」与生成记忆上下文）。
+    did = "edlg-" + str(pid)[-8:] + "-" + case_id.lower()
     _post_json(base, "/api/dialogues",
                {"project_id": pid, "name": f"对话-{case_id}", "id": did, "api_key": ""})
     ready = wait_profile_ready(base, did)
