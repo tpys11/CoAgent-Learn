@@ -114,7 +114,7 @@ export default function ServiceSettings() {
   const [zenSaving, setZenSaving] = useState(false)
   // RA4-S1：保存失败持久红字态——不清到下次成功
   const [zenSaveErr, setZenSaveErr] = useState(false)
-  // C3 修正：go 仅保留 Key 输入（URL 输入框删除——后端默认端点，key 兜底复用 Zen）
+  // C3 修正：go 仅保留 Key 输入（URL 输入框删除——后端默认端点已定；独立通道独立持键，不复用 Zen Key）
   const [goKey, setGoKey] = useState('')
   const [goSaving, setGoSaving] = useState(false)
   const [goSaveErr, setGoSaveErr] = useState(false)
@@ -430,7 +430,7 @@ export default function ServiceSettings() {
                   <p className="text-[11px] font-medium text-dim">GO API Key</p>
                   <div className="flex items-center gap-2">
                     <input type="password" autoComplete="new-password" value={goKey}
-                      placeholder="sk-...（GO Key，不填自动复用 Zen Key）"
+                      placeholder="sk-...（GO Key，独立通道需单独填写）"
                       onChange={e => setGoKey(e.target.value)} className={inputCls} />
                     <button onClick={saveGoKeyFn} disabled={goSaving || !goKey.trim()}
                       className={`px-4 py-1.5 text-[11px] rounded-lg font-semibold flex-shrink-0 ${goSaving ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#1a1a1a] text-white'}`}>

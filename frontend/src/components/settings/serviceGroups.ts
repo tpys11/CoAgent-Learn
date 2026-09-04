@@ -31,9 +31,9 @@ export const TEST_PRESET_OFF_NOTE = '标准档'
 export const REVIEW_BUBBLE_NOTE = '标准档判卷=Qwen2.5-72B（独立厂商），测试档=big-pickle'
 
 /** S4/S6（owner 09-04 拍板+截图实测校正）：go 通道小字——zen 的 go 计划子通道（与 zen 上下并列）。
- *  S6 实测：双模型 chat/completions 直连 200 通、同一 Bearer 鉴权复用 Zen Key（GO Key 留空即可） */
+ *  S6 实测：双模型 chat/completions 直连 200 通；独立通道独立持键（GO Key 必填，不复用 Zen Key——owner 拍板三通道隔离） */
 export const GO_CHANNEL_NOTE =
-  '文档解析用mineru、embedding模型用qwen3-VL-embedding-8B，主模型用glm-5.3-flash、审核模型用qwen3.8-flash（go=zen 的 go 计划子通道）；GO Key 不填时自动复用 Zen Key'
+  '文档解析用mineru、embedding模型用qwen3-VL-embedding-8B，主模型用glm-5.3-flash、审核模型用qwen3.8-flash（go=zen 的 go 计划子通道）；GO 通道独立持键，需单独填 GO Key'
 
 /** S4：go 通道信息未就绪守卫持久内联文案（TEST_PRESET_ZEN_GUARD_NOTE 同款机理；S6 后 URL 有默认值，仅后端不可达时触发） */
 export const TEST_PRESET_GO_GUARD_NOTE = 'GO 通道信息未就绪（后端不可达）——请刷新后重试'

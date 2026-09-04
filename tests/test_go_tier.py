@@ -23,8 +23,8 @@ def test_go_registry_main_cell():
     assert spec.model == MODEL_GO_MAIN
     assert spec.provider == "go"
     assert spec.base_url == config.GO_BASE_URL
-    # S6：key=or 链（GO 优先，空则复用 ZEN——go 子通道同一 Bearer 鉴权）
-    assert spec.api_key == (config.GO_API_KEY or config.ZEN_API_KEY)
+    # 隔离契约：key=单键 GO_API_KEY（独立通道不复用 ZEN_API_KEY）
+    assert spec.api_key == config.GO_API_KEY
 
 
 def test_go_registry_review_cell():
@@ -131,12 +131,14 @@ def test_pick_judge_go_key_routing(monkeypatch):
                         "model": MODEL_GO_REVIEW}
 
 
-def test_pick_judge_go_zen_key_fallback(monkeypatch):
-    # S6：GO_API_KEY 空→兜底复用 ZEN_API_KEY（go 子通道同一 Bearer 鉴权，零配置路径）
+def test_pick_judge_go_isolated_from_zen_key(monkeypatch):
+    # 三通道隔离：GO_API_KEY 空时不复用 ZEN_API_KEY，响亮回退主模型
     import engine.review as rv
+    from core.model_provider import MODEL_MAIN
     monkeypatch.setattr(config, "GO_API_KEY", "")
     monkeypatch.setattr(config, "ZEN_API_KEY", "sk-zen-fallback")
     monkeypatch.setattr(config, "GO_BASE_URL", "https://opencode.ai/zen/go/v1")
+    monkeypatch.setattr(config, "DEEPSEEK_API_KEY", "")
     monkeypatch.setattr(config, "ZEN_TEST_MODE", "1")
     monkeypatch.setattr(config, "TEST_CHANNEL", "go")
     captured = {}
@@ -152,9 +154,7 @@ def test_pick_judge_go_zen_key_fallback(monkeypatch):
         base_url = "https://opencode.ai/zen/go/v1"
 
     assert rv.pick_judge_llm(None, Req()) == "LLM"
-    assert captured == {"key": "sk-zen-fallback",
-                        "base_url": "https://opencode.ai/zen/go/v1",
-                        "model": MODEL_GO_REVIEW}
+    assert captured["model"] == MODEL_MAIN
 
 
 def test_pick_judge_go_missing_key_fallback(monkeypatch, caplog):

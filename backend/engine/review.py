@@ -109,9 +109,9 @@ def pick_judge_llm(template: str, req):
                         route["model"], _FALLBACK_JUDGE)
         model = _FALLBACK_JUDGE
     elif route["provider"] == "go":
-        # S1：go 通道判卷——对称 zen 定值格语义；S6：key 兜底链 GO||ZEN（go 子通道同一 Bearer 鉴权，
-        # 实测复用 ZEN_API_KEY 200 通），链全空才响亮回退（fail-open 先例）
-        _go_key = _cfg.GO_API_KEY or _cfg.ZEN_API_KEY or key
+        # S1：go 通道判卷——对称 zen 定值格语义；key 单键 GO_API_KEY（独立通道不复用
+        # ZEN_API_KEY——owner 拍板三通道互相隔离，内容同值也各自持键），链全空才响亮回退（fail-open 先例）
+        _go_key = _cfg.GO_API_KEY or key
         if _go_key and getattr(_cfg, "GO_BASE_URL", ""):
             key, base_url = _go_key, _cfg.GO_BASE_URL
         else:

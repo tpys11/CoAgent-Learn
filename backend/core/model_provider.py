@@ -122,11 +122,11 @@ _REVIEW_SF_CELL = {"provider": "siliconflow", "model": MODEL_REVIEW_SF,
 _REVIEW_ZEN_CELL = {"provider": "zen", "model": MODEL_ZEN_REVIEW,
                     "base_url_key": "ZEN_BASE_URL", "api_key_key": "ZEN_API_KEY"}
 # go 格 base_url_key=GO_BASE_URL（config 默认=zen go 计划端点）——detect_tier 按「req.base_url==GO_BASE_URL」判定。
-# key=or 链（GO_API_KEY 优先，空则复用 ZEN_API_KEY——S6 实测 go 子通道同一 Bearer 鉴权），零配置可开
+# key=单键 GO_API_KEY（独立通道不复用 ZEN_API_KEY——owner 拍板三通道互相隔离，内容同值也各自持键）
 _GO_CELL_MAIN = {"provider": "go", "model": MODEL_GO_MAIN,
-                 "base_url_key": "GO_BASE_URL", "api_key_keys": ("GO_API_KEY", "ZEN_API_KEY")}
+                 "base_url_key": "GO_BASE_URL", "api_key_keys": ("GO_API_KEY",)}
 _GO_CELL_REVIEW = {"provider": "go", "model": MODEL_GO_REVIEW,
-                   "base_url_key": "GO_BASE_URL", "api_key_keys": ("GO_API_KEY", "ZEN_API_KEY")}
+                   "base_url_key": "GO_BASE_URL", "api_key_keys": ("GO_API_KEY",)}
 # zai 格（owner 09-04 拍板）：智谱 bigmodel 官方端点——主模型与审核模型均 glm-4.7（同模型自审，
 # 专用记忆机制测试，防自我包庇设计在此通道不适用=owner 明示取舍）；key 独立无兜底（ZAI_API_KEY）
 MODEL_ZAI_MAIN = "glm-4.7"
