@@ -27,9 +27,10 @@ class BaseLLM:
     def chat(self, messages: list[dict], temperature: float = 0.7, max_tokens: int | None = None) -> str:
         """普通对话，返回文本"""
         kwargs = self._thinking_kwargs()
-        # FIXLLM①：max_tokens 单点供给——显式入参覆盖，缺省 2000；create() 内不再硬编码，
+        # FIXLLM①：max_tokens 单点供给——显式入参覆盖，缺省 8000；create() 内不再硬编码，
         # 否则显式传参时 create 同时收到位置参数与 **kwargs 里的 max_tokens（TypeError）。
-        kwargs["max_tokens"] = max_tokens if max_tokens is not None else 2000
+        # FIXAUX3：思考型模型（glm-5.3-flash 实测 reasoning 4543 tok）在 go 端点烧穿 2000 预算致正文为空。
+        kwargs["max_tokens"] = max_tokens if max_tokens is not None else 8000
         for attempt in range(1, self.max_retries + 1):
             try:
                 resp = self.client.chat.completions.create(
@@ -74,7 +75,8 @@ class BaseLLM:
                     messages=messages,
                     temperature=temperature,
                     response_format={"type": "json_object"},
-                    max_tokens=2000,
+                    # FIXAUX3：同 chat 缺省预算——go 档 JSON 调用同样烧推理 token，2000 烧穿致正文为空、解析必败
+                    max_tokens=8000,
                     timeout=config.LLM_REQUEST_TIMEOUT,
                 )
                 # D3：旧的 █████ 思考剥离助手已删（同 chat 内注释）；_parse_json 内部自带 strip，行为等价。

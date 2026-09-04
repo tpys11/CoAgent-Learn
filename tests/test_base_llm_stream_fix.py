@@ -60,12 +60,55 @@ def test_chat_explicit_max_tokens_reaches_create_once():
     assert _CaptureCompletions.captured["max_tokens"] == 300
 
 
-def test_chat_default_max_tokens_is_2000():
-    """守卫①缺省分支：不传 max_tokens → create 收到 2000（单点供给的缺省值）。"""
+def test_chat_default_max_tokens_is_8000():
+    """守卫①缺省分支：不传 max_tokens → create 收到 8000（FIXAUX3 预算收口）。
+    变异探针：还原缺省 2000 → 本条恰红。"""
     _CaptureCompletions.captured = None
     _chat_llm().chat([{"role": "user", "content": "q"}])
     assert _CaptureCompletions.captured is not None
-    assert _CaptureCompletions.captured["max_tokens"] == 2000
+    assert _CaptureCompletions.captured["max_tokens"] == 8000
+
+
+# ---------- 守卫④（FIXAUX3）：chat_with_json 预算同步 ----------
+
+class _CaptureJsonCompletions:
+    """捕获 chat_with_json 的 create() 实收 kwargs，返回合法 JSON 正文。"""
+
+    captured: dict | None = None
+
+    def create(self, **kwargs):
+        _CaptureJsonCompletions.captured = kwargs
+        return SimpleNamespace(
+            usage=None,
+            choices=[SimpleNamespace(message=SimpleNamespace(content='{"ok": true}'))],
+        )
+
+
+class _CaptureJsonChat:
+    def __init__(self):
+        self.completions = _CaptureJsonCompletions()
+
+
+class _CaptureJsonClient:
+    def __init__(self):
+        self.chat = _CaptureJsonChat()
+
+
+def test_chat_with_json_max_tokens_is_8000():
+    """守卫④：chat_with_json 硬编码 max_tokens=8000 到达 create。
+    变异探针：还原硬编码 2000 → 本条恰红。"""
+    from core.base_llm import DeepSeekLLM
+
+    _CaptureJsonCompletions.captured = None
+    llm = DeepSeekLLM(api_key="test-fake")
+    llm.client = _CaptureJsonClient()
+    out = llm.chat_with_json(
+        [{"role": "user", "content": "q"}],
+        output_schema={"properties": {"ok": {"type": "boolean"}}, "required": ["ok"]},
+    )
+    assert out == {"ok": True}
+    assert _CaptureJsonCompletions.captured is not None
+    assert _CaptureJsonCompletions.captured["max_tokens"] == 8000
 
 
 # ---------- 守卫②：chat_stream 空 choices 防御 ----------
