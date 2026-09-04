@@ -21,7 +21,10 @@ def evaluate_level(llm_fast, message: str, history_text: str,
         + (f"近期对话：\n{history_text[:800]}\n" if history_text else "")
         + f"最新消息：{message[:800]}"
     )
-    thinking, result = think_then_json(llm_fast, prompt, "", "学情与记忆管理", silent=True)
+    # E-46：Console Go 上游拒绝空 user content（凌晨 Run 2 尚接受，06:53 起收紧 400）。
+    # 评估提示词整体在 system，user 消息必须非空——放最新消息原文，空则兜底指令。
+    thinking, result = think_then_json(llm_fast, prompt, message[:800] or "请按标准输出评估 JSON",
+                                       "学情与记忆管理", silent=True)
     try:
         score = float(result.get("level_score"))
         if not 0 <= score <= 1:

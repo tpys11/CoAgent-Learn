@@ -79,3 +79,33 @@ def test_assess_missing_dialogue_row_still_returns_score(repo_db):
     """对话行不存在时落库静默失败，但本轮评分仍返回供路由使用。"""
     score, _thinking, _evidence = assess_and_store(OneShot(GOOD), "不存在的did", "消息", "", None)
     assert score == 0.8
+
+
+def test_evaluate_user_message_non_empty():
+    """E-46：Console Go 上游拒绝空 user content（400 message content cannot be empty）。
+    评估调用 user 消息必须非空——真实 chat_stream 捕获 messages 验证。"""
+    captured = {}
+
+    class Capture:
+        def chat_stream(self, messages, on_token, **kw):
+            captured["messages"] = messages
+            on_token(GOOD)
+
+    thinking, out = evaluate_level(Capture(), "什么是 Transformer？", "", None)
+    assert out == {"level_score": 0.8, "evidence": "术语准确"}
+    roles = [(m.get("role"), str(m.get("content") or "")) for m in captured["messages"]]
+    assert any(r == "user" and c.strip() for r, c in roles), roles
+
+
+def test_evaluate_user_message_fallback_when_empty_message():
+    """message 为空串时 user 消息仍不得为空（兜底指令）。"""
+    captured = {}
+
+    class Capture:
+        def chat_stream(self, messages, on_token, **kw):
+            captured["messages"] = messages
+            on_token(GOOD)
+
+    evaluate_level(Capture(), "", "", None)
+    roles = [(m.get("role"), str(m.get("content") or "")) for m in captured["messages"]]
+    assert any(r == "user" and c.strip() for r, c in roles), roles
