@@ -130,23 +130,28 @@ def domain_links(req: LinksReq):
 
 
 def _links_sync(req):
-    """新建领域：AI 生成该领域 5-6 个可搜的学习子主题 → websearch 聚合真实链接。
-    不做大纲/导读（B3 修订：用户只要真实资源）。"""
+    """新建领域：一次生成 ① 6 个可搜子主题(→websearch 真实链接) ② 百科词条(AI)。
+    不做大纲/导读/假链接。"""
     name = (req.domain or "").strip()
     if not name:
         return {"status": "error", "msg": "领域名称不能为空"}
-    # 1. AI 生成该领域具体学习主题（作为搜索查询）
-    topics = []
+    # 1. AI 一次生成 搜索主题 + 百科词条
+    topics, wiki = [], []
     try:
         prompt = NL.join([
-            "请列出学习「" + name + "」时最值得找资料看的 6 个具体子主题（作为搜索关键词，简短具体，利于搜到好资料）。",
-            '只输出 JSON 数组：["子主题1", "子主题2", ...]，不要其它文字。',
+            "为学习领域「" + name + "」一次生成两类内容，严格输出 JSON，不要代码块/额外文字：",
+            "{",
+            '  "topics": ["6个该领域最值得找资料的具体子主题，简短利于搜索"],',
+            '  "wiki": [{"name":"词条名","theme":"分组","intro":"一句话","detail":"介绍(80-120字)"}]',
+            "}",
+            "要求：topics 6 个、可搜性强的具体主题；wiki 5-6 个该领域核心词条。",
         ])
         data = _llm_json(req.api_key, req.base_url, req.model, prompt)
-        if isinstance(data, list):
-            topics = [str(t).strip() for t in data if str(t).strip()][:6]
+        if isinstance(data, dict):
+            topics = [str(t).strip() for t in (data.get("topics") or []) if str(t).strip()][:6]
+            wiki = (data.get("wiki") or [])[:6]
     except Exception:
-        topics = []
+        topics, wiki = [], []
     if not topics:
         topics = [name + " 入门教程", name + " 实战", name + " 官方文档", name + " 常见问题", name + " 进阶学习"]
     # 2. 用主题词联网搜真实链接
@@ -158,5 +163,5 @@ def _links_sync(req):
         links = search_multi(queries, max_per=3)
     except Exception:
         links = []
-    logger.info("[domain-links] domain=%s topics=%d links=%d", name, len(topics), len(links))
-    return {"status": "ok", "topics": topics[:6], "links": links[:8]}
+    logger.info("[domain-links] domain=%s topics=%d links=%d wiki=%d", name, len(topics), len(links), len(wiki))
+    return {"status": "ok", "topics": topics[:6], "links": links[:8], "wiki": wiki}

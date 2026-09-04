@@ -188,6 +188,11 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
         }))
         const prev = lsGetJSON<Tutorial[]>(LS.tutorials, [])
         saveTutorials([...prev, ...nt])
+        // 百科词条存 customWiki（同领域词条，显示在百科词条分类）
+        const nw = (d.wiki || []).map((w: any) => ({ ...w, domain: name }))
+        const nextW = [...customWiki, ...nw]
+        setCustomWiki(nextW)
+        lsSetJSON(LS.customWiki, nextW)
         const nextDomains = [...customDomains, name]
         setCustomDomains(nextDomains)
         lsSetJSON(LS.domains, nextDomains)
