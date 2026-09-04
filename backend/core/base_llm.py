@@ -139,6 +139,10 @@ class BaseLLM:
         if getattr(self, "thinking", None) is None:
             return {}
         if self._base_url and "deepseek" not in self._base_url:
+            if self.thinking is False and "opencode.ai/zen/go" in (self._base_url or ""):
+                # FIXAUX3b：go 网关官方支持 reasoning_effort（Pi 元数据）——thinking=False 的技能/快链
+                # 降 low 档，推理归零防预算烧穿（P4/P5 实测）
+                return {"extra_body": {"reasoning_effort": "low"}}
             return {}
         kwargs: dict = {"extra_body": {"thinking": {"type": "enabled" if self.thinking else "disabled"}}}
         if self.thinking and self.effort:

@@ -209,3 +209,56 @@ def test_chat_stream_retry_exhausted_raises_runtimeerror_with_chain():
         llm.chat_stream([{"role": "user", "content": "q"}], on_token=lambda t: None)
     assert "免费模型限流" in str(excinfo429.value)
     assert excinfo429.value.__cause__ is orig429
+
+
+# ---------- 守卫⑤-⑧（FIXAUX3b）：go 端点 reasoning_effort=low 收口 ----------
+# 锚点证据：Pi opencode-go 元数据 supportsReasoningEffort=Yes + 宿主 P4/P5 实测
+# （extra_body={"reasoning_effort":"low"}：go 端点推理归零、content 正常、延迟 23s→12-15s）。
+# 红线等价类：zen/v1、zai、deepseek、thinking=None/True 五路径零变化——⑥⑦⑧钉死防误扩。
+
+def _kwargs_llm(base_url: str | None, thinking: bool | None):
+    """FIXAUX3b 假件：指定端点与 thinking 档构造 DeepSeekLLM（api_key 假占位串，仅本地假件，零真网），
+    覆写 client 为 create 捕获假件，经 chat() 验证 kwargs 到达 create 的实收形态。"""
+    from core.base_llm import DeepSeekLLM
+
+    llm = DeepSeekLLM(api_key="test-fake", base_url=base_url, thinking=thinking)
+    llm.client = _CaptureClient()
+    return llm
+
+
+def test_go_endpoint_thinking_false_sends_low_effort():
+    """守卫⑤：go 端点（base_url 含 opencode.ai/zen/go）+ thinking=False →
+    create 收到 extra_body == {"reasoning_effort": "low"}。
+    变异探针：删 effort 分支（分支体还原 return {}）→ 本条恰红。"""
+    _CaptureCompletions.captured = None
+    _kwargs_llm("https://opencode.ai/zen/go", False).chat([{"role": "user", "content": "q"}])
+    assert _CaptureCompletions.captured is not None
+    assert _CaptureCompletions.captured["extra_body"] == {"reasoning_effort": "low"}
+
+
+def test_zen_v1_endpoint_thinking_false_has_no_effort():
+    """守卫⑥防误扩：zen/v1 端点 + thinking=False → 无 reasoning_effort、无 extra_body。
+    同域不同路径（zen/v1 vs zen/go）钉死子串匹配不外溢。"""
+    _CaptureCompletions.captured = None
+    _kwargs_llm("https://opencode.ai/zen/v1", False).chat([{"role": "user", "content": "q"}])
+    assert _CaptureCompletions.captured is not None
+    assert "reasoning_effort" not in _CaptureCompletions.captured
+    assert "extra_body" not in _CaptureCompletions.captured
+
+
+def test_deepseek_endpoint_thinking_false_extra_body_unchanged():
+    """守卫⑦回归：deepseek 端点 + thinking=False → 既有 thinking disabled extra_body
+    逐字节不变，且不混入 reasoning_effort。"""
+    _CaptureCompletions.captured = None
+    _kwargs_llm("https://api.deepseek.com", False).chat([{"role": "user", "content": "q"}])
+    assert _CaptureCompletions.captured is not None
+    assert _CaptureCompletions.captured["extra_body"] == {"thinking": {"type": "disabled"}}
+    assert "reasoning_effort" not in _CaptureCompletions.captured
+
+
+def test_go_endpoint_thinking_none_no_extra_body():
+    """守卫⑧：go 端点 + thinking=None（主对话路径）→ 无 extra_body，零变化。"""
+    _CaptureCompletions.captured = None
+    _kwargs_llm("https://opencode.ai/zen/go", None).chat([{"role": "user", "content": "q"}])
+    assert _CaptureCompletions.captured is not None
+    assert "extra_body" not in _CaptureCompletions.captured
