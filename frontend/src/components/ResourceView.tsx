@@ -164,7 +164,9 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
     if (domains.includes(name)) { alert('该领域已存在'); return }
     setNewDomainLoading(true)
     try {
-      const d = await api.generateOutline({ domain: name, api_key: lsGet(LS.apiKey, '') })
+      const _keys = lsGetJSON<Record<string, string>>(LS.providerKeys, {})
+      const _k = _keys['deepseek'] || lsGet(LS.apiKey, '')
+      const d = await api.generateOutline({ domain: name, api_key: _k })
       if (d.status === 'ok') {
         // 大纲章节存 syllabus（供课程大纲展示 + 按需生成导读/真实链接）
         const chapters = (d.chapters || []).map((ch: any) => ({ title: ch.title || '', goal: ch.goal || '', keywords: Array.isArray(ch.keywords) ? ch.keywords : [] })).filter((ch: any) => ch.title)

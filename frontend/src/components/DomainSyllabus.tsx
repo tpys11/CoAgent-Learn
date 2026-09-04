@@ -33,9 +33,11 @@ export default function DomainSyllabus({ domain }: { domain: string }) {
     const ch = data.chapters[i]
     setGenIdx(i); setErr('')
     try {
+      const _keys = lsGetJSON<Record<string, string>>(LS.providerKeys, {})
+      const _k = _keys['deepseek'] || lsGet(LS.apiKey, '')
       const d = await api.generateChapter({
         domain, title: ch.title, keywords: ch.keywords || [],
-        api_key: lsGet(LS.apiKey, ''),
+        api_key: _k,
       })
       if (d.status === 'ok') {
         const chapters = data.chapters.map((x, idx) => idx === i ? { ...x, intro: d.intro || '', links: d.links || [] } : x)
