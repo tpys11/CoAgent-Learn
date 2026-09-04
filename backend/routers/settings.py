@@ -49,7 +49,6 @@ class SettingsSave(BaseModel):
     rerank_api_key: str = ""
     rerank_model: str = "BAAI/bge-reranker-v2-m3"
     vl_api_key: str = ""          # Qwen3-VL-Embedding 卡（视觉/跨模态，文本优先 BGE）
-    zhipu_api_key: str = ""
     kb_mode: str = "full"         # 知识库服务：light=文字向量化+重排；full=再加图片向量/跨模态
     review_enabled: bool = False  # 独立审核模型开关（默认关，审核走 deepseek v4 flash）
     review_model: str = "Qwen/Qwen2.5-72B-Instruct"
@@ -70,6 +69,7 @@ class SettingsSave(BaseModel):
     go_base_url: str = ""               # S2：go 网关端点（无默认值，设置页填；空串不覆写）
     zai_api_key: str = ""               # C1：Z.AI（bigmodel）Bearer key（第三测试通道，URL 固定官方不开放 PUT）
     test_channel: str = ""              # S2：测试态通道定向（'go'|'zai'|'zen'，ZEN_TEST_MODE='1' 时生效）
+    # C2 09-04：zhipu_api_key 字段随标准档 zhipu 主对话清除（旧 PUT 体带该键由 pydantic 忽略，零破坏）
     # RC4-S1：review_model_research/review_follow_main 字段退役（owner 09-03 终版：
     # 判卷路由=档位定值格，无用户可配判卷模型）——前端 PUT 旧字段被 pydantic 默认忽略
 
@@ -104,10 +104,6 @@ def get_settings():
             "model": getattr(_cfg, "VL_MODEL", "Qwen/Qwen3-VL-Embedding-8B"),
             "api_key_set": bool(_vl_key or _embed_key),
             "api_key_hint": _mask_key(_vl_key or _embed_key),
-        },
-        "zhipu": {
-            "api_key_set": bool(getattr(_cfg, "ZHIPU_API_KEY", "")),
-            "api_key_hint": _mask_key(getattr(_cfg, "ZHIPU_API_KEY", "")),
         },
         "review": {
             "model": getattr(_cfg, "REVIEW_MODEL", "Qwen/Qwen2.5-72B-Instruct"),
@@ -180,7 +176,6 @@ def save_settings(req: SettingsSave):
     _set("RERANK_API_KEY", "rerank_api_key")
     _set("RERANK_MODEL", "rerank_model")
     _set("VL_API_KEY", "vl_api_key")
-    _set("ZHIPU_API_KEY", "zhipu_api_key")
     _set("KB_MODE", "kb_mode")
     if "review_enabled" in _vals:
         _s.set_setting("REVIEW_ENABLED", "1" if _vals["review_enabled"] else "0")

@@ -17,7 +17,7 @@ export function buildSvcBody(svc: SvcState, keys: SvcKeys): Record<string, unkno
     rerank_model: 'BAAI/bge-reranker-v2-m3',
     // RA-S3：合并栏一把 key 同值写两键——只写 embedding 会漏掉 VL（视觉向量化），
     // 空串时后端 T51 不覆写兜底，不会打空已有 key
-    vl_api_key: keys.embedding_api_key, zhipu_api_key: '', kb_mode: 'full',
+    vl_api_key: keys.embedding_api_key, kb_mode: 'full',   // C2 09-04：zhipu_api_key 键随标准档 zhipu 主对话清除
     review_enabled: svc.review_enabled, review_model: svc.review_model,
     parse_engine: svc.parse_engine,
     mineru_api_token: keys.mineru_api_token,

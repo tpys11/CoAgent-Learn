@@ -59,7 +59,7 @@ export function resolveChatModel(provider: string, lsModel: string): string {
 
 /** R-D S5：辅助调用（资源生成/上传链等非对话 LLM 调用）注册表薄封装——后端 S3 已改为注册表
  *  决策（base_url/model 传参被后端忽略），前端同源发送镜像值保持请求自洽：
- *  standard=DeepSeek 端点+MODEL_MAIN（zhipu 不再特判——注册表 main 无 zhipu 格）；
+ *  standard=DeepSeek 端点+MODEL_MAIN（C2 09-04：zhipu 遗留清除——注册表 main 无 zhipu 格）；
  *  test(zen)=Zen 端点+mimo；zenBaseUrl 空回落 DeepSeek 端点（RA-S5 既有语义）；
  *  S3：go=go 网关端点+GLM-5.3-Flash，goBaseUrl 空同款回落（三参化由 tsc 逼出全部调用点）；
  *  C1：zai=bigmodel 官方端点+glm-4.7（zaiBaseUrl 空同款回落）。 */

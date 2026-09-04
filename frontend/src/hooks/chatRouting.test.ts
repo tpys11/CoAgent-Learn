@@ -47,9 +47,9 @@ describe('resolveChatBaseUrl (RA-S5)', () => {
     expect(warn).toHaveBeenCalled()
   })
 
-  it('deepseek/zhipu 路由不受影响（标准档零回归）', () => {
+  it('deepseek 路由不受影响（标准档零回归）；zhipu 键已随遗留清除——回落 DeepSeek 端点', () => {
     expect(resolveChatBaseUrl('deepseek', '', '', '')).toBe('https://api.deepseek.com/v1')
-    expect(resolveChatBaseUrl('zhipu', '', '', '')).toBe('https://open.bigmodel.cn/api/paas/v4')
+    expect(resolveChatBaseUrl('zhipu', '', '', '')).toBeUndefined()   // C2：zhipu 键删除，存量 LS 自然回落
   })
 })
 

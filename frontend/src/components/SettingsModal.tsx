@@ -448,7 +448,7 @@ useEffect(() => { lsSetJSON(LS.postActions, postActions) }, [postActions])
 
 export function ApiKeyPrompt({ onClose, provider = 'deepseek' }: { onClose: () => void; provider?: string }) {
   const [key, setKey] = useState('')
-  const label = provider === 'zhipu' ? '智谱 GLM' : 'DeepSeek'
+  const label = 'DeepSeek'   // C2 09-04：zhipu 分支随标准档 zhipu 主对话清除（该 prompt 仅剩 DeepSeek 单厂家）
 
   const handleSave = () => {
     if (key.trim()) {

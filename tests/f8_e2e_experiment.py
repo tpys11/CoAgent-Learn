@@ -229,7 +229,6 @@ def main():
         "rerank_api_key": "",
         "rerank_model": cur["rerank"]["model"],
         "vl_api_key": "",
-        "zhipu_api_key": "",
         "kb_mode": cur["kb_mode"],
         "review_enabled": cur["review"]["enabled"],
         "review_model": cur["review"]["model"],

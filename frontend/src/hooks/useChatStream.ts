@@ -24,7 +24,8 @@ const STOP_GENERATED_TEXT = '⏹ 已停止生成（草稿见思维链）'
 /** RA-S5：主链路 base_url 路由（纯函数供 vitest）——zen 取测试档 LS 写集的 zenBaseUrl；
  * 空则与改动前现状等价回落 undefined（后端回落 DeepSeek 端点）并 console.warn 提示，不炸；
  * S3：go 取 LS 写集的 goBaseUrl（同款空回落语义）；
- * C1：zai 取 LS 写集的 zaiBaseUrl（bigmodel 官方端点）；deepseek/zhipu 硬编码不变（标准档零回归）。 */
+ * C1：zai 取 LS 写集的 zaiBaseUrl（bigmodel 官方端点）；C2 09-04：zhipu 键随标准档 zhipu 主对话清除
+ * （存量 LS.provider='zhipu' 经 fallback 自然回落 DeepSeek 端点，零迁移）。 */
 export function resolveChatBaseUrl(provider: string, zenBaseUrl: string, goBaseUrl: string, zaiBaseUrl: string): string | undefined {
   if (provider === 'zen') {
     if (!zenBaseUrl) {
@@ -49,7 +50,6 @@ export function resolveChatBaseUrl(provider: string, zenBaseUrl: string, goBaseU
   }
   const providerBaseUrls: Record<string, string> = {
     deepseek: 'https://api.deepseek.com/v1',
-    zhipu: 'https://open.bigmodel.cn/api/paas/v4',
   }
   return providerBaseUrls[provider]
 }

@@ -8,8 +8,8 @@ load_dotenv()
 class Config:
     DEEPSEEK_API_KEY: str = os.getenv("DEEPSEEK_API_KEY", "")
     DEEPSEEK_BASE_URL: str = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-    # 智谱（备用厂家通道 key；主对话模型 key 由前端请求携带）
-    ZHIPU_API_KEY: str = os.getenv("ZHIPU_API_KEY", "")
+    # C2 09-04：ZHIPU_API_KEY 随标准档 zhipu 主对话整体清除（owner 拍板「彻底没用了」）；
+    # zai 测试通道走下方 ZAI_API_KEY（独立配置），互不相干
     LLM_MAX_CONCURRENCY: int = int(os.getenv("LLM_MAX_CONCURRENCY", "3"))
     LLM_REQUEST_TIMEOUT: int = int(os.getenv("LLM_REQUEST_TIMEOUT", "120"))
     # 数据目录（SQLite app.db 所在目录）

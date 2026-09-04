@@ -65,7 +65,7 @@ describe('resolveChatModel（RA3-S1 签名保留，实现入镜像）', () => {
   it('chat 态：杂值/空钉死 MODEL_MAIN（镜像引用，非本地字面量）', () => {
     expect(resolveChatModel('deepseek', 'Qwen/Qwen2.5-72B-Instruct')).toBe(MODEL_MAIN)
     expect(resolveChatModel('deepseek', '')).toBe(MODEL_MAIN)
-    expect(resolveChatModel('zhipu', 'glm-4-flash')).toBe(MODEL_MAIN)
+    expect(resolveChatModel('zhipu', 'glm-4-flash')).toBe(MODEL_MAIN)   // C2：存量杂值回落标准档钉死（zhipu 遗留已清除）
   })
 
   it('alias 迁移映射保留 + zen 态透传/显示名兜底（既有行为零变化）', () => {
@@ -77,7 +77,7 @@ describe('resolveChatModel（RA3-S1 签名保留，实现入镜像）', () => {
 })
 
 describe('resolveAuxCall（R-D S5 新缝：资源生成/上传链辅助调用）', () => {
-  it('standard 态（含 zhipu）：DeepSeek 端点+MODEL_MAIN——镜像同源', () => {
+  it('standard 态：DeepSeek 端点+MODEL_MAIN——镜像同源（C2：zhipu 遗留清除，未知 provider 同款回落）', () => {
     expect(resolveAuxCall('deepseek', '', '', '')).toEqual({ base_url: DEEPSEEK_BASE_URL, model: MODEL_MAIN })
     expect(resolveAuxCall('zhipu', '', '', '')).toEqual({ base_url: DEEPSEEK_BASE_URL, model: MODEL_MAIN })
   })

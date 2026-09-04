@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 """统一模型 provider 配置（先只做配置层抽象，后续逐步把调用方切过来）。
 
-主模型：DeepSeek / 智谱（用户在对话右下角选，key 在设置→基础填）；DeepSeek 默认视觉版 deepseek-v4-flash-vision-exp。
+主模型：DeepSeek（key 由前端请求携带/设置→基础填）；DeepSeek 默认视觉版 deepseek-v4-flash-vision-exp。
 辅助模型：硅基流动（embedding / rerank / VL / review），在设置→AI 服务配。图片理解由视觉主模型直接处理。
+（C2 09-04：标准档 zhipu 主对话遗留已整体清除——owner 拍板「彻底没用了」；zai 测试通道走
+  ZAI_* 独立配置与 bigmodel 端点，与此处无关。）
 """
 from core.config import config
 
@@ -12,26 +14,10 @@ MODEL_MAIN = "deepseek-v4-flash-vision-exp"   # 主对话/生成/审核默认（
 MODEL_FAST = MODEL_MAIN                        # 轻调用道（规划/分类/学情/追问/记忆），当前跟随主模型
 
 
-# 主对话模型厂家定义（后端单点；前端 CenterPanel / SettingsModal 的厂家列表后续对齐这里）
-MAIN_PROVIDERS = {
-    "deepseek": {
-        "name": "DeepSeek",
-        "base_url": "https://api.deepseek.com/v1",
-        "models": ["deepseek-v4-flash-vision-exp", "deepseek-v4-flash", "deepseek-v4-pro"],
-        "fast_model": MODEL_FAST,
-    },
-    "zhipu": {
-        "name": "智谱 GLM",
-        "base_url": "https://open.bigmodel.cn/api/paas/v4",
-        "models": ["glm-4-flash", "glm-4-plus"],
-        "fast_model": "glm-4-flash",
-    },
-}
-
 # 快模型映射（按 base_url 域名自动解析；映射不到则与主模型一致）
+# C2 09-04：open.bigmodel.cn 条目随标准档 zhipu 主对话一并清除（zai 测试通道走 ZAI_* 独立配置不经此表）
 FAST_MODEL_BY_BASE = {
     "api.deepseek.com": MODEL_FAST,
-    "open.bigmodel.cn": "glm-4-flash",
 }
 
 
@@ -227,7 +213,8 @@ def detect_tier(req_base_url: str | None, req_model: str | None = None) -> str:
     """请求级档位判定：与已配置 GO_BASE_URL 精确相等（尾斜杠容忍）→ go——**必须先于 zen 标记判定**
     （S6：go 端点默认值 https://opencode.ai/zen/go/v1 含 zen 标记子串，先判 zen 会误归 test）；
     与 ZAI_BASE_URL 相等且 req_model==MODEL_ZAI_MAIN → zai——**model 双参缺一不可**（C1：
-    zai 默认端点与标准档 zhipu 主对话完全相同，单看 URL 会把标准档智谱对话误归 zai 档）；
+    zai 默认端点与标准档 zhipu 主对话完全相同，单看 URL 会误判；C2 09-04 zhipu 主对话虽已清除，
+    双参判定保留为防御性契约——任何走 bigmodel 端点的非 zai 请求不得误归 zai 档）；
     req.base_url 指向 Zen 网关（含 opencode.ai/zen）→ test；其余含 None → standard。"""
     from core.config import config as _cfg
     _go_base = str(getattr(_cfg, "GO_BASE_URL", "") or "")
