@@ -4,7 +4,7 @@
  *  F13-S1：预设文件资源（data/preset_library 三级索引）经 GET /api/preset-library 驱动，
  *  原 URL 型教程归入「链接资源」类别；无前端硬编码资源清单。 */
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { BookOpen, Plus, FolderTree, Library, ExternalLink, Download } from 'lucide-react'
+import { BookOpen, Plus, FolderTree, Library, ExternalLink, Download, X } from 'lucide-react'
 import { LS, lsGet, lsGetJSON, lsSetJSON } from '../storage'
 import { api } from '../api'
 import { WIKI_ENTRIES, WikiEntry } from '../data/wikiEntries'
@@ -158,6 +158,17 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
   }
 
   // 新建领域：调后端 AI 生成该领域的教程 + 百科词条，存 localStorage
+  // 删除已生成的领域（自定义）：移出领域 + 清 syllabus + 清该领域词条
+  const removeDomain = (name: string) => {
+    if (!window.confirm('删除领域「' + name + '」？将同时移除其生成的大纲与百科词条。')) return
+    const nextDomains = customDomains.filter(x => x !== name)
+    setCustomDomains(nextDomains); lsSetJSON(LS.domains, nextDomains)
+    const syl = lsGetJSON<Record<string, any>>(LS.syllabus, {})
+    if (syl[name]) { delete syl[name]; lsSetJSON(LS.syllabus, syl) }
+    const nw = customWiki.filter(w => w.domain !== name)
+    setCustomWiki(nw); lsSetJSON(LS.customWiki, nw)
+    if (selectedDomain === name) setSelectedDomain(domains.find(d => d !== name) || domains[0] || '')
+  }
   const createDomain = async () => {
     const name = newDomainName.trim()
     if (!name) return
@@ -402,12 +413,18 @@ export default function ResourceView({ projectId, onUseItem, refreshSignal }: { 
               <button
                 key={d}
                 onClick={() => { setSelectedDomain(d); setSelectedCat(CATEGORIES[0].key); setDetail(null); setShowNewDomain(false) }}
-                className={`flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-colors ${
+                className={`group/dom flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-medium text-left transition-colors ${
                   active ? 'bg-[#1a1a1a] text-white shadow-soft' : 'text-dim hover:bg-[var(--bg-hover)]'
                 }`}
               >
                 <span className={`w-2 h-2 rounded-full flex-shrink-0 ${c.active}`} />
-                <span className="font-semibold truncate">{d}</span>
+                <span className="font-semibold truncate flex-1">{d}</span>
+                {customDomains.includes(d) && (
+                  <span onClick={(e) => { e.stopPropagation(); removeDomain(d) }}
+                    className="opacity-0 group-hover/dom:opacity-100 p-0.5 rounded-md text-dim hover:text-red-500 hover:bg-red-50 transition-all flex-shrink-0" title="删除该领域">
+                    <X size={12} />
+                  </span>
+                )}
               </button>
             )
           })}
