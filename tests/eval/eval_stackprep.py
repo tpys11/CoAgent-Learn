@@ -4,16 +4,19 @@
 职责（全部只读真实库 / 只写副本库 settings）：
 1. 副本库 settings 护栏：PARSE_ENGINE → pymupdf4llm（禁 MinerU 云，owner 指令 2026-08-31）
 2. 副本库 settings 键清单（只打印键名，绝不打印值——凭据零残留纪律）
-3. PDF 文本量探针（决定灌库批次策略）
+3. 语料文本量探针（决策 39：扫 eval_kb_manifest.json 仓库内语料，决定灌库批次策略）
 
 用法：python tests/eval/eval_stackprep.py --replica-db <path>
 """
 import argparse
+import json
 import os
 import sqlite3
 import sys
 
-KB_CANDIDATE_DIR = r"D:\desktop\挂帅\0、学习方式、对象\文件（上传到系统）"
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.dirname(os.path.dirname(HERE))
+MANIFEST_PATH = os.path.join(HERE, "eval_kb_manifest.json")
 
 
 def _utf8():
@@ -23,22 +26,50 @@ def _utf8():
         pass
 
 
+def _resolve_manifest_path(item):
+    """同 eval_runner._resolve_kb_path 语义：external 条目经 EVAL_KB_EXTERNAL_DIR
+    解析（评委自备件）；仓库内条目相对仓库根。决策 39 后 manifest 全仓库内条目。"""
+    if not item.get("external"):
+        return os.path.join(REPO_ROOT, item["path"])
+    base = os.environ.get("EVAL_KB_EXTERNAL_DIR", "")
+    if not base:
+        return None  # 自备件未指根目录：探针跳过该条（不报错，灌库由 runner 守卫）
+    return os.path.join(base, item["path"])
+
+
 def probe_kb_candidates() -> None:
-    """扫候选目录树：列全部文件（大小）；对 AI/Agent 相关 PDF 探文本量。"""
-    for root, _dirs, files in os.walk(KB_CANDIDATE_DIR):
-        for fn in files:
-            p = os.path.join(root, fn)
-            size_kb = os.path.getsize(p) // 1024
-            print(f"[cand] {size_kb}KB  {p}")
-            if fn.lower().endswith(".pdf") and ("ai" in fn.lower() or "agent" in fn.lower()):
-                try:
-                    import fitz
-                    d = fitz.open(p)
-                    text = "".join(page.get_text() for page in d)
-                    print(f"[probe] pages={len(d)} chars={len(text)} "
-                          f"est_chunks(512)={len(text) // 512}  <- {fn}")
-                except Exception as e:  # noqa: BLE001
-                    print(f"[probe] FAIL {fn}: {e}")
+    """扫 manifest 语料逐条探文本量（大小 + PDF 页数/字符数估算 chunk 量），
+    供灌库批次策略参考。旧 KB_CANDIDATE_DIR 本机绝对路径随决策 39 语料切换移除
+    （任务书瑕疵①：死路径不再入仓库）。"""
+    try:
+        with open(MANIFEST_PATH, encoding="utf-8") as fh:
+            items = json.load(fh)
+    except Exception as e:  # noqa: BLE001 —— 探针失败不阻断护栏主职责
+        print(f"[probe] manifest 读取失败（跳过探针）: {e}")
+        return
+    for it in items:
+        src = it.get("source", it.get("path", "?"))
+        resolved = _resolve_manifest_path(it)
+        if not resolved or not os.path.exists(resolved):
+            print(f"[cand] SKIP（不存在/自备件未指根） {src}")
+            continue
+        size_kb = os.path.getsize(resolved) // 1024
+        if it.get("kind") == "file" and resolved.lower().endswith(".pdf"):
+            try:
+                import fitz
+                d = fitz.open(resolved)
+                text = "".join(page.get_text() for page in d)
+                print(f"[cand] {size_kb}KB pages={len(d)} chars={len(text)} "
+                      f"est_chunks(512)={len(text) // 512}  <- {src}")
+            except Exception as e:  # noqa: BLE001 —— fitz 缺库/损坏文件只降级
+                print(f"[cand] {size_kb}KB (PDF 探针跳过: {e})  <- {src}")
+        else:
+            try:
+                chars = len(open(resolved, encoding="utf-8-sig").read())
+                print(f"[cand] {size_kb}KB chars={chars} "
+                      f"est_chunks(512)={chars // 512}  <- {src}")
+            except Exception as e:  # noqa: BLE001
+                print(f"[cand] {size_kb}KB (读取失败: {e})  <- {src}")
 
 
 def guardrail(replica_db: str) -> None:
