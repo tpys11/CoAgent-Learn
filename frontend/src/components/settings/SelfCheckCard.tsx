@@ -36,6 +36,8 @@ export default function SelfCheckCard({ settings, onSaved }: Props) {
     || !!lsGetJSON(LS.providerKeys, {} as Record<string, string>)['']
     // S4：go 通道 key 也算主通道已配置（对称 zen 的 zenKeySet 兜底语义）
     || !!lsGetJSON(LS.providerKeys, {} as Record<string, string>)['go']
+    // C1：zai 通道 key 同款兜底
+    || !!lsGetJSON(LS.providerKeys, {} as Record<string, string>)['zai']
 
   // RA-S4：svc 为扁平结构（预置缺陷修正：原读嵌套路径恒 undefined）+ 模型名三源
   // RA3-S1：chat 行模型名与 useChatStream 发送路径同源（同函数同取参表达式）——
@@ -47,6 +49,7 @@ export default function SelfCheckCard({ settings, onSaved }: Props) {
     providerKeySet,
     zenKeySet: !!settings?.zen_key_set,
     goKeySet: !!settings?.go_key_set,   // S4：go 通道判卷 key 状态（review 行 go 分支消费）
+    zaiKeySet: !!settings?.zai_key_set, // C1：zai 通道判卷 key 状态（review 行 zai 分支消费）
     embeddingKeySet: !!settings?.embedding_key_set,
     parseEngine: settings?.parse_engine,
     mineruKeySet: !!settings?.mineru_key_set,

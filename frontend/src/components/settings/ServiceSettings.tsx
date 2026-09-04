@@ -3,9 +3,9 @@ import { Database, Check, X } from 'lucide-react'
 import { api } from '../../api'
 import type { SettingsData } from '../../types'
 import { LS, lsGet, lsSet, lsRemove, lsGetJSON, lsSetJSON } from '../../storage'
-import { SERVICE_GROUPS, TEST_PRESET_NOTE, KB_MERGE_NOTE, TEST_PRESET_ZEN_GUARD_NOTE, TEST_PRESET_ON_NOTE, TEST_PRESET_OFF_NOTE, REVIEW_BUBBLE_NOTE, GO_CHANNEL_NOTE, TEST_PRESET_GO_GUARD_NOTE, GO_ON_NOTE, CHANNEL_EXCLUDE_NOTE } from './serviceGroups'
+import { SERVICE_GROUPS, TEST_PRESET_NOTE, KB_MERGE_NOTE, TEST_PRESET_ZEN_GUARD_NOTE, TEST_PRESET_ON_NOTE, TEST_PRESET_OFF_NOTE, REVIEW_BUBBLE_NOTE, GO_CHANNEL_NOTE, TEST_PRESET_GO_GUARD_NOTE, GO_ON_NOTE, CHANNEL_EXCLUDE_NOTE, ZAI_CHANNEL_NOTE, TEST_PRESET_ZAI_GUARD_NOTE, ZAI_ON_NOTE } from './serviceGroups'
 import { buildSvcBody } from './settingsPayload'
-import { testPresetLsWrites, goTestPresetLsWrites, testPresetPutBody, standardPresetPutBody } from './presets'
+import { testPresetLsWrites, goTestPresetLsWrites, zaiTestPresetLsWrites, testPresetPutBody, standardPresetPutBody } from './presets'
 import SelfCheckCard from './SelfCheckCard'
 
 function Section({ icon: Icon, title, desc, children }: { icon: any; title: string; desc?: string; children: React.ReactNode }) {
@@ -97,6 +97,7 @@ export default function ServiceSettings() {
     mathpix_key_set: false,
     zen_key_set: false, zen_key_hint: '',
     go_key_set: false, go_key_hint: '', go_base_url: '',
+    zai_key_set: false, zai_key_hint: '', zai_base_url: '',
     chunk_mode: 'auto',
     chunk_size: 512,
     chunk_overlap: 50,
@@ -118,17 +119,22 @@ export default function ServiceSettings() {
   const [goKey, setGoKey] = useState('')
   const [goSaving, setGoSaving] = useState(false)
   const [goSaveErr, setGoSaveErr] = useState(false)
-  // S4：测试通道态（互斥开关单一事实源=LS.preset+LS.provider）——'zen'|'go'=测试档对应通道，''=标准档。
-  // 互斥语义由单字段覆盖实现：开 A→provider 覆写为 A（B 的开关渲染自然关闭）；关 A→回标准档（B 本就关着，不动）
-  const [testChannel, setTestChannel] = useState<'zen' | 'go' | ''>(() => {
+  // C1：zai 通道输入（URL 固定官方端点由 GET 落 LS，仅 Key 输入）与保存态
+  const [zaiKey, setZaiKey] = useState('')
+  const [zaiSaving, setZaiSaving] = useState(false)
+  const [zaiSaveErr, setZaiSaveErr] = useState(false)
+  // S4：测试通道态（互斥开关单一事实源=LS.preset+LS.provider）——'zen'|'go'|'zai'=测试档对应通道，''=标准档。
+  // 互斥语义由单字段覆盖实现：开 A→provider 覆写为 A（其他通道的开关渲染自然关闭）；关 A→回标准档
+  const [testChannel, setTestChannel] = useState<'zen' | 'go' | 'zai' | ''>(() => {
     if (lsGet(LS.preset, 'standard') !== 'test') return ''
-    return lsGet(LS.provider, 'deepseek') === 'go' ? 'go' : 'zen'
+    const p = lsGet(LS.provider, 'deepseek')
+    return p === 'go' || p === 'zai' ? p : 'zen'
   })
   const testPresetOn = testChannel !== ''
   // RA4-S2：依赖链持久反馈——zenBaseUrl 空守卫 amber 常驻 + PUT 失败红字常驻（flash 只做动作回执）
   const [presetGuardHint, setPresetGuardHint] = useState(false)
-  // S4：守卫归属通道（zen/go 触发的空守卫文案不同）
-  const [guardKind, setGuardKind] = useState<'zen' | 'go'>('zen')
+  // S4：守卫归属通道（zen/go/zai 触发的守卫文案不同）
+  const [guardKind, setGuardKind] = useState<'zen' | 'go' | 'zai'>('zen')
   const [presetFailMsg, setPresetFailMsg] = useState('')
   const [svcSaved, setSvcSaved] = useState(false)
   const [keyEditing, setKeyEditing] = useState(false)
@@ -156,6 +162,9 @@ export default function ServiceSettings() {
         go_key_set: !!d.go?.api_key_set,
         go_key_hint: d.go?.api_key_hint || '',
         go_base_url: d.go?.base_url || '',
+        zai_key_set: !!d.zai?.api_key_set,
+        zai_key_hint: d.zai?.api_key_hint || '',
+        zai_base_url: d.zai?.base_url || '',
         chunk_size: d.chunking?.chunk_size ?? 512,
         chunk_overlap: d.chunking?.chunk_overlap ?? 50,
         rrf_k: d.chunking?.rrf_k ?? 60,
@@ -163,6 +172,8 @@ export default function ServiceSettings() {
       }))
       // S6：后端默认 go 端点落 LS（零配置路径——GO URL 无需手填，开 go 开关即走）
       if (d.go?.base_url) lsSet(LS.goBaseUrl, d.go.base_url)
+      // C1：zai 官方端点落 LS（URL 固定官方，开 zai 开关即走）
+      if (d.zai?.base_url) lsSet(LS.zaiBaseUrl, d.zai.base_url)
     }).catch(() => {})
   }, [])
 
@@ -228,11 +239,18 @@ export default function ServiceSettings() {
    *  通道 base_url 空串禁走（S5/S3：路由 base_url 取对应 LS 键，空=回落 DeepSeek 端点）——
    *  守卫从瞬时 flash 改为持久内联 amber（旧版只闪一下即 return=开关不亮无反馈根因）。
    *  S4：参数化通道——zen/go 两开关互斥由单字段覆盖实现（开 go 直接覆写 provider，zen 渲染自然关闭）。 */
-  const enableTestPreset = async (channel: 'zen' | 'go') => {
+  const enableTestPreset = async (channel: 'zen' | 'go' | 'zai') => {
     const zenBaseUrl = lsGet(LS.zenBaseUrl, '')
     const goBaseUrl = lsGet(LS.goBaseUrl, '')
+    const zaiBaseUrl = lsGet(LS.zaiBaseUrl, '')
     if (channel === 'zen' && !zenBaseUrl) { setGuardKind('zen'); setPresetGuardHint(true); return }
     if (channel === 'go' && !goBaseUrl) { setGuardKind('go'); setPresetGuardHint(true); return }
+    // C1：zai 无跨通道 key 兜底（ZAI_API_KEY 独立）——未配 key 禁走并持久守卫
+    if (channel === 'zai') {
+      const keys0 = lsGetJSON(LS.providerKeys, {} as Record<string, string>)
+      if (!zaiBaseUrl) { setGuardKind('zai'); setPresetGuardHint(true); return }
+      if (!keys0.zai && !svc.zai_key_set) { setGuardKind('zai'); setPresetGuardHint(true); return }
+    }
     try {
       await api.saveSettings(testPresetPutBody(channel))
       if (channel === 'zen') {
@@ -241,7 +259,7 @@ export default function ServiceSettings() {
         lsSet(LS.provider, ls.provider)
         lsSet(LS.model, ls.model)
         lsSet(LS.zenBaseUrl, ls.zenBaseUrl)
-      } else {
+      } else if (channel === 'go') {
         const gls = goTestPresetLsWrites(goBaseUrl)
         lsSet(LS.preset, 'test')
         lsSet(LS.provider, gls.provider)
@@ -251,6 +269,15 @@ export default function ServiceSettings() {
         // go 子通道同一 Bearer 鉴权，实测复用 ZEN key 200 通）
         const keys = lsGetJSON(LS.providerKeys, {} as Record<string, string>)
         if (!keys.go && keys.zen) lsSetJSON(LS.providerKeys, { ...keys, go: keys.zen })
+      } else {
+        const zls = zaiTestPresetLsWrites(zaiBaseUrl)
+        lsSet(LS.preset, 'test')
+        lsSet(LS.provider, zls.provider)
+        lsSet(LS.model, zls.model)
+        lsSet(LS.zaiBaseUrl, zls.zaiBaseUrl)
+        // C1：key 唯一来源=saveZaiKey 用户输入（守卫已保证已配置）；provKeys.zai 由 saveZaiKey 落 LS，
+        // 此处不伪造凭据（铁律 35）。.env-only 配置边界：provKeys.zai 空时主链回落 LS.apiKey——
+        // 属可见失败（bigmodel 401），UI 填 key 即修复；10 月窗口议「req 无 key 时按档位取注册表格 key」
       }
       setPresetGuardHint(false)
       setPresetFailMsg('')
@@ -281,9 +308,32 @@ export default function ServiceSettings() {
     }
   }
 
-  // S4：两通道开关处理器——开 A=enableTestPreset(A)（另一通道自动关闭）；关 A=退出测试档（另一通道本就关闭，不动）
+  // S4/C1：三通道开关处理器——开 A=enableTestPreset(A)（其他通道自动关闭）；关 A=退出测试档（其他通道本就关闭，不动）
   const onZenToggle = (v: boolean) => { if (v) void enableTestPreset('zen'); else void disableTestPreset() }
   const onGoToggle = (v: boolean) => { if (v) void enableTestPreset('go'); else void disableTestPreset() }
+  const onZaiToggle = (v: boolean) => { if (v) void enableTestPreset('zai'); else void disableTestPreset() }
+
+  /** C1：保存 Z.AI Key（对称 saveZenKey：专用通道 saveZaiKey；URL 固定官方端点不开放 PUT）；
+   *  LS 双写 providerKeys.zai（对话发送 apiKey=provKeys[provider]）+LS.zaiBaseUrl（GET 回显官方端点）。 */
+  const saveZaiKeyFn = async () => {
+    if (!zaiKey.trim()) return
+    setZaiSaving(true)
+    try {
+      await api.saveZaiKey(zaiKey.trim())
+      const keys = lsGetJSON(LS.providerKeys, {} as Record<string, string>)
+      lsSetJSON(LS.providerKeys, { ...keys, zai: zaiKey.trim() })
+      const g = await api.getSettings()
+      if (g.zai?.base_url) lsSet(LS.zaiBaseUrl, g.zai.base_url)
+      setSvc(s => ({ ...s, zai_key_set: !!g.zai?.api_key_set, zai_key_hint: g.zai?.api_key_hint || '', zai_base_url: g.zai?.base_url || '' }))
+      setZaiSaveErr(false)
+      flash('Z.AI Key 已保存——点击上方立即检测验证连通性')
+    } catch {
+      setZaiSaveErr(true)
+      flashErr(zenSaveFailFlashText())
+    } finally {
+      setZaiSaving(false)
+    }
+  }
 
   /** S4：保存 go 通道 URL+Key（对称 saveZenKey：专用通道 saveGoKey 防 E-40 类字段静默丢失；
    *  URL 必须落库——后端 detect_tier 靠「req.base_url==GO_BASE_URL」精确判定；LS 双写
@@ -343,7 +393,7 @@ export default function ServiceSettings() {
                   <p className="text-[10px] text-dim">{TEST_PRESET_OFF_NOTE}</p>
                 )}
                 {presetGuardHint && !testChannel && (
-                  <p className="text-[10px] text-amber-600">{guardKind === 'zen' ? TEST_PRESET_ZEN_GUARD_NOTE : TEST_PRESET_GO_GUARD_NOTE}</p>
+                  <p className="text-[10px] text-amber-600">{guardKind === 'zen' ? TEST_PRESET_ZEN_GUARD_NOTE : (guardKind === 'go' ? TEST_PRESET_GO_GUARD_NOTE : TEST_PRESET_ZAI_GUARD_NOTE)}</p>
                 )}
                 {presetFailMsg && <p className="text-[10px] text-red-500">{presetFailMsg}</p>}
 
@@ -402,6 +452,31 @@ export default function ServiceSettings() {
                   )}
                 </div>
                 <p className="text-[10px] text-dim">{GO_CHANNEL_NOTE}</p>
+
+                {/* ── Z.AI 通道行（与 Zen/Go 上下并列；C1 owner 拍板，专用记忆机制测试） ── */}
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-semibold text-dim">Z.AI 通道（智谱 bigmodel 官方端点）</p>
+                  <Toggle checked={testChannel === 'zai'} onChange={onZaiToggle} />
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <p className="text-[11px] font-medium text-dim">Z.AI API Key</p>
+                  <div className="flex items-center gap-2">
+                    <input type="password" autoComplete="new-password" value={zaiKey}
+                      placeholder="sk-...（bigmodel.cn 获取）"
+                      onChange={e => setZaiKey(e.target.value)} className={inputCls} />
+                    <button onClick={saveZaiKeyFn} disabled={zaiSaving || !zaiKey.trim()}
+                      className={`px-4 py-1.5 text-[11px] rounded-lg font-semibold flex-shrink-0 ${zaiSaving ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-[#1a1a1a] text-white'}`}>
+                      {zaiSaving ? '保存中…' : '保存'}
+                    </button>
+                  </div>
+                  <p className={`text-[10px] ${svc.zai_key_set ? 'text-green-700' : 'text-dim'}`}>
+                    {zenKeyConfigText(svc.zai_key_set, svc.zai_key_hint)}
+                  </p>
+                  {zaiSaveErr && (
+                    <p className="text-[10px] text-red-500">{zenSaveFailPersistText()}</p>
+                  )}
+                </div>
+                <p className="text-[10px] text-dim">{ZAI_CHANNEL_NOTE}</p>
                 <p className="text-[10px] text-dim">{CHANNEL_EXCLUDE_NOTE}</p>
               </div>
             )}

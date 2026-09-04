@@ -17,7 +17,7 @@ export const PRESET_LABELS: Record<PresetId, string> = {
  *  R-D S4：zen_test_mode=true——测试档后台辅助链（压缩/入库增强/大纲/资源生成）随档总开关。
  *  RC4-S1：判卷随档位自动切换（standard=Qwen2.5-72B/test=big-pickle/go=Qwen3.8 Flash），无 PUT 键。
  *  S4（owner 09-04）：test_channel 通道定向（'go'→go 档；默认 'zen' 兼容旧语义）——current_tier 读此键。 */
-export function testPresetPutBody(channel: 'zen' | 'go' = 'zen'): Record<string, unknown> {
+export function testPresetPutBody(channel: 'zen' | 'go' | 'zai' = 'zen'): Record<string, unknown> {
   return {
     parse_engine: 'mineru',
     embedding_model: 'Qwen/Qwen3-VL-Embedding-8B',
@@ -39,6 +39,13 @@ export function testPresetLsWrites(zenBaseUrl: string): { provider: string; mode
 export function goTestPresetLsWrites(goBaseUrl: string): { provider: string; model: string; goBaseUrl: string } {
   if (!goBaseUrl) throw new Error('goTestPresetLsWrites: goBaseUrl 为空——调用方禁走（S3 路由约束）')
   return { provider: 'go', model: 'glm-5.3-flash', goBaseUrl }
+}
+
+/** C1：zai 通道 LS 写集（对称 go 版）——model 字面=双源同值⑦（官方文档 glm-4.7）；
+ *  zaiBaseUrl 空串同款防御性抛错（zai 路由 base_url 取此值）。 */
+export function zaiTestPresetLsWrites(zaiBaseUrl: string): { provider: string; model: string; zaiBaseUrl: string } {
+  if (!zaiBaseUrl) throw new Error('zaiTestPresetLsWrites: zaiBaseUrl 为空——调用方禁走（C1 路由约束）')
+  return { provider: 'zai', model: 'glm-4.7', zaiBaseUrl }
 }
 
 /** 标准档 PUT body（退出测试档=本地解析+后台链路回标准档）：

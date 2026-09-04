@@ -112,6 +112,8 @@ export const api = {
    *  「req.base_url==GO_BASE_URL」精确判定（与 zen 标记子串机制不同），URL 不落库 go 档失效；
    *  key 空串由后端 T51 语义不覆写） */
   saveGoKey: (key: string, baseUrl: string) => apiFetch<any>('/api/settings', jsonInit('PUT', { go_api_key: key, go_base_url: baseUrl })),
+  /** C1：Z.AI 通道专用保存通道（对称 saveZenKey/saveGoKey；URL 固定官方端点不开放 PUT，只发 zai_api_key） */
+  saveZaiKey: (key: string) => apiFetch<any>('/api/settings', jsonInit('PUT', { zai_api_key: key })),
   testSettings: (body: unknown) => apiFetch<any>('/api/settings/test', jsonInit('POST', body)),
   /** F14-S4f：拉取 Zen /models 名单（服务端代理+TTL 缓存；失败由前端 FALLBACK 兜底） */
   zenModels: () => apiFetch<{ status: string; cached?: boolean; models?: string[]; msg?: string }>(

@@ -41,5 +41,17 @@ export const TEST_PRESET_GO_GUARD_NOTE = 'GO 通道信息未就绪（后端不�
 export const GO_ON_NOTE =
   '测试档已启用（解析 mineru · embedding qwen3-VL · 主模型 glm-5.3-flash · 审核 qwen3.8-flash）'
 
-/** S4：互斥说明（owner 语义：两通道各一开关，只能开一个；开 A 自动关 B，关 A 则 B 不动；全关=标准档） */
-export const CHANNEL_EXCLUDE_NOTE = 'Zen 与 Go 两个通道互斥：开启一个会自动关闭另一个；两者都关即回到标准档'
+/** S4/C1：互斥说明（owner 语义：通道各一开关，只能开一个；开 A 自动关其他，关 A 则其他不动；全关=标准档） */
+export const CHANNEL_EXCLUDE_NOTE = 'Zen / Go / Z.AI 三个通道互斥：开启一个会自动关闭其他通道；全部关闭即回到标准档'
+
+/** C1（owner 09-04 拍板）：zai 通道小字——与 zen/go 并列的第三测试通道（智谱 bigmodel 官方端点）。
+ *  owner 原话要求注明「专用于测试记忆机制」；主审同模型 glm-4.7（同模型自审=owner 明示取舍） */
+export const ZAI_CHANNEL_NOTE =
+  '主模型与审核模型均用 glm-4.7（同模型自审）· 专用于测试记忆机制；文档解析用mineru、embedding模型用qwen3-VL-embedding-8B（智谱 bigmodel 官方端点，Key 在 bigmodel.cn 获取）'
+
+/** C1：zai 通道 Key 空守卫持久内联文案（zai 无跨通道 key 兜底，必须先配 key） */
+export const TEST_PRESET_ZAI_GUARD_NOTE = '请先填写并保存 Z.AI Key（bigmodel.cn 获取），测试档走 Z.AI 通道'
+
+/** C1：zai 通道启用后常驻绿字 */
+export const ZAI_ON_NOTE =
+  'Z.AI 通道已启用（解析 mineru · embedding qwen3-VL · 主模型 glm-4.7 · 审核 glm-4.7 · 记忆机制专用）'

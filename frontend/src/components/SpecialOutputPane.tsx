@@ -57,7 +57,7 @@ export default function SpecialOutputPane({ projectId, dialogueId }: { projectId
     const apiKey = keys[prov] || lsGet(LS.apiKey, '')
     if (!apiKey) { alert('请先在设置中填写主模型 API Key'); return }
     // R-D S5：前端硬编码 base_url 二值改走注册表镜像（owner 修正 B 前端半；后端 S3 起不再采信）
-    const aux = resolveAuxCall(prov, lsGet(LS.zenBaseUrl, ''), lsGet(LS.goBaseUrl, ''))
+    const aux = resolveAuxCall(prov, lsGet(LS.zenBaseUrl, ''), lsGet(LS.goBaseUrl, ''), lsGet(LS.zaiBaseUrl, ''))
     setLoading(true)
     try {
       const r = await api.generateResource({ key: form, content: source, api_key: apiKey, base_url: aux.base_url, model: aux.model })

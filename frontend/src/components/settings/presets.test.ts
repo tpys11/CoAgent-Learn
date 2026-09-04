@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   PRESET_IDS, PRESET_LABELS,
-  testPresetPutBody, testPresetLsWrites, standardPresetPutBody, goTestPresetLsWrites,
+  testPresetPutBody, testPresetLsWrites, standardPresetPutBody, goTestPresetLsWrites, zaiTestPresetLsWrites,
 } from './presets'
 
 describe('presets', () => {
@@ -58,6 +58,7 @@ describe('presets', () => {
     expect(testPresetPutBody().test_channel).toBe('zen')
     expect(testPresetPutBody('go').test_channel).toBe('go')
     expect(testPresetPutBody('zen').test_channel).toBe('zen')
+    expect(testPresetPutBody('zai').test_channel).toBe('zai')   // C1：三通道白名单
   })
 
   it('S4: goTestPresetLsWrites 返回 go 写集三键（model=双源同值⑤字面，S6 实测校正小写 API ID）', () => {
@@ -69,5 +70,16 @@ describe('presets', () => {
 
   it('S4: goTestPresetLsWrites 空 goBaseUrl 拒绝（调用方禁走约束，对称 zen 版）', () => {
     expect(() => goTestPresetLsWrites('')).toThrow()
+  })
+
+  it('C1: zaiTestPresetLsWrites 返回 zai 写集三键（model=双源同值⑦字面 glm-4.7）', () => {
+    const w = zaiTestPresetLsWrites('https://open.bigmodel.cn/api/paas/v4')
+    expect(w.provider).toBe('zai')
+    expect(w.model).toBe('glm-4.7')
+    expect(w.zaiBaseUrl).toBe('https://open.bigmodel.cn/api/paas/v4')
+  })
+
+  it('C1: zaiTestPresetLsWrites 空 zaiBaseUrl 拒绝（调用方禁走约束，对称 go 版）', () => {
+    expect(() => zaiTestPresetLsWrites('')).toThrow()
   })
 })

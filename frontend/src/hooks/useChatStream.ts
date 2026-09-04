@@ -23,8 +23,9 @@ const STOP_GENERATED_TEXT = '⏹ 已停止生成（草稿见思维链）'
 
 /** RA-S5：主链路 base_url 路由（纯函数供 vitest）——zen 取测试档 LS 写集的 zenBaseUrl；
  * 空则与改动前现状等价回落 undefined（后端回落 DeepSeek 端点）并 console.warn 提示，不炸；
- * S3：go 取 LS 写集的 goBaseUrl（同款空回落语义）；deepseek/zhipu 硬编码不变（标准档零回归）。 */
-export function resolveChatBaseUrl(provider: string, zenBaseUrl: string, goBaseUrl: string): string | undefined {
+ * S3：go 取 LS 写集的 goBaseUrl（同款空回落语义）；
+ * C1：zai 取 LS 写集的 zaiBaseUrl（bigmodel 官方端点）；deepseek/zhipu 硬编码不变（标准档零回归）。 */
+export function resolveChatBaseUrl(provider: string, zenBaseUrl: string, goBaseUrl: string, zaiBaseUrl: string): string | undefined {
   if (provider === 'zen') {
     if (!zenBaseUrl) {
       console.warn('[chat] zen provider 缺 LS.zenBaseUrl——base_url 回落 DeepSeek 端点')
@@ -38,6 +39,13 @@ export function resolveChatBaseUrl(provider: string, zenBaseUrl: string, goBaseU
       return undefined
     }
     return goBaseUrl
+  }
+  if (provider === 'zai') {
+    if (!zaiBaseUrl) {
+      console.warn('[chat] zai provider 缺 LS.zaiBaseUrl——base_url 回落 DeepSeek 端点')
+      return undefined
+    }
+    return zaiBaseUrl
   }
   const providerBaseUrls: Record<string, string> = {
     deepseek: 'https://api.deepseek.com/v1',
@@ -353,7 +361,7 @@ export function useChatStream(args: UseChatStreamArgs) {
       // RA-S5：模型名与 base_url 解析抽纯函数（chatRouting.test 直调）；zen base_url 读 LS 写集。
       // RA3-S1：模型名走双参 resolveChatModel——标准档无视 LS.model 杂值钉死（与 SelfCheckCard 显示同源）
       const model = resolveChatModel(provider, lsGet(LS.model, 'deepseek-v4-flash-vision-exp'))
-      const baseUrl = resolveChatBaseUrl(provider, lsGet(LS.zenBaseUrl, ''), lsGet(LS.goBaseUrl, ''))
+      const baseUrl = resolveChatBaseUrl(provider, lsGet(LS.zenBaseUrl, ''), lsGet(LS.goBaseUrl, ''), lsGet(LS.zaiBaseUrl, ''))
       const apiKey = provKeys[provider] || lsGet(LS.apiKey, '') || undefined
       const ctxSettings = lsGetJSON<Record<string, any>>(LS.contextSettings, {})
       ctxSettings.typing = true

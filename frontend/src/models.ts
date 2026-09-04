@@ -15,8 +15,12 @@ export const MODEL_REVIEW_SF = 'Qwen/Qwen2.5-72B-Instruct' // 双源同值④（
 // 双模型 chat/completions 实测 200 通）；换 API ID=两侧各改一行+两处测试钉字
 export const MODEL_GO_MAIN = 'glm-5.3-flash'               // 双源同值⑤ = backend MODEL_GO_MAIN（go 通道主对话/辅助）
 export const MODEL_GO_REVIEW = 'qwen3.8-flash'             // 双源同值⑥ = backend MODEL_GO_REVIEW（go 通道判卷）
+// C1（owner 09-04 拍板）：Z.AI 第三测试通道——官方文档 model="glm-4.7"，主审同模型（专用记忆机制测试）
+export const MODEL_ZAI_MAIN = 'glm-4.7'                    // 双源同值⑦ = backend MODEL_ZAI_MAIN（zai 主对话/辅助）
+export const MODEL_ZAI_REVIEW = 'glm-4.7'                  // 双源同值⑧ = backend MODEL_ZAI_REVIEW（zai 判卷，同模型自审）
 export const DEEPSEEK_BASE_URL = 'https://api.deepseek.com/v1'
 export const ZEN_BASE_URL = 'https://opencode.ai/zen/v1'
+export const ZAI_BASE_URL = 'https://open.bigmodel.cn/api/paas/v4'
 
 /** 注册表镜像矩阵（角色×档位 → 模型实名/端点）。RC4-S1：review 两档均定值格（owner 09-03 终版
  *  「档位定死」）——standard=SF Qwen2.5-72B（跨厂商独立判卷）、test=zen big-pickle；
@@ -27,6 +31,8 @@ export const REGISTRY_MIRROR = {
   test: { main: MODEL_ZEN_TEST, fast: MODEL_ZEN_TEST, vision: MODEL_ZEN_TEST, review: MODEL_ZEN_REVIEW, base_url: ZEN_BASE_URL },
   // S3：go 档——端点动态（设置页填 GO_BASE_URL）无镜像常量位，base_url 留空仅占位防误用
   go: { main: MODEL_GO_MAIN, fast: MODEL_GO_MAIN, vision: MODEL_GO_MAIN, review: MODEL_GO_REVIEW, base_url: '' },
+  // C1：zai 档——bigmodel 官方端点固定（镜像常量），主审同模型 glm-4.7
+  zai: { main: MODEL_ZAI_MAIN, fast: MODEL_ZAI_MAIN, vision: MODEL_ZAI_MAIN, review: MODEL_ZAI_REVIEW, base_url: ZAI_BASE_URL },
 } as const
 
 /** zen 态对话模型「显示名」兜底（chatRouting 源级契约值——非 API ID，F14 显示语义原样保留，
@@ -40,6 +46,7 @@ export const ZEN_CHAT_FALLBACK_DISPLAY = 'mimo-V2.5 Free'
 export function resolveChatModel(provider: string, lsModel: string): string {
   if (provider === 'zen') return lsModel || ZEN_CHAT_FALLBACK_DISPLAY
   if (provider === 'go') return MODEL_GO_MAIN   // S3：go 通道定值（不吃 LS.model；401 校正=改常量一行）
+  if (provider === 'zai') return MODEL_ZAI_MAIN // C1：zai 通道定值 glm-4.7（同上）
   const alias: Record<string, string> = {
     'deepseek-chat': MODEL_PRO,
     'deepseek-reasoner': MODEL_PRO,
@@ -54,13 +61,17 @@ export function resolveChatModel(provider: string, lsModel: string): string {
  *  决策（base_url/model 传参被后端忽略），前端同源发送镜像值保持请求自洽：
  *  standard=DeepSeek 端点+MODEL_MAIN（zhipu 不再特判——注册表 main 无 zhipu 格）；
  *  test(zen)=Zen 端点+mimo；zenBaseUrl 空回落 DeepSeek 端点（RA-S5 既有语义）；
- *  S3：go=go 网关端点+GLM-5.3-Flash，goBaseUrl 空同款回落（三参化由 tsc 逼出全部调用点）。 */
-export function resolveAuxCall(provider: string, zenBaseUrl: string, goBaseUrl: string): { base_url: string; model: string } {
+ *  S3：go=go 网关端点+GLM-5.3-Flash，goBaseUrl 空同款回落（三参化由 tsc 逼出全部调用点）；
+ *  C1：zai=bigmodel 官方端点+glm-4.7（zaiBaseUrl 空同款回落）。 */
+export function resolveAuxCall(provider: string, zenBaseUrl: string, goBaseUrl: string, zaiBaseUrl: string): { base_url: string; model: string } {
   if (provider === 'zen') {
     return { base_url: zenBaseUrl || DEEPSEEK_BASE_URL, model: REGISTRY_MIRROR.test.main }
   }
   if (provider === 'go') {
     return { base_url: goBaseUrl || DEEPSEEK_BASE_URL, model: REGISTRY_MIRROR.go.main }
+  }
+  if (provider === 'zai') {
+    return { base_url: zaiBaseUrl || DEEPSEEK_BASE_URL, model: REGISTRY_MIRROR.zai.main }
   }
   return { base_url: REGISTRY_MIRROR.standard.base_url, model: REGISTRY_MIRROR.standard.main }
 }

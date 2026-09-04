@@ -41,6 +41,8 @@ export const LS = {
   zenBaseUrl: 'coagent-zen-base-url',
   /** S3：go 网关地址（第二测试通道 LS 写集；与 zenBaseUrl 同构，主链路 go 路由读此键） */
   goBaseUrl: 'coagent-go-base-url',
+  /** C1：Z.AI 通道地址（第三测试通道；bigmodel 官方端点由 GET 落 LS，主链路 zai 路由读此键） */
+  zaiBaseUrl: 'coagent-zai-base-url',
 } as const
 
 export function lsGet(key: string, fallback = ''): string {

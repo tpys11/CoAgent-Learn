@@ -417,7 +417,7 @@ export default function CenterPanel({ messages, isLoading, currentProject, dialo
     if (!apiKey) { c.onRequestKey?.(); return }
     const prov = lsGet(LS.provider, 'deepseek')
     // R-D S5：辅助调用改走注册表镜像（后端 S3 已改注册表决策，base_url/model 传参降级为自洽值）
-    const aux = resolveAuxCall(prov, lsGet(LS.zenBaseUrl, ''), lsGet(LS.goBaseUrl, ''))
+    const aux = resolveAuxCall(prov, lsGet(LS.zenBaseUrl, ''), lsGet(LS.goBaseUrl, ''), lsGet(LS.zaiBaseUrl, ''))
     const done: string[] = []
     for (const key of keys) {
       try {

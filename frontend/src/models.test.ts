@@ -5,8 +5,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   MODEL_MAIN, MODEL_PRO, MODEL_ZEN_TEST, MODEL_ZEN_REVIEW, MODEL_REVIEW_SF,
-  MODEL_GO_MAIN, MODEL_GO_REVIEW,
-  DEEPSEEK_BASE_URL, ZEN_BASE_URL, REGISTRY_MIRROR,
+  MODEL_GO_MAIN, MODEL_GO_REVIEW, MODEL_ZAI_MAIN, MODEL_ZAI_REVIEW,
+  DEEPSEEK_BASE_URL, ZEN_BASE_URL, ZAI_BASE_URL, REGISTRY_MIRROR,
   resolveChatModel, resolveAuxCall,
 } from './models'
 
@@ -30,6 +30,11 @@ describe('REGISTRY_MIRROR 双源同值（与 backend tests/test_rd_s1_registry.p
     expect(MODEL_GO_REVIEW).toBe('qwen3.8-flash')    // 双源同值⑥
   })
 
+  it('zai 通道实名同值（C1）：glm-4.7（官方文档 model 值，主审同模型=owner 拍板记忆机制专用）', () => {
+    expect(MODEL_ZAI_MAIN).toBe('glm-4.7')           // 双源同值⑦
+    expect(MODEL_ZAI_REVIEW).toBe('glm-4.7')         // 双源同值⑧（同模型自审）
+  })
+
   it('矩阵语义（RC4-S1）：review 两档定值——standard=Qwen2.5-72B(SF 跨厂商)、test=big-pickle(zen)', () => {
     expect(REGISTRY_MIRROR.standard).toEqual({
       main: MODEL_MAIN, fast: MODEL_MAIN, vision: MODEL_MAIN, pro: MODEL_PRO,
@@ -45,6 +50,13 @@ describe('REGISTRY_MIRROR 双源同值（与 backend tests/test_rd_s1_registry.p
     expect(REGISTRY_MIRROR.go).toEqual({
       main: MODEL_GO_MAIN, fast: MODEL_GO_MAIN, vision: MODEL_GO_MAIN,
       review: MODEL_GO_REVIEW, base_url: '',
+    })
+  })
+
+  it('矩阵语义（C1）：zai 档定值——全角色 glm-4.7（主审同模型）、base_url=bigmodel 官方端点', () => {
+    expect(REGISTRY_MIRROR.zai).toEqual({
+      main: MODEL_ZAI_MAIN, fast: MODEL_ZAI_MAIN, vision: MODEL_ZAI_MAIN,
+      review: MODEL_ZAI_REVIEW, base_url: ZAI_BASE_URL,
     })
   })
 })
@@ -66,20 +78,26 @@ describe('resolveChatModel（RA3-S1 签名保留，实现入镜像）', () => {
 
 describe('resolveAuxCall（R-D S5 新缝：资源生成/上传链辅助调用）', () => {
   it('standard 态（含 zhipu）：DeepSeek 端点+MODEL_MAIN——镜像同源', () => {
-    expect(resolveAuxCall('deepseek', '', '')).toEqual({ base_url: DEEPSEEK_BASE_URL, model: MODEL_MAIN })
-    expect(resolveAuxCall('zhipu', '', '')).toEqual({ base_url: DEEPSEEK_BASE_URL, model: MODEL_MAIN })
+    expect(resolveAuxCall('deepseek', '', '', '')).toEqual({ base_url: DEEPSEEK_BASE_URL, model: MODEL_MAIN })
+    expect(resolveAuxCall('zhipu', '', '', '')).toEqual({ base_url: DEEPSEEK_BASE_URL, model: MODEL_MAIN })
   })
 
   it('test(zen) 态：Zen 端点+mimo；zenBaseUrl 空回落 DeepSeek 端点（RA-S5 既有语义）', () => {
-    expect(resolveAuxCall('zen', 'https://opencode.ai/zen/v1', ''))
+    expect(resolveAuxCall('zen', 'https://opencode.ai/zen/v1', '', ''))
       .toEqual({ base_url: 'https://opencode.ai/zen/v1', model: MODEL_ZEN_TEST })
-    expect(resolveAuxCall('zen', '', '')).toEqual({ base_url: DEEPSEEK_BASE_URL, model: MODEL_ZEN_TEST })
+    expect(resolveAuxCall('zen', '', '', '')).toEqual({ base_url: DEEPSEEK_BASE_URL, model: MODEL_ZEN_TEST })
   })
 
   it('go 态（S3）：go 网关端点+GLM-5.3-Flash；goBaseUrl 空同款回落 DeepSeek 端点', () => {
-    expect(resolveAuxCall('go', '', 'https://gw.example.com/v1'))
+    expect(resolveAuxCall('go', '', 'https://gw.example.com/v1', ''))
       .toEqual({ base_url: 'https://gw.example.com/v1', model: MODEL_GO_MAIN })
-    expect(resolveAuxCall('go', '', '')).toEqual({ base_url: DEEPSEEK_BASE_URL, model: MODEL_GO_MAIN })
+    expect(resolveAuxCall('go', '', '', '')).toEqual({ base_url: DEEPSEEK_BASE_URL, model: MODEL_GO_MAIN })
+  })
+
+  it('zai 态（C1）：bigmodel 官方端点+glm-4.7；zaiBaseUrl 空同款回落 DeepSeek 端点', () => {
+    expect(resolveAuxCall('zai', '', '', 'https://open.bigmodel.cn/api/paas/v4'))
+      .toEqual({ base_url: 'https://open.bigmodel.cn/api/paas/v4', model: MODEL_ZAI_MAIN })
+    expect(resolveAuxCall('zai', '', '', '')).toEqual({ base_url: DEEPSEEK_BASE_URL, model: MODEL_ZAI_MAIN })
   })
 })
 

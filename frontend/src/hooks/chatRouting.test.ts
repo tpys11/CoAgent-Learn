@@ -24,25 +24,32 @@ afterEach(() => {
 
 describe('resolveChatBaseUrl (RA-S5)', () => {
   it('zen 路由取 LS.zenBaseUrl', () => {
-    expect(resolveChatBaseUrl('zen', 'https://opencode.ai/zen/v1', '')).toBe('https://opencode.ai/zen/v1')
+    expect(resolveChatBaseUrl('zen', 'https://opencode.ai/zen/v1', '', '')).toBe('https://opencode.ai/zen/v1')
   })
 
   it('zen 空 zenBaseUrl 回落 undefined 并 console.warn（与现状等价不炸）', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    expect(resolveChatBaseUrl('zen', '', '')).toBeUndefined()
+    expect(resolveChatBaseUrl('zen', '', '', '')).toBeUndefined()
     expect(warn).toHaveBeenCalled()
   })
 
   it('go 路由取 LS.goBaseUrl（S3）；空同款回落 undefined 并 warn', () => {
-    expect(resolveChatBaseUrl('go', '', 'https://gw.example.com/v1')).toBe('https://gw.example.com/v1')
+    expect(resolveChatBaseUrl('go', '', 'https://gw.example.com/v1', '')).toBe('https://gw.example.com/v1')
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    expect(resolveChatBaseUrl('go', '', '')).toBeUndefined()
+    expect(resolveChatBaseUrl('go', '', '', '')).toBeUndefined()
+    expect(warn).toHaveBeenCalled()
+  })
+
+  it('zai 路由取 LS.zaiBaseUrl（C1）；空同款回落 undefined 并 warn', () => {
+    expect(resolveChatBaseUrl('zai', '', '', 'https://open.bigmodel.cn/api/paas/v4')).toBe('https://open.bigmodel.cn/api/paas/v4')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    expect(resolveChatBaseUrl('zai', '', '', '')).toBeUndefined()
     expect(warn).toHaveBeenCalled()
   })
 
   it('deepseek/zhipu 路由不受影响（标准档零回归）', () => {
-    expect(resolveChatBaseUrl('deepseek', '', '')).toBe('https://api.deepseek.com/v1')
-    expect(resolveChatBaseUrl('zhipu', '', '')).toBe('https://open.bigmodel.cn/api/paas/v4')
+    expect(resolveChatBaseUrl('deepseek', '', '', '')).toBe('https://api.deepseek.com/v1')
+    expect(resolveChatBaseUrl('zhipu', '', '', '')).toBe('https://open.bigmodel.cn/api/paas/v4')
   })
 })
 
@@ -68,6 +75,11 @@ describe('resolveChatModel (RA3-S1)', () => {
   it('go 取定值 glm-5.3-flash（S3/S6 实测校正：不吃 LS.model；换 API ID=改镜像常量一行）', () => {
     expect(resolveChatModel('go', '任何杂值')).toBe('glm-5.3-flash')
     expect(resolveChatModel('go', '')).toBe('glm-5.3-flash')
+  })
+
+  it('zai 取定值 glm-4.7（C1：官方文档 model 值，主审同模型）', () => {
+    expect(resolveChatModel('zai', '任何杂值')).toBe('glm-4.7')
+    expect(resolveChatModel('zai', '')).toBe('glm-4.7')
   })
 
   it('alias 迁移映射保留（老存量名→v4 系，标准档零回归；zen 分支不吃 alias）', () => {
