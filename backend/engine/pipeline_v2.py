@@ -504,6 +504,7 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
         assess_score = None
         assess_thinking = ""
         assess_evidence = ""
+        assess_timeout = False
         if assess_future is not None:
             try:
                 assess_score, assess_thinking_raw, assess_evidence = \
@@ -511,11 +512,18 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                 assess_thinking = (assess_thinking_raw or "").strip()
             except Exception:
                 logger.exception("[v2] 学情评估失败，回落规则地板")
+                assess_timeout = True
             finally:
                 assess_exec.shutdown(wait=False)
         if assess_thinking:
             mindchain_entries.append({"agent": "学情与记忆管理",
                                       "content": assess_thinking})
+        else:
+            # FIXMIND：空节点兜底展示——超时=评估转后台写表（owner 设计语义），空产出=规则地板
+            fallback = ("本轮学情评估超时未返回，已转后台完成并写入学情表，结果下次对话生效。"
+                        if assess_timeout else
+                        "学情评估未产出有效结果，本轮按规则地板继续。")
+            mindchain_entries.append({"agent": "学情与记忆管理", "content": fallback})
         ctx_steps.append({"agent": "学情与记忆管理", "status": "done",
                           "detail": ("水平评估完成" if assess_score is not None else "规则地板")})
         _trace("assess", input_digest=req.message[:200],
