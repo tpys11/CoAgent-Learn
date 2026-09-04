@@ -475,6 +475,8 @@ def main():
                     help="go 档主模型实名（与 backend MODEL_GO_MAIN 双源同值）")
     ap.add_argument("--chat-base-url", default="https://opencode.ai/zen/go/v1",
                     help="go 档端点（与 backend GO_BASE_URL 默认一致）")
+    ap.add_argument("--limit", type=int, default=0,
+                    help="每批次只取前 N 例（0=全量 18；owner 09-04 拍板本轮 9）")
     args = ap.parse_args()
 
     with open(CASES_PATH, encoding="utf-8") as fh:
@@ -523,6 +525,8 @@ def main():
 
     persona = cases["personas"][args.batch]
     batch_cases = [c for c in cases["cases"] if c["persona"] == args.batch]
+    if args.limit and args.limit > 0:
+        batch_cases = batch_cases[:args.limit]
     base = args.base
     pid = ensure_project(base, args.batch, run_stamp)
     log(f"[{args.batch}] project={pid} cases={len(batch_cases)}")
