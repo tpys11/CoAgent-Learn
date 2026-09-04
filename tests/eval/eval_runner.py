@@ -215,13 +215,43 @@ def kb_retrieval_check(base, pid, kb_items, log, top_k=3):
 
 # ---------- 用例执行 ----------
 
-def run_chat_case(base, case, persona, pid, kb_sources, outdir, log):
+def _load_go_api_key(replica_db):
+    """副本库只读抽 GO_API_KEY（owner 经 5174 设置页注入；内存传递零打印零落盘）。
+    go 档主模型 key 路径与前端一致：随请求 api_key 直传——_make_llm 的
+    req.api_key or DEEPSEEK 兜底在 go 档不可用（DEEPSEEK 无余额）。"""
+    import sqlite3
+    con = sqlite3.connect(f"file:{replica_db}?mode=ro", uri=True)
+    try:
+        row = con.execute(
+            "SELECT value FROM settings WHERE key='GO_API_KEY'").fetchone()
+    finally:
+        con.close()
+    return (row[0] if row and row[0] else "")
+
+
+def build_tier_extras(args):
+    """按档位构造 chat payload 附加段：go=模型/端点/key 三件套（对齐真实前端
+    请求形态）；standard=空（api_key 留空走后端 .env DEEPSEEK 兜底）。"""
+    if args.tier != "go":
+        return {}
+    key = _load_go_api_key(args.replica_db)
+    if not key:
+        raise SystemExit(
+            "[tier=go] 副本库无 GO_API_KEY：请 owner 打开 http://localhost:5174 "
+            "→设置→AI 服务→测试档卡，开 go 开关并粘贴 GO Key 保存"
+            "（键值不过 agent）；或 --tier standard 回标准档")
+    return {"model": args.chat_model, "base_url": args.chat_base_url,
+            "api_key": key}
+
+
+def run_chat_case(base, case, persona, pid, kb_sources, outdir, log, extras=None):
     cid = case["id"]
     did, ready = new_dialogue(base, pid, cid, persona["wizard"])
     log(f"  [{cid}] dialogue={did} profile_ready={ready}")
     payload = {"message": case["q"], "dialogue_id": did, "project_id": pid,
                "api_key": "", "settings": {"template": "研究"},
                "client_msg_id": "eval-" + cid}
+    payload.update(extras or {})
     t0 = time.time()
     stream = chat_stream(base, payload)
     elapsed = round(time.time() - t0, 1)
@@ -295,7 +325,7 @@ def _dump(outdir, name, data):
 
 # ---------- IF 批次 ----------
 
-def run_if_batch(base, cases, outdir, kb_items, log):
+def run_if_batch(base, cases, outdir, kb_items, log, extras=None):
     entries = []
     state = {}
     for case in cases["if_cases"]:
@@ -317,7 +347,7 @@ def run_if_batch(base, cases, outdir, kb_items, log):
                     if hasattr(run_chat_case, "__wrapped__") else None
                 if baseline is None:
                     baseline = _raw_chat(base, base_q["q"], did, pid, cid + "-B",
-                                         persona, kb_sources, outdir)
+                                         persona, kb_sources, outdir, extras)
                 quiz_resp = None
                 if case.get("quiz"):
                     quiz_resp = _post_json(base, "/api/quiz/submit", {
@@ -333,7 +363,7 @@ def run_if_batch(base, cases, outdir, kb_items, log):
                 fw_q = {"id": cid + "-F", "persona": case["persona"],
                         "q": case["followup_q"], "kps": []}
                 followup = _raw_chat(base, fw_q["q"], did, pid, cid + "-F",
-                                     persona, kb_sources, outdir)
+                                     persona, kb_sources, outdir, extras)
                 entry = {"case_id": cid, "persona": case["persona"],
                          "dialogue_id": did, "project_id": pid,
                          "baseline": baseline, "quiz": case.get("quiz"),
@@ -349,10 +379,12 @@ def run_if_batch(base, cases, outdir, kb_items, log):
     return entries
 
 
-def _raw_chat(base, question, did, pid, tag, persona, kb_sources, outdir):
+def _raw_chat(base, question, did, pid, tag, persona, kb_sources, outdir,
+              extras=None):
     payload = {"message": question, "dialogue_id": did, "project_id": pid,
                "api_key": "", "settings": {"template": "研究"},
                "client_msg_id": "eval-" + tag}
+    payload.update(extras or {})
     t0 = time.time()
     stream = chat_stream(base, payload)
     traces = (_get_json(base, f"/api/eval/traces/{stream['request_id']}")
@@ -415,6 +447,16 @@ def main():
                     help="跳过灌库（复用同 run_stamp 的既有项目时用）")
     ap.add_argument("--skip-check", action="store_true",
                     help="跳过灌库后的 KB 检索冒烟自检闸门")
+    ap.add_argument("--tier", choices=["go", "standard"], default="go",
+                    help="被测档位（owner 09-04 拍板默认 go）：go=请求携带 "
+                         "glm-5.3-flash + GO 端点 + 副本库 GO_API_KEY 直传")
+    ap.add_argument("--replica-db", default=os.path.join(
+        os.environ.get("TEMP", "/tmp"), "coagent-eval-data", "app.db"),
+        help="副本库路径（go 档只读抽 GO_API_KEY，键值不打印不落盘）")
+    ap.add_argument("--chat-model", default="glm-5.3-flash",
+                    help="go 档主模型实名（与 backend MODEL_GO_MAIN 双源同值）")
+    ap.add_argument("--chat-base-url", default="https://opencode.ai/zen/go/v1",
+                    help="go 档端点（与 backend GO_BASE_URL 默认一致）")
     args = ap.parse_args()
 
     with open(CASES_PATH, encoding="utf-8") as fh:
@@ -429,6 +471,11 @@ def main():
 
     def log(msg):
         print(time.strftime("[%H:%M:%S] ") + msg, flush=True)
+
+    extras = build_tier_extras(args)
+    if extras:
+        log(f"[tier={args.tier}] chat 附加: model={extras.get('model')} "
+            f"base_url={extras.get('base_url')} key=<副本库直传,未打印>")
 
     if args.batch == "smoke":
         persona = cases["personas"]["P1"]
@@ -445,13 +492,14 @@ def main():
         log(f"[smoke] project={pid} case={case['id']}")
         kb_sources = [it["source"] for it in kb_items]
         entry = run_chat_case(base, case, persona, pid, kb_sources,
-                              args.outdir, log)
+                              args.outdir, log, extras)
         _checkpoint(args.outdir, "smoke", [entry])
         log(f"[smoke] reply_len={len(entry['answer'])} error={entry['error']}")
         return
 
     if args.batch == "IF":
-        entries = run_if_batch(args.base, cases, args.outdir, kb_items, log)
+        entries = run_if_batch(args.base, cases, args.outdir, kb_items, log,
+                               extras)
         log(f"[IF] done: {sum(1 for e in entries if not e.get('error'))}/{len(entries)} ok")
         return
 
@@ -473,7 +521,7 @@ def main():
         log(f"  [{i}/{len(batch_cases)}] {case['id']}")
         try:
             entry = run_chat_case(base, case, persona, pid, kb_sources,
-                                  args.outdir, log)
+                                  args.outdir, log, extras)
         except Exception as e:  # noqa: BLE001 —— 单例失败记录后继续，稍后统一重试
             entry = {"case_id": case["id"], "persona": case["persona"],
                      "question": case["q"], "expect_kps": case.get("kps") or [],
