@@ -238,6 +238,8 @@ export const api = {
     apiFetch<any>('/api/resources/upload', { method: 'POST', body: form }),
   deleteResource: (rid: string) =>
     apiFetch<any>('/api/resources/' + encodeURIComponent(rid), jsonInit('DELETE')),
+  resourceJoinProject: (rid: string, projectId: string) =>
+    apiFetch<any>('/api/resources/' + encodeURIComponent(rid) + '/join-project', jsonInit('POST', { project_id: projectId })),
   generateDomain: (body: unknown) => apiFetch<any>('/api/generate-domain', jsonInit('POST', body)),
   generateOutline: (body: unknown) => apiFetch<any>('/api/domain/outline', jsonInit('POST', body)),
   generateChapter: (body: unknown) => apiFetch<any>('/api/domain/chapter', jsonInit('POST', body)),

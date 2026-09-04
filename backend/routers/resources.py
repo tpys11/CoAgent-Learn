@@ -178,3 +178,48 @@ def delete_resource(rid: str):
     from core.postgres_client import pg_client
     pg_client.execute("DELETE FROM resources WHERE id=%s", (rid,))
     return {"status": "ok"}
+
+
+class JoinProjectReq(BaseModel):
+    project_id: str = "default"
+    api_key: str = ""
+
+
+@router.post("/api/resources/{rid}/join-project")
+def resource_join_project(rid: str, req: JoinProjectReq):
+    """把我的上传资源加入指定项目知识库（可检索）：有原文件走文件，否则用解析文本入库。"""
+    from core.postgres_client import pg_client
+    from routers.knowledge import _process_upload
+    from core.project_repo import get_project_repo
+    rows = pg_client.execute("SELECT id, name, content, file_path FROM resources WHERE id=%s", (rid,))
+    if not rows:
+        return {"status": "error", "msg": "资源不存在"}
+    name = rows[0].get("name") or "未命名"
+    content = rows[0].get("content") or ""
+    fpath = rows[0].get("file_path") or ""
+    text = content
+    pdf_bytes = None
+    # 有原文件 → 读文件：PDF 传字节给解析器，其它取文本
+    try:
+        if fpath and os.path.exists(fpath):
+            ext = (fpath.rsplit(".", 1)[-1] if "." in fpath else "").lower()
+            if ext == "pdf":
+                with open(fpath, "rb") as f:
+                    pdf_bytes = f.read()
+                text = ""  # pdf_bytes 交给入库解析
+            else:
+                with open(fpath, "rb") as f:
+                    from core.file_parser import parse_file
+                    text = parse_file(name, f.read()) or content
+    except Exception:
+        pass
+    if not text and not pdf_bytes:
+        return {"status": "error", "msg": "该资源无可用文本，无法入库"}
+    try:
+        chunks = _process_upload(req.project_id, text, name, session_id="default", api_key=req.api_key or "",
+                                 skip_context=False, skip_graph=False, content_hash="",
+                                 **({"pdf_bytes": pdf_bytes} if pdf_bytes else {}))
+        return {"status": "ok", "chunks": int(chunks or 0), "name": name}
+    except Exception as e:
+        logger.exception("join-project 入库失败 rid=%s", rid)
+        return {"status": "error", "msg": str(e)[:150]}

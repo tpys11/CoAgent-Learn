@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Upload, Trash2, FileText, Image as ImageIcon, X, File as FileIcon, Eye } from 'lucide-react'
+import { Upload, Trash2, FileText, Image as ImageIcon, X, File as FileIcon, Eye, BookOpen } from 'lucide-react'
 import { api } from '../api'
 
 interface ResItem {
@@ -27,6 +27,9 @@ export default function MyUploads() {
   const [upBusy, setUpBusy] = useState(false)
   const [upMsg, setUpMsg] = useState('')
   const [preview, setPreview] = useState<ResItem | null>(null)
+  const [projs, setProjs] = useState<Array<{ id: string; name: string }>>([])
+  const [joinTarget, setJoinTarget] = useState<ResItem | null>(null)
+  const [joining, setJoining] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
   const BUCKET = 'default' // 个人资源库桶（不属具体课程）
 
@@ -55,6 +58,21 @@ export default function MyUploads() {
     }
   }
 
+  const openJoin = async (r: ResItem) => {
+    setJoinTarget(r)
+    try { const d = await api.listProjects(); setProjs(Array.isArray(d?.projects) ? d.projects : []) } catch { setProjs([]) }
+  }
+  const doJoin = async () => {
+    if (!joinTarget) return
+    const pid = (document.getElementById('join-proj-select') as HTMLSelectElement)?.value
+    if (!pid) { alert('请选择课程'); return }
+    setJoining(joinTarget.id); setJoinTarget(null)
+    try {
+      const d = await api.resourceJoinProject(joinTarget.id, pid)
+      alert(d.status === 'ok' ? ('已加入课程知识库（' + (d.chunks || 0) + ' 个内容块）') : ('加入失败：' + (d.msg || '')))
+    } catch (e: any) { alert('加入失败：' + (e?.message || '网络异常')) }
+    finally { setJoining('') }
+  }
   const del = async (id: string) => {
     if (!window.confirm('删除这条资源？')) return
     try { await api.deleteResource(id) } catch { /* ignore */ }
@@ -108,6 +126,10 @@ export default function MyUploads() {
                     <button onClick={() => setPreview(r)} className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg text-dim hover:bg-[var(--bg-hover)]" title="预览解析文本">
                       <Eye size={11} /> 预览
                     </button>
+                    <button onClick={() => openJoin(r)} disabled={!!joining}
+                      className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg text-[var(--accent)] hover:bg-blue-50" title="加入某课程知识库（可检索）">
+                      <BookOpen size={11} /> 加入课程
+                    </button>
                     <button onClick={() => del(r.id)} className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg text-dim hover:bg-red-50 hover:text-red-500" title="删除">
                       <Trash2 size={11} /> 删除
                     </button>
@@ -118,6 +140,23 @@ export default function MyUploads() {
           )}
       </div>
 
+      {/* 加入课程弹窗 */}
+      {joinTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" onClick={() => setJoinTarget(null)}>
+          <div onClick={e => e.stopPropagation()} className="w-[380px] rounded-2xl bg-white border hairline shadow-2xl p-5 flex flex-col gap-3">
+            <h3 className="text-sm font-bold">把「{joinTarget.name}」加入课程</h3>
+            <p className="text-[11px] text-dim">加入后该课程可基于它检索回答（文档切块入库）。</p>
+            <select id="join-proj-select" defaultValue={projs[0]?.id || ''} className="w-full px-3 py-2 border hairline rounded-lg text-xs">
+              {projs.length === 0 ? <option value="">暂无课程</option> : projs.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <div className="flex justify-end gap-2 mt-1">
+              <button onClick={() => setJoinTarget(null)} className="text-xs px-3 py-1.5 text-gray-500 hover:bg-gray-100 rounded-lg">取消</button>
+              <button onClick={doJoin} disabled={projs.length === 0}
+                className="text-xs px-4 py-1.5 bg-[#1a1a1a] text-white font-semibold rounded-lg disabled:opacity-40">加入</button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* 预览弹窗 */}
       {preview && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" onClick={() => setPreview(null)}>
