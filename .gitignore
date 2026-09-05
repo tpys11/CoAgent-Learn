@@ -22,15 +22,16 @@ data/uploads/
 *.pem
 secrets/
 
-# IDE
+# IDE 与本地工具
 .vscode/settings.json
 .idea/
 *.swp
 *.swo
+.claude/
+.omo/
 
-# 文档 — 本地记录，不提交（E-24 决策 A：仅放行唯一状态载体 PROGRESS.md）
-docs/*
-!docs/PROGRESS.md
+# 文档 — 本地记录，一律不提交（09-05 owner 指令：docs/ 整体只留本地）
+docs/
 
 # Docker
 docker-compose.override.yml
