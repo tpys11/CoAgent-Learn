@@ -515,6 +515,13 @@ def _v2_worker(req, token_queue, cancel_evt, request_id):
                 assess_timeout = True
             finally:
                 assess_exec.shutdown(wait=False)
+        # FIXPIPE（E-46 全量跑数实证）：本轮实时评估分优先于画像缓存历史分。
+        # 全新对话的画像缓存无 level_score → prev=None → 难度适配条款与初学者
+        # 硬约束在首次提问上永久失明（P1 批适配 2/17 崩塌根因；真实新用户首问
+        # 同踩）。assess 与 S2 重叠执行、此刻必已回收——优先采用本轮分；
+        # 评估失败时保留缓存值；双无维持 None 原语义（条款不注入）。
+        if assess_score is not None:
+            prev_score = assess_score
         if assess_thinking:
             mindchain_entries.append({"agent": "学情与记忆管理",
                                       "content": assess_thinking})
